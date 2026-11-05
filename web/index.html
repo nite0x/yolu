@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="ui-language" content="__UI_LANGUAGE__">
+  <script src="/ui/i18n.js" defer></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="__CSRF_TOKEN__">
+  <meta name="session-mode" content="__SESSION_MODE__">
+  <meta name="color-scheme" content="light">
+  <title>Yolu</title>
+  <meta name="theme-color" content="#e4eaff">
+  <script src="/core/workspace-bootstrap.js"></script>
+  <link rel="icon" href="/yolu.ico" sizes="16x16 32x32 48x48 256x256">
+  <link rel="icon" href="/yolu.svg" type="image/svg+xml" sizes="any">
+  <link rel="stylesheet" href="/core/style.css">
+  <link rel="stylesheet" href="/features/projects/git.css">
+  <link rel="stylesheet" href="/features/projects/projects.css">
+  <link rel="stylesheet" href="/features/tasks/workspace.css">
+  <link rel="stylesheet" href="/features/sessions/sessions.css">
+  <link rel="stylesheet" href="/features/sessions/session-workspace.css">
+  <link rel="stylesheet" href="/features/settings/settings.css">
+  <link rel="stylesheet" href="/ui/ui.css">
+  <link rel="stylesheet" href="/chat/assistant.css">
+  <link rel="stylesheet" href="/core/desktop-frame.css">
+  <script src="/ui/ui.js" defer data-ui-bundle></script>
+  <script src="/chat/loader.js" defer></script>
+  <script src="/core/core.js" defer></script>
+  <script src="/features/projects/projects.js" defer></script>
+  <script src="/features/tasks/requirements.js" defer></script>
+  <script src="/core/app.js" defer></script>
+  <script src="/features/settings/environments.js" defer></script>
+  <script src="/features/tasks/requirement-projects.js" defer></script>
+  <script src="/features/projects/git.js" defer></script>
+  <script src="/features/projects/worktrees.js" defer></script>
+  <script src="/features/settings/terminal.js" defer></script>
+  <script src="/features/settings/settings.js" defer></script>
+  <script src="/features/sessions/sessions.js" defer></script>
+  <script src="/features/sessions/session-history.js" defer></script>
+  <script src="/features/sessions/session-history-live.js" defer></script>
+  <script src="/features/sessions/session-chat.js" defer></script>
+  <script src="/features/sessions/session-create.js" defer></script>
+  <script src="/features/tasks/task-layout.js" defer></script>
+  <script src="/features/tasks/task-review.js" defer></script>
+  <script src="/features/sessions/session-workspace.js" defer></script>
+  <script src="/core/workspace-tab.js" defer></script>
+  <link rel="stylesheet" href="/core/shortcut-icons.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Yolu 首页" data-i18n-aria-label="Yolu 首页"><img class="brand-mark" src="/yolu.svg" alt="" width="36" height="36"><span>Yolu<small data-i18n="让每一份工作，各就其位。">让每一份工作，各就其位。</small></span></a>
+    <div class="nav-label" data-i18n="工作台">工作台</div>
+    <nav aria-label="主导航" data-i18n-aria-label="主导航">
+      <button class="nav-item active" data-view="requirements" aria-label="任务" title="任务" data-i18n-title="任务" data-i18n-aria-label="任务"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-text" data-i18n="任务">任务</span><span class="nav-count" id="reqCount">0</span></button>
+      <button class="nav-item" data-view="projects" aria-label="项目" title="项目" data-i18n-title="项目" data-i18n-aria-label="项目"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-text" data-i18n="项目">项目</span><span class="nav-count" id="projectCount">0</span></button>
+      <button class="nav-item" data-view="sessions" aria-label="对话" title="对话" data-i18n-title="对话" data-i18n-aria-label="对话"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="对话">对话</span><span id="sessionNavigationStatus" class="session-navigation-status" role="status"></span></button>
+    </nav>
+    <section id="conversationShortcuts" class="conversation-shortcuts shadcn-scope" aria-label="对话快捷入口" data-i18n-aria-label="对话快捷入口"></section>
+    <footer class="sync workspace-status sidebar-footer" aria-label="工作台状态" data-i18n-aria-label="工作台状态">
+      <div class="sidebar-status-copy">
+        <div class="sidebar-status-line"><span class="live-dot updating" id="syncDot" aria-hidden="true"></span><span id="syncText" role="status" data-i18n="更新中…">更新中…</span></div>
+        <div class="sidebar-bottom"><span id="platformLabel" data-i18n="本机工作台">本机工作台</span><span class="version">v0.2</span></div>
+      </div>
+      <div class="sidebar-footer-actions"><span id="refreshControl" class="shadcn-scope"></span><button type="button" class="sidebar-settings nav-item" data-view="settings" title="设置" aria-label="设置" data-i18n-title="设置" data-i18n-aria-label="设置"><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9.7 4.3.6-2.3h3.4l.6 2.3 1.9 1.1 2.3-.6 1.7 3-1.7 1.7v2.2l1.7 1.7-1.7 3-2.3-.6-1.9 1.1-.6 2.3h-3.4l-.6-2.3-1.9-1.1-2.3.6-1.7-3 1.7-1.7V9.5L3.8 7.8l1.7-3 2.3.6Z" transform="translate(0 1)"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    </footer>
+  </aside>
+  <div class="shell">
+    <main>
+      <a href="#/requirements" class="workspace-back" id="backToRequirements" hidden data-i18n="← 返回任务列表">← 返回任务列表</a>
+      <div class="page-heading"><div><div class="eyebrow" id="eyebrow">TASKS</div><h1 id="pageTitle" tabindex="-1" data-i18n="任务">任务</h1><p id="pageSubtitle" data-i18n="围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。">围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。</p></div><span id="newTaskButton" class="shadcn-scope"></span><div id="taskPageActions" hidden></div></div>
+      <div id="offlineFeedback" class="shadcn-scope"></div>
+      <section id="stats" class="stats" aria-label="工作台统计" data-i18n-aria-label="工作台统计"></section>
+      <section id="settingsPage" class="settings-page shadcn-scope" aria-label="设置" hidden data-i18n-aria-label="设置"></section>
+      <section class="content-panel" id="workContent">
+        <aside id="taskBrowser" class="task-browser shadcn-scope" aria-label="任务列表" hidden data-i18n-aria-label="任务列表">
+          <div class="task-browser-header">
+            <div class="task-browser-heading"><h2 data-i18n="任务">任务</h2><span id="taskCreateSlot"></span></div>
+            <div id="taskToolbarSlot"></div>
+          </div>
+          <div id="taskListContent" class="task-list-scroll" aria-label="全部任务" data-i18n-aria-label="全部任务"></div>
+        </aside>
+        <div class="panel-toolbar" id="panelToolbar"><div class="panel-title" id="panelTitle" tabindex="-1" data-i18n="全部任务">全部任务</div><div class="toolbar-actions"><div class="shadcn-scope" id="projectEnvironmentWrap" hidden></div><div id="searchField" class="shadcn-scope"></div><details class="task-list-filters" id="taskListFilters"><summary data-i18n="筛选">筛选</summary><div class="task-list-filter-options"><div class="shadcn-scope" id="archiveFilterWrap"></div><div class="shadcn-scope" id="taskStatusFilterWrap"></div></div></details><span id="projectAddButton" class="shadcn-scope" hidden></span></div></div>
+        <div id="taskListResize" class="task-resize-handle" role="separator" tabindex="0" aria-label="调整任务列表宽度" aria-orientation="vertical" aria-controls="taskBrowser taskDetailPane" aria-valuemin="240" aria-valuemax="640" aria-valuenow="300" hidden data-i18n-aria-label="调整任务列表宽度"></div>
+        <section id="taskDetailPane" class="task-detail-pane"><div id="taskHeadingSlot"></div><section id="taskProjectsView" class="task-projects-view" aria-label="项目工作区" data-i18n-aria-label="项目工作区"><div id="content" aria-live="polite"><div class="loading" data-i18n="正在读取本地状态…">正在读取本地状态…</div></div></section></section>
+      </section>
+      <section id="sessionsPage" class="sessions-page" aria-label="对话" hidden data-i18n-aria-label="对话"><div id="sessionPageMount"></div></section>
+    </main>
+  </div>
+  <dialog id="environmentDialog" class="shadcn-scope" aria-labelledby="environmentTitle"></dialog>
+  <dialog id="projectDialog" class="shadcn-scope" aria-labelledby="projectDialogTitle"></dialog>
+  <dialog id="requirementDialog" class="wide-dialog shadcn-scope" aria-labelledby="requirementDialogTitle"></dialog>
+  <dialog id="requirementProjectsDialog" class="wide-dialog shadcn-scope" aria-labelledby="requirementProjectsTitle"></dialog>
+  <dialog id="taskReviewDialog" class="wide-dialog shadcn-scope" aria-labelledby="taskReviewTitle"></dialog>
+  <dialog id="changesDialog" class="changes-dialog shadcn-scope" aria-labelledby="changesTitle"></dialog>
+  <dialog id="taskEditDialog" aria-labelledby="taskEditTitle" class="shadcn-scope"></dialog>
+  <dialog id="taskDirectoryDialog" aria-labelledby="taskDirectoryTitle" class="shadcn-scope"></dialog>
+  <dialog id="worktreeDialog" class="wide-dialog shadcn-scope" aria-labelledby="worktreeTitle"></dialog>
+  <dialog id="gitDialog" class="git-dialog shadcn-scope" aria-labelledby="gitTitle"></dialog>
+  <dialog id="commandDialog" class="wide-dialog shadcn-scope" aria-labelledby="commandTitle" aria-describedby="commandDescription"></dialog>
+  <div class="busy-panel" id="busyPanel" role="status" hidden><span class="spinner"></span><div><strong id="busyTitle" data-i18n="正在创建任务">正在创建任务</strong><small data-i18n="请稍候，正在操作本地仓库…">请稍候，正在操作本地仓库…</small></div></div>
+  <div id="toast" class="toast shadcn-scope" role="status" hidden></div>
+  <dialog id="sessionDialog" class="wide-dialog shadcn-scope" aria-labelledby="sessionDialogTitle"></dialog>
+  <dialog id="sessionCommandOutputDialog" class="session-command-output-dialog shadcn-scope" aria-labelledby="sessionCommandOutputTitle"></dialog>
+</body>
+</html>

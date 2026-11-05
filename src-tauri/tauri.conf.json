@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Yolu",
+  "version": "../package.json",
+  "mainBinaryName": "yolu",
+  "identifier": "dev.work-hub.desktop",
+  "build": {
+    "beforeDevCommand": {
+      "script": "node scripts/prepare-desktop.mjs",
+      "wait": true
+    },
+    "beforeBuildCommand": "node scripts/prepare-desktop.mjs",
+    "frontendDist": "../desktop"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "capabilities": [],
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "publisher": "Yolu",
+    "license": "Apache-2.0",
+    "licenseFile": "../LICENSE",
+    "homepage": "https://github.com/nite0x/yolu",
+    "shortDescription": "A task-centered workspace for cross-project development",
+    "longDescription": "Yolu brings repositories, Git worktrees, terminals and Codex conversations together around each development task. A local desktop workspace built with Tauri and Go.",
+    "resources": { "notices/": "notices/", "../LICENSE": "notices/LICENSE" },
+    "externalBin": ["binaries/yolu-backend"],
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"]
+  }
+}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="ui-language" content="__UI_LANGUAGE__">
+  <script src="/ui/i18n.js" defer></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="__CSRF_TOKEN__">
+  <meta name="style-nonce" content="__STYLE_NONCE__">
+  <title data-i18n="终端 · Yolu">终端 · Yolu</title>
+  <link rel="stylesheet" href="/ui/terminal.css">
+  <script src="/ui/terminal.js" defer></script>
+</head>
+<body>
+  <div id="terminalSurface"></div>
+  <p id="terminalFeedback" role="status" hidden></p>
+  <main id="terminalLauncher">
+    <section class="terminal-launch-content">
+      <h1 data-i18n="准备好开始对话">准备好开始对话</h1>
+      <form id="terminalForm">
+        <div class="terminal-profile-choices"><span id="terminalProfileLabel">Agent / Shell</span><div id="terminalProfileChoices" class="creation-choices" role="group" aria-labelledby="terminalProfileLabel"></div><select id="terminalProfile" hidden aria-label="Agent / Shell"></select></div>
+        <fieldset id="customTerminal" hidden>
+          <legend data-i18n="自定义 Agent">自定义 Agent</legend>
+          <label>名称<input id="customName" placeholder="例如：我的 Agent" maxlength="80" data-i18n-placeholder="例如：我的 Agent"></label>
+          <label>可执行文件<input id="customExecutable" placeholder="命令名称或绝对路径" autocomplete="off" spellcheck="false" data-i18n-placeholder="命令名称或绝对路径"></label>
+          <label>参数（JSON 数组）<textarea id="customArgs" rows="2" spellcheck="false">[]</textarea></label>
+          <label>环境变量（JSON 对象，仅用于本次启动）<textarea id="customEnv" rows="2" spellcheck="false">{}</textarea></label>
+          <button id="saveTerminalProfile" type="button" data-i18n="保存启动配置">保存启动配置</button>
+          <button id="startTerminal" class="primary" type="submit" data-i18n="启动自定义 Agent">启动自定义 Agent</button>
+        </fieldset>
+        <p class="terminal-help" data-i18n="点击 Agent 即可启动，使用 Agent 自己的登录与审批界面。">点击 Agent 即可启动，使用 Agent 自己的登录与审批界面。</p>
+      </form>
+    </section>
+    <details id="terminalExisting" class="terminal-existing" hidden><summary id="terminalExistingSummary" data-i18n="已有终端">已有终端</summary><div class="terminal-existing-body"><button id="refreshTerminals" type="button" data-i18n="刷新">刷新</button><div id="terminalList"></div></div></details>
+  </main>
+  <section id="terminalConsole" hidden aria-label="交互式终端" data-i18n-aria-label="交互式终端">
+    <div id="terminalScreen"></div>
+  </section>
+  <dialog id="stopTerminalDialog"><form method="dialog"><h2 data-i18n="结束这个终端？">结束这个终端？</h2><p data-i18n="终端中的 Agent 和子进程将结束。仅需收起页面时，请使用“关闭视图”。">终端中的 Agent 和子进程将结束。仅需收起页面时，请使用“关闭视图”。</p><div><button value="cancel" data-i18n="取消">取消</button><button class="danger" value="stop" data-i18n="结束进程">结束进程</button></div></form></dialog>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "linux": {
+      "deb": {
+        "depends": ["git"],
+        "conflicts": ["work-hub"],
+        "replaces": ["work-hub"],
+        "section": "devel",
+        "preInstallScript": "linux/check-running.sh",
+        "preRemoveScript": "linux/check-running.sh"
+      }
+    }
+  }
+}

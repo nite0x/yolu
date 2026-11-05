@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-set-ui-language"
+description = "Allow the main window to select English or Chinese native menu labels."
+commands.allow = ["set_ui_language"]

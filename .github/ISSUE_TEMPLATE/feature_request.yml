@@ -1,0 +1,15 @@
+name: Feature request
+description: Suggest an improvement to Yolu's task-centered workflow
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Where does your current task, repository or worktree workflow break down?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the outcome and any existing alternatives.

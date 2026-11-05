@@ -1,0 +1,3717 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { MessageChannel } = require('node:worker_threads');
+const { JSDOM } = require('jsdom');
+
+const web = path.join(__dirname, '../web');
+const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
+
+async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pins = {}, storage = {}, storageUnavailable = false, width = 1024, route = '/requirements/task', intercept: initialIntercept, tabHost} = {}) {
+  const tree = (path, branch) => ({ path, branch, dirty: 0, status_updated_at: '2026-10-23T06:00:00Z' });
+  const app = { id: 'app', name: 'App', folder: 'app', path: '/repo/app', worktrees: [tree('/repo/app', 'master'), tree('/workspace/task/app', 'feature/task')] };
+  const backend = { id: 'backend', name: 'Backend', folder: 'backend', path: '/repo/backend', worktrees: [tree('/repo/backend', 'master')] };
+  const task = { id: 'task', name: 'Billing', slug: 'task', branch: 'feature/task', state: 'ready', path: '/workspace/task', created_at: '2026-10-23T06:00:00Z', primary_project_id: app.id, has_workspace: true, members: [{ project_id: app.id, project_name: app.name, mode: 'worktree', path: app.worktrees[1].path, state: 'ready', worktree: app.worktrees[1] }] };
+  const data = { root: '/workspace', projects: [app, backend], requirements: [task, { ...task, id: 'archived', name: 'Archived', state: 'archived' }], terminal: { platform: 'linux', available: true, settings: { kind: 'auto' }, supported_kinds: ['auto', 'custom'], supported_styles: ['command', 'otty'], launcher: '/usr/bin/terminal', message: '终端已就绪' } };
+  const environments = { environments: [{ id: 'local', name: '本机' }], distributions: [], platform: 'linux', wsl_supported: false };
+  const sessions = [{ id: 'session-1', name: 'Billing review', cwd: app.worktrees[1].path, updated_at: 1792735200, available: true, source: 'workspace' }];
+  const links = new Map([['task', new Set(['session-1'])]]);
+  const history = [
+    { id: 'message-1', turn_id: 'turn-1', kind: 'user', text: '检查当前代码' },
+    { id: 'command-1', turn_id: 'turn-1', kind: 'command', command: 'git status --short', cwd: app.worktrees[1].path, status: 'completed', exit_code: 0, duration_ms: 12, output: 'working tree clean' },
+    { id: 'reply-1', turn_id: 'turn-1', kind: 'assistant', text: '当前工作目录干净。' },
+  ];
+  const overview = project => ({ project, current: 'master', credentials: { available: true, message: '使用已有凭证' }, master_source: 'refs/remotes/origin/master', remotes: [{ name: 'origin', url: '/test/remote.git' }], branches: [
+    { name: 'master', ref: 'refs/heads/master', kind: 'local', commit: '12345678', worktrees: [project.path] },
+    { name: 'release', ref: 'refs/heads/release', kind: 'local', commit: '12345678', worktrees: [] },
+    { name: 'feature/task', ref: 'refs/heads/feature/task', kind: 'local', commit: '12345678', worktrees: project.id === 'app' ? ['/workspace/task/app'] : [] },
+    { name: 'origin/master', ref: 'refs/remotes/origin/master', kind: 'remote', commit: '12345678', worktrees: [] },
+  ] });
+  const dom = new JSDOM(fs.readFileSync(path.join(web, 'index.html'), 'utf8').replaceAll('__UI_LANGUAGE__', 'zh-CN').replace('__SESSION_MODE__', readOnly ? 'read-only' : 'interactive'), { url: origin + '/#' + route, runScripts: 'outside-only', pretendToBeVisual: true });
+  const channels = [];
+  t.after(() => { if (dom.window.WorkHubTab) dom.window.WorkHubTab.dispose(); else dom.window.dispatchEvent(new dom.window.Event('pagehide')); dom.window.close(); for (const channel of channels) { channel.port1.close(); channel.port2.close(); } });
+  const { window } = dom;
+  if (tabHost) Object.defineProperty(window, 'parent', {value:tabHost});
+  Object.defineProperty(window, 'innerWidth', {value:width, configurable:true, writable:true});
+  for (const [key, value] of Object.entries(storage)) window.localStorage.setItem(key, value);
+  if (storageUnavailable) Object.defineProperty(window, 'localStorage', {get() {throw new Error('Storage unavailable');}});
+  const document = window.document;
+  Object.assign(window, { TextEncoder, TextDecoder, ReadableStream, WritableStream, TransformStream, CSS: { escape: value => value }, MessageChannel: class extends MessageChannel { constructor() { super(); channels.push(this); } }, scrollTo() {}, confirm: () => true });
+  window.HTMLElement.prototype.scrollIntoView = function () {};
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new window.Event('close')); };
+  let conversationReturnRoute = '/requirements/task';
+  const requests = [];
+  let intercept = initialIntercept;
+  window.fetch = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : undefined;
+    requests.push({ url, options, body });
+    if (intercept) { const result = await intercept(url, options, body); if (result) return result; }
+    let result;
+    if (url.startsWith('/api/shortcut-pins?')) {
+      const environment = new URL(url, origin).searchParams.get('environment');
+      if (options.method === 'PUT' && (!body.initialize || !pins[environment])) pins[environment] = {tasks:body.tasks, directories:body.directories, icons:body.icons || pins[environment]?.icons, initialized:true};
+      result = pins[environment] || {tasks:[], directories:[], initialized:false};
+    }
+    else if (url.startsWith('/api/task-inventory')) result = { requirements: data.requirements.map(q => ({ ...q, environment_id: 'local', environment_name: '本机', connected: true })), environments: [{ id: 'local', name: '本机', connected: true }], project_count: data.projects.length };
+    else if (url === '/api/environments') result = options.method === 'POST' ? { id: 'wsl-test' } : environments;
+    else if (url === '/api/settings/terminal' && options.method === 'PUT') result = data.terminal = { ...data.terminal, settings: body, launcher: body.path || '/usr/bin/terminal', message: '终端已就绪' };
+    else if (url === '/api/settings/codex') result = {platform:'linux',user:'tester',codex_home:'/home/tester/.codex',cli_path:'/usr/bin/codex',candidates:['/usr/bin/codex'],version:'codex-cli test',checked_at:'2026-11-04T12:00:00Z',status:'ok',checks:[{id:'cli',name:'CLI 安装与版本',status:'ok',message:'codex-cli test'}]};
+    else if (url === '/api/settings/conversation-defaults') {
+      if (options.method === 'PUT') data.conversation_defaults = body;
+      result = {settings:data.conversation_defaults || {}, models:[{model:'body-model',displayName:'正文模型'}, {model:'other-model',displayName:'另一个模型'}]};
+    }
+    else if (url === '/api/settings/session-title') {
+      if (options.method === 'PUT') data.title_settings = body;
+      result = {settings: data.title_settings || {model: ''}, models: [{model:'body-model',displayName:'正文模型'}, {model:'title-model',displayName:'标题模型'}]};
+    }
+    else if (url.endsWith('/history/events') || url.includes('/chat/events?')) return { ok: true, headers: { get: () => 'text/event-stream' }, body: new ReadableStream({ start(controller) { controller.close(); } }) };
+    else if (url.includes('/history')) result = { session: sessions[0], entries: url.includes('cursor=') ? [{ id: 'older', turn_id: 'old-turn', kind: 'assistant', text: '更早的记录' }] : history, next_cursor: url.includes('cursor=') ? null : 'older-page' };
+    else if (url.endsWith('/chat/approval') || url.endsWith('/chat')) result = { id: body?.request_id || 'run-1', status: 'idle', busy: false, entries: [], approvals: [] };
+    else if (url.endsWith('/resume')) result = { message: '已打开会话终端' };
+    else if (url.startsWith('/api/codex/sessions?')) result = { data: sessions.map(s => ({ ...s, updatedAt: s.updated_at })), nextCursor: null };
+    else if (/^\/api\/requirements\/[^/]+\/sessions\/[^/]+$/.test(url) && options.method === 'DELETE') {
+      links.get(url.split('/')[3])?.delete(url.split('/')[5]); result = {message: '已取消关联'};
+    }
+    else if (url.endsWith('/sessions') || url.startsWith('/api/sessions?')) {
+      const query = new URL(url, 'http://localhost').searchParams;
+      const q = data.requirements.find(q => q.id === query.get('task_id'));
+      const p = data.projects.find(p => p.id === query.get('project_id'));
+      const paths = q ? [q.path, ...q.members.map(m => m.path)] : p ? p.worktrees.map(t => t.path) : null;
+      if (options.method === 'POST') { const id = url.split('/')[3]; if (!links.has(id)) links.set(id,new Set()); links.get(id).add(body.session_id); result = {message:'会话已关联'}; }
+      else result = { sessions: sessions.filter(s => (q && query.get('linked') === 'true' ? links.get(q.id)?.has(s.id) : !paths || paths.includes(s.cwd)) && (!query.has('cwd') || query.get('cwd') === s.cwd)) };
+    }
+    else if (url.endsWith('/git')) result = options.method === 'POST' ? { message: '已完成', output: 'fixture result' } : overview(data.projects.find(p => url.includes('/' + p.id + '/')));
+    else if (url === '/api/projects' && options.method === 'POST') { data.projects.push({ id: 'new-project', ...body, folder: 'new-project', worktrees: [tree(body.path, 'master')] }); result = { id: 'new-project' }; }
+    else if (url === '/api/requirements/task' && options.method === 'PATCH') { Object.assign(data.requirements[0],body); result=data.requirements[0]; }
+    else if (url.startsWith('/api/requirements/task/projects/') && options.method === 'DELETE') { data.requirements[0].members = data.requirements[0].members.filter(m => m.project_id !== url.split('/')[5]); result=data.requirements[0]; }
+    else if (url.startsWith('/api/requirements/task/projects/') && options.method === 'PUT') { const p=data.projects.find(p => p.id === url.split('/')[5]); const m=data.requirements[0].members.find(m => m.project_id === p.id); const tree=p.worktrees.find(t => t.path === (body.mode === 'project' ? p.path : body.path)); Object.assign(m,{mode:body.mode,path:tree?.path || body.path,worktree:tree}); result=data.requirements[0]; }
+    else if (url === '/api/requirements/task/projects'  && options.method === 'POST') { result = { ...task, members: [...task.members, { project_id: backend.id, project_name: backend.name, mode: 'project', path: backend.path, state: 'ready', worktree: backend.worktrees[0] }] }; data.requirements[0] = result; }
+    else if (url === '/api/requirements' && options.method === 'POST') { result = { ...task, ...body, id: 'created', members: task.members }; data.requirements.push(result); }
+    else if (url.endsWith('/worktrees') && options.method === 'POST') result = { message: 'Worktree 已创建', branch: body.branch };
+    else if (url.endsWith('/launch')) result = { command: 'codex --cd /workspace/task/app' };
+    else result = data;
+    return { ok: true, json: async () => structuredClone(result) };
+  };
+  for (const script of document.querySelectorAll('script[src]')) {
+    const file = script.getAttribute('src').slice(1);
+    // Legacy controller tests exercise the fallback; the bridge is covered below.
+    if (file === 'chat/loader.js') continue;
+    if (readOnly && ['features/sessions/session-chat.js', 'features/sessions/session-create.js'].includes(file)) continue;
+    vm.runInContext(fs.readFileSync(path.join(web, file), 'utf8'), dom.getInternalVMContext(), { filename: file });
+  }
+  await settle();
+  const $ = selector => document.querySelector(selector);
+  const change = (selector, value) => { const node = $(selector); node.value = value; node.dispatchEvent(new window.Event('change', { bubbles: true })); return node; };
+  const input = (selector, value) => { const node = $(selector); node.value = value; node.dispatchEvent(new window.Event('input', { bubbles: true })); return node; };
+  return { window, document, $, change, input, data, environments, sessions, links, history, requests, currentSession: () => vm.runInContext('sessionHistoryState', dom.getInternalVMContext()), setIntercept(fn) { intercept = fn; }, click(selector) { $(selector).click(); }, async navigate(route) { const changed = window.location.hash === '#' + route ? Promise.resolve() : new Promise(resolve => window.addEventListener('hashchange', resolve, { once: true })); window.navigate(route); await changed; await settle(); }, async openConversations(kind) { if (window.location.hash !== '#/sessions') conversationReturnRoute = window.location.hash.slice(1); const changed = window.location.hash === '#/sessions' ? Promise.resolve() : new Promise(resolve => window.addEventListener('hashchange', resolve, {once:true})); $(`[data-action="${kind}-conversations"]`).click(); await changed; await settle(); }, async leaveConversations() { await this.navigate(conversationReturnRoute); }, async submit(selector) { $(selector).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); await settle(); } };
+}
+
+for (const readOnly of [true, false]) test(`the production UI mounts before controllers in ${readOnly ? 'read-only' : 'interactive'} mode`, async t => {
+  const h = await harness(t, readOnly);
+  assert.match(h.$('#content').textContent, /关联项目与工作目录/);
+  assert(h.$('#content .task-project-list'));
+  assert(h.$('#projectForm [data-slot="input"]'));
+  assert(h.$('#requirementForm [data-slot="native-select"]'));
+  const ids = [...h.document.querySelectorAll('[id]')].map(node => node.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.doesNotMatch(h.$('#content').textContent, /各项目的终端和 Git 操作直接进入上表对应的工作目录|首次使用 Codex 时可能需要登录/);
+  assert.equal(h.$('#requirementSlug'), null);
+  assert.equal(h.$('#primaryProject'), null);
+  assert(h.$('#taskEditForm')); assert(h.$('#taskDirectoryForm'));
+});
+
+test('search, archive filtering and project selection retain their existing actions', async t => {
+  const h = await harness(t);
+  await h.navigate('/requirements');
+  assert.equal(h.document.querySelectorAll('#taskListContent [data-action="open-requirement"]').length, 1);
+  h.input('#search', 'no match');
+  assert.match(h.$('#taskListContent').textContent, /没有匹配的任务/);
+  h.input('#search', ''); h.click('#archiveFilter');
+  assert.equal(h.document.querySelectorAll('#taskListContent [data-action="open-requirement"]').length, 2);
+  await h.navigate('/projects');
+  h.click('[data-action="select-project"][data-id="app"]');
+  assert.equal(h.$('[data-action="select-project"][data-id="app"]').getAttribute('aria-pressed'), 'true');
+  assert(h.$('#content [data-slot="table"]'));
+  assert.equal(h.$('[data-action="new-worktree"]').dataset.id, 'app');
+});
+
+test('mixed task directory choices and custom branches submit through the original API', async t => {
+  const h = await harness(t);
+  h.window.openRequirement(); await settle();
+  h.input('#requirementName', 'Billing redesign');
+  h.click('#projectPicker-app-selected');
+  assert.equal(h.$('#projectPicker-app-selected').checked, true);
+  assert.equal(h.$('#projectPicker-app-selected').disabled, false);
+  h.change('#projectPicker-app-mode', 'worktree'); await settle();
+  h.change('#projectPicker-app-path', '/workspace/task/app');
+  h.click('#projectPicker-backend-selected');
+  h.change('#projectPicker-backend-mode', 'new'); await settle();
+  const branch = h.input('#projectPicker-backend-branch', 'custom/billing');
+  assert.equal(h.$('#projectPicker-backend-branch'), branch);
+  h.input('#requirementName', 'Billing final');
+  assert.equal(h.$('#projectPicker-backend-branch').value, 'custom/billing');
+  assert.equal(h.$('#requirementSubmit').disabled, false);
+  const formData = new h.window.FormData(h.$('#requirementForm'));
+  assert.equal(formData.get('name'), 'Billing final');
+  assert.equal(formData.get('slug'), null);
+  await h.submit('#requirementForm');
+  const request = h.requests.find(r => r.url === '/api/requirements' && r.options.method === 'POST');
+  assert.deepEqual(request.body.members, [{ project_id: 'app', mode: 'worktree', path: '/workspace/task/app' }, { project_id: 'backend', mode: 'new', branch: 'custom/billing', source: 'refs/heads/master' }]);
+  assert.equal(h.$('#requirementDialog').open, false);
+});
+
+test('existing branch choices create a new task directory and retain selections across modes', async t => {
+  const h = await harness(t);
+  h.window.openRequirement(); await settle();
+  h.input('#requirementName', 'Existing branch');
+  h.click('#projectPicker-app-selected'); await settle();
+  h.input('#projectPicker-app-branch', 'custom/new');
+  h.change('#projectPicker-app-mode', 'existing');
+  assert.equal(h.$('#projectPicker-app-branch'), null);
+  assert.equal(h.$('#projectPicker-app-source'), null);
+  assert.equal(h.$('#requirementSubmit').disabled, true);
+  assert.equal(h.$('#projectPicker-app-existingBranch option[value="master"]').disabled, true);
+  assert.equal(h.$('#projectPicker-app-existingBranch option[value="feature/task"]').disabled, true);
+  assert.equal(h.$('#projectPicker-app-existingBranch option[value="origin/master"]'), null);
+  h.change('#projectPicker-app-existingBranch', 'release');
+  assert.equal(h.$('#requirementSubmit').disabled, false);
+  assert.match(h.$('#workspacePreview').textContent, /\/workspace\/[^/]+\/app（新建 · release）/);
+  h.change('#projectPicker-app-mode', 'new');
+  assert.equal(h.$('#projectPicker-app-branch').value, 'custom/new');
+  h.change('#projectPicker-app-mode', 'existing');
+  h.input('#requirementName', 'Renamed task');
+  assert.equal(h.$('#projectPicker-app-existingBranch').value, 'release');
+  await h.submit('#requirementForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/requirements' && r.options.method === 'POST').body.members, [{project_id: 'app', mode: 'existing', branch: 'release'}]);
+});
+
+test('existing branches can be used when adding a project or replacing its directory', async t => {
+  const h = await harness(t);
+  h.window.openRequirementProjects('task');
+  h.click('#requirementProjectPicker-backend-selected'); await settle();
+  h.change('#requirementProjectPicker-backend-mode', 'existing');
+  assert.equal(h.$('#requirementProjectsSubmit').disabled, true);
+  h.change('#requirementProjectPicker-backend-existingBranch', 'release');
+  assert.equal(h.$('#requirementProjectsSubmit').disabled, false);
+  assert.match(h.$('#requirementProjectsPreview').textContent, /\/workspace\/task\/backend（新建 · release）/);
+  await h.submit('#requirementProjectsForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/requirements/task/projects').body.members, [{project_id: 'backend', mode: 'existing', branch: 'release'}]);
+  h.window.openTaskDirectory('task', 'app'); await settle();
+  h.change('#taskDirectoryPicker-app-mode', 'existing');
+  h.change('#taskDirectoryPicker-app-existingBranch', 'release');
+  assert.equal(h.$('#taskDirectorySubmit').disabled, false);
+  assert.match(h.$('#taskDirectoryPreview').textContent, /使用已有分支 release/);
+  await h.submit('#taskDirectoryForm');
+  const request = h.requests.find(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'PUT');
+  assert.equal(request.body.mode, 'existing');
+  assert.equal(request.body.branch, 'release');
+  assert.match(request.body.path, /^\/workspace\/task\/app-[a-f0-9]+$/);
+});
+
+test('nested project registration preserves the task draft and closes only the top dialog', async t => {
+  const h = await harness(t);
+  h.window.openRequirement(); await settle();
+  h.input('#requirementName', 'Keep this draft');
+  h.click('#registerNewTaskProject');
+  assert.equal(h.$('#projectDialog').open, true);
+  assert.equal(h.$('#requirementDialog').open, true);
+  assert.equal(h.$('#projectEnvironmentSelect').disabled, true);
+  h.click('#projectDialog .close-dialog');
+  assert.equal(h.$('#projectDialog').open, false);
+  assert.equal(h.$('#requirementDialog').open, true);
+  assert.equal(h.$('#requirementName').value, 'Keep this draft');
+});
+
+test('registering a project and adding it to a task keep their existing request formats', async t => {
+  const h = await harness(t);
+  h.window.openProject();
+  h.input('#projectName', 'New project'); h.input('#projectPath', '/repo/new-project');
+  await h.submit('#projectForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/projects' && r.options.method === 'POST').body, { name: 'New project', path: '/repo/new-project' });
+  assert.equal(h.$('#projectDialog').open, false);
+  h.window.openRequirementProjects('task');
+  assert.equal(h.$('#requirementProjectPicker-app-selected'), null);
+  h.click('#requirementProjectPicker-backend-selected');
+  h.change('#requirementProjectPicker-backend-mode', 'project');
+  assert.equal(h.$('#requirementProjectsSubmit').disabled, false);
+  await h.submit('#requirementProjectsForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/requirements/task/projects').body, { project_ids: ['backend'], members: [{ project_id: 'backend', mode: 'project' }] });
+  assert.equal(h.$('#requirementProjectsDialog').open, false);
+});
+
+test('folder selection fills the project path, preserves drafts on cancellation and reports failures', async t => {
+  const h = await harness(t);
+  let result = { path: '/repo/中文 项目' };
+  let failed = false;
+  h.setIntercept((url) => url === '/api/dialogs/directory' ? { ok: !failed, json: async () => failed ? { error: '无法打开文件夹选择窗口' } : result } : null);
+  h.window.openProject();
+  h.input('#projectName', 'Keep this name');
+  h.click('#chooseProjectDirectory'); await settle();
+  assert.equal(h.$('#projectPath').value, result.path);
+  assert.equal(h.$('#projectName').value, 'Keep this name');
+  assert.equal(h.$('#projectDialog').open, true);
+  assert.equal(h.requests.find(r => r.url === '/api/dialogs/directory').options.headers['X-Environment-ID'], 'local');
+  assert.equal(h.requests.some(r => r.url === '/api/projects' && r.options.method === 'POST'), false);
+  result = { path: '' };
+  h.click('#chooseProjectDirectory'); await settle();
+  assert.equal(h.$('#projectPath').value, '/repo/中文 项目');
+  assert.equal(h.$('#projectError').hidden, true);
+  failed = true;
+  h.click('#chooseProjectDirectory'); await settle();
+  assert.match(h.$('#projectError').textContent, /无法打开/);
+  assert.equal(h.$('#projectError').hidden, false);
+  assert.equal(h.$('#chooseProjectDirectory').disabled, false);
+  assert.equal(h.$('#projectPath').value, '/repo/中文 项目');
+});
+
+test('folder selection cannot overlap or put a host path into a WSL project', async t => {
+  const h = await harness(t);
+  let release;
+  const selected = new Promise(resolve => { release = resolve; });
+  h.setIntercept(async url => url === '/api/dialogs/directory' ? await selected : null);
+  h.window.openProject();
+  h.click('#chooseProjectDirectory'); h.click('#chooseProjectDirectory');
+  assert.equal(h.$('#chooseProjectDirectory').disabled, true);
+  assert.equal(h.$('#projectEnvironmentSelect').disabled, true);
+  h.click('#projectDialog .close-dialog');
+  assert.equal(h.$('#projectDialog').open, true);
+  assert.equal(h.requests.filter(r => r.url === '/api/dialogs/directory').length, 1);
+  release({ ok: true, json: async () => ({ path: '' }) }); await settle();
+  assert.equal(h.$('#chooseProjectDirectory').disabled, false);
+  assert.equal(h.$('#projectEnvironmentSelect').disabled, false);
+  h.environments.environments.push({ id: 'wsl-test', name: 'WSL' });
+  await h.window.loadEnvironments();
+  h.window.openProject(null, 'wsl-test');
+  assert.equal(h.$('#chooseProjectDirectory').disabled, true);
+  assert.equal(h.$('#projectDirectoryHint').hidden, false);
+  h.click('#chooseProjectDirectory'); await settle();
+  assert.equal(h.requests.filter(r => r.url === '/api/dialogs/directory').length, 1);
+  h.change('#projectEnvironmentSelect', 'local');
+  assert.equal(h.$('#chooseProjectDirectory').disabled, false);
+  assert.equal(h.$('#projectDirectoryHint').hidden, true);
+});
+
+test('Git retains the selected worktree, occupied-branch protection and source tracking', async t => {
+  const h = await harness(t);
+  await h.window.openGit('app', '/workspace/task/app');
+  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  assert.equal(h.$('#gitSwitch option[value="refs/heads/master"]').disabled, true);
+  h.change('#gitBranchSource', 'refs/remotes/origin/master');
+  assert.equal(h.$('#gitTrack').checked, true);
+  assert.equal(h.$('#gitTrack').disabled, false);
+  h.input('#gitBranchName', 'feature/billing');
+  await h.submit('#gitCreateForm');
+  const request = h.requests.find(r => r.options.method === 'POST' && r.url.endsWith('/git'));
+  assert.deepEqual(request.body, { action: 'create_branch', name: 'feature/billing', source: 'refs/remotes/origin/master', track: true });
+  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  assert.equal(h.$('#gitResult').hidden, false);
+});
+
+test('task sync status and quick pull use the task worktree and current branch', async t => {
+  const h = await harness(t);
+  Object.assign(h.data.projects[0].worktrees[1], { upstream: 'origin/feature/task', sync_available: true, sync_ahead: 2, sync_behind: 1 });
+  await h.window.refresh();
+  assert.match(h.$('#content').textContent, /待推 2 · 待拉 1 · 已分歧/);
+  h.click('[data-action="git-task-pull"]'); await settle();
+  const request = h.requests.find(r => r.body?.action === 'pull');
+  assert.deepEqual(request.body, { action: 'pull', path: '/workspace/task/app', requirement_id: 'task', expected_branch: 'feature/task' });
+  assert.equal(h.$('#gitWorktree').disabled, true);
+  assert.match(h.$('#gitContext').textContent, /feature\/task/);
+});
+
+test('first push selects a remote target and only pushes the task branch', async t => {
+  const h = await harness(t);
+  h.click('[data-action="git-task-push"]'); await settle();
+  assert(!h.requests.some(r => r.body?.action === 'push'));
+  assert.equal(h.$('#gitPushName').value, 'feature/task');
+  assert.equal(h.$('#gitPushTrack').checked, true);
+  h.input('#gitPushName', 'published/task');
+  h.click('[data-action="git-push"]'); await settle();
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'push').body, { action: 'push', remote: 'origin', name: 'published/task', track: true, path: '/workspace/task/app', requirement_id: 'task', expected_branch: 'feature/task' });
+});
+
+test('switching to a remote branch creates a named local branch and keeps task scope', async t => {
+  const h = await harness(t);
+  await h.window.openGit('app', '/workspace/task/app', 'task');
+  h.change('#gitSwitch', 'refs/remotes/origin/master');
+  assert.equal(h.$('#gitSwitchName').value, 'master');
+  h.input('#gitSwitchName', 'feature/from-main');
+  h.click('[data-action="git-switch"]'); await settle();
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'switch').body, { action: 'switch', source: 'refs/remotes/origin/master', name: 'feature/from-main', path: '/workspace/task/app', requirement_id: 'task', expected_branch: 'feature/task' });
+});
+
+test('merge current task branch into a local target previews and submits the same direction without switching', async t => {
+  const h = await harness(t);
+  h.setIntercept((url, options, body) => {
+    if (body?.action === 'merge_into_preview') return { ok: true, json: async () => ({ message: 'feature/task → master', output: 'abc feature change', expected_branch: 'feature/task', expected_head: 'source-head', target_commit: 'target-head', target_path: '/repo/app' }) };
+  });
+  await h.window.openGit('app', '/workspace/task/app', 'task');
+  assert.deepEqual([...h.$('#gitMergeTarget').options].map(option => option.value), ['refs/heads/master', 'refs/heads/release']);
+  assert.match(h.$('#gitMergeIntoDirection').textContent, /feature\/task → master/);
+  h.click('[data-action="git-merge-into-preview"]'); await settle();
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'merge_into_preview').body, { action: 'merge_into_preview', target: 'refs/heads/master', path: '/workspace/task/app', requirement_id: 'task', expected_branch: 'feature/task' });
+  assert.match(h.$('#gitMergeIntoPreview').textContent, /feature\/task → master/);
+  assert.match(h.$('#gitMergeIntoPreview').textContent, /目标目录：\/repo\/app/);
+  assert.equal(h.$('[data-action="git-merge-into"]').disabled, false);
+  h.click('[data-action="git-merge-into"]'); await settle();
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'merge_into').body, { action: 'merge_into', target: 'refs/heads/master', path: '/workspace/task/app', expected_head: 'source-head', expected_branch: 'feature/task', target_commit: 'target-head', requirement_id: 'task' });
+  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  assert.match(h.$('#gitContext').textContent, /feature\/task/);
+  assert.equal(h.$('[data-action="git-merge-into"]').disabled, true);
+  assert(!h.requests.some(r => r.body?.action === 'switch' || r.body?.action === 'push'));
+});
+
+test('merge into preview ignores a response after the target selection changes', async t => {
+  const h = await harness(t);
+  let resolvePreview;
+  h.setIntercept((url, options, body) => {
+    if (body?.action === 'merge_into_preview') return new Promise(resolve => { resolvePreview = resolve; });
+  });
+  await h.window.openGit('app', '/workspace/task/app', 'task');
+  h.click('[data-action="git-merge-into-preview"]'); await settle();
+  h.change('#gitMergeTarget', 'refs/heads/release');
+  resolvePreview({ ok: true, json: async () => ({ message: 'feature/task → master', expected_branch: 'feature/task', expected_head: 'source-head', target_commit: 'target-head' }) });
+  await settle();
+  assert.equal(h.$('[data-action="git-merge-into"]').disabled, true);
+  assert.equal(h.$('#gitMergeIntoPreview').hidden, true);
+  h.click('[data-action="git-merge-into"]'); await settle();
+  assert(!h.requests.some(r => r.body?.action === 'merge_into'));
+});
+
+test('merge into preview is invalidated by target or source directory changes and blocks dirty targets', async t => {
+  const h = await harness(t);
+  h.setIntercept((url, options, body) => {
+    if (body?.action === 'merge_into_preview') return { ok: true, json: async () => ({ message: 'feature/task → master', expected_branch: 'feature/task', expected_head: 'source-head', target_commit: 'target-head' }) };
+  });
+  await h.window.openGit('app', '/workspace/task/app');
+  h.click('[data-action="git-merge-into-preview"]'); await settle();
+  assert.equal(h.$('[data-action="git-merge-into"]').disabled, false);
+  h.change('#gitMergeTarget', 'refs/heads/release');
+  assert.equal(h.$('[data-action="git-merge-into"]').disabled, true);
+  assert.equal(h.$('#gitMergeIntoPreview').hidden, true);
+  h.click('[data-action="git-merge-into-preview"]'); await settle();
+  h.change('#gitWorktree', '/repo/app');
+  assert.equal(h.$('[data-action="git-merge-into"]').disabled, true);
+  assert(![...h.$('#gitMergeTarget').options].some(option => option.value === 'refs/heads/master'));
+  Object.assign(h.data.projects[0].worktrees[0], { dirty: 1 });
+  Object.assign(h.data.projects[0].worktrees[1], { dirty: 2 });
+  await h.window.openGit('app', '/workspace/task/app', 'task');
+  assert.equal(h.$('[data-action="git-merge-into-preview"]').disabled, true);
+  assert.match(h.$('#gitMergeIntoDirection').textContent, /目标目录不可用或有未提交修改/);
+  h.change('#gitMergeTarget', 'refs/heads/release');
+  assert.equal(h.$('[data-action="git-merge-into-preview"]').disabled, false);
+});
+
+for (const readOnly of [true, false]) test(`merge conflict automatically opens AI in ${readOnly ? 'terminal' : 'sidebar'} mode and can be reopened without duplicate creation`, async t => {
+  const h = await harness(t, readOnly);
+  h.setIntercept((url, options, body) => {
+    const ok = data => ({ ok: true, json: async () => data });
+    if (body?.action === 'merge_preview') return ok({ message: 'origin/master → feature/task', output: 'abc source change', source_commit: 'source-head', expected_head: 'target-head' });
+    if (body?.action === 'merge') {
+      Object.assign(h.data.projects[0].worktrees[1], { operation: 'merge', head: 'target-head', merge_head: 'source-head', conflicts: ['README.md'], dirty: 1 });
+      return ok({ message: '合并出现冲突', conflict: true, merge_head: 'source-head', conflicts: ['README.md'] });
+    }
+    if (url.endsWith('/merge-ai')) return ok({ message: '已打开 Codex 终端' });
+    if (url.endsWith('/sessions/new')) {
+      const session = { id: 'merge-session', name: '解决合并冲突', cwd: '/workspace/task/app' };
+      h.sessions.push(session);
+      h.links.get('task').add(session.id);
+      return ok({ session, chat: { id: body.request_id, status: 'starting', busy: true, entries: [], approvals: [] } });
+    }
+  });
+  await h.window.openGit('app', '/workspace/task/app', 'task');
+  h.change('#gitMergeSource', 'refs/remotes/origin/master');
+  h.click('[data-action="git-merge-preview"]'); await settle();
+  assert.match(h.$('#gitMergePreview').textContent, /origin\/master → feature\/task/);
+  assert.equal(h.$('[data-action="git-merge"]').disabled, false);
+  h.click('[data-action="git-merge"]'); await settle();
+  const requests = h.requests.filter(r => r.url.endsWith(readOnly ? '/merge-ai' : '/sessions/new'));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].body.project_id, 'app');
+  assert.equal(requests[0].body.merge_head, 'source-head');
+  if (readOnly) {
+    assert.match(h.$('#gitMergeStatus').textContent, /README.md/);
+    h.click('[data-action="git-merge-ai"]'); await settle();
+  } else {
+    assert.equal(requests[0].body.purpose, 'merge_conflict');
+    assert.equal(h.currentSession().session, 'merge-session');
+    assert.equal(h.$('#gitDialog').open, false);
+    await h.window.launchGitMergeAI();
+    h.window.closeSessionHistory(false);
+    await settle();
+  }
+  assert.equal(h.requests.filter(r => r.url.endsWith(readOnly ? '/merge-ai' : '/sessions/new')).length, 1);
+});
+
+test('task and project shortcuts open the intended directory in remote browser and editors', async t => {
+  const h = await harness(t);
+  for (const tool of ['remote', 'vscode', 'idea']) { h.click(`[data-action="project-open-${tool}"]`); await settle(); }
+  assert.deepEqual(h.requests.filter(r => r.url === '/api/projects/app/open').map(r => r.body), ['remote', 'vscode', 'idea'].map(tool => ({ tool, path: '/workspace/task/app' })));
+  await h.navigate('/projects');
+  h.click('[data-action="project-open-vscode"][data-id="app"]'); await settle();
+  assert.deepEqual(h.requests.filter(r => r.url === '/api/projects/app/open').at(-1).body, { tool: 'vscode', path: '/repo/app' });
+});
+
+test('task cards keep the full path visible and distinguish upstream sync from baseline differences', async t => {
+  const h = await harness(t);
+  Object.assign(h.data.requirements[0].members[0], { base_ref: 'refs/heads/master', base_commit: 'c2de7c96abcdef' });
+  const tree = h.data.projects[0].worktrees[1];
+  Object.assign(tree, { upstream: 'origin/feature/task', sync_available: true, sync_ahead: 0, sync_behind: 0, compare_available: true, comparison_ref: 'master', ahead: 1, behind: 0 });
+  await h.window.refresh();
+  assert.equal(h.$('.task-project-path').textContent, '/workspace/task/app');
+  assert.equal(h.$('.task-project-path').closest('details'), null);
+  let copied;
+  Object.defineProperty(h.window.navigator, 'clipboard', { value: { writeText: async value => { copied = value; } } });
+  h.click('.task-project-path'); await settle();
+  assert.equal(copied, '/workspace/task/app');
+  assert.match(h.$('.task-project .comparison').textContent, /上游 origin\/feature\/task · 已同步/);
+  assert.equal(h.$('.task-baseline').textContent, '基线 master · 领先 1');
+  assert.match(h.$('.task-baseline').title, /c2de7c96abcdef/);
+  assert.equal(h.$('.task-project-details').open, false);
+  assert.equal(h.$('.task-project-state time'), null);
+  assert(h.$('.task-project-details time'));
+  assert.doesNotMatch(h.$('.task-project').textContent, /待推 0|待拉 0|落后 0|创建基线|相对基线/);
+  Object.assign(tree, { sync_ahead: 0, sync_behind: 3, ahead: 0, behind: 0 });
+  await h.window.refresh();
+  assert.match(h.$('.task-project .comparison').textContent, /待拉 3/);
+  assert.equal(h.$('.task-baseline').textContent, '基线 master · 与基线一致');
+  tree.sync_available = false;
+  await h.window.refresh();
+  assert.match(h.$('.task-project .comparison').textContent, /不可用，请获取远端/);
+  assert.doesNotMatch(h.$('.task-project .comparison').textContent, /已同步/);
+});
+
+test('the open split button remembers the chosen tool and retains its worktree after rendering', async t => {
+  const h = await harness(t);
+  assert.match(h.$('[data-project-open-primary]').textContent, /VS Code 打开/);
+  h.click('[data-project-open] summary');
+  assert.equal(h.$('[data-project-open] details').open, true);
+  h.click('[data-project-open-choice="idea"]'); await settle();
+  assert.equal(h.$('[data-project-open] details').open, false);
+  assert.equal(h.window.localStorage.getItem('workhub:project-open:v1'), 'idea');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/projects/app/open').body, { tool: 'idea', path: '/workspace/task/app' });
+  h.window.render();
+  assert.match(h.$('[data-project-open-primary]').textContent, /IDEA 打开/);
+  h.click('[data-project-open-primary]'); await settle();
+  assert.equal(h.requests.filter(r => r.url === '/api/projects/app/open').length, 2);
+  h.click('[data-project-open] summary');
+  h.$('[data-project-open] summary').dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(h.$('[data-project-open] details').open, false);
+  assert.equal(h.document.activeElement, h.$('[data-project-open] summary'));
+  h.click('[data-project-open-choice="terminal"]'); await settle();
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'terminal').body, { action: 'terminal', path: '/workspace/task/app' });
+  h.window.render();
+  assert.match(h.$('[data-project-open-primary]').textContent, /终端 打开/);
+  assert.equal(h.$('[data-project-open-primary]').dataset.action, 'workspace-terminal');
+});
+
+test('task information stays visible and only offers expansion when the description overflows', async t => {
+  const h = await harness(t);
+  h.data.requirements[0].description = '任务目标\n实现项目卡片精简\n保留完整路径\n统一打开方式';
+  await h.window.refresh();
+  const description = h.$('#taskDescription');
+  const button = h.$('[data-action="task-info-toggle"]');
+  assert.equal(h.$('.task-info').tagName, 'SECTION');
+  assert.equal(description.closest('details'), null);
+  assert.equal(button.hidden, true);
+  Object.defineProperties(description, { scrollHeight: {value: 100, configurable: true}, clientHeight: {value: 60, configurable: true} });
+  h.window.syncTaskDescription();
+  assert.equal(button.hidden, false);
+  h.click('[data-action="task-info-toggle"]');
+  assert.equal(button.getAttribute('aria-expanded'), 'true');
+  assert.equal(button.textContent, '收起');
+  assert.equal(description.classList.contains('task-description-clamped'), false);
+  h.window.render();
+  assert.equal(h.$('[data-action="task-info-toggle"]').getAttribute('aria-expanded'), 'true');
+  h.click('[data-action="task-info-toggle"]');
+  assert.equal(h.$('#taskDescription').classList.contains('task-description-clamped'), true);
+});
+
+test('an AI launch failure preserves merge context and retries the same creation identifier', async t => {
+  const h = await harness(t);
+  Object.assign(h.data.projects[0].worktrees[1], { operation: 'merge', head: 'target', merge_head: 'source', conflicts: ['README.md'], dirty: 1 });
+  await h.window.refresh();
+  let fail = true;
+  h.setIntercept(url => url.endsWith('/merge-ai') ? { ok: !fail, json: async () => fail ? { error: '终端连接暂不可用' } : { message: '已打开 Codex 终端' } } : undefined);
+  h.click('[data-action="git-task-ai"]'); await settle();
+  assert.match(h.$('#gitError').textContent, /终端连接暂不可用/);
+  assert.match(h.$('#gitMergeStatus').textContent, /README.md/);
+  assert.equal(h.$('[data-action="git-merge-ai"]').disabled, false);
+  fail = false;
+  h.click('[data-action="git-merge-ai"]'); await settle();
+  const attempts = h.requests.filter(r => r.url.endsWith('/merge-ai'));
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[0].body.request_id, attempts[1].body.request_id);
+  assert.equal(h.$('#gitMergeActive').hidden, false);
+});
+
+test('a busy Git operation allows closing its dialog and recovers its controls after failure', async t => {
+  const h = await harness(t);
+  await h.window.openGit('app', '/workspace/task/app');
+  let release;
+  h.setIntercept((url, options) => options.method === 'POST' && url.endsWith('/git') ? new Promise(resolve => { release = resolve; }) : undefined);
+  const operation = h.window.gitOperation({ action: 'fetch', remote: 'origin' }, '正在获取分支');
+  await settle();
+  assert.equal(h.$('[data-action="git-reload"]').disabled, true);
+  const cancel = new h.window.Event('cancel', { cancelable: true });
+  h.$('#gitDialog').dispatchEvent(cancel);
+  assert.equal(cancel.defaultPrevented, false);
+  release({ ok: false, json: async () => ({ error: '请在终端登录', code: 'authentication_required' }) });
+  await operation;
+  assert.equal(h.$('#gitError').hidden, false);
+  assert.equal(h.$('#gitAuthHelp').hidden, false);
+  assert.match(h.$('#gitError').textContent, /请在终端登录/);
+  assert.equal(h.$('[data-action="git-reload"]').disabled, false);
+  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+});
+
+test('creating a worktree keeps both branch modes and their existing request format', async t => {
+  const h = await harness(t);
+  await h.window.openWorktree('app');
+  h.input('#worktreeSlug', 'qa-check');
+  assert.equal(h.$('#worktreeBranch').value, 'codex/qa-check');
+  assert.match(h.$('#worktreePath').textContent, /\/workspace\/qa-check\/app/);
+  h.change('#worktreeMode', 'existing');
+  assert.equal(h.$('#worktreeBranch').disabled, true);
+  assert.equal(h.$('#worktreeSource').disabled, true);
+  assert.equal(h.$('#worktreeExisting').disabled, false);
+  h.change('#worktreeExisting', 'release');
+  await h.submit('#worktreeForm');
+  assert.deepEqual(h.requests.find(r => r.options.method === 'POST' && r.url.endsWith('/worktrees')).body, { slug: 'qa-check', mode: 'existing', branch: 'release', source: '' });
+});
+
+test('task and Git text is rendered inertly, including repository names and paths', async t => {
+  const h = await harness(t);
+  const malicious = '<img src=x onerror=alert(1)>';
+  h.data.requirements[0].name = malicious;
+  h.data.requirements[0].description = malicious;
+  h.data.projects[0].name = malicious;
+  await h.window.refresh();
+  assert.equal(h.$('#content').querySelector('img'), null);
+  assert(h.$('#pageTitle').textContent.includes(malicious));
+  await h.window.openGit('app');
+  assert.equal(h.$('#gitContent').querySelector('img'), null);
+  assert(h.$('#gitTitle').textContent.includes(malicious));
+});
+
+test('settings preserve unsaved edits during polling and keep the terminal request format', async t => {
+  const h = await harness(t);
+  await h.navigate('/settings');
+  assert(h.$('#settingsPage [data-slot="card"]'));
+  assert.equal(h.$('#terminalCustomFields').hidden, true);
+  h.change('#terminalKind', 'custom');
+  assert.equal(h.$('#terminalPath').required, true);
+  const pathInput = h.input('#terminalPath', ' /my/terminal ');
+  h.change('#terminalStyle', 'command');
+  h.data.projects[0].worktrees[0].dirty = 2;
+  await h.window.refresh();
+  assert.equal(h.$('#terminalPath'), pathInput);
+  assert.equal(pathInput.value, ' /my/terminal ');
+  await h.submit('#terminalForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/settings/terminal' && r.options.method === 'PUT').body, { kind: 'custom', path: '/my/terminal', style: 'command' });
+  assert.equal(h.$('#terminalError').hidden, true);
+});
+
+test('Codex diagnostics stay read-only, retain report details during polling and provide a copy fallback', async t => {
+  const h = await harness(t);
+  let checks = 0;
+  h.setIntercept((url, options) => {
+    if (url !== '/api/settings/codex') return;
+    checks++;
+    assert.equal(options.headers['X-Environment-ID'], 'local');
+    assert.notEqual(options.method, 'POST');
+    return {ok:true,json:async()=>({platform:'darwin',user:'mac-user',codex_home:'/Users/mac/.codex',cli_path:'/opt/homebrew/bin/codex',daemon_path:'/Users/mac/.codex/packages/app-server-daemon/current/bin/codex',version:'CLI-new',daemon_version:'daemon-old',candidates:['/opt/homebrew/bin/codex','/usr/local/bin/codex'],checked_at:'2026-11-04T12:00:00Z',status:'error',checks:[{id:'sessions',name:'会话接口',status:'error',message:'<img src=x onerror=alert(1)>配置错误',advice:'退出并停止后台后重试'}]})};
+  });
+  await h.navigate('/settings'); await settle();
+  assert.equal(checks, 1);
+  assert.match(h.$('#codexDiagnosticsResults').textContent, /macOS.*mac-user/);
+  assert.equal(h.$('#codexDiagnosticsResults img'), null);
+  const details = h.$('#codexDiagnosticsResults details');details.open = true;
+  await h.window.refresh();await settle();
+  assert.equal(checks, 1, 'workspace polling must not rerun subprocess checks');
+  assert.equal(h.$('#codexDiagnosticsResults details'), details);
+  assert.equal(details.open, true);
+  assert.match(details.textContent, /CLI-new/);assert.match(details.textContent, /daemon-old/);
+  h.click('#copyCodexDiagnostics');await settle();
+  const copy = h.$('#codexDiagnosticsCopy');
+  assert.equal(copy.hidden, false);
+  assert.match(copy.value, /退出并停止后台后重试/);
+  assert.match(copy.value, /\/usr\/local\/bin\/codex/);
+  assert.equal(copy.selectionEnd, copy.value.length);
+  h.click('#checkCodex');await settle();
+  assert.equal(checks, 2);assert.equal(copy.hidden, true);
+});
+
+test('Codex checks isolate Windows and WSL users and retain independent reports when one WSL is offline', async t => {
+  const h = await harness(t);
+  Object.assign(h.environments, {platform:'windows',wsl_supported:true,distributions:['Ubuntu','Debian'],environments:[{id:'local',name:'Windows 本机'},{id:'wsl-alice',name:'Ubuntu / alice',distro:'Ubuntu'},{id:'wsl-bob',name:'Ubuntu / bob',distro:'Ubuntu'},{id:'offline',name:'WSL 已断开',distro:'Ubuntu'}]});
+  let resolveAlice;
+  const checks = [];
+  h.setIntercept((url, options) => {
+    if (url !== '/api/settings/codex') return;
+    const environment = options.headers['X-Environment-ID'];checks.push(environment);
+    if (environment === 'offline') return {ok:false,json:async()=>({error:'WSL 辅助程序未连接'})};
+    const report = {platform:environment === 'local' ? 'windows':'linux',user:environment,cli_path:environment === 'local' ? 'C:\\Tools\\codex.exe' : `/home/${environment}/.local/bin/codex`,codex_home:`/${environment}/.codex`,candidates:[],checked_at:'now',status:'ok',checks:[]};
+    if (environment === 'wsl-alice') return new Promise(resolve => {resolveAlice = () => resolve({ok:true,json:async()=>report});});
+    return {ok:true,json:async()=>report};
+  });
+  await h.window.loadEnvironments();await h.navigate('/settings');await settle();
+  h.click('#checkAllCodex');await settle();await settle();
+  assert.equal(h.$('#checkAllCodex').disabled, true);
+  assert.equal(h.$('#copyCodexDiagnostics').disabled, true);
+  assert.match(h.$('#codexUnregistered').textContent, /Debian/);
+  assert(!h.$('#codexUnregistered').textContent.includes('Ubuntu'));
+  assert(h.$('[data-codex-environment="wsl-bob"]'));
+  assert.match(h.$('[data-codex-environment="offline"] [role="alert"]').textContent, /WSL 辅助程序未连接/);
+  // Switch while Alice is pending. Her late response must keep her identity.
+  await h.window.selectEnvironment('wsl-bob','/settings');await settle();
+  resolveAlice();await settle();await settle();
+  assert.equal(h.$('#checkAllCodex').disabled, false);
+  assert.equal(h.$('#copyCodexDiagnostics').disabled, false);
+  assert.deepEqual([...new Set(checks)].sort(), ['local','offline','wsl-alice','wsl-bob']);
+  assert.match(h.$('[data-codex-environment="local"]').textContent, /C:\\Tools\\codex.exe/);
+  assert.match(h.$('[data-codex-environment="wsl-alice"]').textContent, /\/home\/wsl-alice/);
+  assert.match(h.$('[data-codex-environment="wsl-bob"]').textContent, /\/home\/wsl-bob/);
+  h.click('#copyCodexDiagnostics');await settle();
+  assert.match(h.$('#codexDiagnosticsCopy').value, /WSL 辅助程序未连接/);
+});
+
+test('title settings select a separate Codex model and retain unsaved edits during polling', async t => {
+  const h = await harness(t);
+  await h.navigate('/settings');
+  assert.equal(h.$('#sessionTitleFields').disabled, false);
+  assert.equal(h.$('#sessionTitleModel').value, '');
+  h.change('#sessionTitleModel', 'title-model');
+  await h.window.refresh(true); await settle();
+  assert.equal(h.$('#sessionTitleModel').value, 'title-model');
+  await h.submit('#sessionTitleForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/settings/session-title' && r.options.method === 'PUT').body, {model:'title-model'});
+  assert.equal(h.$('#sessionTitleError').hidden, true);
+  h.setIntercept((url, options) => url === '/api/settings/session-title' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'模型已不可用'})} : undefined);
+  h.change('#sessionTitleModel', 'body-model');
+  await h.submit('#sessionTitleForm');
+  assert.equal(h.$('#sessionTitleModel').value, 'body-model');
+  assert.equal(h.$('#sessionTitleError').getAttribute('role'), 'alert');
+  assert.match(h.$('#sessionTitleError').textContent, /模型已不可用/);
+});
+
+test('conversation defaults save and reset per environment while polling preserves unsaved choices', async t => {
+  const h = await harness(t);
+  await h.navigate('/settings');
+  assert.equal(h.$('#conversationDefaultsFields').disabled, false);
+  assert.equal(h.$('#conversationDefaultModel').value, '');
+  assert.equal(h.$('#conversationDefaultPermission').value, '');
+  h.change('#conversationDefaultModel', 'body-model');
+  h.change('#conversationDefaultPermission', 'ask');
+  await h.window.refresh(true); await settle();
+  assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
+  assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
+  await h.submit('#conversationDefaultsForm');
+  const saved = h.requests.find(r => r.url === '/api/settings/conversation-defaults' && r.options.method === 'PUT');
+  assert.deepEqual(saved.body, {model:'body-model',permission:'ask'});
+  assert.equal(saved.options.headers['X-Environment-ID'], 'local');
+  assert.match(h.$('#conversationDefaultsStatus').textContent, /已保存/);
+  h.click('#conversationDefaultsReload'); await settle();
+  assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
+  h.change('#conversationDefaultModel', ''); h.change('#conversationDefaultPermission', '');
+  await h.submit('#conversationDefaultsForm');
+  assert.deepEqual(h.data.conversation_defaults, {model:'',permission:''});
+  h.setIntercept((url, options) => url === '/api/settings/conversation-defaults' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'模型已不可用'})} : undefined);
+  h.change('#conversationDefaultModel', 'body-model');
+  await h.submit('#conversationDefaultsForm');
+  assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
+  assert.equal(h.$('#conversationDefaultsFields').disabled, false);
+  assert.match(h.$('#conversationDefaultsError').textContent, /模型已不可用/);
+});
+
+test('late conversation defaults cannot overwrite another environment and offline defaults remain editable', async t => {
+  const h = await harness(t);
+  h.environments.environments.push({id:'wsl-test',name:'WSL test'});
+  let resolveLocal;
+  h.setIntercept((url, options) => {
+    if (url !== '/api/settings/conversation-defaults') return;
+    if (options.headers['X-Environment-ID'] === 'local') return new Promise(resolve => {resolveLocal = () => resolve({ok:true,json:async()=>({settings:{permission:'full'},models:[]})});});
+    return {ok:true,json:async()=>({settings:{permission:'ask'},models:[],models_error:'CLI offline'})};
+  });
+  await h.window.loadEnvironments(); await h.navigate('/settings');
+  await h.window.selectEnvironment('wsl-test','/settings'); await settle();
+  assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
+  assert.equal(h.$('#conversationDefaultsFields').disabled, false);
+  assert.match(h.$('#conversationDefaultsStatus').textContent, /CLI offline/);
+  resolveLocal(); await settle();
+  assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
+});
+
+test('failed terminal saves keep the draft and show an accessible error', async t => {
+  const h = await harness(t);
+  await h.navigate('/settings'); h.change('#terminalKind', 'custom');
+  h.input('#terminalPath', '/unsaved/terminal');
+  h.setIntercept((url, options) => url === '/api/settings/terminal' && options.method === 'PUT' ? { ok: false, json: async () => ({ error: '程序不可用' }) } : undefined);
+  await h.submit('#terminalForm');
+  assert.equal(h.$('#terminalError').getAttribute('role'), 'alert');
+  assert.equal(h.$('#terminalError').hidden, false);
+  assert.match(h.$('#terminalError').textContent, /程序不可用/);
+  assert.equal(h.$('#terminalPath').value, '/unsaved/terminal');
+});
+
+test('WSL connection and reconnect use the same environment payloads', async t => {
+  const h = await harness(t);
+  Object.assign(h.environments, { distributions: ['Ubuntu'], platform: 'windows', wsl_supported: true, environments: [{ id: 'local', name: '本机' }, { id: 'wsl-test', name: 'Ubuntu' }] });
+  await h.window.loadEnvironments(); await h.navigate('/settings');
+  assert.equal(h.$('#addEnvironment').hidden, false);
+  h.click('#addEnvironment'); await settle();
+  assert.equal(h.$('#environmentDialog').open, true);
+  h.input('#environmentUser', ' tester '); h.input('#environmentRoot', ' /home/tester/workspaces '); h.click('#environmentImport');
+  await h.submit('#environmentForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/environments' && r.options.method === 'POST').body, { distro: 'Ubuntu', user: 'tester', root: '/home/tester/workspaces', import_existing: true });
+  assert.equal(h.$('#environmentDialog').open, false);
+  assert.equal(h.$('#environmentSelect').value, 'wsl-test');
+  h.click('#reconnectEnvironment'); await settle();
+  assert(h.requests.some(r => r.url === '/api/environments/wsl-test/reconnect' && r.options.method === 'POST'));
+});
+
+test('read-only conversations retain history paging, expanded commands and a live output dialog', async t => {
+  const h = await harness(t);
+  await h.openConversations('task');
+  assert.equal(h.$('#newBrowserSession').disabled, true);
+  assert.equal(h.$('#sessionChatForm').hidden, true);
+  assert(h.$('#sessionHistoryEntries [data-slot="card"]'));
+  const detail = h.$('#sessionHistoryEntries details'); detail.open = true;
+  h.click('[data-command-output]');
+  assert.equal(h.$('#sessionCommandOutputDialog').open, true);
+  assert.equal(h.$('#sessionCommandOutputText').textContent, 'working tree clean');
+  h.history[1].output = 'updated output';
+  await h.window.loadSessionHistory(false, true);
+  assert.equal(h.$('#sessionHistoryEntries details'), detail);
+  assert.equal(h.$('#sessionCommandOutputText').textContent, 'updated output');
+  h.history[2].text = '更新后的回复';
+  await h.window.loadSessionHistory(false, true);
+  assert.equal(h.$('#sessionHistoryEntries details').open, true);
+  await h.window.loadSessionHistory(true);
+  assert.match(h.$('#sessionHistoryEntries').textContent, /更早的记录/);
+  assert.equal(h.$('#loadOlderHistory').hidden, true);
+  h.click('#closeSessionCommandOutput');
+  h.window.closeSessionHistory();
+  assert.equal(h.$('#sessionCommandOutputDialog').open, false);
+  assert.equal(h.$('#conversationDialog'), null);
+  assert.equal(h.$('#sessionHistoryPanel').hidden, true);
+  assert.equal(h.document.activeElement, h.$('#sessionBrowserSearch'));
+  assert(!h.requests.some(r => r.url.endsWith('/chat') || r.url.endsWith('/sessions/new')));
+});
+
+test('the global scope picker searches tasks, projects and directories without requiring task association', async t => {
+  const h = await harness(t);
+  h.sessions.push({ id: 'outside', name: 'Outside conversation', cwd: '/outside' });
+  await h.navigate('/sessions');
+  h.$('#sessionScopePicker').open = true; await settle();
+  h.input('#sessionScopeSearch', '/outside');
+  const result = h.$('[data-conversation-scope]');
+  assert.equal(JSON.parse(result.dataset.conversationScope).cwd, '/outside');
+  result.click(); await settle();
+  assert.equal(h.$('#sessionScopePicker').open, false);
+  assert.equal(h.$('[data-conversation-session]').dataset.conversationSession, 'outside');
+  assert.equal(h.$('#newBrowserSession').disabled, true);
+  assert.equal(h.$('#sessionDirectoryField').hidden, true);
+  h.click('[data-conversation-action="all"]'); await settle();
+  assert.equal(h.document.querySelectorAll('[data-conversation-session]').length, 2);
+});
+
+test('conversation scope menu uses the top layer, fits the viewport and closes on selection, Escape and navigation', async t => {
+  const h = await harness(t);
+  await h.navigate('/sessions');
+  const picker = h.$('#sessionScopePicker'), panel = picker.querySelector('[popover]');
+  assert.equal(panel.getAttribute('popover'), 'manual');
+  let visible = false;
+  panel.showPopover = () => { visible = true; };
+  panel.hidePopover = () => { visible = false; };
+  const matches = panel.matches.bind(panel);
+  panel.matches = selector => selector === ':popover-open' ? visible : matches(selector);
+  h.window.innerWidth = 800; h.window.innerHeight = 600;
+  picker.querySelector('summary').getBoundingClientRect = () => ({left:650, right:780, top:500, bottom:530});
+  picker.open = true; await settle();
+  assert.equal(visible, true);
+  assert.equal(panel.style.top, 'auto');
+  assert.equal(panel.style.bottom, '106px');
+  assert(parseFloat(panel.style.left) >= 12);
+  assert(parseFloat(panel.style.left) + parseFloat(panel.style.width) <= 788);
+  assert(parseFloat(panel.style.maxHeight) <= 482);
+  assert.equal(h.document.activeElement, h.$('#sessionScopeSearch'));
+  h.input('#sessionScopeSearch', 'Backend');
+  [...h.document.querySelectorAll('[data-conversation-scope]')].find(button => JSON.parse(button.dataset.conversationScope).kind === 'project').click();
+  await settle();
+  assert.equal(visible, false);
+  assert.match(h.$('#sessionScopeLabel').textContent, /项目 · Backend/);
+  picker.open = true; await settle();
+  h.$('#sessionScopeSearch').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+  await settle();
+  assert.equal(visible, false);
+  assert.equal(h.document.activeElement, picker.querySelector('summary'));
+  picker.open = true; await settle();
+  await h.navigate('/projects');
+  assert.equal(visible, false);
+  assert.equal(picker.open, false);
+});
+
+test('background activity and unread completion update navigation without reopening a conversation', async t => {
+  const h = await harness(t);
+  await h.openConversations('task');
+  await h.leaveConversations();
+  const activity = () => h.$('#sessionNavigationStatus').textContent;
+  h.sessions[0].chat_status = 'running';
+  await h.window.refreshSessionWorkspace(true); assert.equal(activity(), '运行中');
+  h.sessions[0].chat_status = 'waiting';
+  await h.window.refreshSessionWorkspace(true); assert.equal(activity(), '待确认');
+  h.sessions[0].chat_status = ''; h.sessions[0].completed_run = 'background-run';
+  await h.window.refreshSessionWorkspace(true); assert.equal(activity(), '有新消息');
+  assert.equal(h.$('#conversationDialog'), null);
+  h.window.eval('sessionReadMemory.clear()');
+  await h.window.refreshSessionWorkspace(true); assert.equal(activity(), '有新消息');
+  await h.openConversations('task');
+  assert.equal(activity(), '');
+  const seen = JSON.parse(h.window.localStorage.getItem('workhub:session-read:' + JSON.stringify(['local', 'session-1'])));
+  assert.equal(seen.run, 'background-run');
+  await h.leaveConversations();
+  h.sessions[0].completed_run = 'another-run';
+  await h.window.refreshSessionWorkspace(true); assert.equal(activity(), '有新消息');
+});
+
+test('conversation workspace links open task and project details and retain conversation selection', async t => {
+  const h = await harness(t, false);
+  let opened;
+  h.window.WorkHubAssistant = {open(options) {opened = options;}, close() {}};
+  h.window.eval("projectFilter = 'dirty'");
+  await h.openConversations('task');
+  await opened.openWorkspace('project', 'app'); await settle();
+  assert.equal(h.window.location.hash, '#/projects');
+  assert.match(h.$('#projectDetail h2').textContent, /App/);
+  assert.equal(h.document.activeElement, h.$('#projectDetail h2'));
+  await h.navigate('/sessions');
+  assert.equal(h.currentSession().session, 'session-1');
+  assert.match(h.$('#sessionScopeLabel').textContent, /Billing/);
+  await opened.openWorkspace('task', 'task'); await settle();
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  assert.equal(h.$('#pageTitle').textContent, 'Billing');
+  assert.equal(h.document.activeElement, h.$('#pageTitle'));
+  assert.equal(h.requests.some(r => r.url.endsWith('/chat/stop')), false);
+});
+
+test('workspace detail navigation uses the conversation environment', async t => {
+  const h = await harness(t, false);
+  h.environments.environments.push({id:'remote', name:'Remote'});
+  await h.window.loadEnvironments();
+  let opened;
+  h.window.WorkHubAssistant = {open(options) {opened = options;}, close() {}};
+  h.window.openSessionHistoryPanel('task', 'session-1', {environment:'remote', workspace:h.data, session:h.sessions[0]});
+  await opened.openWorkspace('project', 'app'); await settle();
+  assert.equal(new URL(h.window.location.href).searchParams.get('environment'), 'remote');
+  assert.equal(h.window.location.hash, '#/projects');
+  assert.match(h.$('#projectDetail h2').textContent, /App/);
+  assert(h.requests.some(r => r.url === '/api/state' && r.options.headers['X-Environment-ID'] === 'remote'));
+});
+
+test('assistant activity immediately updates the shared list and navigation', async t => {
+  const h = await harness(t, false);
+  let opened;
+  h.window.WorkHubAssistant = { open(options) { opened = options; }, close() {} };
+  await h.openConversations('task');
+  opened.activity('session-1', { id: 'live', status: 'running', busy: true });
+  assert.equal(h.$('[data-session-indicators="session-1"]').textContent, '运行中');
+  opened.activity('session-1', { id: 'live', status: 'waiting', busy: true });
+  assert.equal(h.$('[data-session-indicators="session-1"]').textContent, '待确认');
+  opened.activity('session-1', { id: 'live', turn_id: 'turn', status: 'completed', busy: false });
+  assert.equal(h.$('[data-session-indicators="session-1"]').textContent, '');
+});
+
+test('interactive approval questions keep native values, secret fields and answer requests', async t => {
+  const h = await harness(t, false);
+  h.window.openSessionHistory('task', 'session-1'); await settle();
+  const current = h.currentSession();
+  h.window.applyChatState(current, { id: 'approval-run', status: 'waiting', busy: true, entries: [], approvals: [{ id: 'approval-1', title: '选择方案', kind: 'questions', can_accept: true, questions: [{ id: 'method', header: '方案', question: '采用哪个方案？', options: [{ label: 'A', description: '兼容旧数据' }] }, { id: 'secret', header: '测试', question: '填写测试值', isSecret: true }] }] });
+  assert.equal(h.$('[data-free-answer-for="secret"]').type, 'password');
+  h.change('[data-answer-for="method"]', 'A'); h.input('[data-free-answer-for="secret"]', 'fixture-only');
+  await h.submit('#sessionChatApprovals form');
+  assert.deepEqual(h.requests.find(r => r.url.endsWith('/chat/approval')).body, { run_id: 'approval-run', approval_id: 'approval-1', decision: 'accept', answers: { method: ['A'], secret: ['fixture-only'] } });
+});
+
+test('message shortcuts and drafts retain their concrete creation directory', async t => {
+  const h = await harness(t, false);
+  h.window.openSessionHistory('task', 'session-1'); await settle();
+  h.input('#sessionChatInput', '  继续检查  ');
+  h.$('#sessionChatInput').dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
+  await settle();
+  const sent = h.requests.filter(r => r.url.endsWith('/chat') && r.options.method === 'POST');
+  assert.equal(sent.length, 1); assert.equal(sent[0].body.text, '继续检查'); assert(sent[0].body.request_id);
+  h.click('#newBrowserSession');
+  assert.equal(h.$('#sessionBrowserNewDirectory').value, '/workspace/task/app');
+  h.change('#sessionBrowserNewDirectory', '/workspace/task/app');
+  assert.match(h.$('#sessionHistoryEntries').textContent, /从这里开始对话/);
+  h.input('#sessionChatInput', '保留这份草稿');
+  h.window.closeSessionHistory(); h.window.openSessionHistory('task');
+  h.change('#sessionBrowserNewDirectory', '/workspace/task/app');
+  assert.equal(h.$('#sessionChatInput').value, '保留这份草稿');
+  assert(!h.requests.some(r => r.url.endsWith('/sessions/new')));
+});
+
+test('legacy MCP forms preserve drafts when another request arrives and return typed answers', async t => {
+  const h=await harness(t,false);
+  h.window.openSessionHistory('task','session-1');await settle();
+  const current=h.currentSession();
+  const approval={id:'mcp',title:'填写配置',details:'请选择配置',kind:'elicitation',can_accept:true,choices:[{id:'decline',label:'拒绝',accepts:false},{id:'accept',label:'提交回答',accepts:true}],elicitation:{mode:'form',server_name:'apix',fields:[{name:'choice',title:'方案',type:'string',required:true,options:[{value:'id-a',label:'方案 A'}]},{name:'enabled',title:'启用',type:'boolean',required:true,default:false},{name:'count',title:'数量',type:'integer',required:true,default:0}]}};
+  const chat={id:'run',status:'waiting',busy:true,entries:[],approvals:[approval]};
+  h.window.applyChatState(current,chat);
+  const field=h.change('select[name="elicitation:choice"]',JSON.stringify('id-a'));
+  h.window.applyChatState(current,{...chat,approvals:[approval,{id:'another',title:'另一个请求',kind:'questions',can_accept:true}]});
+  assert.equal(h.$('select[name="elicitation:choice"]'),field);
+  assert.equal(field.value,JSON.stringify('id-a'));
+  h.click('form[data-chat-approval="mcp"] button[value="accept"]');await settle();
+  assert.deepEqual(h.requests.find(r=>r.url.endsWith('/chat/approval')).body,{run_id:'run',approval_id:'mcp',decision:'accept',answers:{},content:{choice:'id-a',enabled:false,count:0}});
+});
+
+
+for (const readOnly of [true, false]) test(`task and project each have one conversation entry in ${readOnly ? 'read-only' : 'interactive'} mode`, async t => {
+  const h = await harness(t, readOnly);
+  let opened, closed = 0;
+  h.window.WorkHubAssistant = { open(options) { opened = options; }, close() { closed++; } };
+  assert.equal(h.document.querySelectorAll('[data-action="task-conversations"]').length, 1);
+  assert.equal(h.$('#content [data-session-action]'), null);
+  assert.equal(h.$('#taskWorkspaceLayout'), null);
+  await h.openConversations('task');
+  assert.equal(h.window.location.hash, '#/sessions');
+  assert.equal(h.$('#conversationDialog'), null);
+  assert.equal(h.document.activeElement, h.$('#sessionBrowserSearch'));
+  assert.equal(opened.session.id, 'session-1'); assert.equal(opened.readOnly, readOnly);
+  assert.equal(h.$('#newBrowserSession').disabled, readOnly);
+  const ids = [...h.document.querySelectorAll('[id]')].map(node => node.id);
+  assert.equal(new Set(ids).size, ids.length);
+  opened.close();
+  assert.equal(closed, 1); assert.equal(h.$('#conversationDialog'), null);
+  await h.navigate('/projects');
+  h.click('[data-action="select-project"][data-id="app"]');
+  assert.equal(h.document.querySelectorAll('[data-action="project-conversations"]').length, 1);
+  assert.equal(h.$('tbody [data-session-action]'), null);
+  await h.openConversations('project');
+  assert.match(h.$('#sessionScopeLabel').textContent, /项目 · App/);
+  if (!readOnly) {
+    h.click('#newBrowserSession'); h.change('#sessionBrowserNewDirectory', '/repo/app');
+    assert.equal(opened.task, undefined); assert.equal(opened.session, null);
+    assert.equal(opened.target.cwd, '/repo/app'); assert.equal(opened.target.project_id, 'app');
+    opened.created({ id: 'created', name: 'Created', cwd: '/repo/app' });
+    assert.equal(h.currentSession().session, 'created');
+    assert(h.$('[data-conversation-session="created"]'));
+  }
+  assert(!h.requests.some(r => r.url.endsWith('/resume') || r.url.endsWith('/launch')));
+});
+
+test('conversation entry opens the page directly and restores the same scope and browser after returning', async t => {
+  const h = await harness(t, false);
+  let opens = 0, closes = 0;
+  h.window.WorkHubAssistant = { open() { opens++; }, close() { closes++; } };
+  await h.openConversations('task');
+  const browser = h.$('#sessionBrowser'), panel = h.$('#assistantChatRoot'), current = h.currentSession();
+  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  const afterFilter = h.currentSession();
+  const beforeOpens = opens, beforeCloses = closes;
+  h.window.render(); await settle();
+  assert.equal(h.$('#conversationDialog'), null);
+  assert.equal(h.window.location.hash, '#/sessions');
+  assert.equal(h.$('#sessionsPage').hidden, false); assert.equal(h.$('#workContent').hidden, true);
+  assert.equal(h.$('#sessionPageMount #sessionBrowser'), browser);
+  assert.equal(h.$('#assistantChatRoot'), panel); assert.equal(h.currentSession(), afterFilter);
+  assert.equal(opens, beforeOpens); assert.equal(closes, beforeCloses);
+  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
+  h.click('[data-conversation-action="all"]'); await settle();
+  assert.equal(h.$('#sessionScopeLabel').textContent, '全部对话');
+  await h.navigate('/requirements/task');
+  await h.openConversations('task');
+  assert.equal(h.$('#sessionPageMount #sessionBrowser'), browser);
+  assert.equal(h.$('#assistantChatRoot'), panel);
+  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
+  assert.notEqual(h.currentSession(), current); // The controller registry, not DOM history state, owns drafts.
+  assert(!h.requests.some(r => r.url.endsWith('/chat/stop')));
+});
+
+test('conversation columns resize without reopening chat and retain their width across navigation', async t => {
+  const h = await harness(t, false);
+  await h.openConversations('task');
+  const browser = h.$('#sessionBrowser'), handle = h.$('#sessionBrowserResize');
+  const list = h.$('#sessionBrowserListPane'), body = h.$('.session-browser-body');
+  let available = 1000, captured;
+  body.getBoundingClientRect = () => ({ width: available });
+  list.getBoundingClientRect = () => ({ width: Math.max(220, Math.min(parseFloat(browser.style.getPropertyValue('--conversation-list-width')) || 280, available - 328)) });
+  handle.setPointerCapture = id => { captured = id; };
+  handle.hasPointerCapture = id => captured === id;
+  handle.releasePointerCapture = () => { captured = undefined; };
+  const pointer = (type, x, id = 1, button = 0) => {
+    const event = new h.window.MouseEvent(type, { clientX: x, button, bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'pointerId', { value: id });
+    handle.dispatchEvent(event);
+  };
+  const panel = h.$('#assistantChatRoot'), session = h.currentSession();
+  pointer('pointerdown', 280);
+  pointer('pointermove', 400, 2); // Another pointer cannot move this split.
+  assert.equal(browser.style.getPropertyValue('--conversation-list-width'), '');
+  pointer('pointermove', 400);
+  assert.equal(handle.getAttribute('aria-valuenow'), '400');
+  assert.equal(captured, 1);
+  pointer('pointerup', 400);
+  assert.equal(captured, undefined);
+  assert(!browser.hasAttribute('data-resizing'));
+  assert.equal(h.window.localStorage.getItem('workhub:conversation-list-width:v1'), '400');
+  await h.leaveConversations(); await h.openConversations('task');
+  assert.equal(browser.style.getPropertyValue('--conversation-list-width'), '400px');
+  assert.equal(h.$('#assistantChatRoot'), panel);
+  assert.equal(h.currentSession().session, session.session);
+  available = 720;
+  pointer('pointerdown', 392); pointer('pointermove', 900);
+  assert.equal(handle.getAttribute('aria-valuenow'), '392'); // Leave room for the conversation.
+  pointer('pointermove', -900);
+  assert.equal(handle.getAttribute('aria-valuenow'), '220');
+  pointer('pointercancel', -900);
+  assert(!browser.hasAttribute('data-resizing'));
+  pointer('pointermove', 400);
+  assert.equal(handle.getAttribute('aria-valuenow'), '220');
+  assert(!h.requests.some(r => r.url.endsWith('/chat/stop')));
+});
+
+test('conversation split supports keyboard resizing and leaves narrow-screen navigation intact', async t => {
+  const h = await harness(t);
+  await h.openConversations('task');
+  const browser = h.$('#sessionBrowser'), handle = h.$('#sessionBrowserResize');
+  let available = 1000;
+  h.$('.session-browser-body').getBoundingClientRect = () => ({ width: available });
+  h.$('#sessionBrowserListPane').getBoundingClientRect = () => ({ width: parseFloat(browser.style.getPropertyValue('--conversation-list-width')) || 280 });
+  const key = (value, shiftKey = false) => handle.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: value, shiftKey, bubbles: true, cancelable: true }));
+  key('ArrowRight'); assert.equal(handle.getAttribute('aria-valuenow'), '290');
+  key('ArrowLeft', true); assert.equal(handle.getAttribute('aria-valuenow'), '250');
+  key('End'); assert.equal(handle.getAttribute('aria-valuenow'), '520');
+  key('Home'); assert.equal(handle.getAttribute('aria-valuenow'), '220');
+  available = 600;
+  key('End'); assert.equal(handle.getAttribute('aria-valuenow'), '220');
+  h.click('[data-conversation-action="back"]');
+  assert.equal(browser.dataset.pane, 'list');
+  assert.equal(h.window.localStorage.getItem('workhub:conversation-list-width:v1'), '220');
+});
+
+test('task and project directory unions stay distinct and exact filters exclude subdirectories', async t => {
+  const h = await harness(t);
+  h.links.get('task').add('task-root');
+  h.sessions.push({ id: 'task-root', name: 'Task brief', cwd: '/workspace/task' }, { id: 'main', name: 'Main project', cwd: '/repo/app' }, { id: 'child', name: 'Nested directory', cwd: '/workspace/task/app/src' });
+  await h.openConversations('task');
+  const ids = () => [...h.document.querySelectorAll('[data-conversation-session]')].map(b => b.dataset.conversationSession).sort();
+  assert.deepEqual(ids(), ['session-1', 'task-root']);
+  assert.equal(h.document.querySelectorAll('.session-browser-item-directory').length, 1);
+  assert.match(h.$('[data-conversation-session="session-1"] .session-browser-item-context').textContent, /App.*feature\/task/);
+  h.change('#sessionDirectoryFilter', '/workspace/task'); await settle();
+  assert.deepEqual(ids(), ['task-root']); assert.equal(h.$('.session-browser-item-directory'), null);
+  await h.leaveConversations();
+  await h.navigate('/projects'); h.click('[data-action="select-project"][data-id="app"]');
+  await h.openConversations('project');
+  assert.deepEqual(ids(), ['main', 'session-1']);
+  h.change('#sessionDirectoryFilter', '/repo/app'); await settle(); assert.deepEqual(ids(), ['main']);
+  assert(h.requests.some(r => r.url.includes('project_id=app') && r.url.includes('cwd=%2Frepo%2Fapp')));
+});
+
+test('task-root and unattached detached worktree creation use an explicit target without adding task ownership', async t => {
+  const h = await harness(t, false);
+  h.data.projects[0].worktrees.push({ path: '/repo/detached', detached: true, status_updated_at: '2026-10-24T00:00:00Z' });
+  h.setIntercept((url, options, body) => {
+    if (url !== '/api/sessions/new') return;
+    const session = { id: 'new-' + h.sessions.length, name: body.text, cwd: body.cwd, available: true };
+    h.sessions.push(session);
+    return { ok: true, json: async () => ({ session, chat: { id: body.request_id, status: 'running', busy: true, entries: [], approvals: [] } }) };
+  });
+  await h.openConversations('task'); h.click('#newBrowserSession');
+  assert.equal(h.$('#sessionHistoryPanel').hidden, false, 'the default directory opens a composer immediately');
+  h.change('#sessionBrowserNewDirectory', '/workspace/task'); h.input('#sessionChatInput', '整理任务说明');
+  await h.submit('#sessionChatForm');
+  const taskRequest = h.requests.find(r => r.url === '/api/sessions/new');
+  assert.equal(taskRequest.body.task_id, 'task'); assert.equal(taskRequest.body.cwd, '/workspace/task');
+  assert(!taskRequest.body.project_id);
+  await h.leaveConversations();
+  await h.navigate('/projects'); h.click('[data-action="select-project"][data-id="app"]'); await h.openConversations('project');
+  h.change('#sessionDirectoryFilter', '/repo/detached'); await settle(); h.click('#newBrowserSession');
+  assert.equal(h.$('#sessionBrowserNewDirectoryField').hidden, false, 'directory filtering does not add a step before switching the creation directory');
+  h.input('#sessionChatInput', '检查游离工作目录'); await h.submit('#sessionChatForm');
+  const projectRequest = h.requests.filter(r => r.url === '/api/sessions/new').at(-1);
+  assert.equal(projectRequest.body.project_id, 'app'); assert.equal(projectRequest.body.cwd, '/repo/detached');
+  assert.equal(projectRequest.body.task_id, undefined);
+  assert.notEqual(projectRequest.body.request_id, taskRequest.body.request_id);
+  await h.leaveConversations();
+  assert(!h.requests.some(r => r.url.endsWith('/chat/stop')));
+});
+
+test('late directory responses cannot replace the latest filter, including switching back to the first directory', async t => {
+  const h = await harness(t);
+  const pending = [];
+  h.setIntercept(url => url.startsWith('/api/sessions?') && url.includes('cwd=') ? new Promise(resolve => pending.push({ url, resolve })) : undefined);
+  await h.openConversations('task');
+  h.change('#sessionDirectoryFilter', '/workspace/task/app');
+  h.change('#sessionDirectoryFilter', '/workspace/task');
+  h.change('#sessionDirectoryFilter', '/workspace/task/app');
+  assert.equal(pending.length, 3);
+  const ok = sessions => ({ ok: true, json: async () => ({ sessions }) });
+  pending[2].resolve(ok([{ id: 'latest', name: 'Latest response', cwd: '/workspace/task/app' }])); await settle();
+  pending[0].resolve(ok([{ id: 'stale', name: 'Old response', cwd: '/workspace/task/app' }]));
+  pending[1].resolve(ok([{ id: 'wrong-dir', name: 'Wrong directory', cwd: '/workspace/task' }])); await settle();
+  assert.equal(h.$('[data-conversation-session]').dataset.conversationSession, 'latest');
+  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
+});
+
+test('returning from the conversation page preserves task scroll and details across refresh and task navigation', async t => {
+  const h = await harness(t);
+  h.data.requirements.push({ ...h.data.requirements[0], id: 'other-task', name: 'Other task' });
+  h.$('#taskProjectsView').scrollTop = 135; h.$('.task-project-details').open = true;
+  await h.openConversations('task'); h.window.render();
+  await h.leaveConversations();
+  assert.equal(h.$('#taskProjectsView').scrollTop, 135); assert.equal(h.$('.task-project-details').open, true);
+  await h.navigate('/requirements/other-task'); assert.equal(h.$('.task-project-details').open, false);
+  await h.navigate('/requirements/task'); assert.equal(h.$('.task-project-details').open, true); assert.equal(h.$('#taskProjectsView').scrollTop, 135);
+});
+
+test('scope picker Escape, mobile list navigation and browser back retain the expected page', async t => {
+  const h = await harness(t);
+  await h.navigate('/sessions'); h.$('#sessionScopePicker').open = true; await settle();
+  h.$('#sessionScopeSearch').dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  assert.equal(h.$('#sessionScopePicker').open, false); assert(h.currentSession());
+  h.click('[data-conversation-session]'); assert.equal(h.$('#sessionBrowser').dataset.pane, 'detail');
+  h.click('[data-conversation-action="back"]'); assert.equal(h.$('#sessionBrowser').dataset.pane, 'list');
+  await h.navigate('/requirements/task'); await h.openConversations('task');
+  h.$('#sessionBrowserSearch').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+  assert.equal(h.window.location.hash, '#/sessions');
+  const returned = new Promise(resolve => h.window.addEventListener('hashchange', resolve, {once:true}));
+  h.window.history.back(); await returned; await settle();
+  assert.equal(h.$('#conversationDialog'), null);
+  assert.equal(h.window.location.hash, '#/requirements/task');
+});
+
+test('environment switching isolates identical conversation IDs and rejects late responses', async t => {
+  const h = await harness(t, false);
+  h.environments.environments.push({ id: 'remote', name: 'Remote' });
+  await h.window.loadEnvironments();
+  let release;
+  h.setIntercept((url, options) => {
+    if (!url.startsWith('/api/sessions?')) return;
+    if (options.headers['X-Environment-ID'] === 'local') return new Promise(resolve => { release = resolve; });
+    return { ok: true, json: async () => ({ sessions: [{ id: 'session-1', name: 'Remote conversation', cwd: '/remote' }] }) };
+  });
+  await h.navigate('/sessions');
+  const old = release;
+  await h.window.selectEnvironment('remote', '/sessions'); await settle();
+  assert.equal(h.$('[data-conversation-session]').textContent.includes('Remote conversation'), true);
+  old({ ok: true, json: async () => ({ sessions: [{ id: 'session-1', name: 'Late local conversation', cwd: '/local' }] }) }); await settle();
+  assert.equal(h.$('[data-conversation-session]').textContent.includes('Remote conversation'), true);
+  assert.equal(h.$('#sessionsEnvironment').value, '');
+  assert(h.requests.some(r => r.url.startsWith('/api/sessions?') && r.options.headers['X-Environment-ID'] === 'remote'));
+});
+
+test('a narrow list does not mark hidden conversation details as read', async t => {
+  const h = await harness(t);
+  await h.openConversations('task'); await h.leaveConversations();
+  h.sessions[0].completed_run = 'unread-mobile'; await h.window.refreshSessionWorkspace(true);
+  h.$('#sessionBrowser').getBoundingClientRect = () => ({ width: 360 });
+  await h.openConversations('task');
+  assert.equal(h.$('#sessionBrowser').dataset.pane, 'list');
+  assert.equal(h.$('#sessionNavigationStatus').textContent, '有新消息');
+  h.click('[data-conversation-session="session-1"]');
+  assert.equal(h.$('#sessionBrowser').dataset.pane, 'detail'); assert.equal(h.$('#sessionNavigationStatus').textContent, '');
+});
+
+test('list loading failures distinguish an unreadable scope from an empty directory and recover on retry', async t => {
+  const h = await harness(t);
+  let release;
+  h.setIntercept(url => url.startsWith('/api/sessions?') ? new Promise(resolve => { release = resolve; }) : undefined);
+  await h.openConversations('task');
+  assert.match(h.$('#sessionBrowserEmpty').textContent, /正在读取/);
+  release({ ok: false, json: async () => ({ error: 'fixture offline' }) }); await settle();
+  assert.equal(h.$('#sessionBrowserError').hidden, false);
+  assert.match(h.$('#sessionBrowserEmpty').textContent, /暂时无法读取/);
+  h.setIntercept(null); h.click('[data-conversation-action="refresh"]'); await settle();
+  assert.equal(h.$('#sessionBrowserError').hidden, true);
+  assert(h.$('[data-conversation-session="session-1"]'));
+});
+
+test('project refresh never silently widens a saved directory filter while worktrees are unavailable', async t => {
+  const h = await harness(t);
+  await h.navigate('/projects'); h.click('[data-action="select-project"][data-id="app"]');
+  await h.openConversations('project');
+  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  h.data.projects[0].worktrees = [];
+  await h.window.refresh(true);
+  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
+  assert.equal(h.$('#sessionDirectoryField').hidden, false);
+  assert.match(h.$('#sessionDirectoryFilter').selectedOptions[0].textContent, /目录待核实/);
+  await h.window.refreshSessionWorkspace(true);
+  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
+  assert(h.requests.filter(r => r.url.startsWith('/api/sessions?')).at(-1).url.includes('cwd=%2Fworkspace%2Ftask%2Fapp'));
+});
+
+test('conversation pinning sorts the shared list and the archive filter uses its own query',async t=>{
+ const h=await harness(t);
+ h.sessions.push({id:'pinned',name:'Pinned conversation',cwd:'/workspace/task/app',updated_at:1,pinned:true});
+ await h.navigate('/sessions');
+ assert.equal(h.$('[data-conversation-session]').dataset.conversationSession,'pinned');
+ h.setIntercept(url=>url.startsWith('/api/sessions?')&&url.includes('archived=true')?{ok:true,json:async()=>({sessions:[{id:'archive',name:'Archived conversation',cwd:'/workspace/task/app',archived:true}]})}:undefined);
+ h.$('#sessionBrowserArchived').checked=true;h.$('#sessionBrowserArchived').dispatchEvent(new h.window.Event('change',{bubbles:true}));await settle();
+ assert.equal(h.$('[data-conversation-session]').dataset.conversationSession,'archive');
+ assert(h.requests.some(r=>r.url.includes('archived=true')));
+});
+
+test('session organization events update the same browser without reopening another environment',async t=>{
+ const h=await harness(t);await h.navigate('/sessions');
+ const notify=(session,action,environment='local')=>h.window.dispatchEvent(new h.window.CustomEvent('workhub:session-managed',{detail:{session,action,environment}}));
+ notify({...h.sessions[0],name:'Renamed',pinned:true},'rename');
+ assert.match(h.$('[data-conversation-session="session-1"]').textContent,/Renamed/);
+ notify({...h.sessions[0],name:'Wrong environment'},'rename','remote');
+ assert.doesNotMatch(h.$('#sessionBrowserList').textContent,/Wrong environment/);
+ notify({id:'fork',name:'Forked conversation',cwd:'/workspace/task/app'},'fork');
+ assert.equal(h.currentSession().session,'fork');
+ notify({id:'fork',name:'Forked conversation',cwd:'/workspace/task/app',archived:true},'archive');
+ assert.equal(h.$('[data-conversation-session="fork"]'),null);
+});
+
+test('conversation filters default to all environments and expose optional filtering when needed', async t => {
+  const h = await harness(t);
+  await h.navigate('/sessions');
+  assert(h.$('#sessionBrowserScopeBar').closest('.session-browser-list'));
+  assert.equal(h.$('#sessionEnvironmentField').hidden, true);
+  assert.equal(h.$('#sessionsEnvironment').value, '');
+  h.environments.environments.push({id: 'wsl-test', name: 'Ubuntu'});
+  await h.window.loadEnvironments(); await settle();
+  assert.equal(h.$('#sessionEnvironmentField').hidden, false);
+  assert.equal(h.$('#sessionsEnvironment').options.length, 3);
+  h.environments.environments.pop();
+  await h.window.loadEnvironments(); await settle();
+  assert.equal(h.$('#sessionEnvironmentField').hidden, true);
+});
+
+test('conversation list omits shared context and retains active counts and refreshed titles', async t => {
+  const h = await harness(t, false);
+  let updated;
+  h.window.WorkHubAssistant = {open() {}, close() {}, updateSession(session) {updated = session;}};
+  h.sessions[0].chat_status = 'running';
+  await h.openConversations('task');
+  assert.match(h.$('#sessionBrowserContext').textContent, /任务 · Billing · 本机/);
+  assert.match(h.$('#sessionBrowserCount').textContent, /1 个运行中/);
+  assert.equal(h.$('[data-conversation-session="session-1"] .session-browser-item-context'), null);
+  assert.equal(h.$('.session-browser-item-task'), null);
+  assert.equal(h.$('.session-browser-item-directory'), null);
+  assert(h.$('[data-session-menu="session-1"] [data-conversation-unlink]'));
+  h.sessions[0].name = 'Codex generated title';
+  h.click('[data-conversation-action="refresh"]'); await settle();
+  assert.equal(updated.name, 'Codex generated title');
+  assert.match(h.$('[data-conversation-session="session-1"]').textContent, /Codex generated title/);
+});
+
+test('sidebar preferences follow shared storage and synchronize before a retained tab is shown', async t => {
+  const h = await harness(t, true, {width:1440});
+  const collapsedKey = 'workhub:sidebar-collapsed:v1', widthKey = 'workhub:sidebar-width:v1';
+  const body = h.document.body;
+  const storage = key => h.window.dispatchEvent(new h.window.StorageEvent('storage', {key}));
+  const route = h.window.location.hash;
+  h.window.localStorage.setItem(collapsedKey, 'true');
+  storage(collapsedKey); await settle();
+  assert(body.classList.contains('sidebar-collapsed'));
+  assert.equal(h.$('.sidebar-toggle').getAttribute('aria-expanded'), 'false');
+  assert.equal(h.$('.sidebar-toggle').getAttribute('aria-label'), '展开侧栏');
+  h.window.localStorage.setItem(widthKey, '320');
+  storage(widthKey);
+  assert.equal(body.style.getPropertyValue('--sidebar-width'), '320px');
+  h.window.localStorage.setItem(collapsedKey, 'false');
+  storage('unrelated'); await settle();
+  assert(body.classList.contains('sidebar-collapsed'));
+  h.window.localStorage.setItem(widthKey, '360');
+  h.window.dispatchEvent(new h.window.Event('workhub:sidebar-sync'));
+  assert(!body.classList.contains('sidebar-collapsed'), 'layout updates synchronously before showing the tab');
+  assert.equal(body.style.getPropertyValue('--sidebar-width'), '360px');
+  await settle();
+  assert.equal(h.$('.sidebar-toggle').getAttribute('aria-expanded'), 'true');
+  h.window.localStorage.removeItem(widthKey); storage(widthKey);
+  assert.equal(body.style.getPropertyValue('--sidebar-width'), '');
+  h.window.localStorage.setItem(widthKey, '999'); storage(widthKey);
+  assert.equal(body.style.getPropertyValue('--sidebar-width'), '');
+  h.window.localStorage.setItem(collapsedKey, 'true'); storage(collapsedKey); await settle();
+  h.window.localStorage.clear(); storage(null); await settle();
+  assert(!body.classList.contains('sidebar-collapsed'));
+  assert.equal(h.window.location.hash, route);
+});
+
+test('collapsed sidebar keeps individual task and directory shortcuts visible with direct navigation', async t => {
+  const h = await harness(t, true, {width:1024, pins:{local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}}});
+  const panel = h.$('#conversationShortcuts');
+  assert.equal(h.$('.sidebar-pins-toggle'), null);
+  assert(h.document.body.classList.contains('sidebar-collapsed'));
+  assert(!panel.hasAttribute('popover'));
+  assert(h.$('[data-task-shortcut="task"] .shortcut-badge'));
+  assert(h.$('[data-directory-shortcut="/workspace/task/app"] .shortcut-badge'));
+  const identity = h.$('[data-task-shortcut="task"]').dataset.shortcutIcon;
+  h.click('[data-task-shortcut="task"]'); await settle();
+  assert.equal(h.$('#sessionScopeLabel').textContent, '任务 · Billing');
+  assert.equal(h.$('[data-task-shortcut="task"]').getAttribute('aria-current'), 'true');
+  h.click('[data-directory-shortcut="/workspace/task/app"]'); await settle();
+  assert.equal(h.$('[data-directory-shortcut="/workspace/task/app"]').getAttribute('aria-current'), 'true');
+  assert(h.document.body.classList.contains('sidebar-collapsed'));
+  h.click('.sidebar-toggle'); await settle();
+  assert.equal(h.$('[data-task-shortcut="task"]').dataset.shortcutIcon, identity);
+  assert(h.$('[data-directory-shortcut="/workspace/task/app"]'));
+});
+
+test('icon customization persists without browser storage and rollback keeps pins intact', async t => {
+  const pins = {local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}};
+  const h = await harness(t, true, {pins, storageUnavailable:true});
+  h.click('[data-shortcut-icon-settings]');
+  assert(h.$('.shortcut-icon-dialog').open);
+  h.click('.shortcut-icon-dialog [aria-label="火箭"]');
+  h.click('.shortcut-icon-dialog [aria-label="玫红"]');
+  await settle();
+  await h.submit('.shortcut-icon-dialog form');
+  assert.deepEqual(pins.local.icons['task:task'], {icon:'rocket', color:'rose'});
+  assert(h.$('[data-task-shortcut="task"] .shortcut-badge[data-color="rose"] svg'));
+  const pinReads = () => h.requests.filter(r => r.url.startsWith('/api/shortcut-pins?') && !r.options.method).length;
+  const previousReads = pinReads();
+  h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:shortcut-pins-updated:local'})); await settle();
+  assert.equal(pinReads(), previousReads + 1, 'another window changing pins reloads them from the database');
+  assert(h.$('[data-task-shortcut="task"] .shortcut-badge[data-color="rose"] svg'));
+  h.click('[data-shortcut-icon-settings]');
+  const key = h.$('[data-directory-shortcut]').dataset.shortcutIconKey;
+  h.change('#shortcutIconEntry', key); await settle();
+  h.click('.shortcut-icon-dialog [aria-label="终端"]'); await settle();
+  await h.submit('.shortcut-icon-dialog form');
+  assert.equal(pins.local.icons['directory:/workspace/task/app'].icon, 'terminal');
+  assert.equal(pins.local.icons['task:task'].icon, 'rocket');
+  h.setIntercept(async (url, options) => url.startsWith('/api/shortcut-pins?') && options.method === 'PUT' ? {ok:false,json:async()=>({error:'fixture save failed'})} : null);
+  h.click('[data-shortcut-icon-settings]');
+  h.click('.shortcut-icon-dialog [aria-label="数据库"]'); await settle();
+  await h.submit('.shortcut-icon-dialog form');
+  assert(h.$('[data-task-shortcut="task"] .shortcut-badge[data-color="rose"] svg'));
+  assert.equal(JSON.parse(h.$('[data-task-shortcut="task"]').dataset.shortcutIcon).icon, 'rocket');
+  assert.deepEqual(pins.local.tasks, ['task']);
+  assert.deepEqual(pins.local.directories, ['/workspace/task/app']);
+});
+
+test('icon settings escape a clipped same-origin navigation iframe and restore focus', async t => {
+  const outer = new JSDOM('<body><div id="workspace"></div></body>', {url:'http://localhost:4317'});
+  t.after(() => outer.window.close());
+  outer.window.HTMLDialogElement.prototype.showModal = function () {this.open = true;};
+  outer.window.HTMLDialogElement.prototype.close = function () {this.open = false;};
+  const h = await harness(t, true, {tabHost:outer.window, pins:{local:{tasks:['task'], directories:[], initialized:true}}});
+  for (const data of [{type:'workhub:tab-navigation'}, {type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}}]) h.window.dispatchEvent(new h.window.MessageEvent('message',{source:outer.window,origin:'http://localhost:4317',data}));
+  await settle();await settle();
+  h.click('[data-shortcut-icon-settings]');
+  await settle();
+  const dialog = outer.window.document.querySelector('.shortcut-icon-dialog');
+  assert(dialog.open);
+  assert.equal(h.$('.shortcut-icon-dialog'), null);
+  dialog.querySelector('[aria-label="火箭"]').click(); await settle();
+  dialog.querySelector('form').dispatchEvent(new outer.window.Event('submit',{bubbles:true,cancelable:true})); await settle();
+  assert(!dialog.open);
+  assert.equal(h.document.activeElement, h.$('[data-shortcut-icon-settings]'));
+  assert.equal(JSON.parse(h.$('[data-task-shortcut="task"]').dataset.shortcutIcon).icon, 'rocket');
+});
+
+test('fixed shortcut manager searches both kinds and icon dialog cancels without saving', async t => {
+  const h = await harness(t, true, {pins:{local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}}});
+  h.$('#taskShortcutPicker').open = true;
+  h.input('#shortcutSearch', 'Billing');
+  assert(h.$('[data-task-shortcut-pin="task"]'));
+  assert.equal(h.$('#shortcutPickerPanel [data-directory-shortcut-pin]'), null);
+  assert(h.$('[data-directory-shortcut="/workspace/task/app"]'), 'search does not hide pinned entries');
+  h.click('[data-shortcut-icon-settings]');
+  h.click('.shortcut-icon-dialog [aria-label="数据库"]'); await settle();
+  h.$('.shortcut-icon-dialog').dispatchEvent(new h.window.Event('cancel', {cancelable:true}));
+  assert(!h.$('.shortcut-icon-dialog').open);
+  assert.equal(h.document.activeElement, h.$('[data-shortcut-icon-settings]'));
+  assert.equal(h.requests.filter(r => r.options.method === 'PUT' && r.url.startsWith('/api/shortcut-pins?')).length, 0);
+});
+
+test('fixed tasks persist and open only explicitly linked conversations', async t => {
+  const h = await harness(t);
+  h.sessions.push({id:'same-directory', name:'Not linked', cwd:'/workspace/task/app', updated_at:1999999999});
+  h.sessions.push({id:'newer', name:'Newest linked', cwd:'/external', updated_at:1899999999});
+  h.links.get('task').add('newer');
+  assert.match(h.$('#shortcutPinnedTitle').textContent, /固定入口/);
+  assert.equal(h.$('#shortcutRecentTitle'), null);
+  assert.equal(h.$('[data-task-shortcut-pin="archived"]'), null);
+  h.click('[data-task-shortcut-pin="task"]'); await settle();
+  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-tasks:v1:local')), ['task']);
+  assert.match(h.$('[data-task-shortcut="task"]').textContent, /Billing.*App/);
+  assert.equal(h.requests.some(r => r.url.endsWith('/manage')), false);
+  h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:shortcut-pins-updated:local'})); await settle();
+  assert(h.$('[data-task-shortcut="task"]'));
+  h.click('[data-task-shortcut="task"]'); await settle();
+  assert.equal(h.window.location.hash, '#/sessions');
+  assert.equal(h.$('#sessionScopeLabel').textContent, '任务 · Billing');
+  assert.equal(h.currentSession().session, 'newer');
+  assert.equal(h.$('[data-conversation-session="same-directory"]'), null);
+  assert.equal(h.$('[data-task-shortcut="task"]').getAttribute('aria-current'), 'true');
+  h.click('[data-conversation-session="session-1"]'); await settle();
+  await h.navigate('/projects');
+  h.click('[data-task-shortcut="task"]'); await settle();
+  assert.equal(h.currentSession().session, 'session-1');
+  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  h.input('#sessionBrowserSearch', 'no match');
+  h.click('[data-task-shortcut="task"]'); await settle();
+  assert.equal(h.$('#sessionDirectoryFilter').value, '');
+  assert.equal(h.$('#sessionBrowserSearch').value, '');
+  assert.equal(h.$('#sessionBrowserArchived').checked, false);
+  h.$('.conversation-shortcut-row [data-task-shortcut-pin="task"]').focus();
+  h.click('.conversation-shortcut-row [data-task-shortcut-pin="task"]'); await settle();
+  assert.equal(h.$('[data-task-shortcut="task"]'), null);
+  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-tasks:v1:local')), []);
+  assert.equal(h.document.activeElement, h.$('#taskShortcutPicker summary'));
+  h.$('#taskShortcutPicker').open = true;
+  h.$('#taskShortcutPicker summary').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+  assert.equal(h.$('#taskShortcutPicker').open, false);
+});
+
+test('fixed tasks and directories survive a new origin without browser storage', async t => {
+  const pins = {};
+  const first = await harness(t, true, {origin:'http://localhost:50101', pins});
+  first.click('[data-task-shortcut-pin="task"]');
+  first.click('[data-directory-shortcut-pin="/workspace/task/app"]');
+  await settle();
+  assert.deepEqual(pins.local.tasks, ['task']);
+  assert.deepEqual(pins.local.directories, ['/workspace/task/app']);
+  const restarted = await harness(t, true, {origin:'http://localhost:50202', pins, storageUnavailable:true});
+  assert(restarted.$('[data-task-shortcut="task"]'));
+  assert(restarted.$('[data-directory-shortcut="/workspace/task/app"]'));
+  restarted.click('.conversation-shortcut-row [data-task-shortcut-pin="task"]');
+  restarted.click('.conversation-shortcut-row [data-directory-shortcut-pin="/workspace/task/app"]');
+  await settle();
+  const again = await harness(t, true, {origin:'http://localhost:50303', pins});
+  assert.equal(again.$('[data-task-shortcut="task"]'), null);
+  assert.equal(again.$('[data-directory-shortcut="/workspace/task/app"]'), null);
+  for (const h of [first, restarted, again]) assert(h.requests.filter(r => r.url.startsWith('/api/shortcut-pins?')).every(r => r.options.headers['X-Environment-ID'] === 'local'));
+});
+
+test('legacy pins migrate once and stale browser storage cannot resurrect removed entries', async t => {
+  const pins = {};
+  const storage = {'workhub:pinned-tasks:v1:local':'["task"]', 'workhub:pinned-directories:v1:local':'["/workspace/task/app"]'};
+  const migrated = await harness(t, true, {pins, storage});
+  assert(migrated.$('[data-task-shortcut="task"]'));
+  assert(migrated.$('[data-directory-shortcut="/workspace/task/app"]'));
+  migrated.click('.conversation-shortcut-row [data-task-shortcut-pin="task"]');
+  migrated.click('.conversation-shortcut-row [data-directory-shortcut-pin="/workspace/task/app"]');
+  await settle();
+  const stale = await harness(t, true, {pins, storage});
+  assert.equal(stale.$('[data-task-shortcut="task"]'), null);
+  assert.equal(stale.$('[data-directory-shortcut="/workspace/task/app"]'), null);
+  assert.equal(stale.requests.filter(r => r.url.startsWith('/api/shortcut-pins?') && r.body?.initialize).length, 0);
+});
+
+test('pin changes wait for loading, serialize rapid clicks and roll back failed saves', async t => {
+  const pins = {local:{tasks:[], directories:[], initialized:true}};
+  let releaseLoad;
+  const h = await harness(t, true, {pins, intercept:(url, options) => url.startsWith('/api/shortcut-pins?') && !options.method ? new Promise(resolve => {releaseLoad = resolve;}) : undefined});
+  h.click('[data-task-shortcut-pin="task"]');
+  assert.equal(h.requests.some(r => r.url.startsWith('/api/shortcut-pins?') && r.options.method === 'PUT'), false);
+  releaseLoad({ok:true, json:async () => pins.local});
+  await settle();
+  assert.deepEqual(pins.local.tasks, ['task']);
+  h.setIntercept(undefined);
+  let releaseSave;
+  h.setIntercept((url, options) => url.startsWith('/api/shortcut-pins?') && options.method === 'PUT' && !releaseSave ? new Promise(resolve => {releaseSave = () => {pins.local = {...JSON.parse(options.body), initialized:true}; resolve({ok:true, json:async () => structuredClone(pins.local)});};}) : undefined);
+  h.click('[data-directory-shortcut-pin="/repo/app"]');
+  await settle();
+  h.click('.conversation-shortcut-row [data-task-shortcut-pin="task"]');
+  await settle();
+  assert.deepEqual(pins.local.tasks, ['task']);
+  releaseSave(); await settle();
+  assert.deepEqual(pins.local.tasks, []);
+  assert.deepEqual(pins.local.directories, ['/repo/app']);
+  h.setIntercept((url, options) => url.startsWith('/api/shortcut-pins?') && options.method === 'PUT' ? {ok:false, json:async () => ({error:'disk full'})} : undefined);
+  h.click('.conversation-shortcut-row [data-directory-shortcut-pin="/repo/app"]');
+  assert.equal(h.$('[data-directory-shortcut="/repo/app"]'), null);
+  await settle();
+  assert(h.$('[data-directory-shortcut="/repo/app"]'));
+  assert.match(h.$('#toastMessage').textContent, /保存固定入口失败.*disk full/);
+});
+
+test('shortcut picker searches the complete task list and preserves focus and pin state across refreshes', async t => {
+  const h = await harness(t);
+  h.data.requirements.push({...h.data.requirements[0], id:'second', name:'Second task'});
+  await h.window.refresh(true); await settle();
+  h.$('#taskShortcutPicker').open = true; await settle();
+  h.click('#taskShortcutPicker [data-task-shortcut-pin="task"]'); await settle();
+  assert.equal(h.$('#taskShortcutPicker').open, true);
+  assert.equal(h.$('#taskShortcutPicker [data-task-shortcut-pin="task"]').getAttribute('aria-pressed'), 'true');
+  assert.match(h.$('.shortcut-picker-caption').textContent, /2 个未归档任务 · 已固定 1 个/);
+  h.$('#shortcutSearch').focus();
+  h.input('#shortcutSearch', 'Second');
+  h.$('#shortcutSearch').setSelectionRange(2, 4);
+  h.data.requirements.find(task => task.id === 'second').name = 'Second updated';
+  await h.window.refresh(true); await settle();
+  assert.equal(h.document.activeElement.id, 'shortcutSearch');
+  assert.equal(h.$('#shortcutSearch').value, 'Second');
+  assert.equal(h.$('#shortcutSearch').selectionStart, 2);
+  assert.equal(h.$('#shortcutSearch').selectionEnd, 4);
+  assert.equal(h.$('#taskShortcutPicker [data-task-shortcut-pin="task"]'), null);
+  assert(h.$('#taskShortcutPicker [data-task-shortcut-pin="second"]'));
+  h.input('#shortcutSearch', 'App');
+  assert.equal(h.document.querySelectorAll('#taskShortcutPicker [data-task-shortcut-pin]').length, 2);
+  h.input('#shortcutSearch', 'Archived');
+  assert.equal(h.$('[data-task-shortcut-pin="archived"]'), null);
+  h.$('#shortcutArchived').checked = true;
+  h.$('#shortcutArchived').dispatchEvent(new h.window.Event('change', {bubbles:true}));
+  assert(h.$('[data-task-shortcut-pin="archived"]').disabled);
+  h.input('#shortcutSearch', 'Billing');
+  h.click('#taskShortcutPicker [data-task-shortcut-pin="task"]');
+  assert.equal(h.$('#taskShortcutPicker [data-task-shortcut-pin="task"]').getAttribute('aria-pressed'), 'false');
+  assert.equal(h.$('[data-task-shortcut="task"]'), null);
+  await settle();
+});
+
+test('fixed directories persist by environment and open exact directory conversations without task ownership', async t => {
+  const h = await harness(t, false);
+  h.sessions.push({id:'not-linked',name:'Same directory, separate conversation',cwd:'/workspace/task/app'}, {id:'child',name:'Nested',cwd:'/workspace/task/app/src'});
+  await h.navigate('/sessions');
+  h.click('[data-directory-shortcut-pin="/workspace/task/app"]');
+  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-directories:v1:local')), ['/workspace/task/app']);
+  h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:shortcut-pins-updated:local'})); await settle();
+  h.click('[data-directory-shortcut="/workspace/task/app"]'); await settle();
+  assert.equal(h.$('#sessionScopeLabel').textContent, '目录 · /workspace/task/app');
+  assert.equal(h.$('[data-directory-shortcut="/workspace/task/app"]').getAttribute('aria-current'), 'true');
+  assert.deepEqual([...h.document.querySelectorAll('[data-conversation-session]')].map(button => button.dataset.conversationSession).sort(), ['not-linked','session-1']);
+  assert.equal(h.$('#taskConversationTools').hidden, true);
+  assert.equal(h.$('#pinConversationDirectory').getAttribute('aria-pressed'), 'true');
+  assert.equal(h.$('#newBrowserSession').disabled, false);
+  h.click('#newBrowserSession'); await settle();
+  assert.equal(h.currentSession().target.cwd, '/workspace/task/app');
+  assert.equal(h.currentSession().target.task_id, undefined);
+  assert.equal(h.requests.some(request => request.options.method === 'POST'), false);
+  await h.window.selectEnvironment('wsl-test', '/projects'); await settle();
+  assert(h.$('[data-directory-shortcut="/workspace/task/app"]'));
+  assert.equal(h.window.localStorage.getItem('workhub:pinned-directories:v1:wsl-test'), null);
+  await h.window.selectEnvironment('local', '/sessions'); await settle();
+  assert(h.$('[data-directory-shortcut="/workspace/task/app"]'));
+  h.click('[data-directory-shortcut="/workspace/task/app"]'); await settle();
+  h.click('#pinConversationDirectory');
+  assert.equal(h.$('[data-directory-shortcut="/workspace/task/app"]'), null);
+  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-directories:v1:local')), []);
+  await settle();
+});
+
+test('directory pinning is available from known directory filters and keeps same-name paths distinct', async t => {
+  const h = await harness(t);
+  await h.navigate('/sessions');
+  h.change('#sessionDirectoryFilter', '/repo/app'); await settle();
+  assert.equal(h.$('#pinConversationDirectory').hidden, false);
+  h.click('#pinConversationDirectory');
+  h.click('[data-directory-shortcut-pin="/workspace/task/app"]');
+  assert.equal(h.document.querySelectorAll('[data-directory-shortcut]').length, 2);
+  assert.match(h.$('[data-directory-shortcut="/repo/app"]').textContent, /app.*\/repo/);
+  assert.match(h.$('[data-directory-shortcut="/workspace/task/app"]').textContent, /app.*\/workspace\/task/);
+  h.sessions.push({id:'external',name:'External',cwd:'/outside'});
+  h.click('[data-conversation-action="all"]'); await settle();
+  h.$('#sessionScopePicker').open = true; await settle();
+  h.input('#sessionScopeSearch', '/outside');
+  h.click('[data-conversation-scope]'); await settle();
+  assert.equal(h.$('#pinConversationDirectory').hidden, true);
+  assert.equal(h.$('#newBrowserSession').disabled, true);
+});
+
+test('fixed tasks switch between task conversations and recover when a saved session is unlinked', async t => {
+  const h = await harness(t);
+  h.data.requirements.push({...h.data.requirements[0], id:'second', name:'Second task'});
+  h.sessions.push({id:'second-session', name:'Second conversation', cwd:'/external', updated_at:1});
+  h.links.set('second', new Set(['second-session']));
+  await h.window.refresh(true); await settle();
+  h.click('[data-task-shortcut-pin="task"]');
+  h.click('[data-task-shortcut-pin="second"]');
+  h.click('[data-task-shortcut="task"]'); await settle();
+  assert.equal(h.currentSession().session, 'session-1');
+  h.click('[data-task-shortcut="second"]'); await settle();
+  assert.equal(h.currentSession().session, 'second-session');
+  h.click('[data-task-shortcut="task"]'); await settle();
+  assert.equal(h.currentSession().session, 'session-1');
+  h.links.get('task').clear();
+  h.click('[data-task-shortcut="task"]'); await settle();
+  assert.equal(h.$('#sessionBrowserEmpty').hidden, false);
+  assert.match(h.$('#sessionBrowserEmpty').textContent, /这里还没有对话/);
+  assert.equal(h.$('#taskConversationTools').hidden, false);
+});
+
+test('fixed tasks remain global, retain per-environment storage and hide archived or removed tasks', async t => {
+  const h = await harness(t);
+  h.click('[data-task-shortcut-pin="task"]');
+  await h.window.selectEnvironment('wsl-test', '/projects'); await settle();
+  assert(h.$('[data-task-shortcut="task"]'));
+  assert(h.$('[data-task-shortcut-pin="task"]'));
+  assert.equal(h.window.localStorage.getItem('workhub:pinned-tasks:v1:wsl-test'), null);
+  await h.window.selectEnvironment('local', '/projects'); await settle();
+  assert(h.$('[data-task-shortcut="task"]'));
+  h.data.requirements[0].name = 'Renamed task';
+  await h.window.refresh(true); await settle();
+  assert.match(h.$('[data-task-shortcut="task"]').textContent, /Renamed task/);
+  h.data.requirements[0].state = 'archived';
+  await h.window.refresh(true); await settle();
+  assert.equal(h.$('[data-task-shortcut="task"]'), null);
+  h.data.requirements[0].state = 'ready';
+  await h.window.refresh(true); await settle();
+  assert(h.$('[data-task-shortcut="task"]'));
+  h.data.requirements.shift();
+  await h.window.refresh(true); await settle();
+  assert.equal(h.$('[data-task-shortcut="task"]'), null);
+});
+
+test('compact conversation filters expose active choices, clear together and settings live beside refresh', async t => {
+  const h = await harness(t);
+  await h.navigate('/sessions');
+  assert.equal(h.$('.sidebar-guide'), null);
+  assert.equal(h.$('.sidebar nav [data-view="settings"]'), null);
+  assert(h.$('.sidebar-footer-actions #refreshControl + [data-view="settings"]'));
+  assert(h.$('#sessionScopeAll').closest('#sessionScopePicker'));
+  assert(h.$('#sessionDirectoryField').closest('#sessionFilterPicker'));
+  assert.equal(h.$('#sessionDirectoryField').hidden, false);
+  assert(h.$('#sessionBrowserArchived').closest('#sessionFilterPicker'));
+  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  h.click('#sessionBrowserArchived'); await settle();
+  assert.equal(h.$('#sessionFilterCount').textContent, '2');
+  assert.equal(h.$('#sessionFilterCount').hidden, false);
+  assert.match(h.$('#sessionActiveFilterLabel').textContent, /app.*已归档/);
+  h.click('#sessionClearFilters'); await settle();
+  assert.equal(h.$('#sessionDirectoryFilter').value, '');
+  assert.equal(h.$('#sessionBrowserArchived').checked, false);
+  assert.equal(h.$('#sessionFilterCount').hidden, true);
+  h.$('#sessionFilterPicker').open = true;
+  h.$('#sessionFilterPicker summary').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+  assert.equal(h.$('#sessionFilterPicker').open, false);
+  const settingsChanged = new Promise(resolve => h.window.addEventListener('hashchange', resolve, {once:true}));
+  h.click('.sidebar-settings'); await settingsChanged; await settle();
+  assert.equal(h.window.location.hash, '#/settings');
+  assert.equal(h.$('#settingsPage').hidden, false);
+});
+
+test('a late global shortcut response cannot replace a fresh list after switching environments and back', async t => {
+  const h = await harness(t);
+  let release;
+  h.setIntercept(url => /^\/api\/sessions\?(?:refresh=1)?$/.test(url) ? new Promise(resolve => {release = resolve;}) : undefined);
+  const pending = h.window.refreshConversationShortcuts(true); await settle();
+  h.setIntercept((url, options) => /^\/api\/sessions\?(?:refresh=1)?$/.test(url) ? {ok:true, json:async()=>({sessions:[{id:'session-1', name:options.headers['X-Environment-ID'] === 'wsl-test' ? 'Remote' : 'Fresh local', cwd:'/repo/app', pinned:true}]})} : undefined);
+  await h.window.selectEnvironment('wsl-test', '/projects'); await settle();
+  await h.window.selectEnvironment('local', '/projects'); await settle();
+  assert.match(h.window.eval('conversationItems()[0].name'), /Fresh local/);
+  release({ok:true, json:async()=>({sessions:[{id:'session-1', name:'Stale local', cwd:'/repo/app', pinned:true}]})});
+  await pending; await settle();
+  assert.match(h.window.eval('conversationItems()[0].name'), /Fresh local/);
+  assert.doesNotMatch(h.window.eval('conversationItems()[0].name'), /Stale local/);
+});
+
+test('project filters retain selection, distinguish directory changes and recover from empty results', async t => {
+  const h = await harness(t);
+  h.data.projects[0].worktrees[1].dirty = 3;
+  h.data.projects[1].error = 'Repository unavailable';
+  await h.navigate('/projects');
+  assert.equal(h.document.querySelectorAll('.project-list-item').length, 2);
+  assert.equal(h.$('.project-list-item [data-action]'), null);
+  assert.equal(h.$('.page-heading').hidden, true);
+  assert.equal(h.$('#stats').hidden, true);
+  assert(h.$('#panelToolbar [data-action="new-project"]'));
+  h.click('[data-action="project-filter"][data-filter="dirty"]');
+  assert.equal(h.document.querySelectorAll('.project-list-item').length, 1);
+  assert.equal(h.$('.project-list-item').dataset.id, 'app');
+  assert.match(h.$('#projectDetail').textContent, /有改动 3/);
+  h.click('[data-action="select-project"][data-id="app"]');
+  assert.equal(h.$('.project-workspace').dataset.pane, 'detail');
+  h.click('[data-action="select-project"][data-id="app"]');
+  assert.equal(h.$('#projectDetail h2').textContent, 'App');
+  h.click('[data-action="project-list"]');
+  assert.equal(h.$('.project-workspace').dataset.pane, 'list');
+  assert.equal(h.document.activeElement, h.$('.project-list-item'));
+  h.click('[data-action="project-filter"][data-filter="error"]');
+  assert.equal(h.$('.project-list-item').dataset.id, 'backend');
+  assert.match(h.$('#projectDetail').textContent, /Repository unavailable/);
+  assert.equal(h.$('[data-action="new-worktree"]').disabled, true);
+  h.input('#search', 'no match');
+  assert.match(h.$('.project-list-empty').textContent, /没有匹配的项目/);
+  h.click('.project-list-empty [data-action="project-filter"]');
+  assert.equal(h.$('[data-filter="all"]').getAttribute('aria-pressed'), 'true');
+  h.input('#search', '');
+  assert.equal(h.document.querySelectorAll('.project-list-item').length, 2);
+});
+
+test('project directory controls retain the exact worktree and compact zero-value Git details', async t => {
+  const h = await harness(t);
+  const tree = h.data.projects[0].worktrees[1];
+  Object.assign(tree, { upstream: 'origin/feature/task', sync_available: true, sync_ahead: 0, sync_behind: 0, compare_available: true, comparison_ref: 'main', ahead: 0, behind: 0 });
+  await h.navigate('/projects');
+  const row = h.$('[data-action="git-open"][data-path="/workspace/task/app"]').closest('tr');
+  assert.equal(row.querySelector('.project-sync-summary').textContent, 'origin/feature/task↑0↓0');
+  assert.equal(row.querySelector('.project-sync-counts').getAttribute('aria-label'), '待推送 0 个提交，待拉取 0 个提交');
+  assert.equal(row.querySelector('.project-local-status').textContent, '干净');
+  assert.equal(row.querySelector('.project-row-details').open, false);
+  assert.match(row.querySelector('.project-row-details').textContent, /与基线一致/);
+  h.click('[data-action="git-open"][data-path="/workspace/task/app"]'); await settle();
+  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  h.$('#gitDialog').close();
+  h.click('[data-project-open-primary][data-path="/workspace/task/app"]'); await settle();
+  assert.deepEqual(h.requests.filter(r => r.url === '/api/projects/app/open').at(-1).body, { tool: 'vscode', path: '/workspace/task/app' });
+  Object.assign(tree, {sync_ahead:2, sync_behind:3, requirements:[{id:'task',name:'很长的关联任务名称，悬停或聚焦仍然能够查看和打开完整任务'}]});
+  await h.window.refresh();
+  const updatedRow = () => h.$('[data-directory-path="/workspace/task/app"]');
+  assert.equal(updatedRow().querySelector('.project-sync-counts').textContent, '↑2↓3');
+  assert.match(updatedRow().querySelector('.project-sync-counts').title, /已分歧/);
+  assert.equal(updatedRow().querySelector('.project-local-status').textContent, '已提交');
+  assert.equal(updatedRow().querySelector('.project-local-status > span').title, '已有 2 个提交待推送');
+  const taskLink = updatedRow().querySelector('.project-linked-tasks button');
+  assert.equal(taskLink.title, tree.requirements[0].name);
+  assert.equal(taskLink.getAttribute('aria-label'), `打开任务 ${tree.requirements[0].name}`);
+  tree.dirty = 1;
+  await h.window.refresh();
+  assert.equal(updatedRow().querySelector('.project-local-status').textContent, '有改动 1已提交');
+  assert.equal(updatedRow().querySelector('.project-changes-link').dataset.path, tree.path);
+  tree.sync_available = false;
+  await h.window.refresh();
+  assert.equal(updatedRow().querySelector('.project-sync-counts'), null);
+  assert.match(updatedRow().querySelector('.project-sync-summary').textContent, /暂不可用/);
+  assert.equal(updatedRow().querySelector('.project-local-status').textContent, '有改动 1');
+});
+
+test('project directories identify their task, separate local and remote state and recover the selected task in place', async t => {
+  const h = await harness(t);
+  const tree = h.data.projects[0].worktrees[1];
+  Object.assign(tree, {requirements:[{id:'task',name:'Billing'}], missing:true, upstream:'origin/feature/task', sync_available:true});
+  await h.navigate('/projects');
+  const rows = h.document.querySelectorAll('[data-directory-path]');
+  assert.equal(rows[0].querySelector('.project-directory-name').textContent, '主工作目录');
+  assert.equal(rows[1].querySelector('.project-directory-name').textContent, 'Billing');
+  assert.deepEqual([...h.document.querySelectorAll('#projectDetail th')].map(n => n.textContent), ['工作目录','远程同步','关联任务','本地改动','操作']);
+  assert.doesNotMatch(rows[1].querySelector('.project-branch-cell').textContent, /已同步/);
+  h.click('.project-directory-filters [data-filter="issues"]');
+  assert.equal(h.document.querySelectorAll('[data-directory-path]').length, 1);
+  h.click('.project-directory-recovery [data-action="change-task-directory"]'); await settle();
+  assert.equal(h.$('#taskDirectoryDialog').open, true);
+  assert.match(h.$('#taskDirectoryCurrent').textContent, /App.*\/workspace\/task\/app/);
+  h.change('#taskDirectoryPicker-app-mode', 'project');
+  await h.submit('#taskDirectoryForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'PUT').body, {project_id:'app',mode:'project'});
+  assert.equal(h.data.requirements[0].members[0].path, '/repo/app');
+  assert.equal(tree.missing, true);
+  assert(!h.requests.some(r => r.options.method === 'DELETE'));
+});
+
+test('project recovery explains archived and unassociated directories and retains a per-project issue filter', async t => {
+  const h = await harness(t);
+  const tree = h.data.projects[0].worktrees[1];
+  Object.assign(tree, {requirements:[{id:'archived',name:'Archived'}], missing:true});
+  await h.navigate('/projects');
+  assert.equal(h.$('.project-directory-recovery [data-action="change-task-directory"]').disabled, true);
+  assert.match(h.$('.project-directory-recovery').textContent, /取消归档后可更换目录/);
+  tree.requirements = [];
+  await h.window.refresh();
+  assert.equal(h.$('.project-directory-recovery [data-action="change-task-directory"]'), null);
+  assert(h.$('.project-directory-recovery [data-action="new-worktree"]'));
+  h.click('.project-directory-filters [data-filter="issues"]');
+  h.click('[data-action="select-project"][data-id="backend"]');
+  assert.equal(h.$('.project-directory-filters [data-filter="all"]').getAttribute('aria-pressed'), 'true');
+  h.click('[data-action="select-project"][data-id="app"]');
+  assert.equal(h.$('.project-directory-filters [data-filter="issues"]').getAttribute('aria-pressed'), 'true');
+  tree.missing = false;
+  await h.window.refresh();
+  assert.match(h.$('#projectDetail').textContent, /没有需要处理的工作目录/);
+  h.click('.project-detail-empty [data-action="project-directory-filter"]');
+  assert.equal(h.document.querySelectorAll('[data-directory-path]').length, 2);
+});
+
+test('a shared directory recovery only changes the task selected beside its error', async t => {
+  const h = await harness(t);
+  const original = h.data.requirements[0];
+  const second = {...original, id:'second', name:'Second task', members:original.members.map(m => ({...m}))};
+  h.data.requirements.push(second);
+  Object.assign(h.data.projects[0].worktrees[1], {missing:true, requirements:[{id:'task',name:'Billing'},{id:'second',name:'Second task'}]});
+  h.setIntercept((url, options, body) => {
+    if (url === '/api/requirements/second/projects/app' && options.method === 'PUT') {
+      Object.assign(second.members[0], {mode:body.mode,path:'/repo/app',worktree:h.data.projects[0].worktrees[0]});
+      return {ok:true,json:async()=>structuredClone(second)};
+    }
+  });
+  await h.navigate('/projects');
+  h.click('.project-task-recovery [data-action="change-task-directory"][data-id="second"]'); await settle();
+  h.change('#taskDirectoryPicker-app-mode', 'project');
+  await h.submit('#taskDirectoryForm');
+  assert.equal(original.members[0].path, '/workspace/task/app');
+  assert.equal(second.members[0].path, '/repo/app');
+  assert(h.requests.some(r => r.url === '/api/requirements/second/projects/app' && r.options.method === 'PUT'));
+  assert(!h.requests.some(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'PUT'));
+});
+
+test('returning from a task through browser history restores list filters, scroll and the original task focus', async t => {
+  const h = await harness(t);
+  h.data.projects[0].worktrees[1].dirty = 2;
+  await h.navigate('/requirements');
+  h.input('#search', 'Billing');
+  h.change('#taskStatusFilter', 'dirty');
+  h.click('#archiveFilter');
+  h.$('#taskListContent').scrollTop = 260;
+  h.click('[data-action="open-requirement"][data-id="task"]'); await settle();
+  assert(h.$('.task-project-list'));
+  const back = new Promise(resolve => h.window.addEventListener('popstate', resolve, {once:true}));
+  h.window.history.back(); await back; await settle();
+  assert.equal(h.$('#search').value, 'Billing');
+  assert.equal(h.$('#taskStatusFilter').value, 'dirty');
+  assert.equal(h.$('#archiveFilter').checked, true);
+  assert.equal(h.$('#taskListContent').scrollTop, 260);
+  assert.equal(h.document.activeElement.dataset.id, 'task');
+  assert.equal(h.document.activeElement.dataset.environment, 'local');
+  await h.window.refresh(true);
+  assert.equal(h.$('#taskListContent').scrollTop, 260);
+  await h.navigate('/projects');
+  h.input('#search', 'Backend');
+  await h.navigate('/requirements');
+  assert.equal(h.$('#search').value, 'Billing');
+  assert.equal(h.$('#taskListContent').scrollTop, 260);
+});
+
+test('empty search states offer a direct reset without confusing an empty project with a pending scan', async t => {
+  const h = await harness(t);
+  await h.navigate('/requirements');
+  h.input('#search', 'not-found');
+  h.click('[data-action="clear-task-filters"]');
+  assert.equal(h.$('#search').value, '');
+  assert.equal(h.$('#taskStatusFilter').value, 'all');
+  assert.equal(h.document.activeElement, h.$('#search'));
+  await h.navigate('/projects');
+  h.input('#search', 'not-found');
+  h.click('[data-action="clear-project-search"]');
+  assert.equal(h.$('#search').value, '');
+  assert.equal(h.document.querySelectorAll('.project-list-item').length, 2);
+  h.data.projects[0].worktrees = [];
+  h.data.projects[0].refreshing = false;
+  await h.window.refresh();
+  assert.match(h.$('.project-detail-empty').textContent, /尚未发现工作目录/);
+  assert(h.$('.project-detail-empty [data-action="project-refresh"]'));
+  h.data.projects[0].refreshing = true;
+  h.data.projects[0].status_updated_at = '';
+  await h.window.refresh();
+  assert.match(h.$('.project-detail-empty').textContent, /正在发现工作目录/);
+});
+
+test('sidebar refresh status stays compact and retains its detailed explanation', async t => {
+  const h = await harness(t);
+  h.data.status_refreshing = true;
+  await h.window.refresh();
+  assert.equal(h.$('#syncText').textContent, '更新中…');
+  assert.match(h.$('#syncText').title, /当前显示最近结果/);
+  assert.equal(h.$('#syncDot').classList.contains('updating'), true);
+  h.data.status_refreshing = false;
+  await h.window.refresh();
+  assert.equal(h.$('#syncText').textContent, '已更新');
+  assert.equal(h.$('#syncDot').classList.contains('updating'), false);
+});
+
+test('project panes resize with pointer and keyboard, retain their width and respect narrow layouts', async t => {
+  const h = await harness(t);
+  h.data.projects[0].worktrees[1].dirty = 3;
+  await h.navigate('/projects');
+  const originalBounds = h.window.HTMLElement.prototype.getBoundingClientRect;
+  h.window.HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.classList.contains('project-workspace')) return { width: 1000 };
+    if (this.id === 'projectListPane') return { width: parseFloat(h.$('#content').style.getPropertyValue('--project-list-width')) || 248 };
+    return originalBounds.call(this);
+  };
+  assert.equal(h.$('.project-list-item .lucide-chevron-right'), null);
+  assert.equal(h.$('.project-change-indicator').textContent, '1 个目录有改动');
+  assert.match(h.$('.project-change-indicator').title, /1 个工作目录/);
+  const pointer = (target, type, clientX) => {
+    const event = new h.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX, button: 0 });
+    Object.defineProperty(event, 'pointerId', { value: 7 });
+    target.dispatchEvent(event);
+  };
+  pointer(h.$('[data-project-resize]'), 'pointerdown', 248);
+  pointer(h.document, 'pointermove', 350);
+  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '350px');
+  h.window.render(); // A real data change can replace the markup while dragging.
+  pointer(h.document, 'pointermove', 390);
+  pointer(h.document, 'pointerup', 390);
+  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '390px');
+  assert.equal(h.window.localStorage.getItem('workhub:project-list-width:v1'), '390');
+  assert.equal(h.$('.project-workspace').hasAttribute('data-resizing'), false);
+  const key = (key, shiftKey = false) => h.$('[data-project-resize]').dispatchEvent(new h.window.KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true }));
+  key('ArrowRight');
+  assert.equal(h.$('[data-project-resize]').getAttribute('aria-valuenow'), '400');
+  key('ArrowLeft', true);
+  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '360px');
+  key('Home');
+  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '200px');
+  key('End');
+  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '632px');
+  await h.navigate('/requirements');
+  await h.navigate('/projects');
+  assert.equal(h.$('[data-project-resize]').getAttribute('aria-valuenow'), '632');
+  Object.defineProperty(h.window, 'innerWidth', { value: 800, configurable: true });
+  h.window.dispatchEvent(new h.window.Event('resize'));
+  key('Home');
+  assert.equal(h.window.localStorage.getItem('workhub:project-list-width:v1'), '632');
+  assert.equal(h.requests.filter(r => r.url.endsWith('/open')).length, 0);
+});
+
+test('task goals save independently and the edit draft survives a polling refresh', async t => {
+  const h = await harness(t);
+  h.click('.task-info [data-action="edit-task"]');
+  h.input('#taskEditName', 'Order approval'); h.input('#taskEditDescription', 'Complete the cross-project workflow.');
+  await h.window.refresh();
+  assert.equal(h.$('#taskEditName').value, 'Order approval');
+  assert.equal(h.$('#taskEditDescription').value, 'Complete the cross-project workflow.');
+  await h.submit('#taskEditForm');
+  const request = h.requests.find(r => r.url === '/api/requirements/task' && r.options.method === 'PATCH');
+  assert.deepEqual(request.body, {name:'Order approval', description:'Complete the cross-project workflow.'});
+  assert.equal(h.$('#taskEditDialog').open, false);
+  assert.equal(h.$('#pageTitle').textContent, 'Order approval');
+  assert.equal(h.$('.task-project-path').textContent, '/workspace/task/app');
+});
+
+test('a partially prepared task keeps ready project controls and creation directories usable', async t => {
+  const h = await harness(t, false);
+  h.data.requirements[0].state = 'partial';
+  h.data.requirements[0].has_workspace = false;
+  h.data.requirements[0].members.push({project_id:'backend',project_name:'Backend',mode:'new',path:'/workspace/task/backend',state:'failed',error:'fixture failure'});
+  await h.window.refresh();
+  assert.equal(h.$('[data-action="git-open"][data-id="app"]').disabled, false);
+  assert.equal(h.$('[data-action="workspace-terminal"][data-id="app"]').disabled, false);
+  assert.equal(h.$('[data-action="retry"]').dataset.project, 'backend');
+  await h.openConversations('task'); h.click('#newBrowserSession');
+  assert.equal(h.currentSession().target.cwd, '/workspace/task/app');
+  assert.deepEqual(Array.from(h.currentSession().target.additional_directories), []);
+  assert.equal(h.$('#sessionBrowserAdditionalField').hidden, true);
+});
+
+test('changing and detaching a task project use the selected project and retain explicit conversation references', async t => {
+  const h = await harness(t);
+  h.click('[data-action="change-task-directory"][data-project="app"]'); await settle();
+  assert.match(h.$('#taskDirectoryCurrent').textContent, /\/workspace\/task\/app/);
+  h.change('#taskDirectoryPicker-app-mode', 'project');
+  assert.match(h.$('#taskDirectoryPreview').textContent, /\/repo\/app/);
+  await h.submit('#taskDirectoryForm');
+  assert.equal(h.$('#taskDirectoryDialog').open, false);
+  assert.equal(h.$('.task-project-path').textContent, '/repo/app');
+  await h.openConversations('task');
+  assert(h.$('[data-conversation-session="session-1"]'));
+  await h.leaveConversations();
+  h.click('[data-action="remove-task-project"][data-project="app"]'); await settle();
+  assert.equal(h.data.requirements[0].members.length, 0);
+  assert.match(h.$('#content').textContent, /尚未关联项目/);
+  assert(h.requests.some(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'DELETE'));
+  assert(h.links.get('task').has('session-1'));
+});
+
+test('task conversations exclude directory-only matches until linked and unlinking preserves the global session', async t => {
+  const h = await harness(t);
+  h.sessions.push({id:'directory-only',name:'Another task in the same directory',cwd:'/workspace/task/app'});
+  await h.openConversations('task');
+  assert.equal(h.$('[data-conversation-session="directory-only"]'), null);
+  h.click('#linkTaskConversation'); await settle();
+  const link = [...h.document.querySelectorAll('[data-session-action="link"]')].find(b => b.dataset.session === 'directory-only');
+  link.click(); await settle();
+  assert(h.$('[data-conversation-session="directory-only"]'));
+  h.click('[data-conversation-unlink="directory-only"]'); await settle();
+  assert.equal(h.$('[data-conversation-session="directory-only"]'), null);
+  assert(h.sessions.some(s => s.id === 'directory-only'));
+  assert(!h.requests.some(r => r.url.endsWith('/chat/stop')));
+});
+
+for (const readOnly of [true, false]) test(`split conversation actions preserve task scope and creation permissions in ${readOnly ? 'read-only' : 'interactive'} mode`, async t => {
+  const h = await harness(t, readOnly);
+  await h.openConversations('task');
+  assert(h.$('.session-browser-list-heading #linkTaskConversation'));
+  assert(h.$('.session-browser-list-heading #newBrowserSession'));
+  assert.equal(h.$('.task-conversation-tools'), null);
+  assert.equal(h.$('#newBrowserSession').disabled, readOnly);
+  assert.equal(h.$('#newBrowserSession').getAttribute('aria-label'), '新建对话');
+  assert.equal(h.document.querySelectorAll('#sessionActionPicker [data-conversation-action="new"]').length, 3);
+  for (const button of h.document.querySelectorAll('[data-conversation-placement]')) {
+    assert.equal(button.disabled, readOnly || button.dataset.conversationPlacement === 'split');
+  }
+  assert.equal(h.$('#sessionActionPicker').hidden, false);
+  h.click('#sessionActionPicker summary'); await settle();
+  h.click('#linkTaskConversation'); await settle();
+  assert.equal(h.$('#sessionActionPicker').open, false);
+  assert.equal(h.$('#sessionDialog').open, true);
+  assert.equal(h.$('#sessionDialogTitle').textContent, '关联已有对话');
+  h.click('#sessionDialog .close-dialog'); await settle();
+  h.click('#sessionActionPicker summary'); await settle();
+  h.$('#sessionActionPicker summary').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+  assert.equal(h.$('#sessionActionPicker').open, false);
+  assert.equal(h.document.activeElement, h.$('#sessionActionPicker summary'));
+  if (!readOnly) {
+    h.click('#sessionActionPicker summary'); await settle();
+    h.click('#newBrowserSession'); await settle();
+    assert.equal(h.$('#sessionActionPicker').open, false);
+    h.change('#sessionBrowserNewDirectory', '/workspace/task/app'); await settle();
+    assert.equal(h.currentSession().target.task_id, 'task');
+  }
+  h.click('[data-conversation-action="all"]'); await settle();
+  assert.equal(h.$('#sessionActionPicker').hidden, false);
+  assert.equal(h.$('#taskConversationTools').hidden, true);
+  assert.equal(h.$('#sessionActionPicker').open, false);
+});
+
+for (const navigation of [false,true]) test(`new conversation placement keeps task association separate in ${navigation ? 'shared navigation' : 'conversation pane'}`, async t => {
+  const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  if (navigation) post({type:'workhub:tab-navigation'});
+  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',directory:'/workspace/task/app',pane:navigation ? 'list' : 'detail'}}});
+  await settle(); await settle();
+  post(navigation ? {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',canSplit:true} : {type:'workhub:parallel-layout',canSplit:true});
+  for (const placement of ['tab','split','current']) {
+    h.click('#sessionActionPicker summary');
+    h.click(`[data-conversation-placement="${placement}"]`); await settle();
+    const opened = host.messages.findLast(message=>message.type==='workhub:tab-open');
+    assert.equal(opened.placement,placement);
+    assert.equal(opened.create,true,'all new conversation placements share the direct creation flow');
+    assert.equal(opened.snapshot.conversation.scope.id,'task');
+    assert.equal(opened.snapshot.conversation.directory,'/workspace/task/app');
+    assert.equal(opened.snapshot.conversation.creating,true);
+    assert.equal(opened.snapshot.conversation.selected,null);
+    assert.equal(h.$('#sessionActionPicker').open,false);
+    assert.equal(h.window.WorkHubTab.snapshot().conversation.creating,false,'source selection changes only when the host accepts placement');
+  }
+  h.click('#newBrowserSession'); await settle();
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-open').placement,'tab','explicit choices do not alter the default');
+  const before = host.messages.filter(message=>message.type==='workhub:tab-open').length;
+  h.click('#sessionActionPicker summary'); h.click('#linkTaskConversation'); await settle();
+  assert.equal(h.$('#sessionDialog').open,true);
+  assert.equal(host.messages.filter(message=>message.type==='workhub:tab-open').length,before,'association does not create a conversation');
+  h.click('#sessionDialog .close-dialog'); await settle();
+  post(navigation ? {type:'workhub:conversation-group',sessions:['a','b','c'],selected:'a',full:true,canSplit:false} : {type:'workhub:parallel-layout',canSplit:false});
+  assert.equal(h.$('[data-conversation-placement="split"]').disabled,true);
+  assert.equal(h.$('[data-conversation-placement="tab"]').disabled,false);
+  assert.equal(h.$('[data-conversation-placement="current"]').disabled,false);
+  assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
+});
+
+test('task and project creation entries share the direct page with their own directory scope', async t => {
+  const host=tabHost(t), h=await harness(t,false,{tabHost:host.window});
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/requirements/task',environment:'local'}}}));
+  await settle(); await settle();
+  h.click('[data-session-action="new"][data-requirement="task"]'); await settle();
+  let opened=host.messages.findLast(message=>message.type==='workhub:tab-open');
+  assert.equal(opened.create,true);
+  assert.equal(opened.snapshot.conversation.scope.id,'task');
+  h.click('[data-action="workspace-conversation-new"][data-id="app"][data-path="/workspace/task/app"]'); await settle();
+  opened=host.messages.findLast(message=>message.type==='workhub:tab-open');
+  assert.equal(opened.create,true);
+  assert.equal(opened.snapshot.terminal.taskID,'task');
+  assert.equal(opened.snapshot.terminal.projectID,'app');
+  assert.equal(opened.snapshot.conversation.directory,'/workspace/task/app');
+  await h.navigate('/projects');
+  h.click('[data-action="select-project"][data-id="backend"]'); await settle();
+  h.click('[data-action="workspace-conversation-new"][data-id="backend"]'); await settle();
+  opened=host.messages.findLast(message=>message.type==='workhub:tab-open');
+  assert.equal(opened.snapshot.terminal.taskID,undefined,'an unrelated selected task must not claim this project');
+  assert.equal(opened.snapshot.conversation.scope.kind,'project');
+  assert.equal(opened.snapshot.conversation.scope.id,'backend');
+  assert.equal(h.requests.some(request=>request.options.method==='POST' && /\/chat$|\/terminals$/.test(request.url)),false);
+});
+
+test('new conversation page exposes inline form switching only while creating and keeps the selected directory', async t => {
+  const host=tabHost(t), h=await harness(t,false,{tabHost:host.window});
+  const post=snapshot=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot}}));
+  post({route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},creating:true,selected:null,pane:'detail'}});
+  await settle(); await settle();
+  assert.equal(h.$('#conversationCreationKind').hidden,false);
+  assert.equal(h.document.querySelector('[role="dialog"]')?.textContent.includes('选择交互形式') || false,false);
+  h.change('#sessionBrowserNewDirectory','/workspace/task/app'); await settle();
+  h.input('#sessionChatInput','保留我的草稿');
+  h.click('[data-conversation-kind="terminal"]'); await settle();
+  const switched=host.messages.findLast(message=>message.type==='workhub:conversation-kind');
+  assert.equal(switched.kind,'terminal');
+  assert.equal(switched.snapshot.terminal.taskID,'task');
+  assert.equal(switched.snapshot.terminal.projectID,'app');
+  assert.equal(switched.snapshot.conversation.creationDirectory,'/workspace/task/app');
+  assert.equal(switched.snapshot.conversation.directory,'', 'changing forms preserves the list filter independently of the draft directory');
+  assert.equal(h.$('#sessionChatInput').value,'保留我的草稿');
+  assert.equal(h.requests.some(request=>request.options.method==='POST' && /\/chat$|\/terminals$/.test(request.url)),false);
+  post({route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}});
+  await settle(); await settle();
+  assert.equal(h.$('#conversationCreationKind').hidden,true);
+});
+
+test('one click opens a ready composer, remembers directory per scope and restores an explicit draft directory', async t => {
+  const host = tabHost(t), h = await harness(t, false, {tabHost:host.window});
+  const post = conversation => h.window.dispatchEvent(new h.window.MessageEvent('message', {source:host.window, origin:'http://localhost:4317', data:{type:'workhub:tab-restore', active:true, snapshot:{route:'/sessions', environment:'local', conversation}}}));
+  post({scope:{kind:'task', id:'task'}, creating:true, selected:null});
+  await settle(); await settle();
+  assert.equal(h.currentSession().target.cwd, '/workspace/task');
+  assert.equal(h.$('#sessionHistoryPanel').hidden, false);
+  assert.equal(h.$('#sessionBrowserAdditionalField').open, false);
+  assert.equal(h.$('#sessionBrowserNewDirectory').hidden, true);
+  h.click('#sessionBrowserDirectoryChoices [data-creation-choice="/workspace/task/app"]'); await settle();
+  assert.equal(h.$('#sessionBrowserDirectoryChoices [aria-pressed="true"]').dataset.creationChoice, '/workspace/task/app');
+  const saved = h.window.WorkHubTab.snapshot().conversation;
+  assert.equal(saved.creationDirectory, '/workspace/task/app');
+  post({scope:{kind:'task', id:'task'}, creating:true, selected:null});
+  await settle(); await settle();
+  assert.equal(h.currentSession().target.cwd, '/workspace/task/app', 'a new draft remembers the last valid directory');
+  post({scope:{kind:'project', id:'backend'}, creating:true, selected:null});
+  await settle(); await settle();
+  assert.equal(h.currentSession().target.cwd, '/repo/backend', 'another scope does not inherit the task directory');
+  post({...saved, creationDirectory:'/missing'});
+  await settle(); await settle();
+  assert.equal(h.currentSession().target.cwd, '/workspace/task/app', 'a removed directory falls back to a valid choice');
+  post({...saved, creationDirectory:'/workspace/task'});
+  await settle(); await settle();
+  assert.equal(h.currentSession().target.cwd, '/workspace/task', 'an explicit draft overrides remembered preferences');
+  assert.equal(h.requests.some(r => r.url === '/api/sessions/new'), false, 'opening a composer does not send a message');
+});
+
+test('new conversation access includes only the additional projects explicitly selected', async t => {
+  const h = await harness(t, false);
+  h.data.requirements[0].members.push({project_id:'backend',project_name:'Backend',mode:'project',path:'/repo/backend',state:'ready',worktree:h.data.projects[1].worktrees[0]});
+  await h.window.refresh();
+  await h.openConversations('task'); h.click('#newBrowserSession');
+  h.change('#sessionBrowserNewDirectory', '/workspace/task/app');
+  assert.equal(h.$('#sessionBrowserAdditionalField').hidden, false);
+  assert.deepEqual(Array.from(h.currentSession().target.additional_directories), ['/repo/backend']);
+  h.click('[data-additional-directory="/repo/backend"]');
+  assert.deepEqual(Array.from(h.currentSession().target.additional_directories), []);
+  assert.equal(h.document.querySelectorAll('[data-additional-directory="/workspace/task"]').length, 0);
+});
+
+test('creating from the task list opens the saved task without a transient not-found page', async t => {
+  const h = await harness(t);
+  await h.navigate('/requirements');
+  const renders = [];
+  const render = h.window.render;
+  h.window.render = () => { render(); renders.push(h.$('#content').textContent); };
+  h.window.openRequirement(); await settle();
+  h.input('#requirementName', 'Reuse a checkout');
+  h.click('#projectPicker-app-selected');
+  h.change('#projectPicker-app-mode', 'project');
+  await h.submit('#requirementForm'); await settle();
+  assert.equal(h.$('#pageTitle').textContent, 'Reuse a checkout');
+  assert(!renders.some(text => text.includes('这个任务不存在')));
+});
+
+
+test('all conversations include environment tags and duplicate IDs open in their own environment without switching', async t => {
+  const h = await harness(t, false);
+  h.environments.environments.push({id: 'remote', name: 'WSL · Ubuntu'});
+  await h.window.loadEnvironments();
+  h.setIntercept((url, options) => {
+    if (url.startsWith('/api/sessions?') && options.headers['X-Environment-ID'] === 'remote') return {ok: true, json: async () => ({sessions: [{...h.sessions[0], name: 'WSL review'}]})};
+  });
+  await h.navigate('/sessions');
+  const entries = [...h.document.querySelectorAll('[data-conversation-session]')];
+  assert.equal(entries.length, 2);
+  assert.notEqual(entries[0].dataset.conversationSession, entries[1].dataset.conversationSession);
+  assert.match(h.$('[data-conversation-session][data-environment="local"]').textContent, /本机/);
+  assert.match(h.$('[data-conversation-session][data-environment="remote"]').textContent, /WSL · Ubuntu/);
+  h.click('[data-conversation-session][data-environment="remote"]'); await settle();
+  assert.equal(h.currentSession().environment, 'remote');
+  assert.equal(h.currentSession().session, 'session-1');
+  assert.equal(h.$('#projectEnvironment').value, 'local');
+  assert.equal(h.window.location.search, '');
+  assert(h.requests.some(r => r.url.endsWith('/history') && r.options.headers['X-Environment-ID'] === 'remote'));
+  h.input('#sessionChatInput', 'continue remotely'); await h.submit('#sessionChatForm');
+  assert(h.requests.some(r => r.url.endsWith('/chat') && r.options.method === 'POST' && r.options.headers['X-Environment-ID'] === 'remote'));
+  h.change('#sessionsEnvironment', 'remote'); await settle();
+  assert.equal(h.document.querySelectorAll('[data-conversation-session]').length, 1);
+  assert.equal(h.$('[data-conversation-session]').dataset.environment, 'remote');
+  assert.equal(h.$('#projectEnvironment').value, 'local');
+  h.click('[data-conversation-action="clear-filters"]'); await settle();
+  assert.equal(h.$('#sessionsEnvironment').value, '');
+  assert.equal(h.document.querySelectorAll('[data-conversation-session]').length, 2);
+});
+
+test('environment filtering rejects late results and a failed environment retains successful results', async t => {
+  const h = await harness(t);
+  h.environments.environments.push({id: 'remote', name: 'WSL'});
+  await h.window.loadEnvironments();
+  const pending = [];
+  h.setIntercept((url, options) => {
+    if (url.startsWith('/api/sessions?') && options.headers['X-Environment-ID'] === 'remote') return new Promise(resolve => pending.push(resolve));
+  });
+  await h.navigate('/sessions');
+  assert(h.$('[data-conversation-session][data-environment="local"]'));
+  h.change('#sessionsEnvironment', 'local'); await settle();
+  for (const resolve of pending) resolve({ok: true, json: async () => ({sessions: [{id: 'late', name: 'Late remote', cwd: '/remote'}]})});
+  await settle();
+  assert.doesNotMatch(h.$('#sessionBrowserList').textContent, /Late remote/);
+  h.setIntercept((url, options) => url.startsWith('/api/sessions?') && options.headers['X-Environment-ID'] === 'remote' ? {ok: false, json: async () => ({error: 'offline fixture'})} : undefined);
+  h.change('#sessionsEnvironment', ''); await settle();
+  assert(h.$('[data-conversation-session][data-environment="local"]'));
+  assert.match(h.$('#sessionBrowserError').textContent, /WSL.*offline fixture/);
+  h.setIntercept(null); h.click('[data-conversation-action="refresh"]'); await settle();
+  assert.equal(h.$('#sessionBrowserError').hidden, true);
+});
+
+test('cross-environment scopes, task shortcuts and creation targets preserve ownership without changing project environment', async t => {
+  const h = await harness(t, false);
+  h.environments.environments.push({id: 'remote', name: 'WSL'});
+  const remoteTask = {...structuredClone(h.data.requirements[0]), id: 'remote-task', name: 'Remote task', environment_id: 'remote', environment_name: 'WSL'};
+  const remoteData = {...h.data, requirements: [remoteTask]};
+  h.setIntercept((url, options) => {
+    if (url.startsWith('/api/task-inventory')) return {ok: true, json: async () => ({requirements: [...h.data.requirements.map(q => ({...q, environment_id: 'local'})), remoteTask], environments: h.environments.environments, project_count: 4})};
+    if (url === '/api/state' && options.headers['X-Environment-ID'] === 'remote') return {ok: true, json: async () => remoteData};
+    if (url.startsWith('/api/sessions?') && options.headers['X-Environment-ID'] === 'remote') return {ok: true, json: async () => ({sessions: [{id: 'remote-session', name: 'Remote task session', cwd: '/workspace/task/app'}]})};
+  });
+  await h.window.loadEnvironments(); await h.window.refresh(true); await h.navigate('/sessions');
+  h.input('#sessionScopeSearch', 'Remote task');
+  const scope = h.$('[data-conversation-scope]');
+  assert.equal(JSON.parse(scope.dataset.conversationScope).environment, 'remote');
+  scope.click(); await settle();
+  assert.equal(h.currentSession().environment, 'remote');
+  const pin = [...h.document.querySelectorAll('[data-task-shortcut-pin]')].find(b => b.textContent.includes('Remote task'));
+  assert(pin); pin.click(); await settle();
+  const shortcut = [...h.document.querySelectorAll('[data-task-shortcut]')].find(b => b.textContent.includes('Remote task'));
+  assert(shortcut); shortcut.click(); await settle();
+  assert.equal(h.currentSession().environment, 'remote');
+  h.click('#newBrowserSession'); await settle();
+  const choices = [...h.$('#sessionBrowserNewDirectory').options];
+  assert(choices.some(o => o.textContent.includes('WSL')));
+  h.change('#sessionBrowserNewDirectory', choices.find(o => o.value.includes('/workspace/task/app')).value); await settle();
+  assert.equal(h.currentSession().environment, 'remote');
+  assert.equal(h.$('#projectEnvironment').value, 'local');
+  assert.equal(h.$('#linkTaskConversation').dataset.environment, 'remote');
+});
+
+test('cross-environment assistant callbacks and read markers remain isolated for the same session ID', async t => {
+  const h = await harness(t, false);
+  h.environments.environments.push({id: 'remote', name: 'WSL'});
+  await h.window.loadEnvironments();
+  let opened;
+  h.window.WorkHubAssistant = {open(options) {opened = options;}, close() {}, updateSession() {}};
+  h.setIntercept((url, options) => url.startsWith('/api/sessions?') && options.headers['X-Environment-ID'] === 'remote' ? {ok: true, json: async () => ({sessions: [{...h.sessions[0], name: 'Remote duplicate'}]})} : undefined);
+  await h.navigate('/sessions');
+  h.click('[data-conversation-session][data-environment="remote"]'); await settle();
+  assert.equal(opened.environment, 'remote');
+  await opened.request('/api/sessions/session-1/chat', {method: 'POST', body: '{}'});
+  assert.equal(h.requests.at(-1).options.headers['X-Environment-ID'], 'remote');
+  opened.managed({...h.sessions[0], name: 'Remote renamed'}, 'rename');
+  assert.match(h.$('[data-conversation-session][data-environment="remote"]').textContent, /Remote renamed/);
+  assert.doesNotMatch(h.$('[data-conversation-session][data-environment="local"]').textContent, /Remote renamed/);
+  const localKey = 'workhub:session-read:' + JSON.stringify(['local', 'session-1']);
+  const remoteKey = 'workhub:session-read:' + JSON.stringify(['remote', 'session-1']);
+  assert(h.window.localStorage.getItem(localKey));
+  assert(h.window.localStorage.getItem(remoteKey));
+  const localRead = h.window.localStorage.getItem(localKey);
+  opened.activity('session-1', {id: 'remote-run', status: 'completed', busy: false, turn_id: 'remote-turn'});
+  assert.equal(h.window.localStorage.getItem(localKey), localRead);
+  assert.doesNotMatch(h.$('[data-conversation-session][data-environment="local"]').textContent, /有新消息/);
+});
+
+
+test('polling keeps the selected remote conversation while another environment responds first', async t => {
+  const h = await harness(t);
+  h.environments.environments.push({id: 'remote', name: 'WSL'});
+  await h.window.loadEnvironments();
+  let delay = false;
+  const pending = [];
+  h.setIntercept((url, options) => {
+    if (!url.startsWith('/api/sessions?') || options.headers['X-Environment-ID'] !== 'remote') return;
+    const response = {ok: true, json: async () => ({sessions: [{id: 'remote-session', name: 'Remote selected', cwd: '/remote'}]})};
+    return delay ? new Promise(resolve => pending.push(() => resolve(response))) : response;
+  });
+  await h.navigate('/sessions');
+  h.click('[data-conversation-session][data-environment="remote"]'); await settle();
+  assert.equal(h.currentSession().environment, 'remote');
+  delay = true;
+  const refresh = h.window.refreshSessionWorkspace(true); await settle();
+  assert.equal(h.currentSession().environment, 'remote');
+  assert.equal(h.currentSession().session, 'remote-session');
+  pending.forEach(resolve => resolve()); await refresh; await settle();
+  assert.equal(h.currentSession().environment, 'remote');
+  assert.equal(h.currentSession().session, 'remote-session');
+});
+
+test('conversation status filters combine with search and react to activity without changing the open chat', async t => {
+  const h = await harness(t, false);
+  h.window.WorkHubAssistant = {open() {}, close() {}};
+  h.sessions[0].chat_status = 'running';
+  h.sessions.push({id:'waiting', name:'Approval needed', cwd:'/repo/backend', chat_status:'waiting'}, {id:'failed', name:'Failed check', cwd:'/external', chat_status:'failed'});
+  await h.navigate('/sessions');
+  const selected = h.currentSession().session;
+  h.click('[data-conversation-status="running"]');
+  assert.equal(h.document.querySelectorAll('[data-conversation-session]').length, 1);
+  assert.equal(h.$('[data-conversation-session]').dataset.conversationSession, 'session-1');
+  assert.equal(h.$('[data-status-count="running"]').textContent, '1');
+  assert.equal(h.$('[data-status-count="waiting"]').textContent, '1');
+  h.input('#sessionBrowserSearch', 'Backend');
+  assert.match(h.$('#sessionBrowserList').textContent, /没有匹配的对话/);
+  assert.equal(h.$('#sessionSearchClear').hidden, false);
+  h.click('[data-conversation-status="waiting"]');
+  assert.equal(h.$('[data-conversation-session]').dataset.conversationSession, 'waiting');
+  assert.equal(h.currentSession().session, selected);
+  h.window.browserSessionActivity('waiting', {id:'approval', status:'completed', busy:false, turn_id:'done'});
+  assert.equal(h.$('[data-conversation-session]'), null);
+  assert.match(h.$('#sessionBrowserList').textContent, /清除搜索与筛选/);
+  h.click('[data-conversation-action="reset-list"]'); await settle();
+  assert.equal(h.$('#sessionBrowserSearch').value, '');
+  assert.equal(h.$('[data-conversation-status="all"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(h.document.querySelectorAll('[data-conversation-session]').length, 3);
+  assert.equal(h.currentSession().session, selected);
+  assert.equal(h.document.activeElement.id, 'sessionBrowserSearch');
+  h.click('[data-conversation-status="unread"]');
+  assert.equal(h.$('[data-conversation-session]').dataset.conversationSession, 'waiting');
+  assert(h.$('.session-browser-unread-dot'));
+  assert.doesNotMatch(h.$('#sessionNavigationStatus').getAttribute('aria-label'), /3 个对话运行中/);
+});
+
+test('conversation keyboard browsing, search reset and filtering preserve the expected focus', async t => {
+  const h = await harness(t);
+  h.sessions.push({id:'older', name:'Older discussion', cwd:'/repo/backend', updated_at:1});
+  await h.navigate('/sessions');
+  const key = (node, value) => node.dispatchEvent(new h.window.KeyboardEvent('keydown', {key:value, bubbles:true, cancelable:true}));
+  const search = h.$('#sessionBrowserSearch');
+  search.focus(); key(search, 'ArrowDown');
+  assert.equal(h.document.activeElement.dataset.conversationSession, 'session-1');
+  key(h.document.activeElement, 'End');
+  assert.equal(h.document.activeElement.dataset.conversationSession, 'older');
+  h.window.browserSessionActivity('older', {id:'live', status:'waiting', busy:true});
+  assert.equal(h.document.activeElement.dataset.conversationSession, 'older');
+  key(h.document.activeElement, 'Home');
+  assert.equal(h.document.activeElement.dataset.conversationSession, 'session-1');
+  h.input('#sessionBrowserSearch', 'no results'); search.focus(); key(search, 'Escape');
+  assert.equal(search.value, '');
+  assert.equal(h.document.activeElement, search);
+  h.$('#sessionFilterPicker').open = true; await settle();
+  const directory = h.$('#sessionDirectoryFilter'); directory.focus();
+  h.change('#sessionDirectoryFilter', '/repo/backend'); await settle();
+  assert.equal(h.document.activeElement, directory);
+  key(directory, 'Escape');
+  assert.equal(h.$('#sessionFilterPicker').open, false);
+  assert.equal(h.document.activeElement, h.$('#sessionFilterPicker summary'));
+  h.click('[data-conversation-session="older"]'); await settle();
+  h.click('[data-conversation-action="back"]');
+  assert.equal(h.document.activeElement.dataset.conversationSession, 'older');
+});
+
+test('conversation date groups keep pinned records unique, handle year boundaries and expose exact timestamps', async t => {
+  const h = await harness(t);
+  const now = new Date(2026, 0, 3, 12).getTime();
+  const session = (id, day, pinned = false) => ({id, name:id, cwd:'/repo/app', updated_at:new Date(2026, 0, day, 10).getTime() / 1000, pinned});
+  const markup = h.window.WorkHubUI.conversationList({sessions:[session('today', 3), session('yesterday', 2), session('last-year', 0), session('pinned-old', -20, true), session('old', -20)], showDirectory:false, now});
+  const root = h.document.createElement('div'); root.innerHTML = markup;
+  assert.deepEqual([...root.querySelectorAll('.session-browser-group')].map(n => n.getAttribute('aria-label')), ['已固定','今天','昨天','近 7 天','更早']);
+  assert.equal(root.querySelectorAll('[data-conversation-session="pinned-old"]').length, 1);
+  assert.equal(root.querySelector('[data-conversation-session="today"] time').textContent, '10:00');
+  assert.match(root.querySelector('[data-conversation-session="last-year"] time').textContent, /2025/);
+  assert(root.querySelector('time').getAttribute('datetime'));
+  assert(root.querySelector('time').title);
+});
+
+
+test('task status filters surface pending recovery, unpushed commits and Git operations', async t => {
+  const h=await harness(t);
+  const member=h.data.requirements[0].members[0];
+  member.worktree.sync_ahead=2;
+  member.worktree.operation='merge';member.worktree.conflicts=['file.txt'];
+  await h.window.refresh(true);
+  assert.match(h.$('.task-signal-filters').textContent,/待推送 · 1/);
+  h.click('[data-action="task-project-filter"][data-filter="push"]');
+  assert.equal(h.document.querySelectorAll('.task-project').length,1);
+  h.click('[data-action="task-project-filter"][data-filter="dirty"]');
+  assert.equal(h.document.querySelectorAll('.task-project').length,0);
+  h.click('[data-action="task-project-filter"][data-filter="all"]');
+  member.state='pending';await h.window.refresh(true);
+  assert(h.$('[data-action="retry"][data-project="app"]'));
+  await h.navigate('/requirements');
+  h.change('#taskStatusFilter','push');
+  assert.equal(h.document.querySelectorAll('[data-action="open-requirement"]').length,1);
+  h.change('#taskStatusFilter','dirty');
+  assert.match(h.$('#taskListContent').textContent,/没有匹配/);
+});
+
+test('a missing task directory exposes recovery in place and preserves project context when changing it', async t => {
+  const h = await harness(t);
+  const member = h.data.requirements[0].members[0];
+  Object.assign(member.worktree, {missing: true, upstream: 'origin/feature/task', sync_available: true});
+  await h.window.refresh();
+  assert.match(h.$('.task-directory-overview').textContent, /1 个关联项目.*0 个目录可打开.*1 个目录需要处理/);
+  const notice = h.$('.task-directory-notice');
+  assert.match(notice.textContent, /工作目录已丢失/);
+  assert.equal(h.$('[data-project-open-primary]').disabled, true);
+  assert.doesNotMatch(h.$('.task-project-state').textContent, /已同步|无未提交改动/);
+  h.click('.task-directory-notice [data-action="change-task-directory"]'); await settle();
+  assert.equal(h.$('#taskDirectoryDialog').open, true);
+  h.change('#taskDirectoryPicker select[id$="-mode"]', 'project');
+  await h.submit('#taskDirectoryForm');
+  const request = h.requests.find(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'PUT');
+  assert.deepEqual(request.body, {project_id: 'app', mode: 'project'});
+  assert.equal(h.$('[data-project-open-primary]').dataset.path, '/repo/app');
+  assert.equal(h.$('[data-project-open-primary]').disabled, false);
+  assert.match(h.$('.task-directory-overview').textContent, /1 个目录可打开/);
+  assert.equal(h.$('.task-directory-notice'), null);
+});
+
+test('archived tasks explain disabled directory recovery and unchecked directories do not imply clean work', async t => {
+  const h = await harness(t);
+  const member = h.data.requirements[0].members[0];
+  member.worktree.status_updated_at = '';
+  await h.window.refresh();
+  assert.match(h.$('.task-directory-overview').textContent, /0 个目录可打开.*1 个目录正在检查/);
+  assert.doesNotMatch(h.$('.task-project-state').textContent, /无未提交改动/);
+  assert.equal(h.$('.task-directory-notice [data-action="change-task-directory"]'), null);
+  h.data.requirements[0].state = 'archived';
+  member.worktree.missing = true;
+  await h.window.refresh();
+  assert.equal(h.$('.task-directory-notice [data-action="change-task-directory"]').disabled, true);
+  assert.match(h.$('.task-directory-notice').textContent, /取消归档后可处理目录/);
+});
+
+test('read-only changes show working and staged files as inert text and reject late file results', async t => {
+  const h=await harness(t);
+  let release;
+  h.setIntercept(url=>{
+    if(!url.includes('/changes?'))return;
+    const params=new URL(url,'http://localhost').searchParams;
+    if(!params.has('file'))return {ok:true,json:async()=>({branch:'feature/task',files:[{path:'file.txt',index:'M',working:'M'},{path:'new.txt',index:'?',working:'?',untracked:true}]})};
+    if(params.get('file')==='new.txt')return new Promise(resolve=>{release=resolve;});
+    return {ok:true,json:async()=>({text:params.get('mode')==='index'?'+staged':'<script>inert</script>',truncated:false})};
+  });
+  h.click('[data-action="changes-open"]');await settle();
+  assert.equal(h.$('#changesDialog').open,true);
+  assert.equal(h.$('#changesText script'),null);
+  assert.match(h.$('#changesText').textContent,/<script>inert/);
+  h.click('[data-change-file="new.txt"]');await settle();
+  h.change('#changesMode','index');await settle();
+  assert.equal(h.document.querySelectorAll('[data-change-file]').length,1);
+  assert.equal(h.$('#changesText').textContent,'+staged');
+  release({ok:true,json:async()=>({text:'old untracked result',truncated:false})});await settle();
+  assert.equal(h.$('#changesText').textContent,'+staged');
+});
+
+test('task review archives explicitly and only sends selected cleanable directories with their preview', async t => {
+  const h=await harness(t);
+  let cleaned=false;
+  const item={project_id:'app',project_name:'App',path:'/workspace/task/app',branch:'feature/task',current:true,dirty:0,unpushed:0,shared:[],fingerprint:'checked-head'};
+  h.setIntercept((url,options)=>{
+    if(url.endsWith('/archive')&&options.method==='POST'){h.data.requirements[0].state='archived';return {ok:true,json:async()=>({message:'archived'})};}
+    if(url.endsWith('/review'))return {ok:true,json:async()=>({task:h.data.requirements[0],items:cleaned?[]:[{...item,cleanable:h.data.requirements[0].state==='archived',reasons:h.data.requirements[0].state==='archived'?[]:['请先归档任务']}]})};
+    if(url.includes('/cleanup/')){cleaned=true;return {ok:true,json:async()=>({message:'cleaned'})};}
+  });
+  h.click('[data-action="task-review"]');await settle();
+  assert.equal(h.$('[data-cleanup-index]').disabled,true);
+  h.click('#taskReviewArchive');await settle();
+  assert.equal(h.data.requirements[0].state,'archived');
+  assert.equal(h.$('[data-cleanup-index]').disabled,false);
+  h.$('[data-cleanup-index]').checked=true;h.$('[data-cleanup-index]').dispatchEvent(new h.window.Event('change',{bubbles:true}));
+  h.click('#taskReviewClean');await settle();
+  const request=h.requests.find(r=>r.url.includes('/cleanup/'));
+  assert.deepEqual(request.body,{path:item.path,fingerprint:'checked-head'});
+  assert.match(h.$('#taskReviewItems').textContent,/没有需要检查/);
+  assert(!h.requests.some(r=>r.body?.action==='delete_branch'));
+});
+
+test('a Git network operation keeps refreshing and does not overwrite a different project after closing', async t => {
+  const h=await harness(t);
+  await h.window.openGit('app','/workspace/task/app');
+  let release;
+  h.setIntercept((url,options)=>options.method==='POST'&&url==='/api/projects/app/git'?new Promise(resolve=>{release=resolve;}):undefined);
+  const pending=h.window.gitOperation({action:'fetch',remote:'origin'},'Background fetch');
+  await settle();
+  assert.equal(h.$('#gitDialog .close-dialog').disabled,false);
+  assert.equal(h.$('#refreshButton').disabled,false);
+  h.click('#gitDialog .close-dialog');
+  await h.window.openGit('backend','/repo/backend');
+  assert.match(h.$('#gitTitle').textContent,/Backend/);
+  await h.window.refresh();
+  release({ok:true,json:async()=>({message:'App fetch completed'})});
+  await pending;await settle();
+  assert.match(h.$('#gitTitle').textContent,/Backend/);
+  assert.equal(h.$('#gitError').hidden,true);
+});
+
+test('project search preserves checked projects and expanded configuration through refresh and submission', async t => {
+  const h = await harness(t);
+  h.window.openRequirement(); await settle();
+  h.input('#requirementName', 'Searchable workspace');
+  h.click('#projectPicker-app-selected'); await settle();
+  const configuration = h.$('[data-picker-project="app"]');
+  configuration.open = true;
+  configuration.dispatchEvent(new h.window.Event('toggle'));
+  h.input('#projectPickerSearch', 'Backend');
+  assert.equal(h.$('[data-picker-search-text][data-project-id="app"]').hidden, true);
+  assert.equal(h.$('#projectPicker-app-selected').checked, true);
+  await h.window.refresh();
+  assert.equal(h.$('#projectPicker-app-selected').checked, true);
+  h.input('#projectPickerSearch', '');
+  assert.equal(h.$('[data-picker-project="app"]').open, true);
+  await h.submit('#requirementForm');
+  const request = h.requests.find(r => r.url === '/api/requirements' && r.options.method === 'POST');
+  assert.deepEqual(request.body.project_ids, ['app']);
+  assert.equal(request.body.members[0].project_id, 'app');
+});
+
+test('searchable native fields preserve disabled state, validation and controller change events', async t => {
+  const h = await harness(t);
+  h.window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+  await h.window.openGit('app', '/workspace/task/app'); await settle();
+  [...h.document.querySelectorAll('[role="tab"]')].find(tab => tab.textContent === '分支').click();
+  await settle();
+  const source = h.$('#gitBranchSource');
+  let trigger = h.$('[data-select-trigger="gitBranchSource"]');
+  assert.equal(source.style.getPropertyValue('display'), 'none');
+  assert.equal(trigger.getAttribute('aria-label'), '来源分支');
+  trigger.click(); await settle();
+  assert(h.$('[cmdk-input]'));
+  const option = [...h.document.querySelectorAll('[cmdk-item]')].find(item => item.textContent.includes('origin/master'));
+  option.click(); await settle();
+  assert.equal(source.value, 'refs/remotes/origin/master');
+  assert.equal(h.$('#gitTrack').disabled, false);
+  assert.equal(h.$('#gitTrack').checked, true);
+  source.disabled = true; await settle();
+  assert.equal(h.$('[data-select-trigger="gitBranchSource"]').disabled, true);
+  source.disabled = false; source.value = ''; await settle();
+  const invalid = new h.window.Event('invalid', {cancelable: true});
+  source.dispatchEvent(invalid); await settle();
+  trigger = h.$('[data-select-trigger="gitBranchSource"]');
+  assert.equal(invalid.defaultPrevented, true);
+  assert.equal(trigger.getAttribute('aria-invalid'), 'true');
+  assert.equal(h.document.activeElement, trigger);
+});
+
+test('Radix action menus route through the original project context', async t => {
+  const h = await harness(t);
+  const trigger = h.$('button[aria-label="App 更多操作"]');
+  trigger.dispatchEvent(new h.window.MouseEvent('pointerdown', {bubbles: true, button: 0}));
+  await settle();
+  assert(h.$('[role="menu"]'));
+  [...h.document.querySelectorAll('[role="menuitem"]')].find(item => item.textContent === 'Git 操作').click();
+  await settle();
+  assert.equal(h.$('#gitDialog').open, true);
+  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  assert.equal(h.$('#gitWorktree').disabled, true);
+});
+
+test('failed conversation refresh retains cached results but a new directory never inherits them', async t => {
+  const h = await harness(t);
+  await h.openConversations('task');
+  assert(h.$('[data-conversation-session="session-1"]'));
+  h.setIntercept(url => url.startsWith('/api/sessions?') ? {ok:false,json:async()=>({error:'fixture offline'})} : undefined);
+  await h.window.refreshSessionWorkspace(true); await settle();
+  assert(h.$('[data-conversation-session="session-1"]'));
+  assert.match(h.$('#sessionBrowserCount').textContent, /部分结果未更新/);
+  assert.match(h.$('#sessionBrowserError').textContent, /保留上次结果/);
+  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  assert.equal(h.$('[data-conversation-session="session-1"]'), null);
+  assert.match(h.$('#sessionBrowserCount').textContent, /数量暂不可用/);
+  assert.doesNotMatch(h.$('#sessionBrowserCount').textContent, /0 个对话/);
+  assert.equal(h.$('#sessionBrowserList').textContent, '');
+});
+
+
+test('wide task workspace restores selection, keeps filters beside details and remembers each task position', async t => {
+  const h = await harness(t, true, {width:1440, route:'/requirements'});
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  assert.equal(h.$('#taskBrowser').hidden, false);
+  assert(h.$('#taskToolbarSlot #search'));
+  assert(h.$('#taskCreateSlot #newButton'));
+  assert(h.$('#taskHeadingSlot #pageTitle'));
+  assert.equal(h.$('[aria-current="true"][data-action="open-requirement"]').dataset.id, 'task');
+  const first = h.data.requirements[0];
+  h.data.requirements.push({...first, id:'second', name:'Second task'});
+  await h.window.refresh(true);
+  h.$('#taskListContent').scrollTop = 150;
+  h.$('#taskProjectsView').scrollTop = 220;
+  h.$('.task-project-details').open = true;
+  h.click('[data-action="open-requirement"][data-id="second"]'); await settle();
+  assert.equal(h.$('#pageTitle').textContent, 'Second task');
+  assert.equal(h.$('#taskProjectsView').scrollTop, 0);
+  assert.equal(h.$('#taskListContent').scrollTop, 150);
+  assert.equal(h.$('.task-project-details').open, false);
+  h.click('[data-action="open-requirement"][data-id="task"]'); await settle();
+  assert.equal(h.$('#taskProjectsView').scrollTop, 220);
+  assert.equal(h.$('.task-project-details').open, true);
+  h.input('#search', 'Billing');
+  await h.navigate('/projects');
+  assert(h.$('#workContent > #panelToolbar #search'));
+  await h.navigate('/requirements');
+  assert.equal(h.$('#search').value, 'Billing');
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:selected-task:v1')), {id:'task', environment:'local'});
+});
+
+test('wide startup restores a saved task and falls back when the saved task is archived or removed', async t => {
+  const stored = id => ({'workhub:selected-task:v1':JSON.stringify({id,environment:'local'})});
+  const h = await harness(t, true, {width:1440, route:'/requirements', storage:stored('archived')});
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  const second = {...h.data.requirements[0],id:'second',name:'Second task'};
+  h.data.requirements.push(second); await h.window.refresh(true);
+  h.click('[data-action="open-requirement"][data-id="second"]'); await settle();
+  await h.navigate('/projects'); await h.navigate('/requirements');
+  assert.equal(h.window.location.hash, '#/requirements/second');
+  h.data.requirements = h.data.requirements.filter(q => q.id !== 'second');
+  await h.window.refresh(true);
+  assert.match(h.$('#content').textContent, /这个任务不存在/);
+  await h.navigate('/projects'); await h.navigate('/requirements');
+  assert.equal(h.window.location.hash, '#/requirements/task');
+});
+
+test('narrow tasks enter details explicitly, return with filters and expand to a split workspace', async t => {
+  const h = await harness(t, true, {width:800, route:'/requirements'});
+  assert.equal(h.window.location.hash, '#/requirements');
+  assert.equal(h.document.body.classList.contains('task-selection-open'), false);
+  h.input('#search', 'Billing');
+  h.$('#taskListContent').scrollTop = 120;
+  h.click('[data-action="open-requirement"]'); await settle();
+  assert.equal(h.document.body.classList.contains('task-selection-open'), true);
+  assert.equal(h.$('#backToRequirements').hidden, false);
+  const returned = new Promise(resolve => h.window.addEventListener('hashchange', resolve, {once:true}));
+  h.click('#backToRequirements'); await returned; await settle();
+  assert.equal(h.document.body.classList.contains('task-selection-open'), false);
+  assert.equal(h.$('#search').value, 'Billing');
+  assert.equal(h.$('#taskListContent').scrollTop, 120);
+  assert.equal(h.document.activeElement.dataset.id, 'task');
+  Object.defineProperty(h.window, 'innerWidth', {value:1440,configurable:true});
+  h.window.dispatchEvent(new h.window.Event('resize')); await settle();
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  assert(h.$('.task-project-list'));
+});
+
+test('an empty task workspace and unavailable browser storage retain creation and selection', async t => {
+  const h = await harness(t, true, {width:1440, route:'/requirements', storageUnavailable:true});
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  h.data.requirements = []; await h.window.refresh(true);
+  await h.navigate('/requirements');
+  assert.match(h.$('#taskListContent').textContent, /创建一个任务/);
+  assert.equal(h.$('#newButton').hidden, false);
+  h.click('#newButton'); await settle();
+  assert.equal(h.$('#requirementDialog').open, true);
+});
+
+
+test('the split task list distinguishes colliding IDs and restores the selected environment', async t => {
+  const tree = {path:'/remote/app',branch:'feature/remote',dirty:0,status_updated_at:'2026-10-29T00:00:00Z'};
+  const remoteTask = {id:'task',name:'Remote Billing',slug:'remote',branch:tree.branch,state:'ready',path:'/remote',created_at:'2026-10-29T00:00:00Z',environment_id:'remote',environment_name:'WSL',connected:true,members:[{project_id:'remote-app',project_name:'Remote App',path:tree.path,mode:'worktree',state:'ready',worktree:tree}]};
+  const remoteData = {root:'/remote',requirements:[remoteTask],projects:[{id:'remote-app',name:'Remote App',path:'/remote/repo',folder:'app',worktrees:[tree]}],terminal:{}};
+  const h = await harness(t, true, {width:1440,route:'/requirements',storage:{'workhub:selected-task:v1':JSON.stringify({id:'task',environment:'remote'})},intercept:(url,options) => {
+    if (url.startsWith('/api/task-inventory')) return {ok:true,json:async()=>({requirements:[{...remoteTask,name:'Local Billing',environment_id:'local',environment_name:'本机'},remoteTask],environments:[{id:'local',name:'本机'},{id:'remote',name:'WSL'}],project_count:3})};
+    if (url.startsWith('/api/state') && options.headers['X-Environment-ID'] === 'remote') return {ok:true,json:async()=>remoteData};
+  }});
+  assert.equal(new URLSearchParams(h.window.location.search).get('environment'),'remote');
+  assert.equal(h.$('#pageTitle').textContent,'Remote Billing');
+  assert.equal(h.$('[aria-current="true"][data-action="open-requirement"]').dataset.environment,'remote');
+  assert.equal(h.$('.task-project-path').dataset.path,'/remote/app');
+  h.input('#search','Billing');
+  h.click('[data-action="open-requirement"][data-environment="local"]'); await settle();
+  assert.equal(h.$('#pageTitle').textContent,'Billing');
+  assert.equal(h.$('#search').value,'Billing');
+  assert.equal(h.$('[aria-current="true"][data-action="open-requirement"]').dataset.environment,'local');
+  const back = new Promise(resolve => h.window.addEventListener('popstate',resolve,{once:true}));
+  h.window.history.back(); await back; await settle();
+  assert.equal(h.$('#pageTitle').textContent,'Remote Billing');
+  assert.equal(h.$('#search').value,'Billing');
+});
+
+test('task divider resizes across refreshes, supports keyboard limits and restores its width without affecting narrow navigation', async t => {
+  const h = await harness(t, true, {width:1440});
+  const workspace = h.$('#workContent');
+  workspace.getBoundingClientRect = () => ({width:1000});
+  h.window.syncTaskResize();
+  const handle = h.$('#taskListResize');
+  assert.equal(handle.hidden, false);
+  assert.equal(handle.getAttribute('role'), 'separator');
+  const pointer = (target, type, clientX, id=7) => {
+    const event = new h.window.MouseEvent(type, {bubbles:true,cancelable:true,clientX,button:0});
+    Object.defineProperty(event,'pointerId',{value:id});
+    target.dispatchEvent(event);
+  };
+  pointer(handle,'pointerdown',300);
+  pointer(h.document,'pointermove',390);
+  assert.equal(workspace.style.getPropertyValue('--task-list-width'),'390px');
+  await h.window.refresh(true);
+  pointer(h.document,'pointermove',430);
+  pointer(h.document,'pointerup',430);
+  assert.equal(workspace.style.getPropertyValue('--task-list-width'),'430px');
+  assert.equal(h.window.localStorage.getItem('workhub:task-list-width:v1'),'430');
+  assert.equal(workspace.hasAttribute('data-task-resizing'),false);
+  assert.equal(h.document.activeElement,handle);
+  const key = (key,shiftKey=false) => handle.dispatchEvent(new h.window.KeyboardEvent('keydown',{key,shiftKey,bubbles:true,cancelable:true}));
+  key('ArrowRight'); key('ArrowLeft',true);
+  assert.equal(handle.getAttribute('aria-valuenow'),'400');
+  key('Home'); assert.equal(workspace.style.getPropertyValue('--task-list-width'),'240px');
+  key('End'); assert.equal(workspace.style.getPropertyValue('--task-list-width'),'572px');
+  await h.navigate('/projects'); assert.equal(handle.hidden,true);
+  await h.navigate('/requirements'); assert.equal(handle.hidden,false);
+  assert.equal(handle.getAttribute('aria-valuenow'),'572');
+  h.window.innerWidth=800; h.window.dispatchEvent(new h.window.Event('resize'));
+  key('Home'); assert.equal(h.window.localStorage.getItem('workhub:task-list-width:v1'),'572');
+  assert.equal(handle.hidden,true);
+  await h.navigate('/requirements');
+  assert.equal(h.document.body.classList.contains('task-selection-open'),false);
+  const restored = await harness(t, true, {width:1440,storage:{'workhub:task-list-width:v1':'430'}});
+  assert.equal(restored.$('#workContent').style.getPropertyValue('--task-list-width'),'430px');
+});
+
+test('file browser lazily expands directories, renders unchanged source and disposes previews on close', async t => {
+  const h = await harness(t);
+  let disposed = 0;
+  let resolveLate;
+  let lateSignal;
+  h.window.WorkHubFileDisplay = {render(container, preview, split) {
+    container.textContent = `${preview.name}\n${preview.text}\n${split ? 'split' : 'unified'}`;
+    return () => { disposed++; container.replaceChildren(); };
+  }};
+  h.setIntercept((url, options) => {
+    const query = new URL(url, 'http://localhost').searchParams;
+    if (url.includes('/changes?')) return {ok:true,json:async()=>({branch:'feature/task',files:[]})};
+    if (!url.includes('/files?')) return;
+    if (query.has('file')) {
+      if (query.get('file') === 'late.txt') {lateSignal=options.signal;return new Promise(resolve=>{resolveLate=resolve;});}
+      return {ok:true,json:async()=>({text:'const html = "<script>inert</script>"',path:'/workspace/task/app/src/clean.ts'})};
+    }
+    return {ok:true,json:async()=>({entries:query.get('dir') === 'src' ? [{name:'clean.ts',path:'src/clean.ts',directory:false}] : [{name:'src',path:'src',directory:true},{name:'late.txt',path:'late.txt',directory:false},{name:'link',path:'link',symlink:true,directory:false}],truncated:false})};
+  });
+  h.click('[data-action="changes-open"]'); await settle();
+  h.change('#changesMode', 'all'); await settle();
+  assert.equal(h.requests.filter(r=>r.url.includes('/files?') && r.url.includes('dir=src')).length,0);
+  h.click('#changesFiles button[aria-expanded="false"]'); await settle();
+  assert.equal(h.requests.filter(r=>r.url.includes('/files?') && r.url.includes('dir=src')).length,1);
+  assert.equal(h.$('#changesFiles button[title*="符号链接"]').disabled,true);
+  h.click('[data-change-file="src/clean.ts"]'); await settle();
+  assert.match(h.$('#changesText').textContent,/src\/clean.ts.*\nconst html/);
+  assert.equal(h.$('#changesText script'),null);
+  assert.equal(h.$('#changesLayout').disabled,true);
+  h.click('[data-change-file="late.txt"]'); await settle();
+  assert.equal(disposed,1);
+  h.$('#changesDialog').close(); await settle();
+  assert.equal(lateSignal.aborted,true);
+  resolveLate({ok:true,json:async()=>({text:'late content'})}); await settle();
+  assert.equal(h.$('#changesBrowser').childElementCount,0);
+});
+
+test('file browser switches Pierre diff layouts without refetching and falls back safely for partial patches', async t => {
+  const h = await harness(t);
+  const layouts = [];
+  let truncated = false;
+  h.window.WorkHubFileDisplay = {render(container, preview, split) {layouts.push(split);container.textContent=preview.text;return ()=>container.replaceChildren();}};
+  h.setIntercept(url => {
+    if (!url.includes('/changes?')) return;
+    const query = new URL(url,'http://localhost').searchParams;
+    return {ok:true,json:async()=>query.has('file') ? {name:'file.ts',format:'patch',text:'<script>plain patch</script>',truncated} : {branch:'main',files:[{path:'file.ts',index:'M',working:'M'}]}};
+  });
+  h.click('[data-action="changes-open"]'); await settle();
+  assert.deepEqual(layouts,[true]);
+  const before=h.requests.filter(r=>r.url.includes('/changes?')).length;
+  h.change('#changesLayout','unified'); await settle();
+  assert.deepEqual(layouts,[true,false]);
+  assert.equal(h.requests.filter(r=>r.url.includes('/changes?')).length,before);
+  truncated=true;
+  h.click('#changesRefresh'); await settle();
+  assert.equal(h.$('#changesTruncated').hidden,false);
+  assert.equal(h.$('#changesText script'),null);
+  assert.match(h.$('#changesText').textContent,/<script>plain patch/);
+  assert.equal(layouts.length,2);
+});
+
+test('conversation files remain beside the same chat and fullscreen retains the mounted file and reading position', async t => {
+  const h = await harness(t, false, {width:1440});
+  h.window.WorkHubFileDisplay = {render(container, preview) {container.textContent=preview.text;return ()=>container.replaceChildren();}};
+  h.setIntercept(url=>{
+    if (!url.includes('/sessions/session-1/files?')) return;
+    return {ok:true,json:async()=>url.includes('file=')?{text:'const reference = 1'}:{entries:[{name:'read.ts',path:'read.ts',directory:false}],truncated:false}};
+  });
+  await h.openConversations('task');
+  assert.equal(h.$('#toggleConversationFiles').disabled,false);
+  const chat=h.$('#sessionChatInput');
+  h.input('#sessionChatInput','保留我的草稿');
+  h.$('#sessionHistoryScroll').scrollTop=145;
+  h.click('#toggleConversationFiles'); await settle();
+  assert.equal(h.$('#conversationFilesDock').hidden,false);
+  assert.equal(h.$('#conversationFilesMode').value,'all');
+  h.click('#conversationFilesFiles [data-change-file="read.ts"]'); await settle();
+  const source=h.$('#conversationFilesText');source.scrollTop=86;
+  const filesReads=()=>h.requests.filter(r=>r.url.includes('/files?')).length;
+  const reads=filesReads();
+  h.click('#expandConversationFiles'); await settle();
+  assert.equal(h.$('#conversationFilesDialog').open,true);
+  assert.equal(h.$('#conversationFilesPane').parentElement,h.$('#conversationFilesDialog'));
+  assert.equal(h.$('#conversationFilesText'),source);
+  assert.equal(source.scrollTop,86);
+  assert.equal(h.$('#sessionChatInput'),chat);
+  assert.equal(chat.value,'保留我的草稿');
+  h.click('#expandConversationFiles'); await settle();
+  assert.equal(h.$('#conversationFilesDialog').open,false);
+  assert.equal(h.$('#conversationFilesPane').parentElement,h.$('#conversationFilesDock'));
+  assert.equal(h.$('#conversationFilesText'),source);
+  assert.equal(source.scrollTop,86);
+  await h.window.refreshSessionWorkspace(true);await settle();
+  assert.equal(h.$('#conversationFilesText'),source);
+  assert.equal(filesReads(),reads);
+  h.click('#expandConversationFiles');await settle();
+  const escape=new h.window.Event('cancel',{cancelable:true});h.$('#conversationFilesDialog').dispatchEvent(escape);await settle();
+  assert.equal(escape.defaultPrevented,true);
+  assert.equal(h.$('#conversationFilesDialog').open,false);
+  assert.equal(h.document.activeElement,h.$('#expandConversationFiles'));
+  h.click('#closeConversationFiles');await settle();
+  assert.equal(h.$('#conversationFilesDock').hidden,true);
+  assert.equal(h.$('#sessionHistoryPanel').hidden,false);
+  assert.equal(chat.value,'保留我的草稿');
+});
+
+test('conversation file references use the active session and reject stale responses after changing conversations', async t => {
+  const h=await harness(t,true,{width:1440});
+  h.sessions.push({id:'outside',name:'Outside',cwd:'/outside',updated_at:1792735201});
+  let release,oldSignal;
+  h.window.WorkHubFileDisplay={render(container,preview){container.textContent=`${preview.name}:${preview.line}\n${preview.text}`;return ()=>container.replaceChildren();}};
+  h.setIntercept((url,options)=>{
+    if (!/\/sessions\/(session-1|outside)\/files\?/.test(url)) return;
+    if (url.includes('file=') && url.includes('/session-1/')) {oldSignal=options.signal;return new Promise(resolve=>{release=resolve;});}
+    return {ok:true,json:async()=>url.includes('file=')?{text:'outside current file'}:{entries:[{name:'read.ts',path:'read.ts',directory:false}],truncated:false}};
+  });
+  await h.openConversations('task');
+  const wrong=new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'wsl-other',path:'read.ts',line:7}});
+  assert.equal(h.window.dispatchEvent(wrong),true);
+  const ref=new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'local',path:'/workspace/task/app/read.ts',line:7}});
+  assert.equal(h.window.dispatchEvent(ref),false);await settle();
+  assert.equal(h.$('#conversationFilesDock').hidden,false);
+  h.click('#expandConversationFiles');await settle();
+  h.window.openConversationWorkspace({kind:'all',name:'全部对话'});await settle();
+  h.click('[data-conversation-session="outside"]');await settle();
+  assert.equal(h.$('#conversationFilesDialog').open,false);
+  assert.equal(oldSignal.aborted,true);
+  assert.match(h.$('#conversationFilesContext').textContent,/outside/);
+  assert.equal(h.$('#conversationFilesMode').options.length,1);
+  h.click('#conversationFilesFiles [data-change-file="read.ts"]');await settle();
+  release({ok:true,json:async()=>({text:'stale old result'})});await settle();
+  assert.match(h.$('#conversationFilesText').textContent,/outside current file/);
+  assert.doesNotMatch(h.$('#conversationFilesText').textContent,/stale/);
+  await h.navigate('/requirements/task');
+  assert.equal(h.$('#conversationFilesDock').hidden,true);
+  assert.equal(h.$('#conversationFilesMount').childElementCount,0);
+});
+
+test('file references open approved additional directories in the right pane and restore it from fullscreen', async t => {
+  const h=await harness(t,true,{width:1440});
+  h.sessions[0].additional_directories=['/workspace/task/backend'];
+  h.window.WorkHubFileDisplay={render(container,preview){container.textContent=`${preview.name}:${preview.line}\n${preview.text}`;return ()=>container.replaceChildren();}};
+  h.setIntercept(url=>{
+    if (!url.includes('/sessions/session-1/files?')) return;
+    const query=new URL(url,'http://localhost').searchParams;
+    if (query.get('file')==='missing.ts') return {ok:false,json:async()=>({error:'文件不存在、已移动或不可读取'})};
+    return {ok:true,json:async()=>query.has('file')?{text:query.get('path')}:{entries:query.get('dir')==='src'?[{name:'read.ts',path:'src/read.ts',directory:false}]:[{name:'src',path:'src',directory:true},{name:'read.ts',path:'read.ts',directory:false}],truncated:false}};
+  });
+  const open=(path,line=7)=>h.window.dispatchEvent(new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'local',path,line}}));
+  await h.openConversations('task');
+  assert.equal(open('/workspace/task/backend/src/read.ts'),false);await settle();
+  assert.equal(h.$('#conversationFilesDock').hidden,false);
+  assert.equal(h.$('#conversationFilesDialog').open,false);
+  assert.match(h.$('#conversationFilesContext').textContent,/backend/);
+  assert.match(h.$('#conversationFilesText').textContent,/src\/read.ts:7\n\/workspace\/task\/backend/);
+  assert.equal(h.$('#conversationFilesFiles [data-change-file="src/read.ts"]').getAttribute('aria-pressed'),'true');
+  assert.equal(h.$('#conversationFilesMode').options.length,1);
+  h.click('#expandConversationFiles');await settle();
+  assert.equal(h.$('#conversationFilesDialog').open,true);
+  assert.equal(open('read.ts',12),false);await settle();
+  assert.equal(h.$('#conversationFilesDialog').open,false);
+  assert.equal(h.$('#conversationFilesPane').parentElement,h.$('#conversationFilesDock'));
+  assert.match(h.$('#conversationFilesText').textContent,/read.ts:12\n\/workspace\/task\/app/);
+  assert.equal(h.$('#conversationFilesMode').options.length,3);
+  for (const invalid of ['../read.ts','/workspace/task/backend/../secret','/workspace/task/backend/.git/config']) assert.equal(open(invalid),true);
+  for (const external of ['/workspace/task/backend-other/read.ts','/outside/read.ts']) {
+    assert.equal(open(external),false);await settle();
+    const last=h.requests.filter(r=>r.url.includes('/files?') && new URL(r.url,'http://localhost').searchParams.has('file')).at(-1);
+    assert.equal(new URL(last.url,'http://localhost').searchParams.get('file'),external);
+    assert.match(h.$('#conversationFilesText').textContent,/outside|backend-other/);
+    assert.equal(h.$('#conversationFilesDialog').open,false);
+  }
+  assert.equal(open('/workspace/task/backend/missing.ts'),false);await settle();
+  assert.match(h.$('#conversationFilesError').textContent,/文件不存在、已移动/);
+  assert.equal(h.$('#conversationFilesDialog').open,false);
+  assert.equal(h.$('#conversationFilesDock').hidden,false);
+});
+
+test('reading splitters resize with pointer and keyboard bounds and keep the selected reference when project metadata arrives', async t => {
+  const h=await harness(t,false,{width:1440});
+  h.sessions[0].cwd='/reference-root';
+  h.window.WorkHubFileDisplay={render(container,preview){container.textContent=preview.text;return ()=>container.replaceChildren();}};
+  h.setIntercept(url=>url.includes('/sessions/session-1/files?')?{ok:true,json:async()=>url.includes('file=')?{text:'reference content'}:{entries:[{name:'read.ts',path:'read.ts',directory:false}],truncated:false}}:undefined);
+  await h.openConversations('task');
+  h.window.dispatchEvent(new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'local',path:'read.ts',line:1}}));await settle();
+  const source=h.$('#conversationFilesText');
+  source.scrollTop=90;
+  const reading=h.$('#sessionReadingLayout');
+  const dock=h.$('#conversationFilesDock');
+  reading.getBoundingClientRect=()=>({width:1000});
+  dock.getBoundingClientRect=()=>({width:parseFloat(reading.style.getPropertyValue('--conversation-files-width'))||480});
+  const separator=h.$('#conversationFilesResize');
+  separator.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));await settle();
+  assert.equal(reading.style.getPropertyValue('--conversation-files-width'),'490px');
+  const pointer=(type,x)=>{const event=new h.window.MouseEvent(type,{bubbles:true,button:0,clientX:x});Object.defineProperty(event,'pointerId',{value:1});return event;};
+  separator.dispatchEvent(pointer('pointerdown',500));
+  h.document.dispatchEvent(pointer('pointermove',400));
+  h.document.dispatchEvent(pointer('pointerup',400));await settle();
+  assert.equal(reading.style.getPropertyValue('--conversation-files-width'),'590px');
+  assert.equal(h.window.localStorage.getItem('workhub:conversation-files-width:v1'),'590');
+  separator.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'End',bubbles:true}));await settle();
+  assert.equal(reading.style.getPropertyValue('--conversation-files-width'),'672px');
+  const split=h.$('#conversationFilesMount .file-split-layout');
+  const tree=split.querySelector('.file-tree-pane');
+  split.getBoundingClientRect=()=>({width:800});
+  tree.getBoundingClientRect=()=>({width:parseFloat(split.style.getPropertyValue('--file-tree-width'))||220});
+  const treeSeparator=split.querySelector('[role="separator"]');
+  treeSeparator.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await settle();
+  assert.equal(split.style.getPropertyValue('--file-tree-width'),'230px');
+  treeSeparator.dispatchEvent(pointer('pointerdown',230));
+  h.document.dispatchEvent(pointer('pointermove',280));h.document.dispatchEvent(pointer('pointerup',280));await settle();
+  assert.equal(split.style.getPropertyValue('--file-tree-width'),'280px');
+  assert.equal(JSON.parse(h.window.localStorage.getItem('workhub:file-tree-size:v1')).width,280);
+  const reads=h.requests.filter(r=>r.url.includes('/files?')).length;
+  h.data.projects[0].worktrees.push({path:'/reference-root',branch:'main',status_updated_at:'2026-10-29T01:00:00Z'});
+  await h.window.refresh(true);await h.window.refreshSessionWorkspace(true);await settle();
+  assert.equal(h.$('#conversationFilesText'),source);
+  assert.equal(source.scrollTop,90);
+  assert.equal(h.requests.filter(r=>r.url.includes('/files?')).length,reads);
+  assert.equal(h.$('#conversationFilesMode').options.length,3);
+});
+
+function tabHost(t) {
+  const dom = new JSDOM('', {url:'http://localhost:4317/'});
+  t.after(()=>dom.window.close());
+  const messages=[];
+  dom.window.postMessage=message=>messages.push(message);
+  return {window:dom.window,messages};
+}
+
+test('startup restores the selected conversation without waiting for state, inventory or full discovery', async t => {
+  const host=tabHost(t), pending=[];
+  const h=await harness(t,true,{tabHost:host.window,route:'/sessions',intercept:url => {
+    if(url==='/api/state'||url.startsWith('/api/task-inventory')) return new Promise(resolve=>pending.push({url,resolve}));
+  }});
+  assert(host.messages.some(message=>message.type==='workhub:tab-ready'));
+  assert.equal(h.requests.some(request=>request.url==='/api/state'||request.url.startsWith('/api/sessions?')),false,'the handshake does not start discovery for a temporary scope');
+  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post({type:'workhub:tab-pane',split:false,shared:true});
+  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',title:'Saved title',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
+  await settle();await settle();
+  assert.equal(h.currentSession().session,'session-1');
+  assert(h.requests.some(request=>request.url==='/api/sessions/session-1/history'));
+  assert.equal(h.requests.some(request=>request.url.startsWith('/api/sessions?')),false);
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.session.cwd,'/workspace/task/app','history metadata hydrates restored file context');
+  assert.equal(h.$('#sessionHistoryTitle').textContent,'Billing review');
+  for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{requirements:[],environments:[{id:'local',name:'本机'}],project_count:0}});
+  await settle();
+  assert.equal(h.currentSession().session,'session-1');
+});
+
+test('startup list loading never advertises zero conversations and local results do not wait for workspace metadata', async t => {
+  const host=tabHost(t), pending=[];
+  let releaseList;
+  const h=await harness(t,true,{tabHost:host.window,route:'/sessions',intercept:url=>{
+    if(url==='/api/state'||url.startsWith('/api/task-inventory'))return new Promise(resolve=>pending.push({url,resolve}));
+    if(url.startsWith('/api/sessions?'))return new Promise(resolve=>{releaseList=resolve;});
+  }});
+  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post({type:'workhub:tab-navigation'});
+  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+  await settle();
+  assert.match(h.$('#sessionBrowserCount').textContent,/正在加载/);
+  assert.doesNotMatch(h.$('#sessionBrowserCount').textContent,/0 个对话/);
+  assert.equal(h.$('#sessionBrowserList').getAttribute('aria-busy'),'true');
+  assert.equal(h.requests.some(request=>request.url.includes('/history')),false,'navigation does not load a conversation body');
+  releaseList({ok:true,json:async()=>({sessions:h.sessions})});
+  await settle();await settle();
+  assert(h.$('[data-conversation-session="session-1"]'));
+  assert.equal(h.$('#sessionBrowserList').getAttribute('aria-busy'),'false');
+  for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{requirements:[],environments:[{id:'local',name:'本机'}],project_count:0}});
+  await settle();
+});
+
+test('shared startup fills an unselected reader from list results while metadata is still pending', async t => {
+  const host=tabHost(t), pending=[];
+  let releaseList;
+  const h=await harness(t,true,{tabHost:host.window,route:'/sessions',intercept:url=>{
+    if(url==='/api/state'||url.startsWith('/api/task-inventory'))return new Promise(resolve=>pending.push({url,resolve}));
+    if(url.startsWith('/api/sessions?'))return new Promise(resolve=>{releaseList=resolve;});
+  }});
+  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post({type:'workhub:tab-navigation'});
+  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local'}});
+  post({type:'workhub:conversation-group',split:false,sessions:[],autoSelect:true});
+  await settle();
+  assert(!h.$('#sessionBrowser').hidden,'static list controls render with no saved conversation');
+  assert.match(h.$('#sessionBrowserCount').textContent,/正在加载/);
+  assert(host.messages.some(message=>message.type==='workhub:tab-restored'));
+  assert(!host.messages.some(message=>message.type==='workhub:conversation-select'));
+  releaseList({ok:true,json:async()=>({sessions:h.sessions})});
+  await settle();await settle();
+  const selection=host.messages.find(message=>message.type==='workhub:conversation-select');
+  assert(selection?.initial);
+  assert.equal(selection.snapshot.conversation.selected,'session-1');
+  assert.equal(h.requests.some(request=>request.url.includes('/history')),false,'the shared list does not fetch hidden history');
+  post({type:'workhub:conversation-group',split:false,sessions:['session-1'],selected:'session-1',autoSelect:false});
+  for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{requirements:[],environments:[{id:'local',name:'本机'}],project_count:0}});
+  await settle();
+  assert.equal(host.messages.filter(message=>message.type==='workhub:conversation-select').length,1);
+});
+
+test('a late restored history cannot overwrite a newer conversation selection', async t => {
+  const host=tabHost(t), history=[];
+  const h=await harness(t,true,{tabHost:host.window,intercept:url=>url.endsWith('/history')?new Promise(resolve=>history.push({url,resolve})):undefined});
+  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  const restore=id=>post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',title:id,conversation:{scope:{kind:'all'},selected:id,pane:'detail'}}});
+  post({type:'workhub:tab-pane',split:false,shared:true});
+  restore('session-1');await settle();
+  restore('session-2');await settle();
+  history.find(request=>request.url.includes('session-2')).resolve({ok:true,json:async()=>({session:{id:'session-2',name:'Second',cwd:'/second'},entries:[]})});
+  await settle();
+  history.find(request=>request.url.includes('session-1')).resolve({ok:true,json:async()=>({session:{id:'session-1',name:'First',cwd:'/first'},entries:[]})});
+  await settle();
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.selected,'session-2');
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.session.cwd,'/second');
+  assert.equal(h.$('#sessionHistoryTitle').textContent,'Second');
+});
+
+for(const kind of ['task','project']) test(`active conversation follows its ${kind} scope and clears filters only when hidden`,async t=>{
+  const host=tabHost(t), h=await harness(t,true,{tabHost:host.window});
+  const secondTask={...h.data.requirements[0],id:'second-task',name:'Second task',members:[]};
+  h.data.requirements.push(secondTask);
+  h.sessions.push({id:'session-2',name:'Second conversation',cwd:'/repo/backend',updated_at:1999999999});
+  h.links.set('second-task',new Set(['session-2']));
+  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  const firstScope={kind:'task',id:'task',environment:'local'};
+  post({type:'workhub:tab-navigation'});
+  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:firstScope,pane:'list'}}});
+  await settle();await settle();
+  h.input('#sessionBrowserSearch','Billing');
+  const scope=kind==='task'?{kind,id:'second-task',environment:'local'}:{kind,id:'backend',environment:'local'};
+  const group={type:'workhub:conversation-group',sessions:['session-1','session-2'],selected:'session-2',full:false,listWidth:280,target:{route:'/sessions',environment:'local',conversation:{scope,selected:'session-2',session:h.sessions[1]}}};
+  post(group);await settle();await settle();
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.id,scope.id);
+  assert.equal(h.$('#sessionBrowserSearch').value,'');
+  assert.equal(h.$('[data-conversation-session="session-2"]').getAttribute('aria-pressed'),'true');
+  h.input('#sessionBrowserSearch','Second');
+  post({...group,listWidth:400});await settle();
+  assert.equal(h.$('#sessionBrowserSearch').value,'Second','resizing does not reset the list filters');
+  post({...group,selected:'session-1',target:{route:'/sessions',environment:'local',conversation:{scope:firstScope,selected:'session-1',session:h.sessions[0]}}});
+  await settle();await settle();
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.id,'task');
+  assert.equal(h.$('[data-conversation-session="session-1"]').getAttribute('aria-pressed'),'true');
+});
+
+test('following an active remote conversation keeps colliding local IDs isolated',async t=>{
+  const host=tabHost(t), h=await harness(t,true,{tabHost:host.window});
+  h.environments.environments.push({id:'remote',name:'Remote'});
+  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post({type:'workhub:tab-navigation'});
+  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},pane:'list'}}});
+  await settle();await settle();
+  const selected=JSON.stringify(['remote','session-1']);
+  post({type:'workhub:conversation-group',sessions:['session-1',selected],selected,full:false,listWidth:280,target:{route:'/sessions',environment:'remote',conversation:{scope:{kind:'project',id:'app',environment:'remote'},selected,session:h.sessions[0]}}});
+  await settle();await settle();
+  const chosen=[...h.document.querySelectorAll('[data-conversation-session]')].find(node=>node.dataset.conversationSession===selected);
+  assert.equal(chosen?.getAttribute('aria-pressed'),'true');
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.environment,'remote');
+  assert(h.requests.some(request=>request.url.includes('project_id=app')&&request.options.headers['X-Environment-ID']==='remote'));
+});
+
+test('following an unlinked conversation falls back to its project instead of inventing task ownership',async t=>{
+  const host=tabHost(t), h=await harness(t,true,{tabHost:host.window});
+  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post({type:'workhub:tab-navigation'});
+  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'project',id:'backend',environment:'local'},pane:'list'}}});
+  await settle();await settle();
+  h.links.get('task').delete('session-1');
+  post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',full:false,listWidth:280,target:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},selected:'session-1',session:h.sessions[0]}}});
+  await settle();await settle();
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.kind,'project');
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.id,'app');
+  assert.equal(h.$('[data-conversation-session="session-1"]').getAttribute('aria-pressed'),'true');
+  assert.equal(h.links.get('task').has('session-1'),false);
+});
+
+test('workspace metadata renders independently when the task inventory is slow',async t=>{
+  let release;
+  const h=await harness(t,true,{route:'/projects',intercept:url=>url.startsWith('/api/task-inventory')?new Promise(resolve=>{release=resolve;}):undefined});
+  assert.match(h.$('#content').textContent,/App/);
+  assert.equal(h.$('#reqCount').textContent,'…');
+  release({ok:true,json:async()=>({requirements:h.data.requirements,environments:[{id:'local',name:'本机'}],project_count:2})});
+  await settle();
+  assert.equal(h.$('#reqCount').textContent,'1');
+});
+
+test('workspace tab bridge keeps a sidebar new-tab icon available with the keyboard shortcut', async t => {
+  const host=tabHost(t);
+  const h=await harness(t,false,{tabHost:host.window,width:1440});
+  const route=h.window.location.hash;
+  const button=h.$('.sidebar-new-tab');
+  assert(button);
+  assert.match(button.title,/Ctrl\+T/);
+  assert.equal(button.getAttribute('aria-label'),'新建标签页');
+  h.click('.sidebar-new-tab');await settle();
+  const opened=host.messages.filter(message=>message.type==='workhub:tab-open');
+  assert.equal(opened.length,1);
+  assert.equal(opened[0].snapshot.environment,'local');
+  assert.equal(opened[0].snapshot.conversation,undefined);
+  assert.equal(h.window.location.hash,route);
+  h.click('.sidebar-toggle');await settle();
+  assert(h.document.body.classList.contains('sidebar-collapsed'));
+  h.click('.sidebar-new-tab');await settle();
+  assert.equal(host.messages.filter(message=>message.type==='workhub:tab-open').length,2);
+  h.$('.sidebar-new-tab').dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'t',ctrlKey:true,bubbles:true,cancelable:true}));
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-key').key.key,'t');
+});
+
+test('workspace tab bridge reclaims the bar space and announces layout changes without navigating', async t => {
+  const host=tabHost(t);
+  const h=await harness(t,false,{tabHost:host.window});
+  const root=h.document.documentElement;
+  const route=h.window.location.hash;
+  const events=[];
+  h.window.addEventListener('workhub:chat-layout',event=>events.push(event.detail));
+  const layout=(height,source=host.window)=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source,origin:'http://localhost:4317',data:{type:'workhub:tab-layout',height}}));
+  layout(40);
+  assert.equal(root.style.getPropertyValue('--workspace-tab-height'),'40px');
+  assert(root.hasAttribute('data-workspace-tabs-visible'));
+  assert.equal(events[0].phase,'before');
+  const count=events.length;
+  layout(40);layout(99);layout(0,h.window);
+  assert.equal(events.length,count);
+  layout(0);
+  assert.equal(root.style.getPropertyValue('--workspace-tab-height'),'0px');
+  assert(!root.hasAttribute('data-workspace-tabs-visible'));
+  assert.equal(h.window.location.hash,route);
+  assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
+});
+
+test('workspace tab bridge opens another conversation without changing the source selection or its filters', async t => {
+  const host=tabHost(t);
+  const h=await harness(t,false,{tabHost:host.window});
+  h.sessions.push({...h.sessions[0],id:'session-2',name:'Backend review'});h.links.get('task').add('session-2');
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}}}));
+  await settle();await settle();
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.selected,'session-1');
+  const other=[...h.document.querySelectorAll('[data-conversation-session]')].find(button=>button.dataset.conversationSession==='session-2');
+  assert(other);
+  other.dispatchEvent(new h.window.MouseEvent('click',{bubbles:true,cancelable:true,ctrlKey:true}));
+  await settle();
+  const opened=host.messages.find(message=>message.type==='workhub:tab-open');
+  assert.equal(opened.snapshot.conversation.selected,'session-2');
+  assert.equal(opened.snapshot.conversation.scope.id,'task');
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.selected,'session-1');
+  assert.equal(h.currentSession().session,'session-1');
+  assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
+});
+
+test('workspace tab bridge restores project detail and search while normal navigation stays in the current tab', async t => {
+  const host=tabHost(t);
+  const h=await harness(t,false,{tabHost:host.window});
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/projects',environment:'local',project:{id:'backend',detail:true,filter:'all'},search:'Backend'}}}));
+  await settle();await settle();
+  assert.equal(h.window.WorkHubTab.snapshot().project.id,'backend');
+  assert.equal(h.$('#search').value,'Backend');
+  h.click('[data-view="sessions"]');await settle();
+  assert.equal(h.window.location.hash,'#/sessions');
+  assert.equal(host.messages.filter(message=>message.type==='workhub:tab-open').length,0);
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-active',active:false}}));
+  assert.equal(h.window.WorkHubTab.active,false);
+  assert(h.document.documentElement.hasAttribute('data-workspace-inactive'));
+  h.window.WorkHubTab.dispose();
+  assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
+});
+
+test('split conversation bridges retain independent drafts and send only to their own session', async t => {
+  const host = tabHost(t);
+  const first = await harness(t, false, {tabHost:host.window});
+  const second = await harness(t, false, {tabHost:host.window});
+  second.sessions[0].id = 'session-2'; second.sessions[0].name = 'Backend review';
+  const post = (h, data, source = host.window) => h.window.dispatchEvent(new h.window.MessageEvent('message', {source, origin:'http://localhost:4317', data}));
+  for (const [h, id] of [[first, 'session-1'], [second, 'session-2']]) {
+    post(h, {type:'workhub:tab-restore', active:true, snapshot:{route:'/sessions', environment:'local', conversation:{scope:{kind:'all'}, selected:id, pane:'detail'}}});
+    await settle(); await settle();
+    post(h, {type:'workhub:tab-pane', split:true});
+    assert(h.document.documentElement.hasAttribute('data-workspace-pane'));
+    assert.equal(h.window.WorkHubTab.active, true);
+  }
+  first.input('#sessionChatInput', '只发给前端');
+  second.input('#sessionChatInput', '只发给后端');
+  first.$('#sessionChatInput').dispatchEvent(new first.window.Event('focusin', {bubbles:true}));
+  assert.equal(host.messages.at(-1).type, 'workhub:tab-focus');
+  post(second, {type:'workhub:tab-pane', split:false}, second.window);
+  assert(second.document.documentElement.hasAttribute('data-workspace-pane'), 'foreign pane messages are ignored');
+  await first.submit('#sessionChatForm');
+  assert.equal(second.$('#sessionChatInput').value, '只发给后端');
+  await second.submit('#sessionChatForm');
+  for (const [h,id,text] of [[first,'session-1','只发给前端'], [second,'session-2','只发给后端']]) {
+    const sends = h.requests.filter(request => request.options.method === 'POST' && request.url.endsWith('/chat'));
+    assert.equal(sends.length, 1);
+    assert.equal(sends[0].url, `/api/sessions/${id}/chat`);
+    assert.equal(sends[0].body.text, text);
+    post(h, {type:'workhub:tab-pane', split:false});
+    assert(!h.document.documentElement.hasAttribute('data-workspace-pane'));
+    assert.equal(h.requests.some(request => request.url.endsWith('/chat/stop')), false);
+  }
+});
+
+test('shared sidebar opens destinations in workspace tabs and leaves grouped conversations intact', async t => {
+  const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
+  await settle(); await settle();
+  post({type:'workhub:tab-pane',split:true});
+  h.input('#sessionChatInput','保留在当前栏');
+  h.click('[data-view="projects"]'); await settle();
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-open').snapshot.route,'/projects');
+  assert.equal(h.window.WorkHubTab.snapshot().conversation.selected,'session-1');
+  assert.equal(h.$('#sessionChatInput').value,'保留在当前栏');
+  post({type:'workhub:tab-navigation'});
+  assert(h.document.documentElement.hasAttribute('data-workspace-navigation'));
+  h.click('[data-view="requirements"]'); await settle();
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-open').snapshot.route,'/requirements');
+  assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
+});
+
+test('shared list synchronizes read markers from a visible reader and keeps background completions unread', async t => {
+ const host = tabHost(t), nav = await harness(t,false,{tabHost:host.window}), reader = await harness(t,false,{tabHost:host.window});
+ const post = (h,data) => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ const key = 'workhub:session-read:' + JSON.stringify(['local','session-1']);
+ const values = new Map([[key,nav.window.localStorage.getItem(key)]]);
+ let writes = 0;
+ // Model same-origin iframe localStorage, including storage events delivered
+ // to every other frame only when the value changes.
+ for (const h of [nav,reader]) Object.defineProperty(h.window,'localStorage',{value:{
+   getItem(key) {return values.get(key) ?? null;},
+   setItem(key,value) {
+     const oldValue = values.get(key) ?? null;
+     if (oldValue === value) return;
+     writes++; values.set(key,value);
+     const other = h === nav ? reader : nav;
+     setImmediate(() => {if (other.window.document) other.window.dispatchEvent(new other.window.StorageEvent('storage',{key,oldValue,newValue:value}));});
+   },
+ }});
+ let opened;
+ reader.window.WorkHubAssistant = {open(options) {opened = options; setImmediate(() => options.loaded?.({...reader.sessions[0]}));},close() {},updateSession() {}};
+ post(nav,{type:'workhub:tab-navigation'});
+ post(nav,{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},pane:'list'}}});
+ await settle(); await settle();
+ post(nav,{type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:true});
+ nav.sessions[0].completed_run = reader.sessions[0].completed_run = 'before-open';
+ await nav.window.refreshSessionWorkspace(true);
+ const row = () => nav.$('[data-conversation-session="session-1"]');
+ assert.match(row().textContent,/有新消息/,'a selected row alone does not mark a hidden conversation read');
+ assert(nav.$('.session-browser-unread-dot'));
+ post(reader,{type:'workhub:tab-pane',shared:true});
+ post(reader,{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
+ await settle(); await settle();
+ assert.equal(JSON.parse(values.get(key)).run,'before-open');
+ assert.doesNotMatch(row().textContent,/有新消息/);
+ assert.equal(nav.$('.session-browser-unread-dot'),null);
+ assert.equal(nav.$('#sessionNavigationStatus').hidden,true);
+ nav.sessions[0].completed_run = 'visible-run';
+ await nav.window.refreshSessionWorkspace(true);
+ assert.match(row().textContent,/有新消息/);
+ opened.activity('session-1',{id:'visible-run',busy:false,status:'completed',turn_id:'visible-turn'});
+ await settle();
+ assert.equal(JSON.parse(values.get(key)).run,'visible-run');
+ assert.doesNotMatch(row().textContent,/有新消息/,'visible completion is acknowledged without reopening the reader');
+ opened.loaded({...reader.sessions[0],completed_run:'before-open'});
+ await settle();
+ assert.equal(JSON.parse(values.get(key)).run,'visible-run','late history metadata cannot replace the latest acknowledged activity');
+ assert.doesNotMatch(row().textContent,/有新消息/);
+ const acknowledgedWrites = writes;
+ opened.activity('session-1',{id:'visible-run',busy:false,status:'completed',turn_id:'visible-turn'});
+ await settle();
+ assert.equal(writes,acknowledgedWrites,'repeated rendering does not broadcast identical read acknowledgements');
+ post(reader,{type:'workhub:tab-active',active:false});
+ nav.sessions[0].completed_run = 'background-run';
+ opened.activity('session-1',{id:'background-run',busy:false,status:'completed',turn_id:'background-turn'});
+ await nav.window.refreshSessionWorkspace(true); await settle();
+ assert.equal(JSON.parse(values.get(key)).run,'visible-run');
+ assert.match(row().textContent,/有新消息/);
+ const remoteKey = 'workhub:session-read:' + JSON.stringify(['remote','session-1']);
+ const remoteRead = JSON.stringify({time:Date.now() / 1000,run:'background-run'});
+ values.set(remoteKey,remoteRead);
+ nav.window.dispatchEvent(new nav.window.StorageEvent('storage',{key:remoteKey,newValue:remoteRead}));
+ assert.match(row().textContent,/有新消息/,'reading the same ID in another environment does not clear this reminder');
+ post(reader,{type:'workhub:tab-active',active:true});
+ await settle();
+ assert.equal(JSON.parse(values.get(key)).run,'background-run');
+ assert.doesNotMatch(row().textContent,/有新消息/);
+});
+
+test('shared conversation list browses scopes without reading hidden history and distinguishes locate from add', async t => {
+ const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post({type:'workhub:tab-navigation'});
+ const historyRequests = () => h.requests.filter(request=>request.url.includes('/history')).length;
+ const before = historyRequests();
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},pane:'list'}}});
+ await settle(); await settle();
+ post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',full:false,listWidth:280});
+ assert.equal(h.window.WorkHubTab.navigationOnly,true);
+ assert.equal(historyRequests(),before,'a shared list must not load or mark the hidden chat as read');
+ assert(h.$('.parallel-list-badge').textContent.includes('已并列'));
+ h.click('[data-conversation-session="session-1"]'); await settle();
+ assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-select').snapshot.conversation.selected,'session-1');
+ h.click('[data-conversation-parallel="session-1"]'); await settle();
+ assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-add').snapshot.conversation.scope.id,'task');
+ h.$('#sessionScopePicker').open = true; await settle();
+ const all = [...h.document.querySelectorAll('[data-conversation-scope]')].find(button=>JSON.parse(button.dataset.conversationScope).kind==='all');
+ assert(all); all.click(); await settle(); await settle();
+ assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.kind,'all');
+ post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:false,full:false,listWidth:400,targetTitle:'当前对话'});
+ assert.equal(h.$('.parallel-list-badge'),null,'single conversations do not claim to be parallel');
+ assert.equal(h.$('#sharedConversationTarget').textContent,'当前对话：当前对话');
+ assert(h.document.documentElement.hasAttribute('data-workspace-single'));
+ assert.equal(historyRequests(),before);
+});
+
+for (const scope of [{kind:'directory',cwd:'/workspace/task/app',environment:'local'}, {kind:'project',id:'app',environment:'local'}, {kind:'task',id:'task',environment:'local'}]) test(`shared new conversation preserves an explicit draft across tabs (${scope.kind})`, async t => {
+ const host = tabHost(t), nav = await harness(t,false,{tabHost:host.window});
+ const post = (h,data) => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post(nav,{type:'workhub:tab-navigation'});
+ post(nav,{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,directory:'/workspace/task/app',pane:'list'}}});
+ await settle();await settle();
+ assert.equal(nav.$('#newBrowserSession').disabled,false);
+ nav.click('#newBrowserSession');await settle();
+ const opened = host.messages.findLast(message=>message.type==='workhub:tab-open').snapshot;
+ assert.equal(opened.conversation.creating,true);
+ assert.equal(opened.conversation.selected,null);
+ assert.equal(opened.conversation.directory,'/workspace/task/app');
+ const draft = await harness(t,false,{tabHost:host.window});
+ post(draft,{type:'workhub:tab-restore',active:true,snapshot:opened});await settle();await settle();
+ assert.equal(draft.currentSession().session,null, 'existing conversations must not replace a new draft');
+ assert.equal(draft.window.WorkHubTab.snapshot().conversation.creating,true);
+ assert.equal(draft.window.WorkHubTab.snapshot().title,'新建对话');
+ assert.equal(draft.$('#sessionBrowserNewDirectoryField').hidden,scope.kind === 'directory');
+ assert.equal(draft.currentSession().target.cwd,'/workspace/task/app');
+ assert.equal(draft.requests.some(r=>r.url.endsWith('/chat') && r.options.method==='POST'),false);
+ const saved = draft.window.WorkHubTab.snapshot();
+ post(draft,{type:'workhub:tab-restore',active:true,snapshot:saved});await settle();await settle();
+ assert.equal(draft.currentSession().session,null);
+ assert.equal(draft.currentSession().target.cwd,'/workspace/task/app');
+});
+
+test('running terminals share the conversation list, retain scope and reconnect by process identity', async t => {
+ const host=tabHost(t), rows=[
+  {id:'session-1',name:'Terminal Shell',task_id:'task',project_id:'app',cwd:'/workspace/task/app',state:'running',attached:false,created_at:Math.floor(Date.now()/1000)},
+  {id:'other',name:'Other task',task_id:'other-task',project_id:'backend',cwd:'/workspace/other/backend',state:'running',attached:false,created_at:1},
+  {id:'ended',name:'Ended terminal',task_id:'task',cwd:'/workspace/task',state:'exited',created_at:1},
+ ];
+ const h=await harness(t,false,{tabHost:host.window,intercept:url=>url==='/api/terminals'?{ok:true,json:async()=>rows}:null});
+ const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post({type:'workhub:tab-navigation'});
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},pane:'list'}}});
+ await settle();await settle();
+ const terminal=()=>h.$('[data-conversation-terminal="session-1"]');
+ assert(terminal());assert.match(terminal().textContent,/终端.*运行中/);
+ assert.equal(h.$('[data-conversation-terminal="other"]'),null);
+ assert.equal(h.$('[data-conversation-terminal="ended"]'),null);
+ assert.match(h.$('#sessionBrowserCount').textContent,/2 个对话/);
+ assert.notEqual(terminal().dataset.conversationSession,'session-1','terminal and UI session IDs never collide');
+ post({type:'workhub:conversation-group',split:false,sessions:[],selected:terminal().dataset.conversationSession,target:{route:'/terminals',terminal:{id:'session-1',taskID:'task'}},canSplit:true});
+ assert.equal(terminal().getAttribute('aria-pressed'),'true');
+ const historyCount=h.requests.filter(r=>r.url.includes('/history')).length;
+ terminal().click();await settle();
+ const opened=host.messages.findLast(m=>m.type==='workhub:tab-open');
+ assert.equal(opened.snapshot.route,'/terminals');assert.equal(opened.snapshot.terminal.id,'session-1');
+ assert.equal(opened.snapshot.terminal.taskID,'task');
+ assert.equal(h.requests.filter(r=>r.url.includes('/history')).length,historyCount);
+ assert.equal(h.requests.some(r=>r.url==='/api/terminals'&&r.options.method==='POST'),false);
+ h.input('#sessionBrowserSearch','终端');assert(terminal());assert.match(h.$('#sessionBrowserCount').textContent,/1 \/ 2 个对话/);
+ h.input('#sessionBrowserSearch','no match');assert.equal(terminal(),null);
+ h.input('#sessionBrowserSearch','');
+ h.click('[data-conversation-status="running"]');assert(terminal());
+ h.click('[data-conversation-status="waiting"]');assert.equal(terminal(),null);
+ h.click('[data-conversation-status="all"]');
+ const add=h.$('[data-conversation-parallel][data-conversation-terminal="session-1"]');add.click();
+ assert.equal(host.messages.findLast(m=>m.type==='workhub:tab-open').placement,'split');
+ for (const [scope,expected] of [
+  [{kind:'project',id:'backend',environment:'local'},'other'],
+  [{kind:'directory',cwd:'/workspace/task/app',environment:'local'},'session-1'],
+  [{kind:'directory',cwd:'/unrelated',environment:'local'},null],
+  [{kind:'task',id:'task',environment:'remote'},null],
+  [{kind:'task',id:'task',environment:'local'},'session-1'],
+ ]) {
+  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,pane:'list'}}});
+  await settle();await settle();
+  assert.deepEqual([...h.document.querySelectorAll('button.session-browser-item[data-conversation-terminal]')].map(b=>b.dataset.conversationTerminal),expected?[expected]:[]);
+ }
+ h.$('#sessionBrowserArchived').checked=true;h.$('#sessionBrowserArchived').dispatchEvent(new h.window.Event('change',{bubbles:true}));await settle();
+ assert.equal(terminal(),null,'running terminals do not appear among archived UI conversations');
+ h.$('#sessionBrowserArchived').checked=false;h.$('#sessionBrowserArchived').dispatchEvent(new h.window.Event('change',{bubbles:true}));await settle();
+ rows[0].attached=true;post({type:'workhub:terminals-changed'});await settle();assert.match(terminal().textContent,/已打开/);
+ rows[0].state='exited';post({type:'workhub:terminals-changed'});await settle();assert.equal(terminal(),null);
+ assert.match(h.$('#sessionBrowserCount').textContent,/1 个对话/);
+});
+
+test('parallel pane toolbar commands stay scoped to the originating conversation', async t => {
+ const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post({type:'workhub:tab-pane',split:true});
+ post({type:'workhub:parallel-layout',split:true,zoomed:true,canZoom:true});
+ assert(h.document.documentElement.hasAttribute('data-workspace-zoomed'));
+ h.window.dispatchEvent(new h.window.CustomEvent('workhub:parallel-command',{detail:'zoom'}));
+ assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-pane-command').command,'zoom');
+ h.window.dispatchEvent(new h.window.CustomEvent('workhub:parallel-command',{detail:'close'}));
+ assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-pane-command').command,'close');
+ assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
+});
+
+
+test('a shared single conversation restores its detail without duplicating the shared list or parallel actions', async t => {
+ const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post({type:'workhub:tab-pane',split:false,shared:true});
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'list'}}});
+ await settle(); await settle();
+ assert(h.document.documentElement.hasAttribute('data-workspace-conversation'));
+ assert(!h.document.documentElement.hasAttribute('data-workspace-pane'));
+ assert.equal(h.window.WorkHubTab.snapshot().conversation.pane,'detail');
+ assert.equal(h.currentSession().session,'session-1');
+ h.window.dispatchEvent(new h.window.CustomEvent('workhub:parallel-command',{detail:'close'}));
+ assert(!host.messages.some(message=>message.type==='workhub:tab-pane-command'));
+});
+
+
+test('ordinary navigation prepares the shared reader before selection and later layout messages retain its draft', async t => {
+ const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/requirements/task',environment:'local'}});
+ await settle(); await settle();
+ const listsBefore = h.requests.filter(request=>request.url.startsWith('/api/sessions?')).length;
+ h.click('[data-view="sessions"]'); await settle(); await settle();
+ assert.equal(h.window.WorkHubTab.snapshot().conversation.pane,'detail');
+ assert(h.document.documentElement.hasAttribute('data-workspace-conversation'));
+ assert(host.messages.some(message=>message.type==='workhub:tab-state' && message.snapshot.route==='/sessions'));
+ assert.equal(h.requests.filter(request=>request.url.startsWith('/api/sessions?')).length,listsBefore,'only the shared navigation fetches the list');
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'detail'}}});
+ await settle(); await settle();
+ h.input('#sessionChatInput','保留进入共享布局前的草稿');
+ const before = h.requests.filter(request=>request.url.includes('/history')).length;
+ post({type:'workhub:tab-pane',split:false,shared:true});
+ await settle(); await settle();
+ assert.equal(h.window.WorkHubTab.snapshot().conversation.pane,'detail');
+ assert.equal(h.$('#sessionBrowser').dataset.pane,'detail');
+ assert.equal(h.currentSession().session,'session-1');
+ assert.equal(h.$('#sessionChatInput').value,'保留进入共享布局前的草稿');
+ assert.equal(h.requests.filter(request=>request.url.includes('/history')).length,before);
+ h.click('[data-conversation-action="back"]'); await settle();
+ assert.equal(h.window.WorkHubTab.snapshot().conversation.pane,'detail','a host-managed pane cannot reintroduce another list');
+ assert(!h.requests.some(request=>request.url.endsWith('/chat/stop')));
+});
+
+test('resizing a shared list with 738 conversations does not regenerate its rows', async t => {
+ const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ for (let index=1; index<738; index++) h.sessions.push({...h.sessions[0],id:`large-${index}`,name:`对话 ${index}`});
+ const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post({type:'workhub:tab-navigation'});
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+ await settle(); await settle();
+ const group = {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:false,full:false,listWidth:280,targetTitle:'当前对话'};
+ post(group);
+ assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,20);
+ const row = h.$('[data-conversation-session="session-1"]'), ui = h.window.WorkHubUI;
+ let renders = 0;
+ h.window.WorkHubUI = {...ui,conversationList:props=>{renders++; return ui.conversationList(props);}};
+ for (let width=300; width<=390; width+=10) post({...group,listWidth:width});
+ assert.equal(renders,0,'width-only updates must not regenerate hundreds of rows');
+ assert.equal(h.$('[data-conversation-session="session-1"]'),row);
+ assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-shared-list-width'),'390px');
+ post({...group,selected:'large-1',targetTitle:'对话 1',listWidth:390});
+ assert.equal(renders,1,'changing the active conversation still updates list selection');
+ assert.equal(h.$('[data-conversation-session="large-1"]').getAttribute('aria-pressed'),'true');
+});
+
+test('dedicated conversation panes do not generate hidden lists and ordinary browsing can restore them', async t => {
+ const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ for (let index=1; index<738; index++) h.sessions.push({...h.sessions[0],id:`large-${index}`,name:`对话 ${index}`});
+ const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ const ui = h.window.WorkHubUI; let renders = 0;
+ h.window.WorkHubUI = {...ui,conversationList:props=>{renders++; return ui.conversationList(props);}};
+ post({type:'workhub:tab-pane',split:true,shared:true});
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'detail'}}});
+ await settle(); await settle();
+ assert.equal(renders,0,'only the shared navigation frame should generate conversation rows');
+ assert.equal(h.$('#sessionBrowserList').childElementCount,0,'previous rows must also be released');
+ assert.equal(h.currentSession().session,'session-1');
+ h.input('#sessionChatInput','保留对话草稿');
+ h.click('[data-conversation-action="refresh"]'); await settle(); await settle();
+ assert.equal(renders,0,'background refresh must not rebuild an invisible list');
+ assert.equal(h.$('#sessionChatInput').value,'保留对话草稿');
+ post({type:'workhub:tab-pane',split:false,shared:false});
+ h.click('[data-conversation-action="back"]'); await settle();
+ assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,20,'leaving host-managed conversation mode restores ordinary list browsing');
+ assert(renders>0);
+ assert(!h.requests.some(request=>request.url.endsWith('/chat/stop')));
+});
+
+test('background list refresh updates its own status without regenerating unchanged conversation rows', async t => {
+ const host=tabHost(t), h=await harness(t,false,{tabHost:host.window});
+ for(let i=1;i<738;i++) h.sessions.push({...h.sessions[0],id:`large-${i}`,name:`对话 ${i}`});
+ const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post({type:'workhub:tab-navigation'});
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+ await settle();await settle();
+ const ui=h.window.WorkHubUI;let renders=0;
+ h.window.WorkHubUI={...ui,conversationList:props=>{renders++;return ui.conversationList(props);}};
+ const row=h.$('[data-conversation-session="large-1"]');
+ h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ assert.equal(renders,0,'loading and refresh metadata do not invalidate populated rows');
+ assert.equal(h.$('[data-conversation-session="large-1"]'),row);
+ h.sessions[1].name='更新后的标题';
+ h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ assert.equal(renders,1,'actual visible data still updates the list');
+ assert(h.$('[data-conversation-session="large-1"]').textContent.includes('更新后的标题'));
+});
+
+// jsdom has no layout. Model a scrollable list with 88px rows to exercise
+// the actual scroll listener, batching and bounded DOM window.
+function scrollableConversations(h) {
+ const list=h.$('#sessionBrowserList');
+ Object.defineProperty(list,'clientHeight',{configurable:true,value:300});
+ Object.defineProperty(list,'scrollHeight',{configurable:true,get:()=>Number(list.dataset.loadedCount)*88+20});
+ return async top=>{
+  list.scrollTop=top==='bottom'?list.scrollHeight-list.clientHeight:top;
+  list.dispatchEvent(new h.window.Event('scroll'));
+  await new Promise(resolve=>h.window.requestAnimationFrame(resolve));await settle();
+ };
+}
+
+test('conversation lists automatically append twenty rows at the bottom and keep a bounded window', async t => {
+ const h=await harness(t,false);
+ for(let i=1;i<738;i++) h.sessions.push({...h.sessions[0],id:`batch-${i}`,name:`对话 ${i}`,chat_status:i===737?'waiting':''});
+ await h.navigate('/sessions');await settle();
+ const list=h.$('#sessionBrowserList'),rows=()=>[...list.querySelectorAll('[data-conversation-session]')];
+ assert.equal(rows().length,20);
+ assert.equal(h.$('#sessionBrowserPagination'),null);
+ assert.match(h.$('#sessionBrowserCount').textContent,/738 个对话/);
+ const scroll=scrollableConversations(h),session=h.currentSession().session,readingState=h.currentSession();
+ h.input('#sessionChatInput','自动加载保留草稿');
+ await scroll('bottom');assert.equal(list.dataset.loadedCount,'40');assert.equal(rows().length,40);
+ assert.equal(rows()[0].dataset.conversationSession,'session-1','appending does not replace the first batch');
+ await scroll('bottom');assert.equal(list.dataset.loadedCount,'60');
+ await scroll('bottom');assert.equal(list.dataset.loadedCount,'80');assert.equal(rows().length,60);
+ assert(list.querySelector('.session-list-spacer'));
+ for(let i=0;i<33;i++) {await scroll('bottom');assert(rows().length<=60);}
+ assert.equal(list.dataset.loadedCount,'738');
+ assert.match(list.textContent,/已显示全部对话/);
+ await scroll(0);assert.equal(rows()[0].dataset.conversationSession,'session-1','scrolling up restores previous rows');
+ assert.equal(h.currentSession().session,session);
+ assert.equal(h.$('#sessionChatInput').value,'自动加载保留草稿');
+ assert.equal(h.currentSession(),readingState,'scrolling reuses the existing conversation controller');
+ h.input('#sessionBrowserSearch','对话 737');
+ assert.equal(rows().length,1);assert.equal(rows()[0].dataset.conversationSession,'batch-737');
+ h.input('#sessionBrowserSearch','');assert.equal(rows().length,20);
+ h.click('[data-conversation-status="waiting"]');
+ assert.equal(rows().length,1);assert.equal(rows()[0].dataset.conversationSession,'batch-737');
+ assert(!h.requests.some(r=>r.url.endsWith('/chat/stop')));
+});
+
+test('automatic list windows survive refresh and restoration, support keyboard navigation and clamp on removal', async t => {
+ const host=tabHost(t),h=await harness(t,false,{tabHost:host.window});
+ for(let i=1;i<125;i++)h.sessions.push({...h.sessions[0],id:`batch-${i}`,name:`对话 ${i}`});
+ const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'list',loadedCount:120,windowStart:80}}});await settle();await settle();
+ const list=h.$('#sessionBrowserList');
+ assert.equal(list.dataset.loadedCount,'120');assert.equal(list.dataset.windowStart,'80');
+ h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ assert.equal(list.dataset.windowStart,'80');
+ const row=h.$('[data-conversation-session="batch-80"]');row.focus();
+ row.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'PageUp',bubbles:true,cancelable:true}));
+ assert.equal(h.document.activeElement.dataset.conversationSession,'batch-60');
+ h.document.activeElement.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}));
+ assert.equal(h.document.activeElement.dataset.conversationSession,'session-1');
+ assert.equal(h.window.WorkHubTab.snapshot().conversation.loadedCount,120);
+ h.sessions.splice(30);h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ assert.equal(list.dataset.loadedCount,'30');assert(Number(list.dataset.windowEnd)<=30);
+ assert(h.document.querySelectorAll('[data-conversation-session]').length<=30);
+});
+
+test('focusing a distant split conversation restores its window without width updates resetting browsing', async t => {
+ const host=tabHost(t),h=await harness(t,false,{tabHost:host.window});
+ for(let i=1;i<125;i++)h.sessions.push({...h.sessions[0],id:`batch-${i}`,name:`对话 ${i}`});
+ const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+ post({type:'workhub:tab-navigation'});
+ post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});await settle();await settle();
+ const group={type:'workhub:conversation-group',sessions:['session-1','batch-110'],selected:'session-1',full:false,listWidth:280};
+ post(group);post({...group,selected:'batch-110'});
+ assert.equal(h.$('[data-conversation-session="batch-110"]').getAttribute('aria-pressed'),'true');
+ assert(h.document.querySelectorAll('[data-conversation-session]').length<=60);
+ const scroll=scrollableConversations(h);await scroll(0);
+ assert.equal(h.$('#sessionBrowserList').dataset.windowStart,'0');
+ post({...group,selected:'batch-110',listWidth:400});
+ assert.equal(h.$('#sessionBrowserList').dataset.windowStart,'0');
+ h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ assert.equal(h.$('#sessionBrowserList').dataset.windowStart,'0');
+ post(group);assert.equal(h.$('[data-conversation-session="session-1"]').getAttribute('aria-pressed'),'true');
+});
+
+test('a restored automatic list window waits for every environment before clamping', async t => {
+ const host=tabHost(t),h=await harness(t,false,{tabHost:host.window});
+ h.environments.environments.push({id:'remote',name:'WSL'});await h.window.loadEnvironments();
+ const remote=Array.from({length:124},(_,i)=>({...h.sessions[0],id:`remote-${i}`,name:`远程 ${i}`}));
+ let resolveRemote;
+ h.setIntercept((url,options)=>url.startsWith('/api/sessions?')&&options.headers['X-Environment-ID']==='remote'?new Promise(resolve=>{resolveRemote=resolve;}):undefined);
+ h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',loadedCount:120,windowStart:80,pane:'list'}}}}));
+ await settle();await settle();assert.equal(typeof resolveRemote,'function');
+ resolveRemote({ok:true,json:async()=>({sessions:remote})});await settle();await settle();
+ assert.equal(h.$('#sessionBrowserList').dataset.loadedCount,'120');
+ assert.equal(h.$('#sessionBrowserList').dataset.windowStart,'80');
+ assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,40);
+});
+
+test('appending scroll batches and evicting old rows preserve the surviving DOM nodes', async t => {
+ const h=await harness(t,false);
+ for(let i=1;i<140;i++)h.sessions.push({...h.sessions[0],id:`stable-${i}`,name:`对话 ${i}`});
+ await h.navigate('/sessions');await settle();
+ const scroll=scrollableConversations(h),list=h.$('#sessionBrowserList');
+ const first=h.$('[data-conversation-session="session-1"]');
+ await scroll('bottom');
+ assert.equal(h.$('[data-conversation-session="session-1"]'),first,'appending twenty rows must not recreate existing rows');
+ await scroll('bottom');
+ const survivor=h.$('[data-conversation-session="stable-40"]');
+ await scroll('bottom');
+ assert.equal(h.$('[data-conversation-session="stable-40"]'),survivor,'window eviction must retain surviving rows');
+ assert.equal(list.querySelector('.session-browser-groups').querySelectorAll('li').length,60);
+ assert.equal(list.dataset.windowEnd,list.dataset.loadedCount,'new batches must be mounted immediately at the bottom');
+ assert.equal(list.querySelector('[data-list-spacer="after"]'),null,'appending must not briefly replace the new batch with blank space');
+ h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ assert.equal(h.$('[data-conversation-session="stable-40"]'),survivor);
+});
+
+test('a one pixel scroll around an estimated batch boundary does not bounce the mounted window', async t => {
+ const host=tabHost(t),h=await harness(t,false,{tabHost:host.window});
+ for(let i=1;i<100;i++)h.sessions.push({...h.sessions[0],id:`stable-${i}`,name:`对话 ${i}`});
+ h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',loadedCount:100,windowStart:20,pane:'list'}}}}));await settle();await settle();
+ const list=h.$('#sessionBrowserList'),scroll=scrollableConversations(h);
+ list.getBoundingClientRect=()=>({top:0,bottom:300,height:300});
+ for(const row of list.querySelectorAll('[data-conversation-session]')) {
+  const index=Number(row.dataset.conversationSession.split('-').at(-1));
+  row.getBoundingClientRect=()=>({top:index*88-list.scrollTop,bottom:(index+1)*88-list.scrollTop,height:88});
+ }
+ const anchor=h.$('[data-conversation-session="stable-40"]'),ui=h.window.WorkHubUI;let renders=0;
+ h.window.WorkHubUI={...ui,conversationList:props=>{renders++;return ui.conversationList(props);}};
+ for(let i=0;i<12;i++)await scroll(40*88+(i%2?1:-1));
+ assert.equal(list.dataset.windowStart,'20');
+ assert.equal(renders,0,'height estimates around a boundary must not trigger repeated renders');
+ assert.equal(h.$('[data-conversation-session="stable-40"]'),anchor);
+});
+
+
+test('file tree images and outside image links use the same adjacent preview and return to selectable text', async t => {
+  const h=await harness(t,true,{width:1440});
+  const rendered=[];
+  h.window.WorkHubFileDisplay={render(container,preview){rendered.push(preview);container.textContent=preview.text;return ()=>container.replaceChildren();}};
+  const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jG1sAAAAASUVORK5CYII=';
+  h.setIntercept(url=>{
+    if (!url.includes('/sessions/session-1/files?')) return;
+    const query=new URL(url,'http://localhost').searchParams;
+    const file=query.get('file');
+    return {ok:true,json:async()=>file ? file.endsWith('.png') ? {format:'image',text:'',data_url:png} : {format:'file',text:'完整文本\n可以选中复制 <script>inert</script>'} : {entries:[{name:'project.png',path:'project.png',directory:false},{name:'read.ts',path:'read.ts',directory:false}],truncated:false}};
+  });
+  await h.openConversations('task');
+  h.click('#toggleConversationFiles');await settle();
+  h.click('#conversationFilesFiles [data-change-file="project.png"]');await settle();
+  assert.equal(h.$('#conversationFilesText img').getAttribute('src'),png);
+  assert.equal(rendered.length,0,'image preview does not load the text/diff renderer');
+  const outside='/outside/design/project.png';
+  const ref=new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'local',path:outside,line:1}});
+  assert.equal(h.window.dispatchEvent(ref),false);await settle();
+  assert.equal(h.$('#conversationFilesDock').hidden,false);
+  assert.equal(h.$('#conversationFilesDialog').open,false);
+  assert.equal(h.$('#conversationFilesText img').getAttribute('src'),png);
+  assert.equal(h.$('.file-preview-path').textContent,outside);
+  assert.equal(h.$('#conversationFilesFiles [data-change-file="'+outside+'"]').getAttribute('aria-pressed'),'true');
+  h.click('#conversationFilesFiles [data-change-file="read.ts"]');await settle();
+  assert.equal(h.$('#conversationFilesText img'),null);
+  assert.equal(h.$('#conversationFilesText script'),null);
+  assert.match(h.$('#conversationFilesText').textContent,/完整文本\n可以选中复制 <script>inert/);
+  assert.equal(rendered.length,1);
+  h.click('#conversationFilesFiles [data-change-file="project.png"]');await settle();
+  h.$('#conversationFilesText img').dispatchEvent(new h.window.Event('error'));await settle();
+  assert.match(h.$('#conversationFilesText [role="alert"]').textContent,/图片无法显示/);
+});

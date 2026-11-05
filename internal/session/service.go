@@ -1,0 +1,101 @@
+// Package session indexes Codex threads and owns history, chat runs and terminal
+// handoff. Task/project scopes are adapters, never session owners.
+package session
+
+import (
+	"context"
+	"strings"
+	"sync"
+	"time"
+
+	"worktree-hub/internal/codex"
+	"worktree-hub/internal/model"
+	"worktree-hub/internal/platform"
+	"worktree-hub/internal/workspace"
+)
+
+type LaunchPlanner interface {
+	MakeLaunchPlan(context.Context, string) (model.LaunchPlan, error)
+}
+
+func savedSessionPlan(s model.Session) model.LaunchPlan {
+	return model.LaunchPlan{Cwd: s.Cwd, AdditionalDirectories: append([]string{}, s.AdditionalDirectories...)}
+}
+
+type Service struct {
+	chatRuntime
+	Workspace        *workspace.Service
+	plans            LaunchPlanner
+	openSessions     func(context.Context) (codex.SessionClient, error)
+	sessionPool      *codex.SessionPool
+	openLive         func(context.Context) (codex.LiveClient, error)
+	openTitleLive    func(context.Context) (codex.LiveClient, error)
+	watchHistory     func(context.Context, string, func(HistoryPush) error) error
+	terminalConflict func(string, string) error
+	openExternal     func(string) error
+	bridgeMu         sync.Mutex
+	controlMu        sync.RWMutex
+	controlLocksMu   sync.Mutex
+	controlLocks     map[string]*sessionControlLock
+	catalogMu        sync.Mutex
+	catalogs         map[string]*catalogEntry
+	rateLimitsMu     sync.Mutex
+	rateLimits       *RateLimitsResponse
+	bridges          map[string]*terminalBridge
+	mediaOnce        sync.Once
+	mediaKey         [32]byte
+}
+
+func New(environment *workspace.Service, plans LaunchPlanner) *Service {
+	s := &Service{Workspace: environment, plans: plans, openSessions: codex.OpenSessionClient, openLive: codex.OpenLive, watchHistory: WatchCodexHistory, terminalConflict: terminalSessionConflict, openExternal: platform.OpenExternal, chatRuntime: chatRuntime{chats: map[string]*ChatRun{}}, bridges: map[string]*terminalBridge{}}
+	if environment.Remote != nil {
+		s.openLive = environment.Remote.OpenCodex
+		s.terminalConflict = func(id, cwd string) error {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return environment.Remote.Call(ctx, workspace.Request{Op: "session-conflict", Path: cwd, Method: id}, nil)
+		}
+		s.openSessions = func(ctx context.Context) (codex.SessionClient, error) {
+			return &workspace.Sessions{Context: ctx, Client: environment.Remote}, nil
+		}
+		s.watchHistory = func(ctx context.Context, id string, emit func(HistoryPush) error) error {
+			return watchRemoteHistory(ctx, environment.Remote, id, emit)
+		}
+	} else {
+		s.sessionPool = codex.NewSessionPool()
+		s.openSessions = s.sessionPool.Open
+	}
+	s.openTitleLive = s.openLive
+	return s
+}
+
+// A launcher can exit after accepting the request. Only release an unused
+// reservation; an already connected terminal retains its ownership.
+func (s *Service) releaseUnconnectedBridge(plan model.LaunchPlan) {
+	if len(plan.Args) == 0 {
+		return
+	}
+	s.bridgeMu.Lock()
+	b := s.bridges[strings.TrimPrefix(plan.Args[len(plan.Args)-1], "unix://")]
+	s.bridgeMu.Unlock()
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	unused := !b.connected
+	if unused {
+		b.revoked = true
+	}
+	b.mu.Unlock()
+	if unused {
+		b.Close()
+	}
+}
+
+func (s *Service) Close() {
+	s.CloseChats()
+	s.CloseBridges()
+	if s.sessionPool != nil {
+		s.sessionPool.Close()
+	}
+}
