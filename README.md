@@ -6,6 +6,8 @@ A personal desktop workspace for development across multiple repositories, organ
 
 [User guide](docs/guide.md) · [Development](docs/development.md) · [Documentation](docs/README.md) · [Releases](https://github.com/nite0x/yolu/releases) · [Issues](https://github.com/nite0x/yolu/issues)
 
+The standalone [application website](website/README.md) introduces the workflow in Simplified Chinese and English. Preview it with `npm run site:dev`, or build its static files with `npm run site:build`.
+
 A task can span several repositories, branches and working directories. Yolu brings them into one place: inspect each project's state, create isolated Git worktrees, review changes, and continue in a terminal, editor or Codex conversation.
 
 ## Features
