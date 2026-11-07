@@ -7,7 +7,12 @@ import (
 	"strings"
 )
 
-func Handler(token string, readOnly bool, language ...func() string) http.Handler {
+type UISettings struct {
+	Language   string
+	ColorTheme string
+}
+
+func Handler(token string, readOnly bool, settings ...func() UISettings) http.Handler {
 	static := http.FileServer(http.FS(Assets))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -42,12 +47,18 @@ func Handler(token string, readOnly bool, language ...func() string) http.Handle
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		page := strings.ReplaceAll(string(b), "__CSRF_TOKEN__", token)
 		choice := "system"
-		if len(language) > 0 {
-			if value := language[0](); value == "en" || value == "zh-CN" {
-				choice = value
+		theme := "mint"
+		if len(settings) > 0 {
+			preferences := settings[0]()
+			if preferences.Language == "en" || preferences.Language == "zh-CN" {
+				choice = preferences.Language
+			}
+			if preferences.ColorTheme == "classic" {
+				theme = preferences.ColorTheme
 			}
 		}
 		page = strings.ReplaceAll(page, "__UI_LANGUAGE__", choice)
+		page = strings.ReplaceAll(page, "__UI_COLOR_THEME__", theme)
 		page = strings.ReplaceAll(page, "__STYLE_NONCE__", styleNonce)
 		mode := "interactive"
 		if readOnly {

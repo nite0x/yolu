@@ -1,8 +1,8 @@
 /* The desktop host opts into this frame; browser pages keep their layout. */
-html[data-workhub-desktop],html[data-workhub-desktop] body{background:#f3f5fa}
-html[data-workhub-desktop] .sidebar{padding:calc(20px + var(--workspace-sidebar-inset,0px)) 16px 16px;background:#f3f5fa;border-right:0}
+html[data-workhub-desktop],html[data-workhub-desktop] body{background:var(--yolu-subtle,#f3f5fa)}
+html[data-workhub-desktop] .sidebar{padding:calc(20px + var(--workspace-sidebar-inset,0px)) 16px 16px;background:var(--yolu-subtle,#f3f5fa);border-right:0}
 html[data-workhub-desktop][data-workspace-tab] .sidebar .brand{visibility:hidden}
-html[data-workhub-desktop] .sidebar .brand{display:flex;gap:10px;padding:0 8px;font-size:16px;font-weight:600;letter-spacing:-.2px;color:#414a64}
+html[data-workhub-desktop] .sidebar .brand{display:flex;gap:10px;padding:0 8px;font-size:16px;font-weight:600;letter-spacing:-.2px;color:var(--yolu-primary-ink,#414a64)}
 html[data-workhub-desktop] .brand-mark{width:30px;height:30px;border-radius:7px}
 html[data-workhub-desktop] .brand small,html[data-workhub-desktop] .nav-label,html[data-workhub-desktop] .sidebar-controls{display:none}
 html[data-workhub-desktop] .sidebar nav{margin-top:24px;gap:4px}
@@ -12,8 +12,8 @@ html[data-workhub-desktop] .sidebar nav .nav-item:not(.active):hover{background:
 html[data-workhub-desktop] .sidebar .nav-count{font-size:11px;background:transparent;min-width:16px;padding:0;color:#929bb0}
 html[data-workhub-desktop] .sidebar .nav-item.active .nav-count{color:#6b75a7}
 html[data-workhub-desktop] .sidebar-footer{border-top-color:#e1e6f0}
-html[data-workhub-desktop] .shell{margin-top:6px;margin-right:8px;margin-bottom:8px;border:1px solid #e0e5ef;border-radius:12px;background:#fff;overflow:hidden}
-html[data-workhub-desktop] .shell main{background:#fff}
+html[data-workhub-desktop] .shell{margin-top:6px;margin-right:8px;margin-bottom:8px;border:1px solid #e0e5ef;border-radius:12px;background:var(--yolu-surface,#fff);overflow:hidden}
+html[data-workhub-desktop] .shell main{background:var(--yolu-surface,#fff)}
 @media(min-width:761px){html[data-workhub-desktop] .shell{margin-left:calc(var(--sidebar-layout-width) + 8px)}}
 html[data-workhub-desktop] :is(.tasks-page,.projects-page,.sessions-page-open) main{padding:0}
 html[data-workhub-desktop] :is(#workContent,.session-browser){border:0;border-radius:0}

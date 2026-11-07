@@ -60,23 +60,23 @@ pre, .changes-text, .changes-text *, .file-preview-path,
 /* Scope shadcn tokens: legacy --accent/--muted have different meanings. */
 .shadcn-scope {
   --radius: 0.625rem;
-  --background: #fff;
-  --foreground: #334155;
-  --card: #fff;
-  --card-foreground: #334155;
-  --primary: #5964cf;
-  --primary-foreground: #fff;
-  --secondary: #f1f4fc;
-  --secondary-foreground: #454b9b;
-  --muted: #f2f3f9;
-  --muted-foreground: #64748b;
-  --accent: #e4eaff;
-  --accent-foreground: #454b9b;
+  --background: var(--yolu-surface,#fff);
+  --foreground: var(--yolu-foreground,#334155);
+  --card: var(--yolu-surface,#fff);
+  --card-foreground: var(--yolu-foreground,#334155);
+  --primary: var(--yolu-primary,#5964cf);
+  --primary-foreground: var(--yolu-surface,#fff);
+  --secondary: var(--yolu-sidebar,#f1f4fc);
+  --secondary-foreground: var(--yolu-primary-ink,#454b9b);
+  --muted: var(--yolu-subtle,#f2f3f9);
+  --muted-foreground: var(--yolu-muted-ink,#64748b);
+  --accent: var(--yolu-selected,#e4eaff);
+  --accent-foreground: var(--yolu-primary-ink,#454b9b);
   --destructive: #a64f3b;
-  --destructive-foreground: #fff;
-  --border: #e2e6f0;
-  --input: #d7d9e6;
-  --ring: #818cf8;
+  --destructive-foreground: var(--yolu-surface,#fff);
+  --border: var(--yolu-border,#e2e6f0);
+  --input: var(--yolu-border-strong,#d7d9e6);
+  --ring: var(--yolu-ring,#818cf8);
 }
 
 /* Tailwind's border utilities normally rely on Preflight for border-style. */
@@ -85,7 +85,7 @@ pre, .changes-text, .changes-text *, .file-preview-path,
 .shadcn-scope :where(button) { background-color: transparent; }
 
 /* File types keep the same visual identity in the tree and chat changes. */
-.file-type-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; width: 16px; height: 16px; color: #64748b; vertical-align: -3px; }
+.file-type-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; width: 16px; height: 16px; color: var(--yolu-muted-ink,#64748b); vertical-align: -3px; }
 .file-type-icon svg { width: 16px; height: 16px; }
 .file-type-label { border-radius: 4px; font: 700 9px/1 ui-sans-serif, system-ui, sans-serif; background: color-mix(in srgb, currentColor 12%, transparent); }
 .file-type-icon[data-file-kind="react"], .file-type-icon[data-file-kind="go"] { color: #0891b2; }
@@ -100,8 +100,8 @@ pre, .changes-text, .changes-text *, .file-preview-path,
 .file-type-icon[data-file-kind="document"] { color: #497da6; }
 .browser-files .browser-folder { color: #8290a5; }
 .browser-files .browser-folder.is-open { color: #5281b7; }
-.browser-files [data-change-file][aria-pressed="true"] { color: #0969da; background-color: #edf4ff; }
-.browser-files [data-change-file][aria-pressed="true"]:hover { background-color: #e3eeff; }
+.browser-files [data-change-file][aria-pressed="true"] { color: var(--yolu-primary,#0969da); background-color: var(--yolu-selected,#edf4ff); }
+.browser-files [data-change-file][aria-pressed="true"]:hover { background-color: var(--yolu-selected,#e3eeff); }
 .browser-change-status[data-status="added"] { color: #168447; }
 .browser-change-status[data-status="deleted"] { color: #d63838; }
-.browser-change-status[data-status="modified"] { color: #0969da; }
+.browser-change-status[data-status="modified"] { color: var(--yolu-primary,#0969da); }

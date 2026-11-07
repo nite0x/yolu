@@ -35,6 +35,8 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("PUT /api/shortcut-pins", a.shortcutPinsHandler)
 	mux.HandleFunc("GET /api/settings/language", a.languageHandler)
 	mux.HandleFunc("PUT /api/settings/language", a.languageHandler)
+	mux.HandleFunc("GET /api/settings/appearance", a.appearanceHandler)
+	mux.HandleFunc("PUT /api/settings/appearance", a.appearanceHandler)
 	mux.HandleFunc("GET /api/workspace-tabs", a.workspaceTabsHandler)
 	mux.HandleFunc("PUT /api/workspace-tabs", a.workspaceTabsHandler)
 	a.Projects.RegisterRoutes(mux)
@@ -47,5 +49,7 @@ func (a *App) handler() http.Handler {
 }
 
 func (a *App) assetsHandler() http.Handler {
-	return web.Handler(a.token, a.Workspace.ReadOnlySessions, a.uiLanguage)
+	return web.Handler(a.token, a.Workspace.ReadOnlySessions, func() web.UISettings {
+		return web.UISettings{Language: a.uiLanguage(), ColorTheme: a.uiColorTheme()}
+	})
 }

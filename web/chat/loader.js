@@ -16,7 +16,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         loading = null;
         if (current !== version) return;
         const target = document.getElementById('assistantChatRoot');
-        target.textContent = uiText("聊天界面加载失败，请重新打开会话。");
+        target.textContent = uiText("聊天界面加载失败，请重新打开对话。");
         const close = document.createElement('button');
         close.type = 'button'; close.className = 'button secondary'; close.textContent = uiText("关闭");
         close.addEventListener('click', options.close); target.append(close);

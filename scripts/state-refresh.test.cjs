@@ -29,7 +29,7 @@ function harness({ fullPage = false, readOnly = false } = {}) {
         content: selector === 'meta[name="ui-language"]' ? 'zh-CN' : selector === 'meta[name="session-mode"]' ? (readOnly ? 'read-only' : 'interactive') : 'token',
         value: '', checked: false, hidden: false, writes: 0, scrollTop: 0, dataset: {},
         style: {setProperty() {}}, getBoundingClientRect() { return {width: 0}; },
-        append() {}, insertBefore() {}, setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
+        append() {}, insertBefore() {}, setAttribute() {}, removeAttribute() {}, getAttribute() { return null; }, hasAttribute() { return false; },
         querySelector: element, contains() { return false; }, closest() { return null; },
         classList: { toggle() {}, remove() {} }, addEventListener() {}, querySelectorAll() { return []; },
         get innerHTML() { return html; },
@@ -47,6 +47,7 @@ function harness({ fullPage = false, readOnly = false } = {}) {
   const context = vm.createContext({
     document: {
       body: element('body'),
+      documentElement: element('html'),
       querySelector: element,
       getElementById: id => element("#" + id),
       querySelectorAll: selector => selector === '#content time[data-status-path]' ? times : [],
@@ -72,10 +73,10 @@ function harness({ fullPage = false, readOnly = false } = {}) {
   mockDocument = context.document;
   context.document.defaultView = context.window;
   const scripts = fullPage
-    ? [...fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8').matchAll(/<script src="\/([^"]+)" defer(?: data-ui-bundle)?><\/script>/g)]
+    ? ['core/appearance.js', ...[...fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8').matchAll(/<script src="\/([^"]+)" defer(?: data-ui-bundle)?><\/script>/g)]
       // This VM exercises business scripts; component mounting is checked in a browser.
       .filter(match => !match[0].includes('data-ui-bundle')).map(match => match[1])
-      .filter(file => !readOnly || !['features/sessions/session-chat.js', 'features/sessions/session-create.js'].includes(file))
+      .filter(file => !readOnly || !['features/sessions/session-chat.js', 'features/sessions/session-create.js'].includes(file))]
     : ['core/core.js', 'features/projects/projects.js', 'features/tasks/requirements.js', 'core/app.js'];
   for (const file of scripts) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../web', file), 'utf8'), context, { filename: file });

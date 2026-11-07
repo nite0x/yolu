@@ -236,6 +236,30 @@ function renderSettings() {
 }
 
 // This preference belongs to the local application, not the selected WSL user.
+function showThemePreview() {
+  const choice = $('#colorThemeSelect').value;
+  document.querySelectorAll('[data-theme-preview]').forEach(node => { node.hidden = node.dataset.themePreview !== choice; });
+}
+$('#colorThemeSelect').value = window.YoluTheme.current();
+showThemePreview();
+$('#colorThemeSelect').addEventListener('change', showThemePreview);
+$('#appearanceForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = $('#saveAppearance');
+  button.disabled = true;
+  $('#appearanceStatus').textContent = '';
+  try {
+    const result = await api('/api/settings/appearance', {method:'PUT', environment:'local', body:JSON.stringify({color_theme:$('#colorThemeSelect').value})});
+    window.YoluTheme.apply(result.color_theme);
+    $('#appearanceStatus').textContent = uiText('配色已保存并应用');
+  } catch (error) {
+    $('#appearanceStatus').textContent = error.message || uiText('保存配色失败，请重试。');
+  } finally {
+    button.disabled = false;
+  }
+});
+window.addEventListener('yolu:appearance', () => { $('#colorThemeSelect').value = window.YoluTheme.current(); showThemePreview(); });
+
 $('#languageSelect').value = window.YoluI18n?.language || 'system';
 $('#languageForm').addEventListener('submit', async event => {
   event.preventDefault();

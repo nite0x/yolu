@@ -108,6 +108,14 @@ WSL task metadata is held in a separate environment database under the Windows a
 
 Disconnected environments retain their locally stored task listings. Opening a task can reconnect its environment; Settings also provides reconnection. Writes with uncertain results are not silently replayed. Refresh to inspect their actual result and retry failed task preparation where offered.
 
+## Appearance
+
+### Color palette
+
+In Settings, choose **Appearance → Color palette** and select **Classic indigo** or **Yolu Mint**. Save and apply to update the workspace, tabs, conversations and terminal colors immediately. This does not reload pages or stop running work. The palette is stored in the local application database, shared across execution environments and retained when the backend port changes. Existing installations keep Classic indigo until a different palette is selected.
+
+Yolu Mint uses a warm white background, deep teal text and mint accents. Status colors and code syntax colors retain their separate meanings.
+
 ## Interface language
 
 Open Settings and choose Follow system, English or Simplified Chinese under Interface language. Save and apply to reload the workspace in the selected language. The choice is stored in the local application database, applies across execution environments and survives backend port changes and restarts.

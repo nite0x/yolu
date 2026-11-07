@@ -4,7 +4,7 @@
 .sessions-page-open .page-heading h1 { font-size: 24px; margin: 0; }
 .sessions-page-open #eyebrow, .sessions-page-open .page-footer { display: none; }
 .sessions-page, #sessionPageMount { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.session-browser { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--background, #fff); overflow: hidden; container-type: inline-size; }
+.session-browser { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--background, var(--yolu-surface,#fff)); overflow: hidden; container-type: inline-size; }
 .session-browser-scope { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .session-browser-scope .session-scope-picker { flex: 1; }
 .session-browser-scope #pinConversationDirectory { width: 28px; height: 28px; padding: 6px; flex-shrink: 0; }
@@ -21,7 +21,7 @@
 .session-scope-picker > summary::-webkit-details-marker { display: none; }
 .session-scope-picker > summary svg { flex-shrink: 0; width: 14px; height: 14px; }
 .session-scope-picker > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.session-scope-menu { position: absolute; top: calc(100% + 8px); left: 0; z-index: 8; width: min(420px, calc(100vw - 80px)); max-height: min(560px, 65dvh); overflow: auto; display: grid; gap: 10px; padding: 14px; background: var(--background, #fff); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 12px 35px #15213a24; }
+.session-scope-menu { position: absolute; top: calc(100% + 8px); left: 0; z-index: 8; width: min(420px, calc(100vw - 80px)); max-height: min(560px, 65dvh); overflow: auto; display: grid; gap: 10px; padding: 14px; background: var(--background, var(--yolu-surface,#fff)); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 12px 35px #15213a24; }
 .session-scope-menu[popover]:not(:popover-open) { display: none; }
 .session-scope-menu:popover-open { position: fixed; inset: auto; margin: 0; color: var(--foreground); }
 .session-scope-option { width: 100%; justify-content: space-between; height: auto; min-height: 36px; white-space: normal; text-align: left; gap: 16px; font-weight: 400; }
@@ -44,7 +44,7 @@
 .session-action-picker > summary svg { width: 14px; height: 14px; }
 .session-action-picker > summary:hover, .session-action-picker[open] > summary { opacity: .9; }
 .session-action-picker > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.session-action-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 10; min-width: 190px; padding: 4px; background: var(--background, #fff); border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 10px 30px #15213a20; }
+.session-action-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 10; min-width: 190px; padding: 4px; background: var(--background, var(--yolu-surface,#fff)); border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 10px 30px #15213a20; }
 .session-action-menu button { width: 100%; justify-content: flex-start; font-size: 12px; }
 .session-action-default { margin-left: auto; font-size: 11px; color: var(--muted-foreground); }
 .session-action-association { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
@@ -61,7 +61,7 @@
 .session-filter-picker > summary:hover, .session-filter-picker[open] > summary, .session-filter-picker.has-filters > summary { background: var(--secondary); color: var(--primary); }
 .session-filter-picker > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 #sessionFilterCount { position: absolute; right: -4px; top: -5px; padding: 0 4px; min-width: 14px; height: 14px; line-height: 14px; border-radius: 8px; font-size: 9px; text-align: center; background: var(--primary); color: var(--primary-foreground); }
-.session-filter-menu { position: absolute; right: 0; left: 0; top: calc(100% + 7px); z-index: 9; display: grid; gap: 14px; max-height: min(420px, 60dvh); overflow-y: auto; padding: 14px; background: var(--background, #fff); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 10px 30px #15213a20; }
+.session-filter-menu { position: absolute; right: 0; left: 0; top: calc(100% + 7px); z-index: 9; display: grid; gap: 14px; max-height: min(420px, 60dvh); overflow-y: auto; padding: 14px; background: var(--background, var(--yolu-surface,#fff)); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 10px 30px #15213a20; }
 .session-filter-heading { display: flex; align-items: center; justify-content: space-between; color: var(--foreground); font-size: 13px; }
 .session-filter-heading button, #sessionSearchClear { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 5px; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); }
 .session-filter-heading button:hover, #sessionSearchClear:hover { color: var(--foreground); background: var(--muted); }
@@ -96,12 +96,12 @@
 .session-browser-group-heading > span { margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums; }
 .session-browser-item { cursor: pointer; display: block; width: 100%; padding: 10px; border: 0; border-radius: 7px; background: transparent; color: var(--foreground); text-align: left; font: inherit; }
 .session-browser-item:hover { background: var(--muted); }
-.session-browser-item[aria-pressed="true"] { background: #edf0ff; box-shadow: inset 3px 0 var(--primary); }
+.session-browser-item[aria-pressed="true"] { background: var(--yolu-selected,#edf0ff); box-shadow: inset 3px 0 var(--primary); }
 .session-browser-item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .session-browser-item-heading { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
 .session-browser-pin { width: 13px; height: 13px; margin-top: 3px; flex-shrink: 0; color: var(--primary); }
 .session-browser-item-title { flex: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: 13px; line-height: 1.6; font-weight: 500; overflow-wrap: anywhere; }
-.session-browser-item[aria-pressed="true"] .session-browser-item-title { font-weight: 600; color: #3e478f; }
+.session-browser-item[aria-pressed="true"] .session-browser-item-title { font-weight: 600; color: var(--yolu-primary-ink,#3e478f); }
 .session-browser-unread-dot { width: 6px; height: 6px; margin-top: 7px; flex-shrink: 0; border-radius: 50%; background: var(--primary); }
 .session-browser-item-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; margin-top: 5px; color: var(--muted-foreground); font-size: 11px; }
 .session-browser-item-signals { display: flex; align-items: center; gap: 7px; min-width: 0; }
@@ -147,7 +147,7 @@
 @media (prefers-reduced-motion: reduce) { .session-list-loading, .session-browser-caption-actions .is-loading svg { animation: none; } }
 .session-browser-detail { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 #conversationCreationKind { flex-shrink: 0; }
-.session-browser-detail .session-history-panel { position: static; inset: auto; width: 100%; flex: 1; min-height: 0; border: 0; box-shadow: none; z-index: auto; background: var(--background, #fff); overflow: hidden; }
+.session-browser-detail .session-history-panel { position: static; inset: auto; width: 100%; flex: 1; min-height: 0; border: 0; box-shadow: none; z-index: auto; background: var(--background, var(--yolu-surface,#fff)); overflow: hidden; }
 .session-browser-detail .chat-panel-title { padding-right: 0; }
 .session-browser-empty { margin: auto; padding: 28px; text-align: center; color: var(--muted-foreground); font-size: 14px; }
 .session-browser-new-directory { flex-shrink: 0; display: grid; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
@@ -183,47 +183,47 @@
 
 /* Global shortcuts use the remaining sidebar height; navigation and settings stay put. */
 .sidebar > nav, .sidebar > .brand, .sidebar > .nav-label { flex-shrink: 0; }
-.conversation-shortcuts { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 18px -5px 16px; padding: 14px 5px 4px; border-top: 1px solid #d9e1f0; scrollbar-width: thin; }
+.conversation-shortcuts { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 18px -5px 16px; padding: 14px 5px 4px; border-top: 1px solid var(--yolu-border,#d9e1f0); scrollbar-width: thin; }
 .conversation-shortcuts > section + section { margin-top: 20px; }
-.conversation-shortcuts h2 { margin: 0 8px 8px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: #64748b; }
+.conversation-shortcuts h2 { margin: 0 8px 8px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--yolu-muted-ink,#64748b); }
 .conversation-shortcuts h2 svg { width: 12px; height: 12px; }
 .conversation-shortcuts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
 .conversation-shortcut-row { position: relative; min-width: 0; border-radius: 7px; }
-.conversation-shortcut-open { display: flex; align-items:center; gap:8px; width: 100%; position: relative; padding: 8px 27px 8px 9px; border: 0; border-radius: 7px; background: transparent; color: #334155; text-align: left; cursor: pointer; }
-.conversation-shortcut-open:hover, .conversation-shortcut-row:focus-within { background: #e8edf9; }
-.conversation-shortcut-open[aria-current="true"] { background: #e1e7ff; color: #4f46b9; }
+.conversation-shortcut-open { display: flex; align-items:center; gap:8px; width: 100%; position: relative; padding: 8px 27px 8px 9px; border: 0; border-radius: 7px; background: transparent; color: var(--yolu-foreground,#334155); text-align: left; cursor: pointer; }
+.conversation-shortcut-open:hover, .conversation-shortcut-row:focus-within { background: var(--yolu-hover,#e8edf9); }
+.conversation-shortcut-open[aria-current="true"] { background: var(--yolu-selected,#e1e7ff); color: var(--yolu-primary,#4f46b9); }
 .conversation-shortcut-title, .conversation-shortcut-context { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-shortcut-title { font-size: 12px; font-weight: 500; line-height: 1.7; }
-.conversation-shortcut-context { font-size: 10px; line-height: 1.6; color: #71809a; }
-.conversation-shortcut-pin { position: absolute; right: 3px; top: 15px; width: 23px; height: 25px; border: 0; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #687795; background: #e8edf9; opacity: 0; cursor: pointer; }
+.conversation-shortcut-context { font-size: 10px; line-height: 1.6; color: var(--yolu-muted-ink,#71809a); }
+.conversation-shortcut-pin { position: absolute; right: 3px; top: 15px; width: 23px; height: 25px; border: 0; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: var(--yolu-muted-ink,#687795); background: var(--yolu-hover,#e8edf9); opacity: 0; cursor: pointer; }
 .conversation-shortcut-pin svg { width: 13px; height: 13px; }
 .conversation-shortcut-row:hover .conversation-shortcut-pin, .conversation-shortcut-row:focus-within .conversation-shortcut-pin { opacity: 1; }
 .conversation-shortcut-pin:disabled { opacity: .5; cursor: progress; }
 .conversation-shortcuts-empty { margin: 4px 8px; font-size: 11px; line-height: 1.8; color: #7b879e; }
 .task-shortcuts-heading { display: flex; align-items: center; justify-content: space-between; position: relative; margin-bottom: 8px; }
 .task-shortcuts-heading h2 { margin-bottom: 0; margin-right:auto; }
-.task-shortcut-picker > summary { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 5px; color: #687795; cursor: pointer; list-style: none; }
+.task-shortcut-picker > summary { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 5px; color: var(--yolu-muted-ink,#687795); cursor: pointer; list-style: none; }
 .task-shortcut-picker > summary::-webkit-details-marker { display: none; }
-.task-shortcut-picker > summary:hover { background: #e1e7ff; }
+.task-shortcut-picker > summary:hover { background: var(--yolu-selected,#e1e7ff); }
 .task-shortcut-picker > summary svg { width: 14px; height: 14px; }
-.task-shortcut-options { position: absolute; z-index: 10; right: 0; top: 100%; width: 100%; max-height: min(540px, 60dvh); display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #d9e1f0; border-radius: 7px; background: #f8faff; box-shadow: 0 5px 16px #33415518; }
+.task-shortcut-options { position: absolute; z-index: 10; right: 0; top: 100%; width: 100%; max-height: min(540px, 60dvh); display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--yolu-border,#d9e1f0); border-radius: 7px; background: var(--yolu-subtle,#f8faff); box-shadow: 0 5px 16px #33415518; }
 .task-shortcut-options[popover]:not(:popover-open) { display: none; }
-.task-shortcut-options:popover-open { position: fixed; inset: auto; margin: 0; width: min(340px, calc(100vw - 24px)); color: #334155; }
-.task-shortcut-options > label { font-size: 12px; color: #334155; }
+.task-shortcut-options:popover-open { position: fixed; inset: auto; margin: 0; width: min(340px, calc(100vw - 24px)); color: var(--yolu-foreground,#334155); }
+.task-shortcut-options > label { font-size: 12px; color: var(--yolu-foreground,#334155); }
 .task-shortcut-options > input { min-width: 0; width: 100%; flex-shrink: 0; font-size: 12px; }
-.shortcut-picker-caption { margin: 0; font-size: 11px; line-height: 1.6; color: #64748b; }
+.shortcut-picker-caption { margin: 0; font-size: 11px; line-height: 1.6; color: var(--yolu-muted-ink,#64748b); }
 .shortcut-archive-toggle { display: flex; align-items: center; gap: 6px; }
 .shortcut-picker-results { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
-.shortcut-picker-results h3, .shortcut-directory-heading { margin: 8px; font-size: 11px; font-weight: 600; color: #64748b; }
-.shortcut-picker-results button { display: flex; justify-content: space-between; gap: 8px; align-items: center; width: 100%; padding: 8px; border: 0; border-radius: 5px; background: transparent; color: #334155; text-align: left; font-size: 12px; cursor: pointer; }
-.shortcut-picker-results button:hover, .shortcut-picker-results button:focus-visible { background: #e1e7ff; }
+.shortcut-picker-results h3, .shortcut-directory-heading { margin: 8px; font-size: 11px; font-weight: 600; color: var(--yolu-muted-ink,#64748b); }
+.shortcut-picker-results button { display: flex; justify-content: space-between; gap: 8px; align-items: center; width: 100%; padding: 8px; border: 0; border-radius: 5px; background: transparent; color: var(--yolu-foreground,#334155); text-align: left; font-size: 12px; cursor: pointer; }
+.shortcut-picker-results button:hover, .shortcut-picker-results button:focus-visible { background: var(--yolu-selected,#e1e7ff); }
 .shortcut-picker-results button:focus-visible, .task-shortcut-picker > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .shortcut-picker-results button:disabled { opacity: .55; cursor: default; }
 .shortcut-picker-results button > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.shortcut-picker-results button small { display: block; font-size: 10px; color: #71809a; overflow-wrap: anywhere; }
+.shortcut-picker-results button small { display: block; font-size: 10px; color: var(--yolu-muted-ink,#71809a); overflow-wrap: anywhere; }
 .shortcut-option-title > small { display: inline; }
 .shortcut-option-title svg, .conversation-shortcut-title svg { display: inline; vertical-align: -2px; margin-right: 4px; width: 13px; height: 13px; }
-.shortcut-option-state { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; font-size: 10px; color: #4f46b9; }
+.shortcut-option-state { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; font-size: 10px; color: var(--yolu-primary,#4f46b9); }
 .shortcut-option-state svg { width: 12px; height: 12px; }
 .sidebar .sidebar-settings { margin: 0; padding: 5px; width: 28px; height: 28px; min-width: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; }
 @media (hover: none) { .conversation-shortcut-pin { opacity: 1; } }
@@ -242,7 +242,7 @@
 .session-reading-layout { flex: 1; display: flex; min-width: 0; min-height: 0; position: relative; }
 .session-reading-chat { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .conversation-files-dock { flex: 0 0 48%; min-width: 340px; min-height: 0; border-left: 1px solid var(--border); }
-.conversation-files-pane { height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--background, #fff); }
+.conversation-files-pane { height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--background, var(--yolu-surface,#fff)); }
 .conversation-files-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .conversation-files-heading h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 600; }
 .conversation-files-heading h3 svg { width: 15px; height: 15px; }
@@ -303,15 +303,15 @@ html[data-workspace-conversation] .session-browser[data-pane="detail"] .session-
 .parallel-list-item .session-browser-item{padding-right:36px}
 .parallel-list-add[data-slot]{position:absolute;right:4px;top:8px;width:26px;height:26px;color:var(--muted-foreground)}
 .parallel-list-add svg{width:14px;height:14px}
-.parallel-list-badge{flex:none;font-size:9px;line-height:16px;padding:0 4px;border-radius:4px;background:var(--accent-soft);color:#5964b3}
+.parallel-list-badge{flex:none;font-size:9px;line-height:16px;padding:0 4px;border-radius:4px;background:var(--accent-soft);color:var(--yolu-primary,#5964b3)}
 
 /* A host-managed conversation never renders another list, even during mode changes. */
 html[data-workspace-conversation] .session-browser-list,
 html[data-workspace-conversation] .ui-narrow-list{display:none!important}
 
 .conversation-shortcut-copy { flex:1; min-width:0; }
-.conversation-shortcut-open:focus-visible { outline:2px solid #818cf8; outline-offset:-2px; }
-.shortcut-icon-settings { display:flex; align-items:center; justify-content:center; flex:none; width:24px; height:26px; padding:4px; border:0; border-radius:5px; color:#687795; background:transparent; cursor:pointer; }
+.conversation-shortcut-open:focus-visible { outline:2px solid var(--yolu-ring,#818cf8); outline-offset:-2px; }
+.shortcut-icon-settings { display:flex; align-items:center; justify-content:center; flex:none; width:24px; height:26px; padding:4px; border:0; border-radius:5px; color:var(--yolu-muted-ink,#687795); background:transparent; cursor:pointer; }
 .shortcut-icon-settings svg { width:15px; height:15px; }
-.shortcut-icon-settings:hover { background:#e1e7ff; }
-.shortcut-icon-settings:focus-visible { outline:2px solid #818cf8; }
+.shortcut-icon-settings:hover { background:var(--yolu-selected,#e1e7ff); }
+.shortcut-icon-settings:focus-visible { outline:2px solid var(--yolu-ring,#818cf8); }

@@ -1,5 +1,5 @@
 import { uiText } from "../i18n";
-import { Terminal } from "@xterm/xterm"
+import { Terminal, type ITheme } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { SearchAddon } from "@xterm/addon-search"
 import { WebglAddon } from "@xterm/addon-webgl"
@@ -176,6 +176,22 @@ function disconnect() {
   ++generation; clearTimeout(retry); retry = undefined
   if (socket) {socket.onclose = null; socket.close(); socket = undefined}
 }
+function terminalTheme(): ITheme {
+  const style = getComputedStyle(document.documentElement)
+  const color = (name: string, fallback: string) => style.getPropertyValue(`--yolu-terminal-${name}`).trim() || fallback
+  return {
+    background:color("background", "#1c2130"), foreground:color("foreground", "#d8deed"),
+    cursor:color("cursor", "#b6a4fa"), cursorAccent:color("background", "#1c2130"),
+    selectionBackground:color("selection", "#a99aef40"), selectionInactiveBackground:color("selection", "#a99aef25"),
+    scrollbarSliderBackground:"#8992ae30", scrollbarSliderHoverBackground:"#8992ae55", scrollbarSliderActiveBackground:"#8992ae70",
+    black:color("black", "#343c50"), red:"#ec9b9e", green:"#a3d6ac", yellow:"#e6c791",
+    blue:color("blue", "#a4b8f5"), magenta:"#c5a8ed", cyan:"#91cdd9", white:color("foreground", "#d8deed"),
+    brightBlack:color("bright-black", "#8c96b0"), brightRed:"#f4b2b4", brightGreen:"#b7e4bd", brightYellow:"#f2d7ab",
+    brightBlue:color("bright-blue", "#bacbff"), brightMagenta:"#d7bff7", brightCyan:"#b0e1e9", brightWhite:"#f0f3fc",
+  }
+}
+window.addEventListener("yolu:appearance", () => { if (term) term.options.theme = terminalTheme() })
+
 function createTerminal() {
   if (term) return
   term = new Terminal({
@@ -183,15 +199,7 @@ function createTerminal() {
     fontSize, fontFamily:terminalFontFamily, fontWeight:400, fontWeightBold:600,
     lineHeight:1.35, letterSpacing:0, customGlyphs:true, drawBoldTextInBrightColors:false, minimumContrastRatio:4.5,
     scrollback:5000,
-    theme:{
-      background:"#1c2130", foreground:"#d8deed", cursor:"#b6a4fa", cursorAccent:"#1c2130",
-      selectionBackground:"#a99aef40", selectionInactiveBackground:"#a99aef25",
-      scrollbarSliderBackground:"#8992ae30", scrollbarSliderHoverBackground:"#8992ae55", scrollbarSliderActiveBackground:"#8992ae70",
-      black:"#343c50", red:"#ec9b9e", green:"#a3d6ac", yellow:"#e6c791",
-      blue:"#a4b8f5", magenta:"#c5a8ed", cyan:"#91cdd9", white:"#d8deed",
-      brightBlack:"#8c96b0", brightRed:"#f4b2b4", brightGreen:"#b7e4bd", brightYellow:"#f2d7ab",
-      brightBlue:"#bacbff", brightMagenta:"#d7bff7", brightCyan:"#b0e1e9", brightWhite:"#f0f3fc",
-    }, allowProposedApi:false,
+    theme:terminalTheme(), allowProposedApi:false,
   })
   fit = new FitAddon(); search = new SearchAddon(); term.loadAddon(fit); term.loadAddon(search); term.open(element("terminalScreen"))
   // Draw block/box characters to the cell edges. Font glyphs in the DOM
