@@ -181,7 +181,7 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	plan := savedSessionPlan(record)
 	if record.Archived {
-		httpx.WriteError(w, 409, "请先恢复已归档会话")
+		httpx.WriteError(w, 409, "请先恢复已归档对话")
 		return
 	}
 	if err := input.Settings.validate(); err != nil {
@@ -198,7 +198,7 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if s.Busy {
 			a.chatMu.Unlock()
-			httpx.WriteError(w, 409, "该会话正在运行，请等待完成或停止后再发送")
+			httpx.WriteError(w, 409, "该对话正在运行，请等待完成或停止后再发送")
 			return
 		}
 	}
@@ -230,7 +230,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		if s.Status == "starting" || s.Status == "running" || s.Status == "waiting" || s.Status == "stopping" {
 			s.Status = "failed"
 			if s.Error == "" {
-				s.Error = "会话连接已结束，请检查已保存的进展后重试"
+				s.Error = "对话连接已结束，请检查已保存的进展后重试"
 			}
 		}
 	})
@@ -280,12 +280,12 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	}
 	s := metadata.Thread.Session
 	if s.ID != run.session || !platform.AbsoluteWorkspacePath(s.Cwd) {
-		fail("会话工作目录不可用")
+		fail("对话工作目录不可用")
 		return
 	}
 	fileCtx := workspace.WithClient(ctx, a.Workspace.Remote)
 	if info, err := workspace.Stat(fileCtx, s.Cwd, true); err != nil || !info.IsDir() {
-		fail("会话原工作目录不可用")
+		fail("对话原工作目录不可用")
 		return
 	}
 	if run.created == nil {
@@ -303,7 +303,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 			return err
 		}
 		if metadata.Thread.Status.Type == "active" {
-			return &workspace.SessionConflictError{Message: "此会话正在其他 Codex 客户端运行，请等待完成后重试"}
+			return &workspace.SessionConflictError{Message: "此对话正在其他 Codex 客户端运行，请等待完成后重试"}
 		}
 		return nil
 	}
@@ -311,7 +311,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		if workspace.IsSessionConflict(err) {
 			run.change(func(s *ChatState) { s.Status = "conflict"; s.Error = err.Error() })
 		} else {
-			fail("无法完成会话占用检查，请稍后重试：" + err.Error())
+			fail("无法完成对话占用检查，请稍后重试：" + err.Error())
 		}
 	}
 	if err := checkOwner(); err != nil {
@@ -461,13 +461,13 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 				_ = run.interrupt()
 				run.change(func(s *ChatState) {
 					s.Status = "conflict"
-					s.Error = "确认会话被占用，已请求停止页面发起的工作：" + err.Error()
+					s.Error = "确认对话被占用，已请求停止页面发起的工作：" + err.Error()
 				})
 				return
 			}
 		case <-ctx.Done():
 			_ = run.interrupt()
-			fail("页面会话已停止或达到 30 分钟运行上限，请刷新历史检查进展")
+			fail("页面对话已停止或达到 30 分钟运行上限，请刷新历史检查进展")
 			return
 		case <-budget.C:
 			_ = run.interrupt()
@@ -499,7 +499,7 @@ func (a *Service) ControlledRun(w http.ResponseWriter, r *http.Request, id strin
 	}
 	run := a.ChatFor(r.PathValue("session"))
 	if run == nil || run.snapshot().ID != id {
-		httpx.WriteError(w, 409, "页面运行已变化，请重新打开会话后重试")
+		httpx.WriteError(w, 409, "页面运行已变化，请重新打开对话后重试")
 		return nil
 	}
 	return run

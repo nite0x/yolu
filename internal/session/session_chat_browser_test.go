@@ -86,9 +86,9 @@ func (c *browserLive) Call(ctx context.Context, method string, params any, out a
 						map[string]any{"label": "首轮完成后自动生成简短主题（推荐）", "description": "保留手动改名"},
 						map[string]any{"label": "创建时可填写标题", "description": "未填写则暂用首条消息"},
 					}},
-					map[string]any{"id": "scope", "header": "适用范围", "question": "应用到哪些会话？", "isOther": true, "options": []any{
-						map[string]any{"label": "仅新建会话", "description": "保留已有会话标题"},
-						map[string]any{"label": "所有会话", "description": "统一使用新规则"},
+					map[string]any{"id": "scope", "header": "适用范围", "question": "应用到哪些对话？", "isOther": true, "options": []any{
+						map[string]any{"label": "仅新建对话", "description": "保留已有对话标题"},
+						map[string]any{"label": "所有对话", "description": "统一使用新规则"},
 					}},
 				}})
 				select {

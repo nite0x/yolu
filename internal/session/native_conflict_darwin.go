@@ -53,7 +53,7 @@ func nativeTerminalConflict(id, cwd string) error {
 		}
 		for _, arg := range args[1:] {
 			if arg == id {
-				return &workspace.SessionConflictError{Message: "此会话仍有 Codex 终端打开，请先退出终端中的 Codex"}
+				return &workspace.SessionConflictError{Message: "此对话仍有 Codex 终端打开，请先退出终端中的 Codex"}
 			}
 		}
 	}

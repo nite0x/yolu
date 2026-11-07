@@ -47,20 +47,20 @@ func TestStructuredQuestionRoundTripKeepsQuestionIDsAndMetadata(t *testing.T) {
 	startFakeChat(t, a, endpoint)
 	c.request("item/tool/requestUserInput", "title-question", map[string]any{"questions": []any{
 		map[string]any{"id": "title", "header": "标题", "question": "对话标题怎么处理？", "isOther": true, "options": []any{map[string]any{"label": "自动生成", "description": "首轮完成后生成简短主题"}}},
-		map[string]any{"id": "scope", "header": "范围", "question": "应用到哪些会话？", "isSecret": true},
+		map[string]any{"id": "scope", "header": "范围", "question": "应用到哪些对话？", "isSecret": true},
 	}})
 	s := awaitChat(t, a, func(s ChatState) bool { return len(s.Approvals) == 1 })
 	approval := s.Approvals[0]
 	if approval.Kind != "questions" || len(approval.Questions) != 2 || !approval.Questions[0].IsOther || !approval.Questions[1].IsSecret {
 		t.Fatal("question metadata lost", approval)
 	}
-	answers := map[string][]string{"title": {"自动生成\n\n保留手动改名"}, "scope": {"新建会话"}}
+	answers := map[string][]string{"title": {"自动生成\n\n保留手动改名"}, "scope": {"新建对话"}}
 	body := map[string]any{"run_id": s.ID, "approval_id": approval.ID, "decision": "accept", "answers": answers}
 	if code, raw := call(t, a, "POST", endpoint+"/approval", body); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	reply := lastApprovalReply(t, c)
-	want := map[string]any{"title": map[string]any{"answers": []any{answers["title"][0]}}, "scope": map[string]any{"answers": []any{"新建会话"}}}
+	want := map[string]any{"title": map[string]any{"answers": []any{answers["title"][0]}}, "scope": map[string]any{"answers": []any{"新建对话"}}}
 	if !reflect.DeepEqual(reply["answers"], want) {
 		t.Fatal("answers did not reach the native request", reply)
 	}

@@ -259,14 +259,14 @@ func (b *terminalBridge) forward(raw []byte) error {
 	}
 	if m.Method != "" && m.Method != "initialize" && m.Method != "initialized" && !b.draining {
 		if b.session != "" && (m.Method == "thread/start" || m.Method == "thread/fork" || (m.Params.ThreadID != "" && m.Params.ThreadID != b.session)) {
-			reason = "该终端已绑定当前会话，请在任务页创建或打开其他会话"
+			reason = "该终端已绑定当前对话，请在任务页创建或打开其他对话"
 		}
 		thread := m.Params.ThreadID
 		if thread == "" {
 			thread = b.session
 		}
 		if b.app.ChatBusy(thread) {
-			reason = "会话正在侧栏运行或交接，终端暂不可接入"
+			reason = "对话正在侧栏运行或交接，终端暂不可接入"
 		}
 	}
 	if reason != "" {
@@ -426,7 +426,7 @@ func (b *terminalBridge) handoff(ctx context.Context, check func() (bool, error)
 	b.mu.Lock()
 	if b.revoked {
 		b.mu.Unlock()
-		return fmt.Errorf("终端连接已结束，请刷新会话状态")
+		return fmt.Errorf("终端连接已结束，请刷新对话状态")
 	}
 	b.draining = true
 	b.mu.Unlock()

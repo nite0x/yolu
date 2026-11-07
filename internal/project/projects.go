@@ -99,5 +99,5 @@ func (a *Service) RemoveProjectHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 404, "项目不存在")
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]string{"message": "已移除项目登记；仓库和 worktree 文件未删除"})
+	httpx.WriteJSON(w, 200, map[string]string{"message": "已移除项目登记；仓库和 Worktree 文件未删除"})
 }

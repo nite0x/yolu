@@ -131,7 +131,7 @@ func TestDarwinCodexTerminalConflict(t *testing.T) {
 				}
 			}
 			err := nativeTerminalConflict("same", base)
-			if mode == "same" && (!workspace.IsSessionConflict(err) || !strings.Contains(err.Error(), "此会话")) || mode != "same" && err != nil {
+			if mode == "same" && (!workspace.IsSessionConflict(err) || !strings.Contains(err.Error(), "此对话")) || mode != "same" && err != nil {
 				t.Fatalf("wrong terminal ownership result (mode=%s): %v", mode, err)
 			}
 		}()

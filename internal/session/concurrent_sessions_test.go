@@ -96,7 +96,7 @@ func TestTerminalOwnershipIsScopedToConversation(t *testing.T) {
 			t.Fatalf("independent conversation %q blocked: %v", id, err)
 		}
 	}
-	if err := a.AppTerminalConflict("session", t.TempDir()); !workspace.IsSessionConflict(err) || !strings.Contains(err.Error(), "保有此会话") {
+	if err := a.AppTerminalConflict("session", t.TempDir()); !workspace.IsSessionConflict(err) || !strings.Contains(err.Error(), "保有此对话") {
 		t.Fatalf("same conversation lost terminal ownership: %v", err)
 	}
 }
@@ -117,7 +117,7 @@ func TestBridgeOnlyBlocksTheConversationRunningInSidebar(t *testing.T) {
 			}
 			if id == "session" {
 				_, response, err := terminal.ReadMessage()
-				if err != nil || !strings.Contains(string(response), "会话正在侧栏运行") {
+				if err != nil || !strings.Contains(string(response), "对话正在侧栏运行") {
 					t.Fatalf("same conversation was not blocked: %s %v", response, err)
 				}
 			} else {

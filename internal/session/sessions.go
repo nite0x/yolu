@@ -67,7 +67,7 @@ func readSession(c codex.SessionClient, id string) (codex.Session, error) {
 	}
 	err := c.Call("thread/read", map[string]any{"threadId": id, "includeTurns": false}, &response)
 	if err == nil && (response.Thread.ID != id || response.Thread.Cwd == "") {
-		err = fmt.Errorf("会话元数据不完整，无法继续")
+		err = fmt.Errorf("对话元数据不完整，无法继续")
 	}
 	return response.Thread, err
 }
@@ -238,7 +238,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 	for i := range sessions {
 		_, sessions[i].Available = found[sessions[i].ID]
 		if !sessions[i].Available {
-			sessions[i].Error = "会话暂不可读取，请刷新重试"
+			sessions[i].Error = "对话暂不可读取，请刷新重试"
 		}
 		if native, exists := found[sessions[i].ID]; exists {
 			activity := a.sessionActivity(r.Context(), native)
@@ -261,7 +261,7 @@ func (a *Service) UnlinkSessionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]string{"message": "已取消关联，会话仍可从会话页访问"})
+	httpx.WriteJSON(w, 200, map[string]string{"message": "已取消关联，对话仍可从对话页访问"})
 }
 
 func (a *Service) LinkSessionHandler(w http.ResponseWriter, r *http.Request) {
@@ -273,7 +273,7 @@ func (a *Service) LinkSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	input.SessionID = strings.TrimSpace(input.SessionID)
 	if input.SessionID == "" || len(input.SessionID) > 200 {
-		httpx.WriteError(w, 400, "请输入有效的会话 ID")
+		httpx.WriteError(w, 400, "请输入有效的对话 ID")
 		return
 	}
 	a.Workspace.Mu.Lock()
@@ -291,7 +291,7 @@ func (a *Service) LinkSessionHandler(w http.ResponseWriter, r *http.Request) {
 	titleObservedAt := time.Now().UnixNano()
 	s, err := readSession(c, input.SessionID)
 	if err != nil {
-		httpx.WriteError(w, 422, "无法关联该会话："+err.Error())
+		httpx.WriteError(w, 422, "无法关联该对话："+err.Error())
 		return
 	}
 	a.Workspace.Mu.Lock()
@@ -300,7 +300,7 @@ func (a *Service) LinkSessionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]string{"message": "会话已关联到当前任务"})
+	httpx.WriteJSON(w, 200, map[string]string{"message": "对话已关联到当前任务"})
 }
 
 func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
@@ -309,7 +309,7 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 	a.Workspace.Mu.Lock()
 	defer a.Workspace.Mu.Unlock()
 	if a.ChatBusy(r.PathValue("session")) {
-		httpx.WriteError(w, 409, "此会话正在页面运行，请先停止或等待完成，再打开终端继续")
+		httpx.WriteError(w, 409, "此对话正在页面运行，请先停止或等待完成，再打开终端继续")
 		return
 	}
 	record, ok := a.requestSession(w, r)
@@ -330,15 +330,15 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 	s, err := readSession(c, id)
 	c.Close()
 	if err != nil {
-		httpx.WriteError(w, 409, "会话暂不可继续："+err.Error())
+		httpx.WriteError(w, 409, "对话暂不可继续："+err.Error())
 		return
 	}
 	if !platform.AbsoluteWorkspacePath(s.Cwd) {
-		httpx.WriteError(w, 409, "会话工作目录不是绝对路径")
+		httpx.WriteError(w, 409, "对话工作目录不是绝对路径")
 		return
 	}
 	if info, err := workspace.Stat(r.Context(), s.Cwd, true); err != nil || !info.IsDir() {
-		httpx.WriteError(w, 409, "会话原工作目录不可用，请恢复目录后重试")
+		httpx.WriteError(w, 409, "对话原工作目录不可用，请恢复目录后重试")
 		return
 	}
 	dirs := append([]string{}, p.AdditionalDirectories...)

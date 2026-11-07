@@ -189,7 +189,7 @@ func (a *Service) requestSession(w http.ResponseWriter, r *http.Request) (model.
 	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			httpx.WriteError(w, 404, "会话不存在")
+			httpx.WriteError(w, 404, "对话不存在")
 		} else {
 			httpx.WriteError(w, 503, err.Error())
 		}
@@ -220,7 +220,7 @@ func (a *Service) resolveCreation(ctx context.Context, target SessionTarget) (ex
 			return out, err
 		}
 		if q.State == "archived" {
-			return out, fmt.Errorf("请先取消归档再新建任务会话")
+			return out, fmt.Errorf("请先取消归档再新建任务对话")
 		}
 		selected := target.Cwd
 		if selected == "" {
@@ -318,7 +318,7 @@ func (a *Service) resolveCreation(ctx context.Context, target SessionTarget) (ex
 			return out, err
 		}
 		if target.Cwd == "" || !scope.includes("", target.Cwd) {
-			return out, invalidSessionTarget("请选择项目实际存在的 worktree 工作目录")
+			return out, invalidSessionTarget("请选择项目实际存在的 Worktree 工作目录")
 		}
 		out.plan = model.LaunchPlan{Cwd: platform.CleanWorkspacePath(target.Cwd), Title: "Codex", AdditionalDirectories: []string{}}
 		out.instructions = "开始修改前先阅读当前工作目录下适用的 AGENTS.md；Git、构建及测试在对应仓库执行。"

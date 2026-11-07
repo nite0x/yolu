@@ -23,7 +23,7 @@ func (a *Service) AppTerminalConflict(id, cwd string) error {
 			if !connected {
 				return &workspace.SessionConflictError{Message: "终端正在启动，尚未连接；请稍候。启动失败后会自动释放占用（最多 30 秒）"}
 			}
-			return &workspace.SessionConflictError{Message: "工作台终端保有此会话的控制权，请使用“切换到侧栏”等待交接完成"}
+			return &workspace.SessionConflictError{Message: "工作台终端保有此对话的控制权，请使用“切换到侧栏”等待交接完成"}
 		}
 	}
 	return a.terminalConflict(id, cwd)
@@ -105,7 +105,7 @@ func scanTerminalSessionsExcept(proc, id, cwd string, except int) error {
 		}
 		for _, arg := range args[1:] {
 			if arg == id {
-				return &workspace.SessionConflictError{Message: "此会话仍有 Codex 终端打开；可对工作台管理的终端使用“切换到侧栏”。手动启动的同会话终端须先退出 Codex"}
+				return &workspace.SessionConflictError{Message: "此对话仍有 Codex 终端打开；可对工作台管理的终端使用“切换到侧栏”。手动启动的同对话终端须先退出 Codex"}
 			}
 		}
 	}

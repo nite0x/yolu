@@ -174,7 +174,7 @@ func makeElicitation(a *ChatApproval) {
 			} else {
 				_ = json.Unmarshal(p.Meta.Persist, &scopes)
 			}
-			for _, item := range []struct{ scope, label string }{{"session", "本会话允许"}, {"always", "始终允许"}} {
+			for _, item := range []struct{ scope, label string }{{"session", "本对话允许"}, {"always", "始终允许"}} {
 				for _, scope := range scopes {
 					if scope == item.scope {
 						a.Choices = append(a.Choices, ChatApprovalChoice{ID: "accept_" + scope, Label: item.label, Accepts: true, persist: scope})
@@ -388,7 +388,7 @@ func commandApprovalChoices(decisions []json.RawMessage) []ChatApprovalChoice {
 		case "accept":
 			choice.Label, choice.Accepts = "允许一次", true
 		case "acceptForSession":
-			choice.Label, choice.Accepts = "本会话允许", true
+			choice.Label, choice.Accepts = "本对话允许", true
 		case "decline":
 			choice.Label = "拒绝"
 		case "cancel":

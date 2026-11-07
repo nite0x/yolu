@@ -76,7 +76,7 @@ function updateGitWorktree() {
   }
   $('[data-action="git-terminal"]').disabled = !t;
   $('#gitContext').textContent = uiText("{0} · 当前分支 {1} · {2}\n{3}", environmentName(), t?.branch || 'detached HEAD', t?.dirty ? uiText("{0} 项未提交修改", t.dirty) : uiText("工作目录干净"), !t?.upstream ? uiText("尚未设置上游，推送时可发布当前分支") : !t.sync_available ? uiText("上游 {0} 不可用，请获取远端", t.upstream) : uiText("上游 {0} · 待推送 {1} · 待拉取 {2}", t.upstream, t.sync_ahead || 0, t.sync_behind || 0));
-  $('#gitSwitch').innerHTML = gitState.branches.map(b => `<option value="${esc(b.ref)}" ${b.worktrees.some(p => p !== gitSelectedPath) ? 'disabled' : ''}>${esc(b.name)}${b.kind === 'remote' ? uiText("（新建跟踪分支）") : ''}${b.worktrees.some(p => p !== gitSelectedPath) ? uiText("（其他 worktree 占用）") : ''}</option>`).join('');
+  $('#gitSwitch').innerHTML = gitState.branches.map(b => `<option value="${esc(b.ref)}" ${b.worktrees.some(p => p !== gitSelectedPath) ? 'disabled' : ''}>${esc(b.name)}${b.kind === 'remote' ? uiText("（新建跟踪分支）") : ''}${b.worktrees.some(p => p !== gitSelectedPath) ? uiText("（其他 Worktree 占用）") : ''}</option>`).join('');
   if (t?.branch) $('#gitSwitch').value = 'refs/heads/' + t.branch;
   $('#gitSwitchNote').textContent = gitRequirementID ? uiText("切换后同步更新当前任务的关联分支，创建基线保留。") : uiText("切换作用于所选目录；关联任务会显示分支变化。");
   updateGitSwitch();
@@ -171,7 +171,7 @@ async function launchGitMergeAI() {
       applyChatState(sessionHistoryState, result.chat);
       if (result.chat.busy) streamChat(sessionHistoryState, result.chat.id);
     }
-    toast(uiText("合并出现冲突，AI 已开始处理，请在会话中查看进展。"));
+    toast(uiText("合并出现冲突，AI 已开始处理，请在对话中查看进展。"));
   } else {
     $('#gitResultTitle').textContent = result.message;
     $('#gitResult').hidden = false;

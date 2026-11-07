@@ -1,7 +1,7 @@
 import { uiText, uiLocale } from "../i18n";
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CircleAlert, ClipboardCheck, Copy, GitBranch, MoreHorizontal, Plus, SlidersHorizontal, Terminal } from "lucide-react"
+import { CircleAlert, ClipboardCheck, Copy, GitBranch, MoreHorizontal, Plus, SlidersHorizontal } from "lucide-react"
 import { Action, GitSyncStatus, TaskOpenActions, StatusBadge, TreeStatus, canOpenMember, reusesDirectory } from "./shared"
 import type { ProjectOpenTool } from "./shared"
 import type { Project, Task } from "./types"
@@ -74,11 +74,12 @@ export function TaskDetail({ task: q, projects, openTool = "vscode", filter = "a
           <TaskOpenActions project={m.project_id} path={m.path} disabled={!usable} tool={openTool} primary />
           <Action action="changes-open" id={m.project_id} data-path={m.path} disabled={!usable}>{uiText("文件与改动")}</Action>
           <details className="task-more task-project-more" data-workspace-detail={`menu:${m.project_id}`}><summary aria-label={uiText("{0} 更多操作", m.project_name)}><MoreHorizontal aria-hidden="true" /></summary><div className="task-more-menu">
-            <Action action="workspace-terminal" id={m.project_id} data-path={m.path} disabled={!usable}><Terminal aria-hidden="true" />{uiText("打开终端")}</Action>
-            <Action action="git-open" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active}>{uiText("Git 操作")}</Action>
+            <Action action="workspace-conversation-new" id={m.project_id} data-path={m.path} disabled={!usable}>{uiText("新建对话…")}</Action>
             <hr />
+            <Action action="git-open" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active}>{uiText("Git 操作")}</Action>
             <Action action="git-task-pull" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active || !!t?.detached || !!t?.operation || !!t?.dirty}>{uiText("拉取")}</Action>
             <Action action="git-task-push" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active || !!t?.detached || !!t?.operation}>{uiText("推送")}</Action>
+            <Action action="project-open-remote" id={m.project_id} data-path={m.path} disabled={!usable}>{uiText("打开远端仓库")}</Action>
             <hr />
             <Action action="change-task-directory" id={q.id} data-project={m.project_id} disabled={!editable}>{uiText("更换工作目录")}</Action>
             <Action action="remove-task-project" id={q.id} data-project={m.project_id} disabled={!editable} className="text-destructive">{uiText("从任务移除")}</Action>

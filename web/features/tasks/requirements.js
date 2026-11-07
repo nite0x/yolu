@@ -371,7 +371,7 @@ $('#taskDirectoryForm').addEventListener('submit', async event => {
 async function removeTaskProject(id, project) {
   const q = state.requirements.find(q => q.id === id);
   const m = q?.members.find(m => m.project_id === project);
-  if (!m || !confirm(uiText("从“{0}”移除“{1}”？\n工作目录、分支、代码和已有会话均保留。", q.name, m.project_name))) return;
+  if (!m || !confirm(uiText("从“{0}”移除“{1}”？\n工作目录、分支、代码和已有对话均保留。", q.name, m.project_name))) return;
   const environment = activeEnvironment;
   await mutation(uiText("正在解除项目关联"), async () => {
     const updated = await api(`/api/requirements/${encodeURIComponent(id)}/projects/${encodeURIComponent(project)}`, {environment, method:'DELETE'});

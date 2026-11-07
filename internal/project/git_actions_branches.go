@@ -88,7 +88,7 @@ func (a *Service) switchGitBranch(ctx context.Context, p model.Project, v GitOve
 	}
 	for _, path := range b.Worktrees {
 		if path != t.Path {
-			return nil, gitIssue(gitConflict, "该分支正被另一个 worktree 使用："+path)
+			return nil, gitIssue(gitConflict, "该分支正被另一个 Worktree 使用："+path)
 		}
 	}
 	if b.Kind == "remote" {
@@ -143,7 +143,7 @@ func (a *Service) fastForwardGitBranch(ctx context.Context, p model.Project, v G
 		return nil, gitIssue(gitConflict, e.Error())
 	}
 	if len(b.Worktrees) > 0 {
-		return nil, gitIssue(gitConflict, "该分支已在 worktree 检出，请选择对应目录使用“快进拉取”")
+		return nil, gitIssue(gitConflict, "该分支已在 Worktree 检出，请选择对应目录使用“快进拉取”")
 	}
 	if _, e := workspace.Git(ctx, p.Path, "merge-base", "--is-ancestor", b.Commit, source.Commit); e != nil {
 		return nil, gitIssue(gitConflict, "分支存在分歧，不能快进；请在终端检查，不会覆盖本地提交")

@@ -65,9 +65,9 @@ test('English applies to production React forms while task names remain verbatim
  const container=w.document.createElement('div');container.innerHTML=html;
  assert.ok(container.textContent.includes('任务'));
  assert.ok(!container.textContent.includes('创建于'));
- const report=w.WorkHubUI.codexDiagnostics([{id:'local',name:'Local',report:{platform:'linux',user:'test',cli_path:'/usr/bin/codex',codex_home:'/tmp/codex',candidates:[],checked_at:'2026-11-05T00:00:00Z',status:'ok',checks:[{id:'sessions',name:'会话接口',status:'ok',message:'已完成初始化并成功读取会话列表'}]}}]);
+ const report=w.WorkHubUI.codexDiagnostics([{id:'local',name:'Local',report:{platform:'linux',user:'test',cli_path:'/usr/bin/codex',codex_home:'/tmp/codex',candidates:[],checked_at:'2026-11-05T00:00:00Z',status:'ok',checks:[{id:'sessions',name:'对话接口',status:'ok',message:'已完成初始化并成功读取对话列表'}]}}]);
  const diagnostics=w.document.createElement('div');diagnostics.innerHTML=report;
- assert.ok(diagnostics.textContent.includes('Session interface'));
- assert.ok(diagnostics.textContent.includes('Initialized successfully and read the session list.'));
+ assert.ok(diagnostics.textContent.includes('Conversation interface'));
+ assert.ok(diagnostics.textContent.includes('Initialized successfully and read the conversation list.'));
  for(let i=0;i<4;i++) await new Promise(resolve=>setImmediate(resolve));
 });

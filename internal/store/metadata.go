@@ -143,7 +143,7 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 			return err
 		}
 		if count > 0 {
-			return fmt.Errorf("目标环境已有项目、任务或会话索引，不能覆盖导入")
+			return fmt.Errorf("目标环境已有项目、任务或对话索引，不能覆盖导入")
 		}
 	}
 	for _, table := range metadataTables {

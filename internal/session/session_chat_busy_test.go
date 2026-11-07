@@ -120,7 +120,7 @@ func TestChatDoesNotMisclassifyFailedOwnershipCheckBeforeStart(t *testing.T) {
 					t.Fatalf("%d %s", code, raw)
 				}
 				state := awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
-				if state.Status != "failed" || !strings.Contains(state.Error, "无法完成会话占用检查") || !strings.Contains(state.Error, probeErr.Error()) {
+				if state.Status != "failed" || !strings.Contains(state.Error, "无法完成对话占用检查") || !strings.Contains(state.Error, probeErr.Error()) {
 					t.Fatalf("probe failure was classified as occupancy: %+v", state)
 				}
 				c.mu.Lock()

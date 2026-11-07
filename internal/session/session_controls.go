@@ -270,7 +270,7 @@ func (a *Service) ChatSteerHandler(w http.ResponseWriter, r *http.Request) {
 	client := run.client
 	run.mu.Unlock()
 	if client == nil {
-		httpx.WriteError(w, 409, "会话仍在连接，请稍后发送")
+		httpx.WriteError(w, 409, "对话仍在连接，请稍后发送")
 		return
 	}
 	if _, err := a.Workspace.Store.DB.Exec(`INSERT INTO conversation_input_requests(session_id,request_id,fingerprint,status) VALUES(?,?,?,'pending')`, record.ID, input.RequestID, fingerprint); err != nil {

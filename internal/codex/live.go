@@ -291,7 +291,7 @@ func (w *liveWire) failPending() {
 	w.mu.Lock()
 	for _, waiting := range w.pending {
 		select {
-		case waiting <- liveResponse{Err: fmt.Errorf("Codex 实时连接已断开，请重新打开会话检查已保存的进展")}:
+		case waiting <- liveResponse{Err: fmt.Errorf("Codex 实时连接已断开，请重新打开对话检查已保存的进展")}:
 		default:
 		}
 	}

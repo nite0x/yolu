@@ -124,7 +124,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   const approvals = state.chat.approvals.filter(a => a !== question);
   const previousQuestion = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (previousQuestion.current && !question) panel.current?.querySelector<HTMLTextAreaElement>(uiText("textarea[aria-label=\"会话消息\"]"))?.focus();
+    if (previousQuestion.current && !question) panel.current?.querySelector<HTMLTextAreaElement>(uiText("textarea[aria-label=\"对话消息\"]"))?.focus();
     previousQuestion.current = question?.id;
   }, [question?.id]);
   const entries = useMemo(() => mergeEntries(state.entries, state.chat.entries), [state.entries, state.chat.entries]);

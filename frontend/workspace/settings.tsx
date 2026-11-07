@@ -24,10 +24,10 @@ export function SettingsPage() {
       <Field id="environmentSelect" label={uiText("配置环境")}><NativeSelect id="environmentSelect" aria-label={uiText("配置环境")}><Option value="local">{uiText("本机")}</Option></NativeSelect><small id="environmentStatus" role="status" className="text-muted-foreground" /></Field>
       <span id="settingsEnvironment" hidden />
       <dl className="settings-facts"><div><dt>{uiText("新任务工作区")}</dt><dd><code id="settingsRoot">{uiText("正在读取…")}</code></dd></div></dl>
-      <details className="settings-help-details"><summary>{uiText("工作区与环境规则")}</summary><Help>{uiText("任务创建后环境固定，项目、终端和会话在此环境执行。工作区默认使用 ~/workspaces，可通过 --root 指定；已有任务沿用保存路径。")}</Help></details>
+      <details className="settings-help-details"><summary>{uiText("工作区与环境规则")}</summary><Help>{uiText("任务创建后环境固定，项目、终端和对话在此环境执行。工作区默认使用 ~/workspaces，可通过 --root 指定；已有任务沿用保存路径。")}</Help></details>
     </Card>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="codexDiagnosticsTitle">
-      <Heading id="codexDiagnosticsTitle" title={uiText("Codex 安装检测")}>{uiText("检查应用实际使用的 CLI、会话接口、登录配置和共享后台。Windows 本机与每个 WSL 用户分别检测。")}</Heading>
+      <Heading id="codexDiagnosticsTitle" title={uiText("Codex 安装检测")}>{uiText("检查应用实际使用的 CLI、对话接口、登录配置和共享后台。Windows 本机与每个 WSL 用户分别检测。")}</Heading>
       <div className="detail-actions codex-diagnostic-actions"><Button type="button" id="checkCodex">{uiText("检测当前环境")}</Button><Button type="button" variant="outline" id="checkAllCodex">{uiText("检测全部已登记环境")}</Button><Button type="button" variant="outline" id="copyCodexDiagnostics" disabled>{uiText("复制检测报告")}</Button></div>
       <p id="codexDiagnosticsStatus" className="settings-help" role="status">{uiText("尚未检测")}</p>
       <p id="codexUnregistered" className="settings-help" hidden />
@@ -47,13 +47,13 @@ export function SettingsPage() {
       </fieldset>
     </form></Card>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="conversationDefaultsHeading"><form id="conversationDefaultsForm">
-      <Heading id="conversationDefaultsHeading" title={uiText("新会话默认设置")}>{uiText("默认沿用当前环境的 Codex 配置。可为新会话指定模型与权限，单次对话可覆盖。")}</Heading>
+      <Heading id="conversationDefaultsHeading" title={uiText("新对话默认设置")}>{uiText("默认沿用当前环境的 Codex 配置。可为新对话指定模型与权限，单次对话可覆盖。")}</Heading>
       <fieldset id="conversationDefaultsFields" disabled>
         <Field id="conversationDefaultModel" label={uiText("默认模型")}><NativeSelect id="conversationDefaultModel"><Option value="">{uiText("沿用 Codex 默认模型")}</Option></NativeSelect></Field>
         <Field id="conversationDefaultPermission" label={uiText("默认权限")}><NativeSelect id="conversationDefaultPermission"><Option value="">{uiText("沿用 Codex 默认权限")}</Option><Option value="ask">{uiText("请求批准")}</Option><Option value="auto">{uiText("帮我批准")}</Option><Option value="full">{uiText("完全访问权限")}</Option></NativeSelect></Field>
         <Help>{uiText("设置按执行环境保存，仅用于之后创建的对话。思考强度默认沿用 Codex，可在对话中调整。")}</Help>
         <Help>{uiText("完全访问权限允许读取和修改电脑上的文件并执行命令；沿用 Codex 时使用该环境已有的权限配置。")}</Help>
-        <div className="settings-actions"><Button type="submit">{uiText("保存新会话设置")}</Button></div>
+        <div className="settings-actions"><Button type="submit">{uiText("保存新对话设置")}</Button></div>
       </fieldset>
       <Feedback id="conversationDefaultsError" variant="destructive" className="mt-4" hidden />
       <p id="conversationDefaultsStatus" role="status" className="settings-help" />
@@ -98,12 +98,12 @@ export function CodexDiagnosticsResults({ results }: { results: DiagnosticResult
   </section>)}</>
 }
 export function EnvironmentForm() {
-  return <form id="environmentForm"><ModalHeader id="environmentTitle" title={uiText("连接 WSL 环境")} eyebrow="EXECUTION ENVIRONMENT" /><p className="dialog-description">{uiText("应用自动部署并启动辅助程序。Git 和文件操作在所选 WSL 用户内执行，任务记录保存在本机。")}</p>
+  return <form id="environmentForm"><ModalHeader id="environmentTitle" title={uiText("连接 WSL 环境")} /><p className="dialog-description">{uiText("应用自动部署并启动辅助程序。Git 和文件操作在所选 WSL 用户内执行，任务记录保存在本机。")}</p>
     <Field id="environmentDistro" label={uiText("发行版")}><NativeSelect id="environmentDistro" required /></Field>
     <Field id="environmentUser" label={uiText("Linux 用户")}><Input id="environmentUser" autoComplete="off" placeholder={uiText("留空使用发行版默认用户")} /></Field>
     <Field id="environmentRoot" label={uiText("新任务的工作区根目录")}><Input id="environmentRoot" autoComplete="off" placeholder={uiText("留空使用该用户的 ~/workspaces")} /></Field>
     <Check id="environmentImport" label={uiText("导入该用户原有的 Yolu 项目与任务记录")} />
-    <p className="dialog-description">{uiText("导入会复制一份当前记录到 Windows；项目和 worktree 保留原路径。之后请通过桌面端维护这些任务。")}</p><Feedback id="environmentError" variant="destructive" hidden />
+    <p className="dialog-description">{uiText("导入会复制一份当前记录到 Windows；项目和 Worktree 保留原路径。之后请通过桌面端维护这些任务。")}</p><Feedback id="environmentError" variant="destructive" hidden />
     <ModalFooter><Button type="submit" id="connectEnvironment">{uiText("连接并准备环境")}</Button></ModalFooter>
   </form>
 }

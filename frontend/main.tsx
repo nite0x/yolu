@@ -33,8 +33,7 @@ function CommandDialog() {
   return (
     <>
       <div className="dialog-header">
-        <div className="space-y-3">
-          <Badge variant="secondary" className="eyebrow m-0 text-xs tracking-wider">TERMINAL COMMAND</Badge>
+        <div>
           <h2 id="commandTitle" className="text-xl font-semibold">{uiText("终端命令")}</h2>
         </div>
         <Button type="button" variant="ghost" size="icon" className="close-dialog shrink-0" aria-label={uiText("关闭")}>

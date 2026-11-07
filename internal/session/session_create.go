@@ -66,7 +66,7 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if existing == "" {
-			httpx.WriteError(w, 409, "上次创建结果未确认，为避免重复创建请先刷新会话列表检查")
+			httpx.WriteError(w, 409, "上次创建结果未确认，为避免重复创建请先刷新对话列表检查")
 			return
 		}
 		a.WriteCreatedSession(w, existing, 200)
@@ -152,7 +152,7 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 		params["developerInstructions"] = execution.instructions + "\n" + chatQuestionInstructions
 	}
 	if err := c.Call(requestCtx, "thread/start", params, &result); err != nil || result.Thread.ID == "" {
-		httpx.WriteError(w, 503, "Codex 创建结果未确认，请刷新会话列表检查后再操作")
+		httpx.WriteError(w, 503, "Codex 创建结果未确认，请刷新对话列表检查后再操作")
 		return
 	}
 	s := result.Thread
@@ -222,7 +222,7 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 func (a *Service) WriteCreatedSession(w http.ResponseWriter, session string, status int) {
 	s, err := a.Workspace.Store.Session(session)
 	if err != nil {
-		httpx.WriteError(w, 409, "已创建的会话记录不可用，请刷新后检查")
+		httpx.WriteError(w, 409, "已创建的对话记录不可用，请刷新后检查")
 		return
 	}
 	s.Available = true

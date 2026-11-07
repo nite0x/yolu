@@ -376,7 +376,7 @@ func TestSessionNameUsesCodexNameOnly(t *testing.T) {
 func TestInitialSessionTitleExtractsOnlyShortProse(t *testing.T) {
 	for _, tc := range []struct{ input, want string }{
 		{"\n## **修复** `标题` 同步\n完整细节", "修复 标题 同步"},
-		{"- [ ] 修复 [会话](https://example.com) 名称", "修复 会话 名称"},
+		{"- [ ] 修复 [对话](https://example.com) 名称", "修复 对话 名称"},
 		{"![截图](data:image/png;base64,xxx)\n检查图片展示", "检查图片展示"},
 		{"```go\nsecret := 1\n```\n修复问题", "修复问题"},
 		{"<environment_context>\n秘密上下文\n</environment_context>\n修复问题", "修复问题"},

@@ -188,7 +188,7 @@ func visibleHistoryEntry(raw codexHistoryEntry) (HistoryEntry, bool) {
 			e.Text = "生成的图片暂不可预览。"
 		}
 	case "contextCompaction":
-		e.Kind, e.Tool, e.Text = "activity", "上下文整理", "Codex 已整理会话上下文"
+		e.Kind, e.Tool, e.Text = "activity", "上下文整理", "Codex 已整理对话上下文"
 	case "enteredReviewMode", "exitedReviewMode":
 		e.Kind, e.Tool, e.Text = "activity", "代码审查", i.Review
 	default:
@@ -290,7 +290,7 @@ func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) 
 	titleObservedAt := time.Now().UnixNano()
 	s, err := readSession(c, r.PathValue("session"))
 	if err != nil {
-		httpx.WriteError(w, 503, "无法读取会话详情："+err.Error())
+		httpx.WriteError(w, 503, "无法读取对话详情："+err.Error())
 		return
 	}
 	if err := a.SaveSession("", s, "codex", titleObservedAt); err != nil {
@@ -302,7 +302,7 @@ func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	history, err := readSessionHistory(c, s, r.URL.Query().Get("cursor"))
 	if err != nil {
-		httpx.WriteError(w, 503, "无法读取会话历史："+err.Error())
+		httpx.WriteError(w, 503, "无法读取对话历史："+err.Error())
 		return
 	}
 	a.prepareHistoryMedia(s.ID, history.Entries)

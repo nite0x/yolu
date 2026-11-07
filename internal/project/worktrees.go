@@ -71,7 +71,7 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		if len(b.Worktrees) > 0 {
-			httpx.WriteError(w, 409, "该分支已被 worktree 占用："+strings.Join(b.Worktrees, "、"))
+			httpx.WriteError(w, 409, "该分支已被 Worktree 占用："+strings.Join(b.Worktrees, "、"))
 			return
 		}
 		source, commit = b.Ref, b.Commit
@@ -108,7 +108,7 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if reserved > 0 {
-		httpx.WriteError(w, 409, "该目录属于已登记任务，请在对应任务页面管理；独立 worktree 请换一个工作标识")
+		httpx.WriteError(w, 409, "该目录属于已登记任务，请在对应任务页面管理；独立 Worktree 请换一个工作标识")
 		return
 	}
 	if info, err := workspace.Stat(r.Context(), directory, false); err == nil {
@@ -126,7 +126,7 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	for _, t := range v.Project.Worktrees {
 		if t.Path == target {
-			httpx.WriteError(w, 409, "该路径仍有 Git worktree 登记，请先在 Git 终端检查或修复")
+			httpx.WriteError(w, 409, "该路径仍有 Git Worktree 登记，请先在 Git 终端检查或修复")
 			return
 		}
 	}

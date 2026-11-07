@@ -196,7 +196,7 @@ func selectedWorktree(ctx context.Context, p model.Project, path string) (model.
 	// substituted worktree entry. Git reports canonical paths on macOS.
 	st, err := workspace.Stat(ctx, path, false)
 	if err != nil || st.Mode()&os.ModeSymlink != 0 {
-		return model.Worktree{}, fmt.Errorf("所选 worktree 路径不可用或是符号链接")
+		return model.Worktree{}, fmt.Errorf("所选 Worktree 路径不可用或是符号链接")
 	}
 	path, err = workspace.Normalize(ctx, path)
 	if err != nil {
@@ -210,7 +210,7 @@ func selectedWorktree(ctx context.Context, p model.Project, path string) (model.
 		if platform.SameWorkspacePath(t.Path, path) {
 			t = ScanWorktreeStatus(ctx, t)
 			if t.Bare || t.Missing || t.Prunable || t.Error != "" {
-				return model.Worktree{}, fmt.Errorf("所选 worktree 不可用，请先修复")
+				return model.Worktree{}, fmt.Errorf("所选 Worktree 不可用，请先修复")
 			}
 			common, err := workspace.Git(ctx, path, "rev-parse", "--path-format=absolute", "--git-common-dir")
 			if err != nil {
@@ -223,7 +223,7 @@ func selectedWorktree(ctx context.Context, p model.Project, path string) (model.
 			return t, nil
 		}
 	}
-	return model.Worktree{}, fmt.Errorf("请从该项目的已发现 worktree 中选择目录")
+	return model.Worktree{}, fmt.Errorf("请从该项目的已发现 Worktree 中选择目录")
 }
 
 func (a *Service) GitActionHandler(w http.ResponseWriter, r *http.Request) {

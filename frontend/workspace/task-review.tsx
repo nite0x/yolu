@@ -10,12 +10,12 @@ export interface CleanupCandidate {
 export interface ChangedFile { path: string; previous?: string; index: string; working: string; untracked: boolean }
 
 export function TaskReviewDialog() {
-  return <><ModalHeader id="taskReviewTitle" title={uiText("任务收尾检查")} eyebrow="TASK REVIEW" />
-    <p className="dialog-description" id="taskReviewDescription">{uiText("检查当前项目及任务工作区中保留的旧 Worktree。清理前会重新检查修改、提交、引用和活动会话。")}</p>
+  return <><ModalHeader id="taskReviewTitle" title={uiText("任务收尾检查")} />
+    <p className="dialog-description" id="taskReviewDescription">{uiText("检查当前项目及任务工作区中保留的旧 Worktree。清理前会重新检查修改、提交、引用和活动对话。")}</p>
     <div className="flex flex-wrap gap-2 mb-3"><Button type="button" variant="outline" id="taskReviewRefresh">{uiText("重新检查")}</Button><Button type="button" variant="outline" id="taskReviewArchive">{uiText("归档任务并重新检查")}</Button></div>
     <div id="taskReviewItems" aria-live="polite" />
     <Feedback id="taskReviewError" variant="destructive" hidden />
-    <p className="text-sm text-muted-foreground mt-4">{uiText("只移除选中的 Worktree 目录，分支与会话记录保留。原项目目录、共享目录及存在未确认内容的目录不可清理。")}</p>
+    <p className="text-sm text-muted-foreground mt-4">{uiText("只移除选中的 Worktree 目录，分支与对话记录保留。原项目目录、共享目录及存在未确认内容的目录不可清理。")}</p>
     <div className="dialog-footer"><Button type="button" variant="outline" className="close-dialog">{uiText("关闭")}</Button><Button type="button" id="taskReviewClean" disabled>{uiText("清理所选目录")}</Button></div>
   </>
 }
@@ -28,7 +28,7 @@ export function TaskReviewItems({items}: {items: CleanupCandidate[]}) {
   </article>)}</div>
 }
 export function ChangesDialog() {
-  return <><ModalHeader id="changesTitle" title={uiText("项目文件与改动")} eyebrow="FILES & CHANGES" />
+  return <><ModalHeader id="changesTitle" title={uiText("项目文件与改动")} />
     <div id="changesBrowser" />
     <div className="dialog-footer"><Button type="button" variant="outline" className="close-dialog">{uiText("关闭")}</Button></div>
   </>

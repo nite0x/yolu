@@ -130,7 +130,7 @@ window.addEventListener('resize', positionOpenTaskMenus);
 
 function renderProjects() {
   if (!state.loaded) return uiText("<div class=\"loading\">正在读取当前环境的项目…</div>");
-  if (!state.projects.length) return empty(uiText("你的项目，从这里连接"), uiText("输入已有 Git 仓库的主目录。已有 worktree 会自动发现，后续每 10 秒刷新本地状态。"), 'new-project', uiText("添加第一个项目"));
+  if (!state.projects.length) return empty(uiText("你的项目，从这里连接"), uiText("输入已有 Git 仓库的主目录。已有 Worktree 会自动发现，后续每 10 秒刷新本地状态。"), 'new-project', uiText("添加第一个项目"));
   const text = $('#search').value.trim().toLowerCase();
   const projects = state.projects.filter(p => `${p.name} ${p.path}`.toLowerCase().includes(text));
   const visible = projects.filter(p => projectFilter === 'dirty' ? p.worktrees.some(t => (t.dirty || 0) > 0) : projectFilter === 'error' ? p.error || p.worktrees.some(t => t.missing || t.prunable || t.error) : true);
@@ -186,7 +186,7 @@ $('#projectForm').addEventListener('submit', async event => {
   let added;
   await mutation(uiText("正在登记并扫描仓库"), async () => {
     added = await api('/api/projects', { environment, method: 'POST', body: JSON.stringify({ name: data.get('name'), path: data.get('path') }) });
-    $('#projectDialog').close(); toast(uiText("项目已登记，正在扫描 worktree"));
+    $('#projectDialog').close(); toast(uiText("项目已登记，正在扫描 Worktree"));
   }, $('#projectError'));
   if (added && onAdded) await onAdded(added.id);
   else if (added) {

@@ -35,7 +35,7 @@ func (a *Service) mergeGit(ctx context.Context, p model.Project, v GitOverview, 
 	if err != nil {
 		after, inspectErr := workspace.ReadGitState(ctx, t.Path)
 		if inspectErr == nil && after.Operation == "merge" && len(after.Conflicts) > 0 {
-			return map[string]any{"message": "合并出现冲突，将打开 AI 会话完成合并", "conflict": true, "conflicts": after.Conflicts, "merge_head": after.MergeHead}, nil
+			return map[string]any{"message": "合并出现冲突，将打开 AI 对话完成合并", "conflict": true, "conflicts": after.Conflicts, "merge_head": after.MergeHead}, nil
 		}
 	}
 	message = "已合并 " + b.Name + " → " + t.Branch

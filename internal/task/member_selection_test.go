@@ -68,7 +68,7 @@ func TestTaskReusesDirectoriesAcrossTasksAndAddsMixedMembers(t *testing.T) {
 	a := testApp(t)
 	path := repo(t, "repo", "main")
 	id := register(t, a, "Repo", path)
-	external := filepath.Join(testutil.TempDir(t), "已有 worktree")
+	external := filepath.Join(testutil.TempDir(t), "已有 Worktree")
 	testGit(t, path, "worktree", "add", "-b", "existing", "--", external)
 	dirty := filepath.Join(external, "keep.txt")
 	if err := os.WriteFile(dirty, []byte("unsaved"), 0644); err != nil {

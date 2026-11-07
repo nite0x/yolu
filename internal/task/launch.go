@@ -36,7 +36,7 @@ func (a *Service) MakeLaunchPlan(ctx context.Context, id string) (model.LaunchPl
 		}
 	}
 	if p.Cwd == "" {
-		return model.LaunchPlan{}, fmt.Errorf("主项目 worktree 不存在")
+		return model.LaunchPlan{}, fmt.Errorf("主项目 Worktree 不存在")
 	}
 	p.Args = append(p.Args, "--cd", p.Cwd)
 	for _, dir := range p.AdditionalDirectories {

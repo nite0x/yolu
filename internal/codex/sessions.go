@@ -69,7 +69,7 @@ func OpenSessionClient(ctx context.Context) (SessionClient, error) {
 	if err := cmd.Start(); err != nil {
 		in.Close()
 		cancel()
-		return nil, fmt.Errorf("无法读取 Codex 会话，请检查服务环境中的 Codex CLI：%w", err)
+		return nil, fmt.Errorf("无法读取 Codex 对话，请检查服务环境中的 Codex CLI：%w", err)
 	}
 	c := &codexClient{cmd: cmd, in: in, out: bufio.NewReader(out), cancel: cancel}
 	if err := c.Call("initialize", map[string]any{"clientInfo": map[string]string{"name": "worktree_hub", "version": "0.1.0"}, "capabilities": map[string]bool{"experimentalApi": true}}, nil); err != nil {
@@ -97,10 +97,10 @@ func (c *codexClient) Call(method string, params any, result any) error {
 	for {
 		raw, err := readSessionMessage(c.out, sessionMessageLimit)
 		if errors.Is(err, io.EOF) {
-			return fmt.Errorf("Codex 会话接口已断开或超时，请确认 CLI 支持 app-server 后重试")
+			return fmt.Errorf("Codex 对话接口已断开或超时，请确认 CLI 支持 app-server 后重试")
 		}
 		if err != nil {
-			return fmt.Errorf("读取 Codex 会话失败：%w", err)
+			return fmt.Errorf("读取 Codex 对话失败：%w", err)
 		}
 		var response struct {
 			ID     *int            `json:"id"`
@@ -110,13 +110,13 @@ func (c *codexClient) Call(method string, params any, result any) error {
 			} `json:"error"`
 		}
 		if err := json.Unmarshal(raw, &response); err != nil {
-			return fmt.Errorf("Codex 返回了无法读取的会话数据：%w", err)
+			return fmt.Errorf("Codex 返回了无法读取的对话数据：%w", err)
 		}
 		if response.ID == nil || *response.ID != c.id {
 			continue
 		}
 		if response.Error != nil {
-			return fmt.Errorf("Codex 会话接口：%s", response.Error.Message)
+			return fmt.Errorf("Codex 对话接口：%s", response.Error.Message)
 		}
 		if result == nil {
 			return nil

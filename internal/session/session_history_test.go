@@ -119,7 +119,7 @@ func TestSessionHistoryFailurePreservesAssociation(t *testing.T) {
 	}
 	fakeSessions(a, map[string]codex.Session{})
 	endpoint := "/api/requirements/" + q.ID + "/sessions/missing/history"
-	if code, raw := call(t, a, "GET", endpoint, nil); code != 503 || !strings.Contains(string(raw), "无法读取会话详情") {
+	if code, raw := call(t, a, "GET", endpoint, nil); code != 503 || !strings.Contains(string(raw), "无法读取对话详情") {
 		t.Fatalf("%d %s", code, raw)
 	}
 	stored, err := a.StoredSessions(q.ID)

@@ -129,7 +129,7 @@ func (a *Service) CreateRequirementHandler(w http.ResponseWriter, r *http.Reques
 		q.Members = append(q.Members, m)
 	}
 	if len(problems) > 0 {
-		httpx.WriteJSON(w, 422, map[string]any{"error": "创建前检查未通过，未创建任何 worktree", "details": problems})
+		httpx.WriteJSON(w, 422, map[string]any{"error": "创建前检查未通过，未创建任何 Worktree", "details": problems})
 		return
 	}
 	hasNew := false
@@ -187,14 +187,14 @@ func VerifyMember(ctx context.Context, p model.Project, m model.Member, branch s
 		return err
 	}
 	if st.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("worktree 路径是符号链接，拒绝使用")
+		return fmt.Errorf("Worktree 路径是符号链接，拒绝使用")
 	}
 	top, err := workspace.Git(ctx, m.Path, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return err
 	}
 	if !platform.SameWorkspacePath(strings.TrimSpace(top), m.Path) {
-		return fmt.Errorf("该路径已不再是独立 worktree")
+		return fmt.Errorf("该路径已不再是独立 Worktree")
 	}
 	common, err := workspace.Git(ctx, m.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
@@ -214,7 +214,7 @@ func VerifyMember(ctx context.Context, p model.Project, m model.Member, branch s
 				return nil
 			}
 		}
-		return fmt.Errorf("该目录不是此项目的已登记 worktree")
+		return fmt.Errorf("该目录不是此项目的已登记 Worktree")
 	}
 	branch = memberBranch(m, branch)
 	actual, err := workspace.Git(ctx, m.Path, "symbolic-ref", "--quiet", "--short", "HEAD")
@@ -225,7 +225,7 @@ func VerifyMember(ctx context.Context, p model.Project, m model.Member, branch s
 	// explicit branch switches. Keep it intact as historical task metadata.
 	if m.State != "ready" {
 		if _, err := workspace.Git(ctx, m.Path, "merge-base", "--is-ancestor", m.BaseCommit, "HEAD"); err != nil {
-			return fmt.Errorf("worktree 已偏离创建时记录的基线，请检查后处理")
+			return fmt.Errorf("Worktree 已偏离创建时记录的基线，请检查后处理")
 		}
 	}
 	return nil
@@ -266,7 +266,7 @@ func (a *Service) PrepareMembers(ctx context.Context, q *model.Requirement, ps m
 		} else if (m.Mode == "project" || m.Mode == "worktree") && !restoreRemoved {
 			createErr = VerifyMember(ctx, p, *m, "")
 		} else if !platform.Within(q.Path, m.Path) {
-			createErr = fmt.Errorf("worktree 路径越过工作区目录")
+			createErr = fmt.Errorf("Worktree 路径越过工作区目录")
 		} else if _, err := workspace.Stat(ctx, m.Path, false); err == nil {
 			// Recover only the exact persisted repository/path/branch combination, never overwrite it.
 			createErr = verify()
@@ -281,7 +281,7 @@ func (a *Service) PrepareMembers(ctx context.Context, q *model.Requirement, ps m
 				createErr = verify()
 			}
 		} else if _, err := workspace.Git(ctx, p.Path, "rev-parse", "--verify", "--quiet", "refs/heads/"+memberBranch(*m, q.Branch)); err == nil {
-			createErr = fmt.Errorf("分支 %s 已存在但 worktree 不存在，请先检查残留分支", memberBranch(*m, q.Branch))
+			createErr = fmt.Errorf("分支 %s 已存在但 Worktree 不存在，请先检查残留分支", memberBranch(*m, q.Branch))
 		} else {
 			_, createErr = workspace.Git(ctx, p.Path, "worktree", "add", "--no-track", "-b", memberBranch(*m, q.Branch), "--", m.Path, m.BaseCommit)
 			if createErr == nil {
@@ -434,5 +434,5 @@ func (a *Service) ArchiveHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]string{"message": "状态已更新，worktree 和分支均保留"})
+	httpx.WriteJSON(w, 200, map[string]string{"message": "状态已更新，Worktree 和分支均保留"})
 }

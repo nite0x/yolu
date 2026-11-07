@@ -623,7 +623,7 @@ test('Codex diagnostics stay read-only, retain report details during polling and
     checks++;
     assert.equal(options.headers['X-Environment-ID'], 'local');
     assert.notEqual(options.method, 'POST');
-    return {ok:true,json:async()=>({platform:'darwin',user:'mac-user',codex_home:'/Users/mac/.codex',cli_path:'/opt/homebrew/bin/codex',daemon_path:'/Users/mac/.codex/packages/app-server-daemon/current/bin/codex',version:'CLI-new',daemon_version:'daemon-old',candidates:['/opt/homebrew/bin/codex','/usr/local/bin/codex'],checked_at:'2026-11-04T12:00:00Z',status:'error',checks:[{id:'sessions',name:'会话接口',status:'error',message:'<img src=x onerror=alert(1)>配置错误',advice:'退出并停止后台后重试'}]})};
+    return {ok:true,json:async()=>({platform:'darwin',user:'mac-user',codex_home:'/Users/mac/.codex',cli_path:'/opt/homebrew/bin/codex',daemon_path:'/Users/mac/.codex/packages/app-server-daemon/current/bin/codex',version:'CLI-new',daemon_version:'daemon-old',candidates:['/opt/homebrew/bin/codex','/usr/local/bin/codex'],checked_at:'2026-11-04T12:00:00Z',status:'error',checks:[{id:'sessions',name:'对话接口',status:'error',message:'<img src=x onerror=alert(1)>配置错误',advice:'退出并停止后台后重试'}]})};
   });
   await h.navigate('/settings'); await settle();
   assert.equal(checks, 1);

@@ -53,7 +53,7 @@ export function QuestionComposer({approval, controller}: {approval: Approval; co
     }
   }}>
     <div className="chat-question-heading" aria-live="polite"><span>{uiText("需要你的回答")}</span><span>{index + 1} / {questions.length}</span></div>
-    {approval.delivery === "async" && <p className="m-0 text-xs text-muted-foreground">{approval.question_status === "pending" ? uiText("回答的投递结果未确认，请检查会话历史。你的选择已保留。") : uiText("回答会作为消息发送到当前会话。")}</p>}
+    {approval.delivery === "async" && <p className="m-0 text-xs text-muted-foreground">{approval.question_status === "pending" ? uiText("回答的投递结果未确认，请检查对话历史。你的选择已保留。") : uiText("回答会作为消息发送到当前对话。")}</p>}
     {questions.length > 1 && <div className="chat-question-tabs" role="group" aria-label={uiText("切换问题")}>{questions.map((q, i) => <Button key={q.id} type="button" variant={i === index ? "secondary" : "ghost"} size="sm" aria-pressed={i === index} disabled={disabled} onClick={() => {setIndex(i); setError("");}}>{answerText(q, drafts[q.id]) && <CheckIcon aria-hidden="true" />}{cleanText(q.header) || uiText("问题 {0}", i + 1)}</Button>)}</div>}
     <fieldset key={question.id} disabled={disabled} className="chat-question-fields">
       <legend>{cleanText(question.question || question.header)}</legend>

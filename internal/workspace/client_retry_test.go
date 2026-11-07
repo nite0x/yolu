@@ -52,7 +52,7 @@ func TestWorkspaceRetryHelper(t *testing.T) {
 			} else {
 				executions++
 				if request.Method == "conflict" {
-					response.Error = "此会话正在其他 Codex 客户端运行"
+					response.Error = "此对话正在其他 Codex 客户端运行"
 				}
 			}
 		}

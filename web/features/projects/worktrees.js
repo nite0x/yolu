@@ -25,7 +25,7 @@ async function openWorktree(id) {
     $('#worktreeProject').textContent = overview.project.path;
     $('#worktreeSource').innerHTML = sourceOptions(overview);
     $('#worktreeSource').value = defaultBranchSource(overview);
-    $('#worktreeExisting').innerHTML = uiText("<option value=\"\">请选择未被占用的本地分支</option>") + overview.branches.filter(b => b.kind === 'local').map(b => `<option value="${esc(b.name)}" ${b.worktrees.length ? 'disabled' : ''}>${esc(b.name)}${b.worktrees.length ? uiText("（已被 worktree 占用）") : ''}</option>`).join('');
+    $('#worktreeExisting').innerHTML = uiText("<option value=\"\">请选择未被占用的本地分支</option>") + overview.branches.filter(b => b.kind === 'local').map(b => `<option value="${esc(b.name)}" ${b.worktrees.length ? 'disabled' : ''}>${esc(b.name)}${b.worktrees.length ? uiText("（已被 Worktree 占用）") : ''}</option>`).join('');
     form.hidden = false;
     updateWorktreePreview();
   } catch (error) {

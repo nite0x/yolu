@@ -48,7 +48,7 @@ func ReadWorkspaceText(ctx context.Context, path string, roots []string) (TextFi
 		}
 	}
 	if !allowed {
-		return TextFile{}, fmt.Errorf("只能预览此会话工作目录及附加目录中的文件")
+		return TextFile{}, fmt.Errorf("只能预览此对话工作目录及附加目录中的文件")
 	}
 	info, err := os.Stat(resolved)
 	if err != nil || !info.Mode().IsRegular() {

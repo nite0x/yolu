@@ -30,12 +30,12 @@ func (p *SessionPool) Open(ctx context.Context) (SessionClient, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed {
-		return nil, fmt.Errorf("Codex 会话查询已关闭")
+		return nil, fmt.Errorf("Codex 对话查询已关闭")
 	}
 	if p.wire != nil && p.wire.ctx.Err() != nil {
 		p.wire.Close()
 		p.wire = nil
-		p.failed(fmt.Errorf("Codex 会话连接已断开"))
+		p.failed(fmt.Errorf("Codex 对话连接已断开"))
 	}
 	if p.wire == nil {
 		if time.Now().Before(p.retryAt) {

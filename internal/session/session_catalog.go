@@ -106,7 +106,7 @@ func (a *Service) scanSessionCatalog(ctx context.Context, scope sessionScope, ar
 			return found, nil
 		}
 		if seen[*page.NextCursor] {
-			return nil, fmt.Errorf("Codex 会话分页未前进，请重试")
+			return nil, fmt.Errorf("Codex 对话分页未前进，请重试")
 		}
 		seen[*page.NextCursor] = true
 		params["cursor"] = *page.NextCursor

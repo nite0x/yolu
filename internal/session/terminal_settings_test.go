@@ -136,7 +136,7 @@ func TestAllTerminalEntrypointsUseSavedLauncher(t *testing.T) {
 			if entry == "codex" {
 				code, raw = call(t, a, "POST", "/api/requirements/"+q.ID+"/launch", nil)
 			} else if entry == "resume" {
-				s := codex.Session{ID: "saved-session", Cwd: cwd, Name: "继续会话"}
+				s := codex.Session{ID: "saved-session", Cwd: cwd, Name: "继续对话"}
 				fakeSessions(a, map[string]codex.Session{s.ID: s})
 				if err := a.SaveSession(q.ID, s, "manual"); err != nil {
 					t.Fatal(err)

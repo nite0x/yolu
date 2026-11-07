@@ -79,7 +79,7 @@ func diagnose(parent context.Context, openSessions func(context.Context) (Sessio
 	endVersion()
 	if err != nil {
 		add("cli", "CLI 安装与版本", "error", err.Error(), "在此执行环境安装 Codex CLI，并确认 PATH 可找到它；安装后退出并停止 Yolu 后台再打开。WSL 需在对应发行版和用户下安装。")
-		for _, item := range []struct{ id, name string }{{"sessions", "会话接口"}, {"auth", "登录状态"}, {"daemon", "共享后台"}} {
+		for _, item := range []struct{ id, name string }{{"sessions", "对话接口"}, {"auth", "登录状态"}, {"daemon", "共享后台"}} {
 			add(item.id, item.name, "skipped", "CLI 无法执行，未继续检测", "")
 		}
 		return report
@@ -97,10 +97,10 @@ func diagnose(parent context.Context, openSessions func(context.Context) (Sessio
 		err = c.Call("thread/list", map[string]any{"limit": 1}, &page)
 	}
 	if err != nil {
-		add("sessions", "会话接口", "error", err.Error(), "检查 CLI 配置和上面的实际程序路径；若刚更新 CLI，请退出并停止 Yolu 后台后重试。")
-		add("auth", "登录状态", "skipped", "会话接口不可用，无法读取登录状态", "")
+		add("sessions", "对话接口", "error", err.Error(), "检查 CLI 配置和上面的实际程序路径；若刚更新 CLI，请退出并停止 Yolu 后台后重试。")
+		add("auth", "登录状态", "skipped", "对话接口不可用，无法读取登录状态", "")
 	} else {
-		add("sessions", "会话接口", "ok", "已完成初始化并成功读取会话列表", "")
+		add("sessions", "对话接口", "ok", "已完成初始化并成功读取对话列表", "")
 		var account struct {
 			Account *struct {
 				Type string `json:"type"`
@@ -167,7 +167,7 @@ func diagnose(parent context.Context, openSessions func(context.Context) (Sessio
 	if err != nil {
 		add("daemon", "共享后台", "error", err.Error(), "后台报告已运行但连接失败。请检查此环境的 Codex 后台；处理前先确认没有正在运行的 Codex 任务。")
 	} else {
-		add("daemon", "共享后台", "ok", "已连接共享后台并成功读取会话列表", "")
+		add("daemon", "共享后台", "ok", "已连接共享后台并成功读取对话列表", "")
 	}
 	return report
 }

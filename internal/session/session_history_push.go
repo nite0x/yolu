@@ -70,7 +70,7 @@ func WatchCodexHistory(ctx context.Context, session string, emit func(HistoryPus
 }
 
 func observeHistory(ctx context.Context, c orderedLiveClient, session string, emit func(HistoryPush) error) error {
-	state := HistoryPush{Entries: []HistoryEntry{}, Message: "等待终端加载会话"}
+	state := HistoryPush{Entries: []HistoryEntry{}, Message: "等待终端加载对话"}
 	if err := emit(state); err != nil {
 		return err
 	}
@@ -316,7 +316,7 @@ func (s *HistoryPush) apply(session string, event codex.Event) bool {
 		s.Sync++
 	case "thread/closed":
 		s.Confirmations, s.Waiting = nil, false
-		s.Connected, s.Message = false, "终端会话已卸载，正在重连"
+		s.Connected, s.Message = false, "终端对话已卸载，正在重连"
 	default:
 		return false
 	}

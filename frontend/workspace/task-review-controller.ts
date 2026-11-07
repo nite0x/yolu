@@ -48,7 +48,7 @@ export function createTaskReviewController(ports: Ports) {
     const context = review
     if (!context) return
     const selected = [...reviewDialog.querySelectorAll<HTMLInputElement>('input[data-cleanup-index]:checked')].map(input => context.items[Number(input.dataset.cleanupIndex)]).filter(item => item?.cleanable)
-    if (!selected.length || !window.confirm(uiText("清理以下 {0} 个 Worktree 目录？\n\n{1}\n\n目录会被移除，分支和会话记录保留。", selected.length, selected.map(item => item.path + uiText("\n分支：") + item.branch).join("\n\n")))) return
+    if (!selected.length || !window.confirm(uiText("清理以下 {0} 个 Worktree 目录？\n\n{1}\n\n目录会被移除，分支和对话记录保留。", selected.length, selected.map(item => item.path + uiText("\n分支：") + item.branch).join("\n\n")))) return
     const failures: string[] = []
     const warnings: string[] = []
     let cleaned = 0
@@ -61,7 +61,7 @@ export function createTaskReviewController(ports: Ports) {
         } catch (error) { failures.push(item.path + "：" + (error instanceof Error ? error.message : String(error))) }
       }
       if (reviewCurrent(context)) await loadReview()
-      ports.toast(uiText("已清理 {0} 个目录{1}", cleaned, failures.length ? uiText("，{0} 个未完成", failures.length) : uiText("，分支和会话记录保留")), !!failures.length || !!warnings.length)
+      ports.toast(uiText("已清理 {0} 个目录{1}", cleaned, failures.length ? uiText("，{0} 个未完成", failures.length) : uiText("，分支和对话记录保留")), !!failures.length || !!warnings.length)
       if (failures.length || warnings.length) throw new Error([...failures,...warnings].join("\n"))
     }, node("taskReviewError"), {key: `task:${context.id}`, isCurrent: () => reviewCurrent(context)})
     syncSelection()

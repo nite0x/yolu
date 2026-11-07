@@ -28,7 +28,7 @@ func (a *Service) DecorateHandoff(s *ChatState, session, cwd string) {
 				return
 			}
 		}
-		s.Notice = "无法准确核实终端与当前会话的归属，已阻止自动接管。请在原终端退出 Codex；以后从工作台打开的终端支持自动交接。"
+		s.Notice = "无法准确核实终端与当前对话的归属，已阻止自动接管。请在原终端退出 Codex；以后从工作台打开的终端支持自动交接。"
 	}
 }
 func (a *Service) ChatHandoffHandler(w http.ResponseWriter, r *http.Request) {
@@ -71,13 +71,13 @@ func (a *Service) ChatHandoffHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if s.Busy {
 			a.chatMu.Unlock()
-			httpx.WriteError(w, 409, "此会话已经在运行或交接")
+			httpx.WriteError(w, 409, "此对话已经在运行或交接")
 			return
 		}
 	}
 	if b == nil {
 		a.chatMu.Unlock()
-		httpx.WriteError(w, 409, "无法准确识别此会话的终端控制连接，已阻止接管。请先在原终端退出 Codex；从工作台新打开的终端支持一键交接")
+		httpx.WriteError(w, 409, "无法准确识别此对话的终端控制连接，已阻止接管。请先在原终端退出 Codex；从工作台新打开的终端支持一键交接")
 		return
 	}
 	if !same || pid == 0 {
@@ -124,7 +124,7 @@ func (a *Service) DriveHandoff(ctx context.Context, run *ChatRun, b *terminalBri
 				return false, err
 			}
 			if metadata.Thread.ID != run.session {
-				return false, fmt.Errorf("无法核实当前会话状态，未退出终端")
+				return false, fmt.Errorf("无法核实当前对话状态，未退出终端")
 			}
 			switch metadata.Thread.Status.Type {
 			case "idle":
@@ -132,7 +132,7 @@ func (a *Service) DriveHandoff(ctx context.Context, run *ChatRun, b *terminalBri
 			case "active":
 				return false, nil
 			default:
-				return false, fmt.Errorf("会话状态无法安全交接（%s），终端保持原状", metadata.Thread.Status.Type)
+				return false, fmt.Errorf("对话状态无法安全交接（%s），终端保持原状", metadata.Thread.Status.Type)
 			}
 		})
 	}

@@ -68,7 +68,7 @@ func TestChatRetryClearsOnlyOnMatchingModelProgress(t *testing.T) {
 		{"reasoning summary", "item/reasoning/summaryTextDelta", map[string]any{"delta": "private"}, true},
 		{"reasoning", "item/reasoning/textDelta", map[string]any{"delta": "private"}, true},
 		{"completed answer", "item/completed", map[string]any{"item": map[string]any{"id": "answer", "type": "agentMessage", "text": "完成"}}, true},
-		{"other session", "item/agentMessage/delta", map[string]any{"threadId": "other", "itemId": "answer", "delta": "其他会话"}, false},
+		{"other session", "item/agentMessage/delta", map[string]any{"threadId": "other", "itemId": "answer", "delta": "其他对话"}, false},
 		{"other turn", "item/agentMessage/delta", map[string]any{"turnId": "other", "itemId": "answer", "delta": "旧轮次"}, false},
 		{"empty delta", "item/agentMessage/delta", map[string]any{"itemId": "answer", "delta": ""}, false},
 		{"local tool output", "item/commandExecution/outputDelta", map[string]any{"itemId": "command", "delta": "still running"}, false},

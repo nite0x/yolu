@@ -235,7 +235,7 @@ function render() {
   document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
   $('#eyebrow').textContent = sessionsView ? 'SESSIONS' : settingsView ? 'SETTINGS' : detailView ? 'TASK' : reqView ? 'TASKS' : 'PROJECTS';
   $('#pageTitle').textContent = sessionsView ? uiText("对话") : settingsView ? uiText("设置") : detailView ? requirement?.name || (!state.loaded ? uiText("正在加载任务…") : uiText("任务不存在")) : reqView ? uiText("选择任务") : uiText("项目");
-  $('#pageSubtitle').textContent = settingsView ? uiText("配置执行环境、会话默认设置与终端工具。") : detailView ? uiText("查看关联项目和 Codex 对话，继续当前任务中的开发。") : reqView ? uiText("围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。") : uiText("登记项目，掌握它的全部工作目录、分支与任务归属。");
+  $('#pageSubtitle').textContent = settingsView ? uiText("配置执行环境、对话默认设置与终端工具。") : detailView ? uiText("查看关联项目和 Codex 对话，继续当前任务中的开发。") : reqView ? uiText("围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。") : uiText("登记项目，掌握它的全部工作目录、分支与任务归属。");
   $('#pageSubtitle').hidden = reqView || sessionsView;
   $('#newButton').innerHTML = `<span>＋</span> ${reqView ? uiText("创建任务") : uiText("添加项目")}`;
   $('#panelTitle').textContent = reqView ? uiText("全部任务") : taskInventory.loaded ? uiText("项目 · 当前环境 {0} / 全部 {1}", state.projects.length, taskInventory.project_count) : uiText("已登记项目");
@@ -318,7 +318,7 @@ async function handleAction(action, target) {
   }
   if (action === 'remove-project') {
     const p = state.projects.find(p => p.id === id);
-    if (!confirm(uiText("移除“{0}”的项目登记？\n仓库、分支和 worktree 文件均保留。", p.name))) return;
+    if (!confirm(uiText("移除“{0}”的项目登记？\n仓库、分支和 Worktree 文件均保留。", p.name))) return;
     return mutation(uiText("正在移除登记"), async () => { const r = await api(`/api/projects/${id}`, { method: 'DELETE' }); toast(r.message); });
   }
 }

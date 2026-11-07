@@ -62,7 +62,7 @@ func selectedMember(ctx context.Context, p model.Project, directory, branch stri
 		}
 		m.Path = platform.JoinWorkspacePath(directory, p.Folder)
 		if !platform.Within(directory, m.Path) {
-			return m, fmt.Errorf("worktree 路径越过工作区目录")
+			return m, fmt.Errorf("Worktree 路径越过工作区目录")
 		}
 		if _, err := workspace.Stat(ctx, m.Path, false); !errors.Is(err, os.ErrNotExist) {
 			return m, fmt.Errorf("工作目录已存在或无法检查，不能覆盖：%s", m.Path)
@@ -91,7 +91,7 @@ func selectedMember(ctx context.Context, p model.Project, directory, branch stri
 		m.Path = p.Path
 		if m.Mode == "worktree" {
 			if !platform.AbsoluteWorkspacePath(selection.Path) {
-				return m, fmt.Errorf("请选择已有 worktree 的绝对路径")
+				return m, fmt.Errorf("请选择已有 Worktree 的绝对路径")
 			}
 			m.Path = platform.CleanWorkspacePath(selection.Path)
 		}
@@ -100,7 +100,7 @@ func selectedMember(ctx context.Context, p model.Project, directory, branch stri
 			return m, err
 		}
 		if st.Mode()&os.ModeSymlink != 0 {
-			return m, fmt.Errorf("worktree 路径是符号链接，拒绝使用")
+			return m, fmt.Errorf("Worktree 路径是符号链接，拒绝使用")
 		}
 		// Persist the execution environment's canonical path so later launch
 		// and cleanup checks compare the same directory identity as Git.
@@ -116,7 +116,7 @@ func selectedMember(ctx context.Context, p model.Project, directory, branch stri
 		commit, _ := workspace.Git(ctx, m.Path, "rev-parse", "--verify", "HEAD^{commit}")
 		m.BaseCommit = strings.TrimSpace(commit)
 	default:
-		return m, fmt.Errorf("请选择新建工作目录、项目原目录或已有 worktree")
+		return m, fmt.Errorf("请选择新建工作目录、项目原目录或已有 Worktree")
 	}
 	return m, nil
 }
@@ -131,7 +131,7 @@ func availableLocalBranch(ctx context.Context, p model.Project, branch string) e
 	}
 	for _, field := range strings.Split(raw, "\x00") {
 		if field == "branch refs/heads/"+branch {
-			return fmt.Errorf("分支 %s 已被 worktree 占用，请选择使用已有 Worktree 或其他分支", branch)
+			return fmt.Errorf("分支 %s 已被 Worktree 占用，请选择使用已有 Worktree 或其他分支", branch)
 		}
 	}
 	return nil

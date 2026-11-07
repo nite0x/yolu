@@ -2,7 +2,7 @@
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
 
 const chatDrafts = new Map();
-const chatLabels = { idle: uiText("可以在这里继续对话"), starting: uiText("正在连接并核实会话占用…"), running: uiText("Codex 正在工作…"), waiting: uiText("等待你的审批或回答"), stopping: uiText("正在请求停止…"), completed: uiText("本轮已完成"), interrupted: uiText("本轮已停止"), failed: uiText("本轮未完成，请检查进展"), conflict: uiText("会话暂不可发送") };
+const chatLabels = { idle: uiText("可以在这里继续对话"), starting: uiText("正在连接并核实对话占用…"), running: uiText("Codex 正在工作…"), waiting: uiText("等待你的审批或回答"), stopping: uiText("正在请求停止…"), completed: uiText("本轮已完成"), interrupted: uiText("本轮已停止"), failed: uiText("本轮未完成，请检查进展"), conflict: uiText("对话暂不可发送") };
 chatLabels.handoff = uiText("正在交接：等待终端本轮工作结束…");
 
 function chatPath(current) { return `/api/sessions/${encodeURIComponent(current.session)}/chat`; }
@@ -16,7 +16,7 @@ function renderChatTimeline(current) {
   const focused = document.activeElement?.closest('[data-history-entry]');
   const focusedKey = focused?.dataset.historyEntry;
   const focusOutput = document.activeElement?.hasAttribute('data-command-output');
-  const savedHTML = saved.map(renderHistoryEntry).join('') || (!live.length ? `<p class="session-empty">${current.cursor ? uiText("可加载更早记录。") : uiText("此会话尚无已保存的消息或命令记录。")}</p>` : '');
+  const savedHTML = saved.map(renderHistoryEntry).join('') || (!live.length ? `<p class="session-empty">${current.cursor ? uiText("可加载更早记录。") : uiText("此对话尚无已保存的消息或命令记录。")}</p>` : '');
   if (current.savedHistoryMarkup !== savedHTML) { $('#sessionHistoryEntries').innerHTML = savedHTML; current.savedHistoryMarkup = savedHTML; }
   const liveContainer = $('#sessionChatLiveEntries');
   const liveHTML = live.length ? uiText("<div class=\"chat-run-heading\">本轮对话</div>") + live.map(e => e.kind === 'change' ? window.WorkHubUI.fileChange(plainHistoryText(e.text), e.status) : renderHistoryEntry(e)).join('') : '';
@@ -43,7 +43,7 @@ function renderChatControls(current) {
   $('#sessionHandoffNotice').textContent = chat?.notice || '';
   $('#sessionHandoffNotice').hidden = !chat?.notice;
   $('#resumeHistorySession').disabled = !!chat?.busy || !ready || !!chat?.blocked;
-  $('#sessionChatStatus').textContent = isNew ? (current.submitting ? uiText("正在创建会话并发送…") : '') : chat?.blocked || (chat?.status === 'idle' ? '' : chat ? chatLabels[chat.status] || chat.status : uiText("正在检查会话状态…"));
+  $('#sessionChatStatus').textContent = isNew ? (current.submitting ? uiText("正在创建对话并发送…") : '') : chat?.blocked || (chat?.status === 'idle' ? '' : chat ? chatLabels[chat.status] || chat.status : uiText("正在检查对话状态…"));
   $('#sessionChatError').textContent = current.chatError || chat?.error || '';
   $('#sessionChatError').hidden = !$('#sessionChatError').textContent;
 }

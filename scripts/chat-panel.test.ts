@@ -52,7 +52,7 @@ function mount(existing = false, entries: Entry[] = [], extra: Partial<ChatOptio
   }, ...extra};
   const bridge = (w as any).ChatTest.bridge;
   bridge.open(options);
-  const input = () => w.document.querySelector<HTMLTextAreaElement>('textarea[aria-label="会话消息"]')!;
+  const input = () => w.document.querySelector<HTMLTextAreaElement>('textarea[aria-label="对话消息"]')!;
   const type = (text:string) => {
     Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype,"value")!.set!.call(input(),text);
     input().dispatchEvent(new w.Event("input",{bubbles:true}));
@@ -1004,14 +1004,14 @@ test("conversation search finds command output even while execution details are 
  try{
   await until(()=>h.w.document.querySelector('.aui-tool-group-trigger'));
   h.w.document.querySelector<HTMLButtonElement>('[aria-label="查找消息"]')!.click();
-  await until(()=>h.w.document.querySelector('[aria-label="查找会话内容"]'));
-  const search=h.w.document.querySelector<HTMLInputElement>('[aria-label="查找会话内容"]')!;
+  await until(()=>h.w.document.querySelector('[aria-label="查找对话内容"]'));
+  const search=h.w.document.querySelector<HTMLInputElement>('[aria-label="查找对话内容"]')!;
   Object.getOwnPropertyDescriptor(h.w.HTMLInputElement.prototype,'value')!.set!.call(search,'unique-result-123');
   search.dispatchEvent(new h.w.Event('input',{bubbles:true}));
   await until(()=>h.w.document.querySelector('[data-search-hit]'));
   assert.equal(h.w.document.querySelectorAll('[data-search-hit]').length,1);
   search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
-  await until(()=>!h.w.document.querySelector('[aria-label="查找会话内容"]'));
+  await until(()=>!h.w.document.querySelector('[aria-label="查找对话内容"]'));
   assert.equal(h.w.document.querySelector('[data-search-hit]'),null);
   assert.equal(h.w.document.activeElement?.getAttribute('aria-label'),'查找消息');assert.deepEqual(h.errors,[]);
  }finally{h.dispose();}
@@ -1052,8 +1052,8 @@ for (const readOnly of [false,true]) test(`compact conversation menu keeps searc
     const items = () => [...h.w.document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
     if (readOnly) assert.deepEqual(items().map(item=>item.textContent),['查找消息','刷新历史']);
     items().find(item=>item.textContent==='查找消息')!.click();
-    await until(()=>h.w.document.querySelector('[aria-label="查找会话内容"]'));
-    const search = h.w.document.querySelector<HTMLInputElement>('[aria-label="查找会话内容"]')!;
+    await until(()=>h.w.document.querySelector('[aria-label="查找对话内容"]'));
+    const search = h.w.document.querySelector<HTMLInputElement>('[aria-label="查找对话内容"]')!;
     assert.equal(h.w.document.activeElement,search,'opening search transfers focus from the menu into its input');
     openSessionMenu(h);
     await until(()=>h.w.document.querySelector('[role="menuitem"]'));
@@ -1061,7 +1061,7 @@ for (const readOnly of [false,true]) test(`compact conversation menu keeps searc
     await until(()=>!h.w.document.querySelector('[role="menuitem"]'));
     assert.equal(h.w.document.activeElement?.getAttribute('aria-label'),'更多对话操作','cancelling the menu still returns focus when search is already open');
     search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
-    await until(()=>!h.w.document.querySelector('[aria-label="查找会话内容"]'));
+    await until(()=>!h.w.document.querySelector('[aria-label="查找对话内容"]'));
     assert.equal(h.w.document.activeElement?.getAttribute('aria-label'),'更多对话操作');
     const reads = () => h.calls.filter(call=>call.path.includes('/history')).length;
     const before = reads();
@@ -1083,8 +1083,8 @@ test("an unnamed existing session displays a placeholder but its rename editor s
     openSessionMenu(h);
     await until(() => h.w.document.querySelector('[role="menuitem"]'));
     [...h.w.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === "重命名")!.click();
-    await until(() => h.w.document.querySelector<HTMLInputElement>('[aria-label="会话名称"]'));
-    assert.equal(h.w.document.querySelector<HTMLInputElement>('[aria-label="会话名称"]')!.value, "");
+    await until(() => h.w.document.querySelector<HTMLInputElement>('[aria-label="对话名称"]'));
+    assert.equal(h.w.document.querySelector<HTMLInputElement>('[aria-label="对话名称"]')!.value, "");
     assert.deepEqual(h.errors, []);
   } finally {h.dispose();}
 });
@@ -1101,8 +1101,8 @@ test("session menu renames via its focused editor without losing the composer dr
     await until(() => h.input()); h.type("保留草稿"); openSessionMenu(h);
     await until(() => h.w.document.querySelector('[role="menuitem"]'));
     [...h.w.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === "重命名")!.click();
-    await until(() => h.w.document.querySelector<HTMLInputElement>('[aria-label="会话名称"]'));
-    const field = h.w.document.querySelector<HTMLInputElement>('[aria-label="会话名称"]')!;
+    await until(() => h.w.document.querySelector<HTMLInputElement>('[aria-label="对话名称"]'));
+    const field = h.w.document.querySelector<HTMLInputElement>('[aria-label="对话名称"]')!;
     await until(() => h.w.document.activeElement === field);
     assert.equal(field.value, session.name);
     Object.getOwnPropertyDescriptor(h.w.HTMLInputElement.prototype, "value")!.set!.call(field, "新的会话名称");
@@ -1130,7 +1130,7 @@ test("running state appears above the composer and disables archive and fork", a
     assert.doesNotMatch(h.w.document.querySelector('footer')?.textContent || '', /运行中/);
     openSessionMenu(h); await until(() => h.w.document.querySelector('[role="menuitem"]'));
     const items = [...h.w.document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    for (const label of ["从历史分叉", "归档会话"]) assert.equal(items.find(item => item.textContent === label)?.getAttribute('aria-disabled'), 'true');
+    for (const label of ["从历史分叉", "归档对话"]) assert.equal(items.find(item => item.textContent === label)?.getAttribute('aria-disabled'), 'true');
     assert.equal(items.find(item => item.textContent === "重命名")?.getAttribute('aria-disabled'), null);
     h.w.document.querySelector('[role="menu"]')!.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
     await until(() => !h.w.document.querySelector('[role="menu"]'));

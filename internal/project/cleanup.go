@@ -251,7 +251,7 @@ func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request)
 		httpx.WriteError(w, 500, "目录已清理，但任务记录更新失败，请刷新核对："+err.Error())
 		return
 	}
-	message := "已清理 Worktree 目录，分支和会话记录保留"
+	message := "已清理 Worktree 目录，分支和对话记录保留"
 	warning := ""
 	if a.TaskContextUpdated != nil {
 		if current, err := a.Workspace.Store.Requirement(q.ID); err == nil {

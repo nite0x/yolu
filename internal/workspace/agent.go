@@ -91,7 +91,7 @@ func RunAgent(input io.Reader, output io.Writer, hooks AgentHooks) error {
 			var err error
 			if request.Op == "session-watch" {
 				if hooks.WatchHistory == nil {
-					respond(Response{ID: request.ID, Error: "不支持会话实时读取"})
+					respond(Response{ID: request.ID, Error: "不支持对话实时读取"})
 					return
 				}
 				err = hooks.WatchHistory(requestCtx, request.Path, func(raw json.RawMessage) error {
@@ -100,7 +100,7 @@ func RunAgent(input io.Reader, output io.Writer, hooks AgentHooks) error {
 				})
 			} else if request.Op == "session-conflict" {
 				if hooks.TerminalConflict == nil {
-					err = fmt.Errorf("辅助程序不支持会话占用检查，请重新安装")
+					err = fmt.Errorf("辅助程序不支持对话占用检查，请重新安装")
 				} else {
 					err = hooks.TerminalConflict(request.Method, request.Path)
 				}
@@ -217,7 +217,7 @@ func executeWorkspaceRequestWithSessions(ctx context.Context, r Request, openSes
 		switch r.Method {
 		case "thread/list", "thread/read", "thread/items/list", "thread/turns/list", "model/list", "collaborationMode/list":
 		default:
-			return nil, fmt.Errorf("辅助程序只支持读取会话、可用模型和工作模式")
+			return nil, fmt.Errorf("辅助程序只支持读取对话、可用模型和工作模式")
 		}
 		c, err := openSessions(ctx)
 		if err != nil {

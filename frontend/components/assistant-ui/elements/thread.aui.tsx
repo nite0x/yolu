@@ -248,7 +248,7 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean; managedScroll: bool
           )}
         >
           <AuiIf condition={isNewChatView}>
-            {readOnly ? <p className="text-center text-sm text-muted-foreground">{uiText("此会话尚无已保存的消息或命令记录。")}</p> : <Welcome />}
+            {readOnly ? <p className="text-center text-sm text-muted-foreground">{uiText("此对话尚无已保存的消息或命令记录。")}</p> : <Welcome />}
           </AuiIf>
           <AuiIf condition={isHistoryLoadingView}>
             <ThreadHistorySkeleton />
@@ -496,7 +496,7 @@ const Composer: FC<{ autoFocus: boolean; controls?: ReactNode; leadingControls?:
             rows={1}
             autoFocus={autoFocus}
             enterKeyHint="send"
-            aria-label={uiText("会话消息")}
+            aria-label={uiText("对话消息")}
           />
           <ComposerAction controls={controls} leadingControls={leadingControls} />
         </div>

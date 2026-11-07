@@ -78,7 +78,7 @@ function codexDiagnosticsText() {
         uiText("PATH 候选：\n") + report.candidates.join('\n'), ...report.checks.map(check => `[${check.status}] ${uiText(check.name)}: ${uiText(check.message)}${check.advice ? uiText("\n建议：") + uiText(check.advice) : ''}`),
       ].filter(Boolean).join('\n'),
     ].filter(Boolean).join('\n');
-  }).join('\n') + uiText("\n\n只读检测；未验证凭证有效性、模型访问或具体会话运行状态。");
+  }).join('\n') + uiText("\n\n只读检测；未验证凭证有效性、模型访问或具体对话运行状态。");
 }
 
 $('#copyCodexDiagnostics').addEventListener('click', async () => {
@@ -178,13 +178,13 @@ $('#conversationDefaultsForm').addEventListener('submit', event => {
   const environment = activeEnvironment;
   const revision = conversationDefaultsRevision;
   const settings = {model:$('#conversationDefaultModel').value, permission:$('#conversationDefaultPermission').value};
-  mutation(uiText('正在保存新会话设置'), async () => {
+  mutation(uiText('正在保存新对话设置'), async () => {
     $('#conversationDefaultsFields').disabled = true;
     $('#conversationDefaultsReload').disabled = true;
     try {
       await api('/api/settings/conversation-defaults', {method:'PUT', environment, body:JSON.stringify(settings)});
       if (environment === activeEnvironment && revision === conversationDefaultsRevision) {
-        $('#conversationDefaultsStatus').textContent = uiText('新会话设置已保存');
+        $('#conversationDefaultsStatus').textContent = uiText('新对话设置已保存');
       }
       const host = window.top;
       for (const page of [host, ...[...host.document.querySelectorAll('iframe')].map(frame => frame.contentWindow).filter(Boolean)]) {

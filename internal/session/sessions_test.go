@@ -149,7 +149,7 @@ func TestSessionsDiscoverPageAndManualLaunchesAndPersistLinks(t *testing.T) {
 	sessions := map[string]codex.Session{
 		"page":    {ID: "page", Cwd: plan.Cwd, Name: "页面启动", UpdatedAt: 100},
 		"shell":   {ID: "shell", Cwd: plan.AdditionalDirectories[0], Preview: "终端启动", UpdatedAt: 200},
-		"outside": {ID: "outside", Cwd: t.TempDir(), Name: "外部会话", UpdatedAt: 300},
+		"outside": {ID: "outside", Cwd: t.TempDir(), Name: "外部对话", UpdatedAt: 300},
 		"other":   {ID: "other", Cwd: other.Members[0].Path, Name: "其他任务"},
 	}
 	fakeSessions(a, sessions)

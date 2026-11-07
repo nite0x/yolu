@@ -34,7 +34,7 @@ func LocalHandler(token string, readOnly func() bool, closing func() bool, next 
 				}
 			}
 			if readOnly() && (strings.Contains(r.URL.Path, "/chat") || strings.HasSuffix(r.URL.Path, "/sessions/new") || strings.HasSuffix(r.URL.Path, "/manage") || r.Method == "POST" && r.URL.Path == "/api/conversation-drafts") {
-				WriteError(w, 405, "会话内容仅供查看，请在终端中对话")
+				WriteError(w, 405, "对话内容仅供查看，请在终端中对话")
 				return
 			}
 			if closing() {

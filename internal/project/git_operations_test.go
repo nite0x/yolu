@@ -201,7 +201,7 @@ func TestGitSwitchProtectsDirtyAndOccupiedWorktrees(t *testing.T) {
 	}
 	other := filepath.Join(t.TempDir(), "occupied")
 	testGit(t, path, "worktree", "add", other, "master")
-	if code, raw := gitAction(t, a, id, GitAction{Action: "switch", Source: "refs/heads/master", Path: path}); code != 409 || !strings.Contains(string(raw), "worktree") {
+	if code, raw := gitAction(t, a, id, GitAction{Action: "switch", Source: "refs/heads/master", Path: path}); code != 409 || !strings.Contains(string(raw), "Worktree") {
 		t.Fatalf("occupied branch switch allowed %d %s", code, raw)
 	}
 	if code, _ := gitAction(t, a, id, GitAction{Action: "terminal", Path: t.TempDir()}); code != 409 {

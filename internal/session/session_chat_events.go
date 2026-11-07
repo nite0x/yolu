@@ -268,7 +268,7 @@ func makeChatApproval(event codex.Event) (ChatApproval, error) {
 	case "item/permissions/requestApproval":
 		a.Kind, a.Title = "permissions", "允许本轮使用这些权限？"
 		a.Details = p.Reason + "\n" + p.Cwd + "\n" + string(p.Permissions)
-		a.Choices = []ChatApprovalChoice{{ID: "decline", Label: "拒绝"}, {ID: "accept", Label: "允许本轮", Accepts: true}, {ID: "accept_session", Label: "本会话允许", Accepts: true}}
+		a.Choices = []ChatApprovalChoice{{ID: "decline", Label: "拒绝"}, {ID: "accept", Label: "允许本轮", Accepts: true}, {ID: "accept_session", Label: "本对话允许", Accepts: true}}
 	case "item/tool/requestUserInput":
 		a.Kind, a.Title, a.Questions = "questions", "Codex 需要你的回答", p.Questions
 	case "mcpServer/elicitation/request":

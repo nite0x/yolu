@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { NativeSelect, NativeSelectOption as Option, NativeSelectOptGroup } from "@/components/ui/native-select"
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { ChevronDown, CodeXml, Terminal, FolderGit2, MessageSquare } from "lucide-react"
+import { ChevronDown, CodeXml, Terminal } from "lucide-react"
 import type { GitOverview, Member, Task, Worktree } from "./types"
 
 export const statusLabels: Record<string, string> = { ready: uiText("已就绪"), partial: uiText("部分就绪"), archived: uiText("已归档"), creating: uiText("创建中"), pending: uiText("待创建"), failed: uiText("创建失败"), removed: uiText("目录已清理") }
@@ -61,8 +61,6 @@ export function TaskOpenActions({ project, path, disabled, tool, primary = false
     <Action className="task-split-primary rounded-r-none" variant={primary ? "default" : "outline"} action={tool === "terminal" ? "workspace-terminal" : `project-open-${tool}`} id={project} data-path={path} data-project-open-primary aria-label={uiText("用 {0} 打开工作目录", projectOpenLabels[tool])} disabled={disabled}>{tool === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}<span data-project-open-label>{uiText("{0} 打开", projectOpenLabels[tool])}</span></Action>
     {!disabled ? <details className="task-action-menu"><summary aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></summary><div className="task-action-menu-body">
       {(["vscode", "idea", "terminal"] as const).map(choice => <Action key={choice} variant="ghost" className="justify-start font-normal" action={choice === "terminal" ? "workspace-terminal" : `project-open-${choice}`} id={project} data-path={path} data-project-open-choice={choice}>{choice === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}{projectOpenLabels[choice]}</Action>)}
-      <hr /><Action variant="ghost" className="justify-start font-normal" action="project-open-remote" id={project} data-path={path}><FolderGit2 aria-hidden="true" />{uiText("打开远端仓库")}</Action>
-      <Action variant="ghost" className="justify-start font-normal" action="workspace-conversation-new" id={project} data-path={path}><MessageSquare aria-hidden="true" />{uiText("新建对话…")}</Action>
     </div></details> : <Button className="task-split-toggle rounded-l-none border-l-0" size="icon-sm" variant={primary ? "default" : "outline"} disabled aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></Button>}
   </div>
 }
@@ -79,8 +77,8 @@ export function Feedback({ variant, className, ...props }: ComponentProps<typeof
 export function Preview({ title, id }: { title: string; id: string }) {
   return <Card className="gap-2 rounded-lg bg-muted p-4 shadow-none"><div className="text-xs text-muted-foreground">{title}</div><pre id={id} className="m-0 whitespace-pre-wrap break-all font-mono text-sm leading-relaxed" /></Card>
 }
-export function ModalHeader({ id, title, eyebrow }: { id: string; title: string; eyebrow: string }) {
-  return <div className="dialog-header mb-4 gap-4"><div><Badge variant="secondary" className="mb-3 rounded-md text-xs tracking-wider">{eyebrow}</Badge><h2 id={id} className="m-0 text-xl font-semibold">{title}</h2></div><Button type="button" variant="ghost" size="icon" className="close-dialog shrink-0" aria-label={uiText("关闭")}>×</Button></div>
+export function ModalHeader({ id, title }: { id: string; title: string }) {
+  return <div className="dialog-header mb-4 gap-4"><div><h2 id={id} className="m-0 text-xl font-semibold">{title}</h2></div><Button type="button" variant="ghost" size="icon" className="close-dialog shrink-0" aria-label={uiText("关闭")}>×</Button></div>
 }
 export function ModalFooter({ children, note }: { children: ReactNode; note?: string }) {
   return <div className="dialog-footer">{note ? <span className="footer-note">{note}</span> : null}<Button type="button" variant="outline" className="close-dialog">{uiText("取消")}</Button>{children}</div>

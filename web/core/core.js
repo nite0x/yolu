@@ -126,7 +126,6 @@ async function mutation(title, fn, errorElement, options = {}) {
 
 function showCommand(command) {
   $('#commandTitle').textContent = uiText("终端命令");
-  $('#commandDialog .eyebrow').textContent = 'TERMINAL COMMAND';
   $('#commandDialog .dialog-description').textContent = uiText("在当前执行环境的终端执行以下命令；Windows 本机使用 PowerShell。");
   $('#commandText').value = command; if (!$('#commandDialog').open) $('#commandDialog').showModal();
 }

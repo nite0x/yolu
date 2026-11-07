@@ -49,7 +49,7 @@ export function SessionPicker({ sessions, linked }: { sessions: Session[]; linke
   return <div className="grid gap-3">{sessions.map(s => <Card key={s.id} className="session-picker-row flex-row gap-4 rounded-lg p-4 shadow-none"><div><strong>{s.name || uiText("未命名对话")}</strong><div className="path">{s.cwd}</div><small>{sessionTime(s.updatedAt)} · {s.id}</small></div><SessionAction action="link" session={s.id} disabled={linked.includes(s.id)}>{linked.includes(s.id) ? uiText("已关联") : uiText("关联")}</SessionAction></Card>)}</div>
 }
 export function SessionPickerDialog() {
-  return <><ModalHeader id="sessionDialogTitle" title={uiText("关联已有对话")} eyebrow="CODEX SESSIONS" /><p className="dialog-description">{uiText("优先查找任务工作目录中的对话，也可搜索当前环境的其他对话或填写 ID。关联后保留对话原有的工作目录和执行配置。")}</p>
+  return <><ModalHeader id="sessionDialogTitle" title={uiText("关联已有对话")} /><p className="dialog-description">{uiText("优先查找任务工作目录中的对话，也可搜索当前环境的其他对话或填写 ID。关联后保留对话原有的工作目录和执行配置。")}</p>
     <form id="sessionLinkForm" className="session-search"><Field id="sessionLinkID" label={uiText("对话 ID")}><Input id="sessionLinkID" name="session_id" required maxLength={200} autoComplete="off" placeholder={uiText("粘贴对话 ID")} /></Field><Button variant="outline" type="submit">{uiText("关联 ID")}</Button></form>
     <form id="sessionSearchForm" className="session-search"><Field id="sessionSearch" label={uiText("按标题查找")}><Input id="sessionSearch" name="search" autoComplete="off" placeholder={uiText("搜索本地对话标题")} /></Field><Button variant="outline" type="submit">{uiText("搜索")}</Button></form>
     <Feedback id="sessionPickerError" variant="destructive" hidden /><div id="sessionPickerResults" aria-live="polite" />
@@ -57,7 +57,7 @@ export function SessionPickerDialog() {
   </>
 }
 export function CommandOutputDialog() {
-  return <><div className="dialog-header"><div><Badge variant="secondary" className="mb-3 rounded-md text-xs tracking-wider">COMMAND OUTPUT</Badge><h2 id="sessionCommandOutputTitle" className="m-0 text-xl font-semibold">{uiText("命令输出")}</h2></div><Button type="button" variant="ghost" size="icon" id="closeSessionCommandOutput" aria-label={uiText("关闭命令输出")} autoFocus>×</Button></div>
+  return <><div className="dialog-header"><div><h2 id="sessionCommandOutputTitle" className="m-0 text-xl font-semibold">{uiText("命令输出")}</h2></div><Button type="button" variant="ghost" size="icon" id="closeSessionCommandOutput" aria-label={uiText("关闭命令输出")} autoFocus>×</Button></div>
     <pre id="sessionCommandOutputCommand" className="history-command-line" /><div id="sessionCommandOutputMeta" className="session-command-output-meta" />
     <Card className="session-command-output-text gap-0 bg-muted p-4 shadow-none" id="sessionCommandOutputText" tabIndex={0} role="region" aria-label={uiText("命令输出内容")} />
     <p className="session-command-output-hint">{uiText("Esc 关闭 · 输出独立滚动，保留对话位置")}</p>

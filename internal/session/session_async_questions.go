@@ -95,7 +95,7 @@ func (a *Service) pendingAsyncQuestion(ctx context.Context, session, item, turn 
 			return entry, err
 		}
 		if page.NextCursor == nil || *page.NextCursor == "" || seen[*page.NextCursor] {
-			return HistoryEntry{}, fmt.Errorf("问询不可用，请刷新会话历史")
+			return HistoryEntry{}, fmt.Errorf("问询不可用，请刷新对话历史")
 		}
 		cursor, seen[*page.NextCursor] = *page.NextCursor, true
 	}
@@ -202,7 +202,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			TurnID string `json:"turnId"`
 		}
 		if client == nil {
-			err = fmt.Errorf("会话仍在连接")
+			err = fmt.Errorf("对话仍在连接")
 		} else {
 			err = client.Call(ctx, "turn/steer", map[string]any{"threadId": record.ID, "expectedTurnId": current.TurnID, "clientUserMessageId": requestID, "input": chatTurnInput(text, nil)}, &result)
 		}

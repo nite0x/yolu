@@ -21,7 +21,7 @@ func (a *Service) taskSessionAdapter(next http.HandlerFunc, launch bool) http.Ha
 		}
 		s, err := a.Workspace.Store.Session(r.PathValue("session"))
 		if err != nil || !scope.includes(s.ID, s.Cwd) {
-			httpx.WriteError(w, 404, "会话不在该任务的目录范围内，也未手动关联")
+			httpx.WriteError(w, 404, "对话不在该任务的目录范围内，也未手动关联")
 			return
 		}
 		if launch {

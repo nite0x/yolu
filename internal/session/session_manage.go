@@ -36,7 +36,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 	case "rename", "archive", "restore", "fork":
 		input.Name = strings.TrimSpace(input.Name)
 		if input.Action == "rename" && (input.Name == "" || len([]rune(input.Name)) > 160) {
-			httpx.WriteError(w, 400, "请输入 1–160 字的会话名称")
+			httpx.WriteError(w, 400, "请输入 1–160 字的对话名称")
 			return
 		}
 		if input.Action == "archive" || input.Action == "fork" {
@@ -62,7 +62,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if s.Status.Type == "active" {
-				httpx.WriteError(w, 409, "会话正在其他 Codex 客户端运行，请等待完成")
+				httpx.WriteError(w, 409, "对话正在其他 Codex 客户端运行，请等待完成")
 				return
 			}
 		}
@@ -85,7 +85,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				if existing == "" {
-					httpx.WriteError(w, 409, "上次分叉结果未确认，请先刷新会话列表检查")
+					httpx.WriteError(w, 409, "上次分叉结果未确认，请先刷新对话列表检查")
 					return
 				}
 				a.WriteCreatedSession(w, existing, 200)
@@ -108,7 +108,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 				Thread codex.Session `json:"thread"`
 			}
 			if err := c.Call(method, params, &result); err != nil || result.Thread.ID == "" {
-				httpx.WriteError(w, 503, "分叉结果未确认，请先刷新会话列表检查")
+				httpx.WriteError(w, 503, "分叉结果未确认，请先刷新对话列表检查")
 				return
 			}
 			if result.Thread.ID != record.ID {
@@ -158,7 +158,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	default:
-		httpx.WriteError(w, 400, "不支持的会话操作")
+		httpx.WriteError(w, 400, "不支持的对话操作")
 		return
 	}
 	result, err := a.Workspace.Store.Session(record.ID)
