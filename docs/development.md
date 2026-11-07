@@ -62,7 +62,6 @@ The browser-mode process runs in the foreground. Stop the test process and use i
 | `web/` | Embedded HTML, controllers, styles and generated UI/chat bundles |
 | `desktop/`, `src-tauri/` | Startup page, Rust host and native bundle configuration |
 | `scripts/`, `.github/workflows/` | Build, packaging, verification and CI entry points |
-| `design-demo/` | Separate mock-data design sandbox |
 
 The application composes task, project, session and workspace services; lower-level packages do not depend on `app`. Each environment shares its workspace storage, root and write locks. Cross-module behavior uses small interfaces and injected callbacks rather than making sessions owned by tasks. Existing `Requirement` types, `requirements` tables and API paths are retained for compatibility.
 
@@ -207,7 +206,7 @@ The legacy installation directory remains `%LOCALAPPDATA%\Programs\WorktreeHub`;
 
 ## Design and brand resources
 
-Use [design-demo](../design-demo/README.md) for mock-data UI experiments without a backend. It is excluded from production entry points. Follow the [brand reference](brand/yolu/README.md) and regenerate platform assets with `npm run brand:icons` after editing `web/yolu.svg`.
+Follow the [brand reference](brand/yolu/README.md) and regenerate platform assets with `npm run brand:icons` after editing `web/yolu.svg`.
 
 
 ## Localization

@@ -16,4 +16,3 @@ Start with the [project README](../README.md) for an overview and installation e
 - [Session architecture](session-architecture.md): scope resolution, storage, API routing and runtime behavior.
 - [Session titles](session-titles.md): initial names, generated topic titles and rename protection.
 - [Brand reference](brand/yolu/README.md): approved artwork, colors and icon generation.
-- [Design demo](../design-demo/README.md): a separate browser sandbox with simulated data.
