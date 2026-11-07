@@ -14,7 +14,7 @@ func TestAppearancePersistsAcrossPortsEnvironmentsAndPageKinds(t *testing.T) {
 	if a.uiColorTheme() != "mint" {
 		t.Fatal("installations without a saved choice should use the Yolu mint palette")
 	}
-	for _, theme := range []string{"classic", "mint"} {
+	for _, theme := range []string{"classic", "light", "dark", "system", "mint"} {
 		if code, raw := call(t, a, "PUT", "/api/settings/appearance", map[string]string{"color_theme": theme}); code != http.StatusOK {
 			t.Fatalf("save appearance: %d %s", code, raw)
 		}
@@ -40,7 +40,7 @@ func TestAppearancePersistsAcrossPortsEnvironmentsAndPageKinds(t *testing.T) {
 
 func TestAppearanceRejectsInvalidAndUnauthenticatedChanges(t *testing.T) {
 	a := testApp(t)
-	for _, theme := range []string{"dark", "", `mint"><script>`} {
+	for _, theme := range []string{"midnight", "", "Dark", `mint"><script>`} {
 		if code, _ := call(t, a, "PUT", "/api/settings/appearance", map[string]string{"color_theme": theme}); code != http.StatusBadRequest {
 			t.Fatalf("accepted unsupported appearance %q: %d", theme, code)
 		}

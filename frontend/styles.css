@@ -5,6 +5,8 @@
 @import "tailwindcss/utilities.css" layer(utilities) source(none) important;
 @import "./workspace/conversation-surface.css";
 @source "./";
+/* dark: follows the saved Yolu palette, not prefers-color-scheme. */
+@custom-variant dark (&:where([data-color-scheme=dark], [data-color-scheme=dark] *));
 
 /* App chrome should not select text while clicking or dragging. Keep editing
    and conversation content selectable for normal copy/paste workflows. */
@@ -72,7 +74,7 @@ pre, .changes-text, .changes-text *, .file-preview-path,
   --muted-foreground: var(--yolu-muted-ink,#64748b);
   --accent: var(--yolu-selected,#e4eaff);
   --accent-foreground: var(--yolu-primary-ink,#454b9b);
-  --destructive: #a64f3b;
+  --destructive: var(--yolu-danger,#a64f3b);
   --destructive-foreground: var(--yolu-surface,#fff);
   --border: var(--yolu-border,#e2e6f0);
   --input: var(--yolu-border-strong,#d7d9e6);
@@ -100,8 +102,22 @@ pre, .changes-text, .changes-text *, .file-preview-path,
 .file-type-icon[data-file-kind="document"] { color: #497da6; }
 .browser-files .browser-folder { color: #8290a5; }
 .browser-files .browser-folder.is-open { color: #5281b7; }
+:root[data-color-scheme="dark"] {
+  .file-type-icon[data-file-kind="react"], .file-type-icon[data-file-kind="go"] { color: #22d3ee; }
+  .file-type-icon[data-file-kind="typescript"] { color: #60a5fa; }
+  .file-type-icon[data-file-kind="javascript"], .file-type-icon[data-file-kind="json"] { color: #facc15; }
+  .file-type-icon[data-file-kind="python"] { color: #7fb2e5; }
+  .file-type-icon[data-file-kind="java"], .file-type-icon[data-file-kind="markup"] { color: #fb923c; }
+  .file-type-icon[data-file-kind="style"] { color: #c084fc; }
+  .file-type-icon[data-file-kind="vue"], .file-type-icon[data-file-kind="shell"] { color: #4ade80; }
+  .file-type-icon[data-file-kind="image"] { color: #f472b6; }
+  .file-type-icon[data-file-kind="config"], .file-type-icon[data-file-kind="archive"] { color: #a8a0b8; }
+  .file-type-icon[data-file-kind="document"] { color: #7fb2e5; }
+  .browser-files .browser-folder { color: #8b949e; }
+  .browser-files .browser-folder.is-open { color: #79c0ff; }
+}
 .browser-files [data-change-file][aria-pressed="true"] { color: var(--yolu-primary,#0969da); background-color: var(--yolu-selected,#edf4ff); }
 .browser-files [data-change-file][aria-pressed="true"]:hover { background-color: var(--yolu-selected,#e3eeff); }
-.browser-change-status[data-status="added"] { color: #168447; }
-.browser-change-status[data-status="deleted"] { color: #d63838; }
+.browser-change-status[data-status="added"] { color: var(--yolu-success,#168447); }
+.browser-change-status[data-status="deleted"] { color: var(--yolu-danger,#d63838); }
 .browser-change-status[data-status="modified"] { color: var(--yolu-primary,#0969da); }

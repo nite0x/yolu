@@ -112,9 +112,9 @@ Disconnected environments retain their locally stored task listings. Opening a t
 
 ### Color palette
 
-In Settings, choose **Appearance → Color palette** and select **Classic indigo** or **Yolu Mint**. Save and apply to update the workspace, tabs, conversations and terminal colors immediately. This does not reload pages or stop running work. The palette is stored in the local application database, shared across execution environments and retained when the backend port changes. Existing installations keep Classic indigo until a different palette is selected.
+In Settings, choose **Appearance → Color palette** and select **Yolu Mint**, **Classic indigo**, **Light**, **Dark** or **Follow system**. Save and apply to update the workspace, tabs, conversations and terminal colors immediately. This does not reload pages or stop running work. The palette is stored in the local application database, shared across execution environments and retained when the backend port changes. Existing installations keep Classic indigo until a different palette is selected.
 
-Yolu Mint uses a warm white background, deep teal text and mint accents. Status colors and code syntax colors retain their separate meanings.
+Yolu Mint uses a warm white background, deep teal text and mint accents. Light is a neutral white and gray palette with blue accents, and Dark is its charcoal counterpart with sky blue accents. Follow system switches between Light and Dark with the operating system appearance, including while Yolu is open. Status colors and code syntax colors retain their separate meanings.
 
 ## Interface language
 

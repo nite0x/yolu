@@ -6,13 +6,13 @@ html[data-workhub-desktop] .sidebar .brand{display:flex;gap:10px;padding:0 8px;f
 html[data-workhub-desktop] .brand-mark{width:30px;height:30px;border-radius:7px}
 html[data-workhub-desktop] .brand small,html[data-workhub-desktop] .nav-label,html[data-workhub-desktop] .sidebar-controls{display:none}
 html[data-workhub-desktop] .sidebar nav{margin-top:24px;gap:4px}
-html[data-workhub-desktop] .sidebar nav .nav-item{min-height:38px;padding:8px 12px;border-radius:7px;font-size:14px;color:#68738b}
-html[data-workhub-desktop] .sidebar nav .nav-item.active{color:#4f568e;background:#e5e9f6}
-html[data-workhub-desktop] .sidebar nav .nav-item:not(.active):hover{background:#e9edf5}
-html[data-workhub-desktop] .sidebar .nav-count{font-size:11px;background:transparent;min-width:16px;padding:0;color:#929bb0}
-html[data-workhub-desktop] .sidebar .nav-item.active .nav-count{color:#6b75a7}
-html[data-workhub-desktop] .sidebar-footer{border-top-color:#e1e6f0}
-html[data-workhub-desktop] .shell{margin-top:6px;margin-right:8px;margin-bottom:8px;border:1px solid #e0e5ef;border-radius:12px;background:var(--yolu-surface,#fff);overflow:hidden}
+html[data-workhub-desktop] .sidebar nav .nav-item{min-height:38px;padding:8px 12px;border-radius:7px;font-size:14px;color:var(--yolu-secondary-ink,#68738b)}
+html[data-workhub-desktop] .sidebar nav .nav-item.active{color:var(--yolu-primary-ink,#4f568e);background:var(--yolu-selected,#e5e9f6)}
+html[data-workhub-desktop] .sidebar nav .nav-item:not(.active):hover{background:var(--yolu-hover,#e9edf5)}
+html[data-workhub-desktop] .sidebar .nav-count{font-size:11px;background:transparent;min-width:16px;padding:0;color:var(--yolu-faint-ink,#929bb0)}
+html[data-workhub-desktop] .sidebar .nav-item.active .nav-count{color:var(--yolu-primary-ink,#6b75a7)}
+html[data-workhub-desktop] .sidebar-footer{border-top-color:var(--yolu-border,#e1e6f0)}
+html[data-workhub-desktop] .shell{margin-top:6px;margin-right:8px;margin-bottom:8px;border:1px solid var(--yolu-border,#e0e5ef);border-radius:12px;background:var(--yolu-surface,#fff);overflow:hidden}
 html[data-workhub-desktop] .shell main{background:var(--yolu-surface,#fff)}
 @media(min-width:761px){html[data-workhub-desktop] .shell{margin-left:calc(var(--sidebar-layout-width) + 8px)}}
 html[data-workhub-desktop] :is(.tasks-page,.projects-page,.sessions-page-open) main{padding:0}

@@ -6,8 +6,16 @@
 .shortcut-badge[data-color="amber"] { background:#fef3c7; color:#92400e; }
 .shortcut-badge[data-color="rose"] { background:#ffe4e6; color:#9f1239; }
 .shortcut-badge[data-color="violet"] { background:#ede9fe; color:#5b21b6; }
-.shortcut-badge[data-color="slate"] { background:var(--yolu-border,#e2e8f0); color:var(--yolu-foreground,#334155); }.shortcut-icon-dialog { width:min(420px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; padding:22px; border:1px solid var(--yolu-border,#d9e1f0); border-radius:12px; color:var(--yolu-foreground,#334155); background:var(--yolu-surface,#fff); box-shadow:0 15px 60px #17243b33; }
-.shortcut-icon-dialog::backdrop { background:#17243b55; }
+.shortcut-badge[data-color="slate"] { background:var(--yolu-border,#e2e8f0); color:var(--yolu-foreground,#334155); }
+:root[data-color-scheme="dark"] .shortcut-badge:not([data-color="slate"]) { background:color-mix(in srgb, currentColor 18%, transparent); color:#a5b4fc; }
+:root[data-color-scheme="dark"] .shortcut-badge[data-color="blue"] { color:#93c5fd; }
+:root[data-color-scheme="dark"] .shortcut-badge[data-color="teal"] { color:#5eead4; }
+:root[data-color-scheme="dark"] .shortcut-badge[data-color="green"] { color:#86efac; }
+:root[data-color-scheme="dark"] .shortcut-badge[data-color="amber"] { color:#fcd34d; }
+:root[data-color-scheme="dark"] .shortcut-badge[data-color="rose"] { color:#fda4af; }
+:root[data-color-scheme="dark"] .shortcut-badge[data-color="violet"] { color:#c4b5fd; }
+.shortcut-icon-dialog { width:min(420px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; padding:22px; border:1px solid var(--yolu-border,#d9e1f0); border-radius:12px; color:var(--yolu-foreground,#334155); background:var(--yolu-surface,#fff); box-shadow:0 15px 60px #17243b33; }
+.shortcut-icon-dialog::backdrop { background:var(--yolu-backdrop,#17243b55); }
 .shortcut-icon-dialog h2 { margin:0 0 18px; font-size:17px; }
 .shortcut-icon-dialog label,.shortcut-icon-dialog legend { font-size:12px; font-weight:600; }
 .shortcut-icon-dialog select { display:block; width:100%; min-width:0; margin-top:7px; padding:7px; border:1px solid var(--yolu-border,#d9e1f0); border-radius:6px; font:inherit; }
@@ -17,7 +25,7 @@
 .shortcut-icon-dialog button { font:inherit; cursor:pointer; border:1px solid var(--yolu-border,#d9e1f0); border-radius:6px; background:var(--yolu-surface,#fff); color:var(--yolu-secondary-ink,#475569); padding:7px 10px; }
 .shortcut-icon-options button { display:flex; align-items:center; justify-content:center; min-width:38px; min-height:38px; padding:7px; }
 .shortcut-icon-options svg { width:18px; height:18px; }
-.shortcut-icon-options [aria-pressed="true"] { border-color:var(--yolu-primary,#5964cf); box-shadow:0 0 0 1px var(--yolu-primary,#5964cf); background:#f0f2ff; }
+.shortcut-icon-options [aria-pressed="true"] { border-color:var(--yolu-primary,#5964cf); box-shadow:0 0 0 1px var(--yolu-primary,#5964cf); background:var(--yolu-selected,#f0f2ff); }
 .shortcut-icon-dialog button:focus-visible,.shortcut-icon-dialog select:focus-visible { outline:2px solid var(--yolu-ring,#818cf8); outline-offset:2px; }
 .shortcut-color-swatch { width:21px; height:21px; border-radius:50%; }
 .shortcut-icon-actions { display:flex; gap:8px; margin-top:20px; }

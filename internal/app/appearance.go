@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"worktree-hub/internal/httpx"
+	"worktree-hub/web"
 )
 
 const uiColorThemeKey = "ui_color_theme:v1"
@@ -12,7 +13,7 @@ const uiColorThemeKey = "ui_color_theme:v1"
 // selected execution environment or the sidecar's current HTTP port.
 func (a *App) uiColorTheme() string {
 	var value string
-	if err := a.Workspace.Store.DB.QueryRow(`SELECT value FROM settings WHERE key=?`, uiColorThemeKey).Scan(&value); err == nil && value == "classic" {
+	if err := a.Workspace.Store.DB.QueryRow(`SELECT value FROM settings WHERE key=?`, uiColorThemeKey).Scan(&value); err == nil && web.ValidColorTheme(value) {
 		return value
 	}
 	return "mint"
@@ -26,7 +27,7 @@ func (a *App) appearanceHandler(w http.ResponseWriter, r *http.Request) {
 		if !httpx.Decode(w, r, &input) {
 			return
 		}
-		if input.ColorTheme != "classic" && input.ColorTheme != "mint" {
+		if !web.ValidColorTheme(input.ColorTheme) {
 			httpx.WriteError(w, http.StatusBadRequest, "Unsupported color theme")
 			return
 		}

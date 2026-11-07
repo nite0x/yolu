@@ -15,9 +15,13 @@ export function SettingsPage() {
   return <>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="appearanceTitle"><form id="appearanceForm">
       <Heading id="appearanceTitle" title={uiText("界面配色")}>{uiText("为工作台选择配色，立即应用到所有标签页，无需重新加载。")}</Heading>
-      <Field id="colorThemeSelect" label={uiText("配色方案")}><NativeSelect id="colorThemeSelect" name="color_theme"><Option value="mint">{uiText("Yolu 薄荷")}</Option><Option value="classic">{uiText("经典蓝紫")}</Option></NativeSelect></Field>
+      <Field id="colorThemeSelect" label={uiText("配色方案")}><NativeSelect id="colorThemeSelect" name="color_theme"><Option value="mint">{uiText("Yolu 薄荷")}</Option><Option value="classic">{uiText("经典蓝紫")}</Option><Option value="light">{uiText("浅色")}</Option><Option value="dark">{uiText("深色")}</Option><Option value="system">{uiText("跟随系统")}</Option></NativeSelect></Field>
       <div className="appearance-swatches" data-theme-preview="mint" aria-hidden="true"><span className="appearance-swatch-paper" /><span className="appearance-swatch-teal" /><span className="appearance-swatch-mint" /><small>{uiText("暖白 · 深青 · 薄荷绿")}</small></div>
-      <div className="appearance-swatches" data-theme-preview="classic" aria-hidden="true" hidden><span className="appearance-swatch-cool" /><span className="appearance-swatch-indigo" /><span className="appearance-swatch-lavender" /><small>{uiText("冷白 · 蓝紫 · 淡紫")}</small></div>      <div className="settings-actions"><Button type="submit" id="saveAppearance">{uiText("保存并应用配色")}</Button></div>
+      <div className="appearance-swatches" data-theme-preview="classic" aria-hidden="true" hidden><span className="appearance-swatch-cool" /><span className="appearance-swatch-indigo" /><span className="appearance-swatch-lavender" /><small>{uiText("冷白 · 蓝紫 · 淡紫")}</small></div>
+      <div className="appearance-swatches" data-theme-preview="light" aria-hidden="true" hidden><span className="appearance-swatch-white" /><span className="appearance-swatch-gray" /><span className="appearance-swatch-blue" /><small>{uiText("纯白 · 中性灰 · 蓝色")}</small></div>
+      <div className="appearance-swatches" data-theme-preview="dark" aria-hidden="true" hidden><span className="appearance-swatch-night" /><span className="appearance-swatch-slate" /><span className="appearance-swatch-sky" /><small>{uiText("深灰 · 石板 · 天蓝")}</small></div>
+      <div className="appearance-swatches" data-theme-preview="system" aria-hidden="true" hidden><span className="appearance-swatch-white" /><span className="appearance-swatch-night" /><span className="appearance-swatch-blue" /><small>{uiText("随系统外观在浅色与深色之间自动切换")}</small></div>
+      <div className="settings-actions"><Button type="submit" id="saveAppearance">{uiText("保存并应用配色")}</Button></div>
       <p id="appearanceStatus" role="status" className="settings-help" />
     </form></Card>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="languageTitle"><form id="languageForm">

@@ -12,6 +12,16 @@ type UISettings struct {
 	ColorTheme string
 }
 
+// ValidColorTheme reports whether a saved appearance choice may be written into
+// the page bootstrap. "system" is resolved in the browser from prefers-color-scheme.
+func ValidColorTheme(theme string) bool {
+	switch theme {
+	case "mint", "classic", "light", "dark", "system":
+		return true
+	}
+	return false
+}
+
 func Handler(token string, readOnly bool, settings ...func() UISettings) http.Handler {
 	static := http.FileServer(http.FS(Assets))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +63,7 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 			if preferences.Language == "en" || preferences.Language == "zh-CN" {
 				choice = preferences.Language
 			}
-			if preferences.ColorTheme == "classic" {
+			if ValidColorTheme(preferences.ColorTheme) {
 				theme = preferences.ColorTheme
 			}
 		}

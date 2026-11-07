@@ -1,6 +1,6 @@
 .conversation-kind-switch{display:flex;gap:4px;flex-shrink:0;padding:10px 20px;border-bottom:1px solid var(--border,#e4e7ee);background:var(--background,var(--yolu-surface,#fff))}
 .conversation-kind-switch button{appearance:none;border:0;border-radius:7px;padding:6px 10px;font:inherit;font-size:13px;line-height:20px;font-weight:500;color:var(--foreground,var(--yolu-foreground,#334155));background:transparent;cursor:pointer;white-space:nowrap}
-.conversation-kind-switch button[aria-pressed=true]{color:var(--yolu-primary-ink,#454b9b);background:#f0f1fc}
+.conversation-kind-switch button[aria-pressed=true]{color:var(--yolu-primary-ink,#454b9b);background:var(--yolu-selected,#f0f1fc)}
 .conversation-kind-switch button:hover{background:var(--accent,var(--yolu-hover,#eef0fa))}
 .conversation-kind-switch button:disabled{opacity:.45;cursor:default}
 .conversation-kind-switch button:focus-visible{outline:2px solid var(--ring,var(--yolu-ring,#818cf8));outline-offset:2px}
@@ -49,7 +49,7 @@ html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.c
 .creation-choices{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;max-height:144px;overflow-y:auto;padding:2px}
 .creation-choices>button{display:inline-flex;align-items:center;gap:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;appearance:none;border:1px solid var(--border,var(--yolu-border,#e2e6f0));border-radius:7px;background:var(--background,var(--yolu-surface,#fff));color:var(--foreground,var(--yolu-foreground,#334155));font:inherit;font-size:12px;line-height:20px;font-weight:500;padding:6px 10px;cursor:pointer}
 .creation-choices>button::before{content:"";width:12px;flex-shrink:0}
-.creation-choices>button[aria-pressed=true]{border-color:#abb1e7;color:var(--yolu-primary-ink,#454b9b);background:#f0f1fc}
+.creation-choices>button[aria-pressed=true]{border-color:var(--yolu-primary-border,#abb1e7);color:var(--yolu-primary-ink,#454b9b);background:var(--yolu-selected,#f0f1fc)}
 .creation-choices>button[aria-pressed=true]::before{content:"✓"}
 .creation-choices>button:hover{background:var(--accent,var(--yolu-hover,#eef0fa))}
 .creation-choices>button:focus-visible{outline:2px solid var(--ring,var(--yolu-ring,#818cf8));outline-offset:1px}

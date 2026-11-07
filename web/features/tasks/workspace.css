@@ -14,7 +14,7 @@
 .task-list .row-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
 .task-list .row-subtitle { margin-top: 5px; font-size: 12px; }
 .task-list-status { color: var(--muted-foreground); line-height: 1.6; }
-.task-list-status.has-work { color: #94651f; font-weight: 500; }
+.task-list-status.has-work { color: var(--yolu-warning,#94651f); font-weight: 500; }
 .task-list-status.has-issues { color: var(--destructive); font-weight: 500; }
 .task-list-description { color: var(--muted-foreground); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65ch; margin: 5px 0; }
 

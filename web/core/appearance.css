@@ -1,5 +1,9 @@
 /* Optional palette. Existing declarations retain their exact classic fallback.
-   Semantic status colors and code syntax highlighting are intentionally separate. */
+   Status tokens (--yolu-success/warning/danger…) fall back to the original
+   per-rule colors, so only palettes that need different ones define them. */
+:root[data-color-scheme="dark"] { color-scheme: dark; }
+:root[data-color-scheme="light"] { color-scheme: light; }
+
 :root[data-color-theme="mint"] {
   --yolu-canvas: #f7f8f2;
   --yolu-surface: #fdfef9;
@@ -28,12 +32,85 @@
   --yolu-terminal-bright-blue: #b5e0dc;
 }
 
+:root[data-color-theme="light"] {
+  --yolu-canvas: #f6f7f9;
+  --yolu-surface: #ffffff;
+  --yolu-sidebar: #f3f4f6;
+  --yolu-subtle: #f6f8fa;
+  --yolu-hover: #eceff2;
+  --yolu-selected: #e3edfb;
+  --yolu-primary: #0969da;
+  --yolu-primary-ink: #0550ae;
+  --yolu-primary-border: #b6d3f5;
+  --yolu-foreground: #1f2328;
+  --yolu-secondary-ink: #424a53;
+  --yolu-muted-ink: #59636e;
+  --yolu-faint-ink: #6e7781;
+  --yolu-border: #e1e4e8;
+  --yolu-border-strong: #d0d7de;
+  --yolu-ring: #0969da;
+  --yolu-ring-soft: #0969da40;
+  --yolu-terminal-background: #24292f;
+  --yolu-terminal-foreground: #d8dee4;
+  --yolu-terminal-cursor: #79c0ff;
+  --yolu-terminal-selection: #79c0ff40;
+  --yolu-terminal-black: #161b22;
+  --yolu-terminal-bright-black: #8c959f;
+  --yolu-terminal-blue: #79c0ff;
+  --yolu-terminal-bright-blue: #a5d6ff;
+}
+
+:root[data-color-theme="dark"] {
+  --yolu-canvas: #0f1216;
+  --yolu-surface: #161a1f;
+  --yolu-sidebar: #12161b;
+  --yolu-subtle: #1c2128;
+  --yolu-hover: #262c34;
+  --yolu-selected: #1d3149;
+  --yolu-primary: #58a6ff;
+  --yolu-primary-ink: #9ecbff;
+  --yolu-primary-border: #2f5a8a;
+  --yolu-foreground: #e6edf3;
+  --yolu-secondary-ink: #c2cad3;
+  --yolu-muted-ink: #9198a1;
+  --yolu-faint-ink: #7d8590;
+  --yolu-border: #2a3038;
+  --yolu-border-strong: #3a424c;
+  --yolu-ring: #58a6ff;
+  --yolu-ring-soft: #58a6ff40;
+  --yolu-success: #6fcf8a;
+  --yolu-success-soft: #16301f;
+  --yolu-success-border: #24502f;
+  --yolu-warning: #e3b45c;
+  --yolu-warning-soft: #31270f;
+  --yolu-warning-border: #5a4517;
+  --yolu-danger: #f08a7a;
+  --yolu-danger-soft: #361c19;
+  --yolu-danger-border: #5e2c26;
+  --yolu-info-soft: #1a2738;
+  --yolu-backdrop: #000000a0;
+  --yolu-terminal-background: #11151a;
+  --yolu-terminal-foreground: #d5dde5;
+  --yolu-terminal-cursor: #79c0ff;
+  --yolu-terminal-selection: #79c0ff38;
+  --yolu-terminal-black: #1c2128;
+  --yolu-terminal-bright-black: #7d8590;
+  --yolu-terminal-blue: #79c0ff;
+  --yolu-terminal-bright-blue: #a5d6ff;
+}
+
 .appearance-swatches { display:flex; align-items:center; gap:8px; margin:0 0 16px; }
-.appearance-swatches > span { width:24px; height:24px; border-radius:50%; border:1px solid #cbd8c7; }
+.appearance-swatches > span { width:24px; height:24px; border-radius:50%; border:1px solid var(--yolu-border-strong,#cbd8c7); }
 .appearance-swatch-paper { background:#f7f8f2; }
 .appearance-swatch-teal { background:#203f42; }
 .appearance-swatch-mint { background:#9dd8ca; }
 .appearance-swatch-cool { background:#f8f9fd; }
 .appearance-swatch-indigo { background:#5964cf; }
 .appearance-swatch-lavender { background:#e4eaff; }
+.appearance-swatch-white { background:#ffffff; }
+.appearance-swatch-gray { background:#d0d7de; }
+.appearance-swatch-blue { background:#0969da; }
+.appearance-swatch-night { background:#0f1216; }
+.appearance-swatch-slate { background:#2a3038; }
+.appearance-swatch-sky { background:#58a6ff; }
 .appearance-swatches small { margin-left:4px; font-size:12px; color:var(--muted-foreground); }

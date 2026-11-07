@@ -24,7 +24,7 @@ export function TaskReviewItems({items}: {items: CleanupCandidate[]}) {
   return <div className="task-review-items">{items.map((item,i) => <article className="task-review-item" key={`${item.project_id}:${item.path}`}>
     <label className="flex items-start gap-3"><input type="checkbox" data-cleanup-index={i} disabled={!item.cleanable} aria-label={uiText("选择清理 {0}", item.path)} /><span className="min-w-0"><strong>{item.project_name}</strong><span className="quiet"> · {item.current ? uiText("当前关联目录") : uiText("任务工作区中的旧目录")}</span><code className="block break-all mt-1">{item.path}</code></span></label>
     <div className="text-sm mt-2">{uiText("分支")}{" "}{item.branch || uiText("未检出")} · {item.dirty || 0}{" "}{uiText("项改动 ·")}{" "}{item.unpushed || 0}{" "}{uiText("个待推送提交")}</div>
-    {item.cleanable ? <p className="text-sm text-emerald-700">{uiText("检查通过，可选择清理；执行前会再次核实。")}</p> : <ul className="text-sm text-amber-800 list-disc pl-5">{item.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+    {item.cleanable ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{uiText("检查通过，可选择清理；执行前会再次核实。")}</p> : <ul className="text-sm text-amber-800 dark:text-amber-300 list-disc pl-5">{item.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
   </article>)}</div>
 }
 export function ChangesDialog() {

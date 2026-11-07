@@ -14,9 +14,9 @@ import type { GitOverview, Member, Task, Worktree } from "./types"
 
 export const statusLabels: Record<string, string> = { ready: uiText("已就绪"), partial: uiText("部分就绪"), archived: uiText("已归档"), creating: uiText("创建中"), pending: uiText("待创建"), failed: uiText("创建失败"), removed: uiText("目录已清理") }
 const tones: Record<string, string> = {
-  ready: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  partial: "border-amber-200 bg-amber-50 text-amber-800", warning: "border-amber-200 bg-amber-50 text-amber-800",
-  failed: "border-red-200 bg-red-50 text-red-800", "primary-tag": "border-indigo-200 bg-indigo-50 text-indigo-800",
+  ready: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300",
+  partial: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300", warning: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
+  failed: "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300", "primary-tag": "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-300",
 }
 export function StatusBadge({ kind, children }: { kind: string; children?: ReactNode }) {
   return <Badge variant="outline" className={cn("shrink-0 rounded-md px-2 py-1 text-xs", tones[kind] || "border-border bg-secondary text-muted-foreground")}>{children || statusLabels[kind] || kind}</Badge>
@@ -43,7 +43,7 @@ export function GitSyncStatus({ tree: t, compact = false, minimal = false }: { t
   const differences = [t.sync_ahead ? uiText("待推 {0}", t.sync_ahead) : "", t.sync_behind ? uiText("待拉 {0}", t.sync_behind) : ""].filter(Boolean).join(" · ") || uiText("已同步")
   return <div className="comparison space-y-1" title={uiText("同步数量基于本地最近获取的上游记录；获取远端后更新。")}>
     {minimal && t.upstream && !t.detached ? <div className="project-sync-summary"><code title={t.upstream}>{t.upstream}</code>{t.sync_available ? <span className="project-sync-counts" aria-label={uiText("待推送 {0} 个提交，待拉取 {1} 个提交", t.sync_ahead || 0, t.sync_behind || 0)} title={uiText("↑ 待推送 {0} · ↓ 待拉取 {1}{2}", t.sync_ahead || 0, t.sync_behind || 0, t.sync_ahead && t.sync_behind ? uiText(" · 已分歧") : "")}><span data-active={!!t.sync_ahead}>↑{t.sync_ahead || 0}</span><span data-active={!!t.sync_behind}>↓{t.sync_behind || 0}</span></span> : <span title={uiText("上游不可用，请获取远端")}>{uiText("暂不可用")}</span>}</div> : <div>{t.detached ? uiText("游离 HEAD") : !t.upstream ? compact ? uiText("未设置上游") : uiText("尚未设置上游 · 推送时发布分支") : !t.sync_available ? uiText("上游 {0} 不可用，请获取远端", t.upstream) : compact ? <>{uiText("上游")} <code>{t.upstream}</code> · {differences}{t.sync_ahead && t.sync_behind ? uiText(" · 已分歧") : ""}</> : <>{uiText("上游")} {t.upstream}<br />{uiText("待推送")}{" "}{t.sync_ahead || 0}{" "}{uiText("· 待拉取")}{" "}{t.sync_behind || 0}{t.sync_ahead && t.sync_behind ? uiText(" · 已分歧") : ""}</>}</div>}
-    {t.operation ? <div className="font-medium text-amber-800">{t.operation === "merge" ? uiText("合并进行中{0}", t.conflicts?.length ? uiText(" · {0} 个冲突文件", t.conflicts.length) : uiText(" · 等待完成提交")) : uiText("{0} 进行中", t.operation)}</div> : null}
+    {t.operation ? <div className="font-medium text-amber-800 dark:text-amber-300">{t.operation === "merge" ? uiText("合并进行中{0}", t.conflicts?.length ? uiText(" · {0} 个冲突文件", t.conflicts.length) : uiText(" · 等待完成提交")) : uiText("{0} 进行中", t.operation)}</div> : null}
   </div>
 }
 
