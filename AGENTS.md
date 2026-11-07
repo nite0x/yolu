@@ -1,22 +1,25 @@
 # Product direction and scope
 
-This project is a personal development workspace with tasks as its primary entry point. A project is a codebase maintained over time. A task is a piece of development work with a clear objective, organizing the participating projects and their working directories, branches and sessions. Tasks can cover features, fixes, refactoring or technical experiments. The core goal is to open a task, see all its associated projects and their directories, branches and change states in one place, and enter the appropriate working environment to continue.
+This project is a personal development workspace with workspaces as its primary entry point. A project is a codebase maintained over time. A workspace is where one complete requirement is developed: it organizes the participating projects and their working directories, branches and sessions, and stays in use until the requirement is done. A requirement can be a feature, fix, refactoring or technical experiment, and may involve several branches and iterations. The core goal is to open a workspace, see all its associated projects and their directories, branches and change states in one place, and enter the appropriate working environment to continue.
 
 ## Current core scope
 
-- Tasks are the main entry point; project management supplies repositories for tasks.
-- A task can include multiple projects, with their worktrees grouped under one task workspace directory.
-- Inspect each project's working-directory state from the task and open a terminal or Git operation directly.
+- Workspaces are the main entry point; project management supplies repositories for workspaces.
+- A workspace can include multiple projects, with their worktrees grouped under one workspace directory.
+- Inspect each project's working-directory state from the workspace and open a terminal or Git operation directly.
+- Issues: a separate page aggregates issues assigned to me (Linear first, GitHub later). From an issue I can create a workspace, change its status, and post a reply. All other issue management stays in the source platform.
 - Prefer reusing existing capabilities to reduce searching and switching between pages.
 
-The workspace root defaults to `~/workspaces` in the execution environment. Use `--root` to explicitly select another location; do not automatically switch to a Windows-mounted directory merely because one exists. Existing tasks keep their saved paths and are not moved automatically.
+The workspace root defaults to `~/workspaces` in the execution environment. Use `--root` to explicitly select another location; do not automatically switch to a Windows-mounted directory merely because one exists. Existing workspaces keep their saved paths and are not moved automatically.
+
+Internal identifiers, stored data and protocols still use `task` for compatibility; the user-facing name is workspace. Migrate them deliberately, following `docs/brand/yolu/migration.md`.
 
 Complete this minimal workflow first, then add capabilities incrementally to address concrete problems encountered in use. Previously discussed directions such as session management, service operation, notifications and complex state transitions are candidates, not established development commitments.
 
 ## Before adding a feature
 
 1. Which concrete user problem in the core workflow does it solve?
-2. Does it fit the direction of organizing cross-project work through tasks?
+2. Does it fit the direction of organizing cross-project work through workspaces?
 3. Can existing capabilities or a smaller change solve it?
 
 Before implementation, briefly explain how the feature fits the direction. If that cannot be answered clearly, defer it; do not add a feature solely because similar tools offer it. If a feature expands the product direction, explain the departure and let the user decide whether to change scope.
