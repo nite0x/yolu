@@ -12,6 +12,10 @@ concurrency:
   group: core-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The workspace JSDOM suite exceeds Node's default 2 GiB heap on macOS.
+env:
+  NODE_OPTIONS: --max-old-space-size=4096
+
 jobs:
   macos:
     runs-on: macos-15

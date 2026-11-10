@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -9,9 +9,16 @@ const directory = mkdtempSync(path.join(os.tmpdir(), 'yolu-installed-'));
 const data = path.join(directory, 'data');
 const run = (command, args) => execFileSync(command, args, { encoding: 'utf8', timeout: 60000 });
 const name = run('dpkg-deb', ['-f', installer, 'Package']).trim();
-const files = run('dpkg-deb', ['-c', installer]);
-assert(files.includes('/usr/bin/yolu-backend'));
-assert(files.includes('/THIRD-PARTY-NOTICES.txt'));
+// Inspect extracted paths: tar listings may use either usr/ or ./usr/.
+const contents = path.join(directory, 'contents');
+try {
+  run('dpkg-deb', ['--extract', installer, contents]);
+  for (const file of ['usr/bin/yolu', 'usr/bin/yolu-backend', 'usr/lib/Yolu/notices/THIRD-PARTY-NOTICES.txt']) {
+    assert(existsSync(path.join(contents, file)), `Missing package file: ${file}`);
+  }
+} finally {
+  rmSync(contents, { recursive: true, force: true });
+}
 const backend = '/usr/bin/yolu-backend';
 try {
   run('sudo', ['dpkg', '-i', installer]);
