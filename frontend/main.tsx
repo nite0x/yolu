@@ -14,6 +14,8 @@ import { SettingsPage, EnvironmentForm } from "./workspace/settings"
 import { SessionPickerDialog, CommandOutputDialog } from "./workspace/sessions"
 import { SessionBrowser } from "./workspace/session-browser"
 import "./styles.css"
+// Load notification CSS only through the browser entry, not Node-rendered components.
+import "sonner/dist/styles.css"
 import "./workspace/interactions.css"
 import { TaskReviewDialog, ChangesDialog } from "./workspace/task-review"
 import { setupWorkspaceInteractions, mountWorkspaceToaster } from "./workspace/interactions"

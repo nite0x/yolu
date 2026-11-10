@@ -163,6 +163,14 @@ Download an artifact built for the correct target from the specific release. The
 | Windows x64 | NSIS `-setup.exe` | Windows 10/11 and WebView2; the installer can download WebView2 |
 | Linux x64 | DEB / AppImage | DEB builds use Ubuntu 22.04; WebKitGTK 4.1 is required; AppImage may require FUSE 2 |
 
+GitHub Actions downloads wrap these files in a ZIP archive. Extract it, then open
+the `.dmg` or `-setup.exe`, install the `.deb`, or run the `.AppImage` as described
+below. The ZIP itself is not an installer. On Windows, `yolu-upgrade.exe` is a
+helper used by `Upgrade.cmd`; use the file ending in `-setup.exe` for a new install.
+GitHub's **Code → Download ZIP** and **Source code** archives contain source files,
+not a built application. Direct installer downloads require separately published
+release assets; a successful Actions run alone does not publish a GitHub Release.
+
 Install Git and, for conversations, the Codex CLI separately. Installed Yolu packages do not require the Go, Rust or Node.js build toolchains. A CLI's own installation method may have separate requirements.
 
 - **macOS:** open the matching DMG and copy `Yolu.app` to `/Applications` or `~/Applications`. Before replacement or removal, quit and stop the backend. Remove the application bundle to uninstall.

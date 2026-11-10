@@ -23,7 +23,12 @@ func TestCloneProjectRegistersCompleteCheckoutAndSurvivesRefresh(t *testing.T) {
 	if err := json.Unmarshal(raw, &created); err != nil || created.ID == "" {
 		t.Fatalf("response %s %v", raw, err)
 	}
-	target := filepath.Join(parent, "new checkout")
+	// macOS temporary directories may be reached through /var -> /private/var;
+	// registration correctly stores the canonical repository path.
+	target, err := filepath.EvalSymlinks(filepath.Join(parent, "new checkout"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := testGit(t, target, "remote", "get-url", "origin"); got != remote {
 		t.Fatalf("origin %q", got)
 	}
