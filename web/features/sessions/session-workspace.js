@@ -478,7 +478,7 @@ function renderConversationList() {
   const emptyError = !!view.error && !items.length && !view.loading;
   const renderKey = JSON.stringify([new Date().toDateString(), emptyError, props, before, after, loaded, sessions.length]);
   if (conversationListRenderKeys.get(list) !== renderKey) {
-    const spacer = (height,side) => height ? `<div class="session-list-spacer" data-list-spacer="${side}" aria-hidden="true" style="height:${height}px"></div>` : '';
+    const spacer = (height,side) => height ? `<div class="session-list-spacer" data-list-spacer="${side}" aria-hidden="true"></div>` : '';
     const more = sessions.length ? `<p class="session-list-more" role="status">${loaded < sessions.length ? uiText("向下滚动加载更多") : uiText("已显示全部对话")}</p>` : '';
     const markup = emptyError ? '' : spacer(before,'before') + window.WorkHubUI.conversationList(props) + spacer(after,'after') + more;
     if (list.innerHTML !== markup) {
@@ -492,6 +492,11 @@ function renderConversationList() {
       const focusedUnlink = document.activeElement?.hasAttribute('data-conversation-unlink');
       const expandedMenu = list.querySelector('.session-item-menu[open]')?.dataset.sessionMenu;
       patchConversationList(list,markup);
+      // CSP rejects style attributes parsed from HTML. CSSOM property updates
+      // preserve virtual-list geometry without allowing inline styles.
+      for (const spacer of list.querySelectorAll('[data-list-spacer]')) {
+        spacer.style.height = `${spacer.dataset.listSpacer === 'before' ? before : after}px`;
+      }
       list.scrollTop = top;
       const newAnchor = anchorKey && [...list.querySelectorAll('[data-conversation-session]')].find(el => el.dataset.conversationSession === anchorKey);
       if (newAnchor) list.scrollTop += newAnchor.getBoundingClientRect().top - anchorTop;

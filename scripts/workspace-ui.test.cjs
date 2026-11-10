@@ -3575,7 +3575,9 @@ test('conversation lists automatically append twenty rows at the bottom and keep
  assert.equal(rows()[0].dataset.conversationSession,'session-1','appending does not replace the first batch');
  await scroll('bottom');assert.equal(list.dataset.loadedCount,'60');
  await scroll('bottom');assert.equal(list.dataset.loadedCount,'80');assert.equal(rows().length,60);
- assert(list.querySelector('.session-list-spacer'));
+ const spacer=list.querySelector('.session-list-spacer');
+ assert(spacer);
+ assert(parseFloat(spacer.style.height)>0,'virtual rows retain their measured space');
  for(let i=0;i<33;i++) {await scroll('bottom');assert(rows().length<=60);}
  assert.equal(list.dataset.loadedCount,'738');
  assert.match(list.textContent,/已显示全部对话/);
@@ -3714,4 +3716,102 @@ test('file tree images and outside image links use the same adjacent preview and
   h.click('#conversationFilesFiles [data-change-file="project.png"]');await settle();
   h.$('#conversationFilesText img').dispatchEvent(new h.window.Event('error'));await settle();
   assert.match(h.$('#conversationFilesText [role="alert"]').textContent,/图片无法显示/);
+});
+
+test('workspace deletion retains its dialog and error on failure, and returns to list on success', async t => {
+ const h=await harness(t,false);
+ let fail=true;
+ h.setIntercept((url,options)=>{
+  if(url==='/api/requirements/task' && options.method==='DELETE') {
+   if(fail) return {ok:false,json:async()=>({error:'Deletion blocked'})};
+   h.data.requirements=[];
+   return {ok:true,json:async()=>({message:'Deleted'})};
+  }
+ });
+ h.click('[data-action="remove-task"]');await settle();
+ assert(h.$('#removalDialog').open);
+ assert.match(h.$('#removalDescription').textContent,/Billing/);
+ await h.submit('#removalForm');
+ assert(h.$('#removalDialog').open);
+ assert.equal(h.$('#removalError').hidden,false);
+ assert.match(h.$('#removalError').textContent,/Deletion blocked/);
+ fail=false;
+ await h.submit('#removalForm');await settle();
+ assert.equal(h.$('#removalDialog').open,false);
+ assert.equal(h.window.location.hash,'#/requirements');
+});
+
+test('project removal previews archived workspace links and submits only the reviewed links', async t => {
+ const h=await harness(t,false,{route:'/projects'});
+ h.setIntercept((url,options)=>{
+  if(url==='/api/projects/app/removal') return {ok:true,json:async()=>({name:'App',requirements:[{id:'task',name:'Billing',state:'archived'}]})};
+  if(url==='/api/projects/app?detach=1' && options.method==='DELETE') {
+   h.data.projects=h.data.projects.filter(p=>p.id!=='app');
+   return {ok:true,json:async()=>({message:'Removed'})};
+  }
+ });
+ h.click('[data-action="remove-project"][data-id="app"]');await settle();
+ assert(h.$('#removalDialog').open);
+ assert.match(h.$('#removalReferences').textContent,/Billing.*已归档/);
+ assert.match(h.$('#removalReferences a').href,/#\/requirements\/task/);
+ assert.match(h.$('#removalConfirm').textContent,/解除关联/);
+ await h.submit('#removalForm');
+ const request=h.requests.find(r=>r.url==='/api/projects/app?detach=1');
+ assert.deepEqual(request.body,{requirements:['task']});
+ assert.equal(h.$('#removalDialog').open,false);
+});
+
+test('clone project mode infers the folder, uses the selected environment and registers the result', async t => {
+ const h=await harness(t);
+ h.setIntercept((url)=>url==='/api/projects/clone'?{ok:true,json:async()=>({id:'cloned'})}:null);
+ h.window.openProject();
+ assert(h.$('#projectCloneURL').disabled);
+ h.change('#projectSource','clone');
+ assert.equal(h.$('#projectCloneFields').hidden,false);
+ assert.equal(h.$('#projectCloneURL').required,true);
+ assert.match(h.$('#projectPath-label').textContent,/存放目录/);
+ h.input('#projectCloneURL','git@github.com:team/repo.git');
+ assert.equal(h.$('#projectCloneDirectory').value,'repo');
+ h.input('#projectCloneDirectory','custom');
+ h.input('#projectCloneURL','https://github.com/team/another.git');
+ assert.equal(h.$('#projectCloneDirectory').value,'custom','manual folder names are retained');
+ h.input('#projectPath','/home/tester/projects');h.input('#projectName','My clone');
+ await h.submit('#projectForm');
+ const request=h.requests.find(r=>r.url==='/api/projects/clone');
+ assert.deepEqual(request.body,{name:'My clone',url:'https://github.com/team/another.git',parent:'/home/tester/projects',directory:'custom'});
+ assert.equal(request.options.headers['X-Environment-ID'],'local');
+ assert.equal(h.$('#projectDialog').open,false);
+});
+
+test('clone failures preserve inputs and switching back restores local registration', async t => {
+ const h=await harness(t);
+ h.setIntercept(url=>url==='/api/projects/clone'?{ok:false,json:async()=>({error:'Authentication failed'})}:null);
+ h.window.openProject();h.change('#projectSource','clone');
+ h.input('#projectCloneURL','https://github.com/team/repo.git');h.input('#projectPath','/home/tester/projects');
+ await h.submit('#projectForm');
+ assert(h.$('#projectDialog').open);
+ assert.equal(h.$('#projectError').hidden,false);
+ assert.match(h.$('#projectError').textContent,/Authentication failed/);
+ assert.equal(h.$('#projectCloneURL').value,'https://github.com/team/repo.git');
+ assert.equal(h.$('#projectCloneDirectory').value,'repo');
+ h.change('#projectSource','local');
+ assert(h.$('#projectCloneFields').hidden);
+ assert(h.$('#projectCloneURL').disabled);
+ assert.equal(h.$('#projectCloneURL').required,false);
+ assert.match(h.$('#projectSubmit').textContent,/添加并扫描/);
+});
+
+test('clone errors stay in the dialog when its selected environment differs from the current page', async t => {
+ const h=await harness(t);
+ h.environments.environments.push({id:'wsl-test',name:'WSL'});
+ await h.window.loadEnvironments();
+ h.setIntercept(url=>url==='/api/projects/clone'?{ok:false,json:async()=>({error:'Remote authentication failed'})}:null);
+ h.window.openProject(null,'wsl-test');h.change('#projectSource','clone');
+ h.input('#projectCloneURL','git@github.com:team/repo.git');h.input('#projectPath','/home/tester/projects');
+ await h.submit('#projectForm');
+ assert.equal(h.requests.find(r=>r.url==='/api/projects/clone').options.headers['X-Environment-ID'],'wsl-test');
+ assert(h.$('#projectDialog').open);
+ assert.equal(h.$('#projectError').hidden,false);
+ assert.match(h.$('#projectError').textContent,/Remote authentication failed/);
+ assert.equal(h.$('#chooseProjectDirectory').disabled,true);
 });

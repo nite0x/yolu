@@ -1,4 +1,7 @@
 /* Shared interaction surfaces use the same tokens as the work area. */
+/* Radix's runtime scroll-lock stylesheet is blocked by the app CSP. The work
+   area scrolls in its own panes, so no document scrollbar compensation is needed. */
+body[data-scroll-locked] { overflow:hidden !important; overscroll-behavior:contain; }
 .ui-native-select { position:absolute !important; width:1px !important; height:1px !important; opacity:0 !important; padding:0 !important; pointer-events:none !important; clip-path:inset(50%); }
 .ui-select-host { display:block; width:100%; min-width:0; }
 .ui-enhanced-select > [data-slot="native-select-icon"] { display:none; }

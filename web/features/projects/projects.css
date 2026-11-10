@@ -153,3 +153,6 @@
   .project-detail { padding: 14px; }
   .project-detail-heading { gap: 12px; }
 }
+
+#removalReferences { max-height: min(35dvh, 280px); overflow: auto; overflow-wrap: anywhere; }
+#removalReferences a { color: var(--yolu-primary-ink,#454b9b); text-decoration: underline; text-underline-offset: 3px; }

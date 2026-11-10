@@ -25,6 +25,8 @@ export function TaskActions({ task: q, environment }: { task: Task; environment:
     <details className="task-more" data-workspace-detail="task-actions"><summary>{uiText("更多")}</summary><div className="task-more-menu">
       <Action action="edit-task" id={q.id} disabled={q.state === "creating"}>{uiText("编辑任务信息")}</Action>
       <Action action="archive" id={q.id}>{q.state === "archived" ? uiText("取消归档") : uiText("归档任务")}</Action>
+      <hr />
+      <Action action="remove-task" id={q.id} disabled={q.state === "creating"} className="text-destructive">{uiText("删除工作区记录")}</Action>
     </div></details>
   </div>
 }

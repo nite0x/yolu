@@ -18,9 +18,14 @@ func (a *Service) AddProjectHandler(w http.ResponseWriter, r *http.Request) {
 	if !httpx.Decode(w, r, &input) {
 		return
 	}
+	a.registerProject(w, r, input.Name, input.Path)
+}
+
+// registerProject is shared by existing repositories and completed clones.
+func (a *Service) registerProject(w http.ResponseWriter, r *http.Request, name, path string) {
 	a.Workspace.Mu.Lock()
 	defer a.Workspace.Mu.Unlock()
-	path, err := workspace.Normalize(r.Context(), input.Path)
+	path, err := workspace.Normalize(r.Context(), path)
 	if err != nil {
 		httpx.WriteError(w, 400, err.Error())
 		return
@@ -45,7 +50,7 @@ func (a *Service) AddProjectHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 422, err.Error())
 		return
 	}
-	name := strings.TrimSpace(input.Name)
+	name = strings.TrimSpace(name)
 	if name == "" {
 		name = platform.BaseWorkspacePath(root)
 	}
@@ -74,30 +79,4 @@ func (a *Service) AddProjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, 201, map[string]string{"id": id})
-}
-func (a *Service) RemoveProjectHandler(w http.ResponseWriter, r *http.Request) {
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
-	var count int
-	if err := a.Workspace.Store.DB.QueryRow(`SELECT count(*) FROM members WHERE project_id=?`, r.PathValue("id")).Scan(&count); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	if count > 0 {
-		httpx.WriteError(w, 409, "项目仍有关联任务，请保留登记以便追溯")
-		return
-	}
-	result, err := a.Workspace.Store.DB.Exec(`DELETE FROM projects WHERE id=?`, r.PathValue("id"))
-	if err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	if n, err := result.RowsAffected(); err != nil {
-		httpx.DbError(w, err)
-		return
-	} else if n == 0 {
-		httpx.WriteError(w, 404, "项目不存在")
-		return
-	}
-	httpx.WriteJSON(w, 200, map[string]string{"message": "已移除项目登记；仓库和 Worktree 文件未删除"})
 }

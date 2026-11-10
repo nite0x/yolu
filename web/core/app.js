@@ -316,11 +316,7 @@ async function handleAction(action, target) {
     const q = state.requirements.find(q => q.id === id);
     return mutation(uiText("正在更新任务状态"), async () => { const r = await api(`/api/requirements/${id}/archive`, { method: 'POST', body: JSON.stringify({ archived: q.state !== 'archived' }) }); toast(r.message); }, undefined, {task:id});
   }
-  if (action === 'remove-project') {
-    const p = state.projects.find(p => p.id === id);
-    if (!confirm(uiText("移除“{0}”的项目登记？\n仓库、分支和 Worktree 文件均保留。", p.name))) return;
-    return mutation(uiText("正在移除登记"), async () => { const r = await api(`/api/projects/${id}`, { method: 'DELETE' }); toast(r.message); });
-  }
+  if (action === 'remove-project' || action === 'remove-task') return openRemoval(action === 'remove-project' ? 'project' : 'task', id);
 }
 document.addEventListener('click', event => {
   const action = event.target.closest('[data-action]');
@@ -349,3 +345,60 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (!window.WorkHubTab) await refresh();
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && window.WorkHubTab?.active !== false) refresh(); });
+
+// Keep the impact and any failure visible until the user closes the dialog.
+let removalContext;
+async function openRemoval(kind, id) {
+  const item = (kind === 'project' ? state.projects : state.requirements).find(item => item.id === id);
+  if (!item) return;
+  const context = removalContext = {kind, id, environment: activeEnvironment, requirements: []};
+  const dialog = $('#removalDialog');
+  $('#removalTitle').textContent = kind === 'project' ? uiText("移除项目登记") : uiText("删除工作区记录");
+  $('#removalDescription').textContent = kind === 'project' ? uiText("正在检查项目“{0}”的工作区关联…", item.name) : uiText("删除工作区“{0}”的管理记录及项目、对话关联？此操作不能撤销。", item.name);
+  $('#removalReferences').replaceChildren();
+  $('#removalError').hidden = true;
+  $('#removalConfirm').disabled = true;
+  $('#removalConfirm').textContent = kind === 'project' ? uiText("移除登记") : uiText("删除工作区记录");
+  if (!dialog.open) dialog.showModal();
+  if (kind === 'task') { $('#removalConfirm').disabled = item.state === 'creating'; return; }
+  try {
+    const plan = await api(`/api/projects/${encodeURIComponent(id)}/removal`, {environment:context.environment});
+    if (removalContext !== context || !dialog.open) return;
+    context.requirements = plan.requirements.map(task => task.id);
+    $('#removalDescription').textContent = plan.requirements.length ? uiText("以下工作区将解除与“{0}”的关联，工作区本身和其他项目不受影响。", plan.name) : uiText("移除“{0}”的项目登记？", plan.name);
+    const list = document.createElement('ul');
+    for (const task of plan.requirements) {
+      const row = document.createElement('li'), link = document.createElement('a');
+      link.textContent = task.name + (task.state === 'archived' ? uiText("（已归档）") : '');
+      link.href = `?environment=${encodeURIComponent(context.environment)}#/requirements/${encodeURIComponent(task.id)}`;
+      link.addEventListener('click', () => dialog.close());
+      row.append(link); list.append(row);
+    }
+    $('#removalReferences').append(list);
+    $('#removalConfirm').textContent = plan.requirements.length ? uiText("解除关联并移除登记") : uiText("移除登记");
+    $('#removalConfirm').disabled = plan.requirements.some(task => task.state === 'creating');
+    if ($('#removalConfirm').disabled) { $('#removalError').textContent = uiText("关联工作区正在准备中，请完成后再移除项目"); $('#removalError').hidden = false; }
+  } catch (error) {
+    if (removalContext !== context || !dialog.open) return;
+    $('#removalError').textContent = error.message; $('#removalError').hidden = false;
+  }
+}
+$('#removalDialog').addEventListener('close', () => { removalContext = null; });
+$('#removalForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const context = removalContext;
+  if (!context || $('#removalConfirm').disabled) return;
+  if (context.environment !== activeEnvironment) {
+    $('#removalError').textContent = uiText("执行环境已切换，请关闭弹窗后重新操作。"); $('#removalError').hidden = false; return;
+  }
+  const current = () => removalContext === context && context.environment === activeEnvironment && $('#removalDialog').open;
+  await mutation(context.kind === 'project' ? uiText("正在移除登记") : uiText("正在删除工作区记录"), async () => {
+    const path = context.kind === 'project' ? `/api/projects/${encodeURIComponent(context.id)}?detach=1` : `/api/requirements/${encodeURIComponent(context.id)}`;
+    const result = await api(path, {method:'DELETE', environment:context.environment, ...(context.kind === 'project' ? {body:JSON.stringify({requirements:context.requirements})} : {})});
+    if (current()) {
+      $('#removalDialog').close();
+      if (context.kind === 'task') location.hash = '/requirements';
+      toast(result.message + (result.context_warning ? '\n' + uiText("工作区说明更新失败：") + result.context_warning : ''), !!result.context_warning);
+    }
+  }, $('#removalError'), {key:context.kind + ':' + context.id, environment:context.environment, isCurrent:current});
+});

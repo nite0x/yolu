@@ -130,7 +130,7 @@ window.addEventListener('resize', positionOpenTaskMenus);
 
 function renderProjects() {
   if (!state.loaded) return uiText("<div class=\"loading\">正在读取当前环境的项目…</div>");
-  if (!state.projects.length) return empty(uiText("你的项目，从这里连接"), uiText("输入已有 Git 仓库的主目录。已有 Worktree 会自动发现，后续每 10 秒刷新本地状态。"), 'new-project', uiText("添加第一个项目"));
+  if (!state.projects.length) return empty(uiText("你的项目，从这里连接"), uiText("登记本地 Git 仓库，或从 Git 克隆新项目。已有 Worktree 会自动发现。"), 'new-project', uiText("添加第一个项目"));
   const text = $('#search').value.trim().toLowerCase();
   const projects = state.projects.filter(p => `${p.name} ${p.path}`.toLowerCase().includes(text));
   const visible = projects.filter(p => projectFilter === 'dirty' ? p.worktrees.some(t => (t.dirty || 0) > 0) : projectFilter === 'error' ? p.error || p.worktrees.some(t => t.missing || t.prunable || t.error) : true);
@@ -145,8 +145,28 @@ function openProject(onAdded = null, environment = activeEnvironment) {
   $('#projectEnvironmentSelect').innerHTML = environmentOptions();
   $('#projectEnvironmentSelect').value = environment;
   $('#projectEnvironmentSelect').disabled = !!onAdded;
+  updateProjectSource();
   updateProjectDirectoryPicker();
 }
+
+let suggestedCloneDirectory = '';
+function updateProjectSource() {
+  const clone = $('#projectSource').value === 'clone';
+  $('#projectCloneFields').hidden = !clone;
+  for (const id of ['projectCloneURL', 'projectCloneDirectory']) { $("#" + id).disabled = !clone; $("#" + id).required = clone; }
+  $('#projectPath-label').textContent = clone ? uiText("存放目录 *") : uiText("仓库目录 *");
+  $('#projectPath-help').textContent = clone ? uiText("选择已存在的父目录，仓库将克隆到其下的新文件夹中。") : uiText("选择本机 Git 仓库主目录，或填写项目所在环境中的绝对路径。");
+  $('#projectPath').placeholder = clone ? uiText("填写存放目录的绝对路径") : uiText("填写仓库主目录的绝对路径");
+  $('#projectSubmit').textContent = clone ? uiText("克隆并添加") : uiText("添加并扫描");
+}
+$('#projectSource').addEventListener('change', updateProjectSource);
+$('#projectCloneURL').addEventListener('input', () => {
+  const field = $('#projectCloneDirectory');
+  const source = $('#projectCloneURL').value.trim().split(/[?#]/)[0].replace(/\/+$/, '');
+  const suggested = source.split(/[/:]/).pop()?.replace(/\.git$/, '') || '';
+  if (!field.value || field.value === suggestedCloneDirectory) field.value = suggested;
+  suggestedCloneDirectory = suggested;
+});
 
 function updateProjectDirectoryPicker() {
   const remote = $('#projectEnvironmentSelect').value !== 'local';
@@ -164,7 +184,7 @@ $('#chooseProjectDirectory').addEventListener('click', async () => {
   button.disabled = true;
   button.textContent = uiText("正在选择…");
   try {
-    await mutation(uiText("请在系统窗口中选择仓库文件夹"), async () => {
+    await mutation($('#projectSource').value === 'clone' ? uiText("请在系统窗口中选择存放目录") : uiText("请在系统窗口中选择仓库文件夹"), async () => {
       const result = await api('/api/dialogs/directory', { environment: 'local', method: 'POST', body: '{}' });
       if (result.path && environment.value === 'local') {
         $('#projectPath').value = result.path;
@@ -184,10 +204,12 @@ $('#projectForm').addEventListener('submit', async event => {
   const onAdded = projectAddedCallback;
   const environment = $('#projectEnvironmentSelect').value;
   let added;
-  await mutation(uiText("正在登记并扫描仓库"), async () => {
-    added = await api('/api/projects', { environment, method: 'POST', body: JSON.stringify({ name: data.get('name'), path: data.get('path') }) });
-    $('#projectDialog').close(); toast(uiText("项目已登记，正在扫描 Worktree"));
-  }, $('#projectError'));
+  const clone = $('#projectSource').value === 'clone';
+  const payload = clone ? {name:data.get('name'), url:$('#projectCloneURL').value.trim(), parent:data.get('path'), directory:$('#projectCloneDirectory').value.trim()} : { name:data.get('name'), path:data.get('path') };
+  await mutation(clone ? uiText("正在克隆并登记仓库…") : uiText("正在登记并扫描仓库"), async () => {
+    added = await api(clone ? '/api/projects/clone' : '/api/projects', { environment, method: 'POST', body: JSON.stringify(payload) });
+    $('#projectDialog').close(); toast(clone ? uiText("仓库已克隆并登记，正在扫描 Worktree") : uiText("项目已登记，正在扫描 Worktree"));
+  }, $('#projectError'), {environment, isCurrent:() => $('#projectDialog').open && $('#projectEnvironmentSelect').value === environment});
   if (added && onAdded) await onAdded(added.id);
   else if (added) {
     await selectEnvironment(environment, '/projects');

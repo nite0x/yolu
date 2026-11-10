@@ -89,6 +89,16 @@
       <section id="sessionsPage" class="sessions-page" aria-label="对话" hidden data-i18n-aria-label="对话"><div id="sessionPageMount"></div></section>
     </main>
   </div>
+  <dialog id="removalDialog" aria-labelledby="removalTitle" aria-describedby="removalDescription">
+    <form id="removalForm">
+      <div class="dialog-header"><h2 id="removalTitle"></h2><button type="button" class="icon-button close-dialog" aria-label="关闭" data-i18n-aria-label="关闭">×</button></div>
+      <p id="removalDescription"></p>
+      <p id="removalPreserved" data-i18n="目录、仓库、分支、Worktree 和原始对话均保留。磁盘清理需要单独操作。">目录、仓库、分支、Worktree 和原始对话均保留。磁盘清理需要单独操作。</p>
+      <div id="removalReferences"></div>
+      <div id="removalError" class="form-error" role="alert" hidden></div>
+      <div class="dialog-footer"><button type="button" class="button secondary close-dialog" data-i18n="取消">取消</button><button type="submit" id="removalConfirm" class="button danger" disabled></button></div>
+    </form>
+  </dialog>
   <dialog id="environmentDialog" class="shadcn-scope" aria-labelledby="environmentTitle"></dialog>
   <dialog id="projectDialog" class="shadcn-scope" aria-labelledby="projectDialogTitle"></dialog>
   <dialog id="requirementDialog" class="wide-dialog shadcn-scope" aria-labelledby="requirementDialogTitle"></dialog>

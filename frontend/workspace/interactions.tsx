@@ -6,6 +6,8 @@ import { Command } from "cmdk"
 import { DropdownMenu, Popover } from "radix-ui"
 import { Check, ChevronDown, ChevronsUpDown, Ellipsis, Search } from "lucide-react"
 import { Toaster, toast } from "sonner"
+// Load as a bundled stylesheet: the app CSP blocks Sonner's runtime style tag.
+import "sonner/dist/styles.css"
 import { Button } from "@/components/ui/button"
 
 type Choice = { value: string; label: string; group: string; disabled: boolean }
