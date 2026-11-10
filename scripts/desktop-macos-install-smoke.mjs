@@ -11,10 +11,12 @@ const mount = path.join(directory, 'Mounted');
 const installed = path.join(directory, 'Installed with spaces', 'Yolu.app');
 mkdirSync(mount);
 let mounted = false;
-const run = (command, args) => execFileSync(command, args, { encoding: 'utf8', timeout: 120000 });
+const run = (command, args, options = {}) => execFileSync(command, args, { encoding: 'utf8', timeout: 120000, ...options });
 try {
   run('/usr/bin/hdiutil', ['verify', installer]);
-  run('/usr/bin/hdiutil', ['attach', installer, '-readonly', '-nobrowse', '-mountpoint', mount]);
+  // The packaged DMG includes our license. hdiutil asks for acceptance on stdin;
+  // without an answer a non-interactive CI process cancels the mount.
+  run('/usr/bin/hdiutil', ['attach', installer, '-readonly', '-nobrowse', '-mountpoint', mount], { input: 'Y\n' });
   mounted = true;
   assert(existsSync(path.join(mount, 'Applications')));
   run('/usr/bin/ditto', [path.join(mount, 'Yolu.app'), installed]);
