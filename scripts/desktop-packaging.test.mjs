@@ -1,9 +1,44 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { desktopVersion, targets, packagePlan, bundleFiles, writeChecksums, validateReleaseSource } from './desktop-lib.mjs';
+import { desktopVersion, targets, packagePlan, bundleFiles, writeChecksums, validateReleaseSource, desktopBuildEnvironment } from './desktop-lib.mjs';
+import { splitLinuxArtifacts } from './split-linux-artifacts.mjs';
+
+test('empty macOS CI secrets use ad-hoc signing without requesting notarization', () => {
+  const env = { APPLE_SIGNING_IDENTITY: '', APPLE_ID: '', APPLE_PASSWORD: '', APPLE_TEAM_ID: '', PATH: '/bin' };
+  const plan = packagePlan([], 'aarch64-apple-darwin', env);
+  assert.deepEqual(desktopBuildEnvironment(plan, env), { APPLE_SIGNING_IDENTITY: '-', PATH: '/bin' });
+  assert.equal(env.APPLE_SIGNING_IDENTITY, '');
+  const signed = { APPLE_SIGNING_IDENTITY: 'Developer ID Application: Test', APPLE_ID: 'test@example.com', APPLE_PASSWORD: 'fixture', APPLE_TEAM_ID: 'fixture' };
+  assert.deepEqual(desktopBuildEnvironment(packagePlan(['--require-signing'], 'aarch64-apple-darwin', signed), signed), signed);
+  assert.throws(() => packagePlan(['--require-signing'], 'aarch64-apple-darwin', env), /SIGNING_IDENTITY/);
+  assert.deepEqual(desktopBuildEnvironment({ platform: 'win32' }, env), env);
+});
+
+test('Linux downloads each contain one installer with complete matching integrity metadata', () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'yolu-split-'));
+  try {
+    const source = path.join(directory, 'release');
+    const destination = path.join(directory, 'downloads');
+    mkdirSync(source);
+    for (const name of ['yolu.deb', 'yolu.AppImage', 'LICENSE', 'README.md']) writeFileSync(path.join(source, name), name);
+    const files = writeChecksums(source, ['yolu.deb', 'yolu.AppImage', 'LICENSE', 'README.md']);
+    writeFileSync(path.join(source, 'release.json'), JSON.stringify({ revision: 'fixture', files }));
+    splitLinuxArtifacts(source, destination);
+    for (const [format, installer] of [['deb', 'yolu.deb'], ['appimage', 'yolu.AppImage']]) {
+      const output = path.join(destination, format);
+      assert.deepEqual(readdirSync(output).sort(), ['LICENSE', 'README.md', 'SHA256SUMS', 'release.json', installer].sort());
+      const manifest = JSON.parse(readFileSync(path.join(output, 'release.json'), 'utf8'));
+      assert.equal(manifest.revision, 'fixture');
+      assert.deepEqual(manifest.files, files.filter(file => file.name === installer || !/\.(deb|AppImage)$/.test(file.name)));
+      const checksums = readFileSync(path.join(output, 'SHA256SUMS'), 'utf8');
+      const expected = writeChecksums(output, ['LICENSE', 'README.md', installer, 'release.json']);
+      assert.equal(checksums, expected.map(file => `${file.sha256}  ${file.name}\n`).join(''));
+    }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
 
 test('installer plans select native platform formats and reject accidental cross-OS builds', () => {
   for (const [triple, definition] of Object.entries(targets)) {

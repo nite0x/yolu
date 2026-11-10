@@ -163,6 +163,8 @@ The version in `package.json` is authoritative. Tauri reads it directly; `src-ta
 
 Output is collected under `dist/desktop/<version>/<target>/release/`, or `debug/` for debug packages. It includes installers, the English README, `GUIDE.md`, `DEVELOPMENT.md`, `MIGRATION.md`, `yolu.png`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, `release.json` and `SHA256SUMS`. Exported documentation links are rewritten to exported files or the source commit. The installer also carries project and third-party license texts.
 
+Actions uploads Linux DEB and AppImage as separate downloads, named `yolu-x86_64-unknown-linux-gnu-deb` and `yolu-x86_64-unknown-linux-gnu-appimage`. Each includes the shared documents and its own `release.json` and `SHA256SUMS`, covering only that download's files.
+
 Windows releases additionally include `Upgrade.cmd`, `Upgrade-Yolu.ps1` and `yolu-upgrade.exe`. The upgrade script verifies the complete release, safely stops the default backend, backs up application data and installed files, verifies database backup hashes, then installs. It does not relocate repositories, worktrees or Codex history.
 
 ### macOS preview isolation
@@ -177,7 +179,7 @@ Keep the preview separate from `/Applications/Yolu.app`. Preview `--stop` and `-
 
 ## Signing and publication
 
-Local packaging permits unsigned test artifacts by default. For a production macOS or Windows package:
+Local packaging permits test artifacts without publisher credentials by default. On macOS, `desktop:package` removes empty Apple credential variables and uses ad-hoc signing (`-`) when no signing identity is configured. These builds are not notarized and may require approval in macOS Privacy & Security settings. For a production macOS or Windows package:
 
 ```bash
 npm run desktop:package -- --require-signing

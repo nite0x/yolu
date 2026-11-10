@@ -1,6 +1,6 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { root, run, desktopVersion, packagePlan, bundleFiles, writeChecksums, validateReleaseSource } from './desktop-lib.mjs';
+import { root, run, desktopVersion, packagePlan, bundleFiles, writeChecksums, validateReleaseSource, desktopBuildEnvironment } from './desktop-lib.mjs';
 
 const plan = packagePlan(process.argv.slice(2), run('rustc', ['--print', 'host-tuple']));
 const version = desktopVersion();
@@ -20,7 +20,7 @@ if (plan.dryRun) {
   if (plan.debug) args.push('--debug');
   if (Object.keys(plan.config).length) args.push('--config', JSON.stringify(plan.config));
   args.push('--', '--locked');
-  run(process.execPath, args, { stdio: 'inherit' });
+  run(process.execPath, args, { stdio: 'inherit', env: desktopBuildEnvironment(plan) });
   if (plan.requireSigning) validateReleaseSource(plan, run('git', ['status', '--porcelain', '--untracked-files=normal']));
   const artifacts = bundleFiles(bundleDirectory, plan);
   mkdirSync(output, { recursive: true });

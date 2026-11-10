@@ -81,6 +81,18 @@ export function bundleFiles(bundleDirectory, plan) {
   return result;
 }
 
+export function desktopBuildEnvironment(plan, env = process.env) {
+  const result = { ...env };
+  if (plan.platform === 'darwin') {
+    // Unconfigured Actions secrets are empty strings, not absent variables.
+    for (const key of ['APPLE_SIGNING_IDENTITY', 'APPLE_ID', 'APPLE_PASSWORD', 'APPLE_TEAM_ID', 'APPLE_API_ISSUER', 'APPLE_API_KEY', 'APPLE_API_KEY_PATH']) {
+      if (!result[key]?.trim()) delete result[key];
+    }
+    if (!result.APPLE_SIGNING_IDENTITY && !plan.requireSigning) result.APPLE_SIGNING_IDENTITY = '-';
+  }
+  return result;
+}
+
 export function validateReleaseSource(plan, status) {
   if (!plan.requireSigning) return;
   if (plan.debug) throw new Error('Signed release packaging cannot use --debug');

@@ -145,7 +145,26 @@ jobs:
           staging=$(mktemp -d)
           (cd "$staging" && "$image" --appimage-extract >/dev/null)
           node scripts/desktop-smoke.mjs "$staging/squashfs-root/usr/bin/yolu-backend" "$image"
+      - name: Split Linux downloads by installer format
+        if: runner.os == 'Linux'
+        shell: bash
+        run: node scripts/split-linux-artifacts.mjs dist/desktop/*/${{ matrix.target }}/release "$RUNNER_TEMP/yolu-artifacts"
+      - name: Upload Linux DEB
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: yolu-${{ matrix.target }}-deb
+          path: ${{ runner.temp }}/yolu-artifacts/deb/
+          if-no-files-found: error
+      - name: Upload Linux AppImage
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: yolu-${{ matrix.target }}-appimage
+          path: ${{ runner.temp }}/yolu-artifacts/appimage/
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: runner.os != 'Linux'
         with:
           name: yolu-${{ matrix.target }}
           path: dist/desktop/*/${{ matrix.target }}/release/
