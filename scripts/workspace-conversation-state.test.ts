@@ -17,13 +17,15 @@ test("conversation state restores scope preferences in a fresh instance without 
   const {options, state} = fixture()
   const scope = {kind: "project" as const, id: "repo", environment: "local"}
   const view = state.viewFor("local", scope)
-  Object.assign(view, {directory: "/work/repo", selected: "thread", archived: true, loadedCount: 160, windowStart: 100, loading: true, requestID: 8})
+  Object.assign(view, {directory: "/work/repo", selected: "thread", archived: true, loadedCount: 160, windowStart: 100, loading: true, requestID: 8, groupLimits: {workspace: 23}, collapsedGroups: ["other"]})
   state.remember(view, 750, true, "local")
   const restored = createConversationState(options).viewFor("local", scope)
   assert.deepEqual([restored.directory, restored.selected, restored.archived, restored.loadedCount, restored.windowStart], ["/work/repo", "thread", true, 160, 100])
   assert.equal(restored.loading, false)
   assert.equal(restored.requestID, undefined)
   assert.equal(restored.sessions.length, 0)
+  assert.deepEqual(restored.groupLimits, {workspace: 23})
+  assert.deepEqual(restored.collapsedGroups, ["other"])
 })
 
 test("partial environment queries retain selection and failures, while invalidated replies cannot change the index", () => {

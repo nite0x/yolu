@@ -94,6 +94,20 @@
 .session-browser-group-heading { display: flex; align-items: center; gap: 5px; margin: 0; padding: 13px 10px 5px; color: var(--muted-foreground); font-size: 11px; line-height: 1.6; font-weight: 500; }
 .session-browser-group-heading svg { width: 11px; height: 11px; }
 .session-browser-group-heading > span { margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums; }
+.session-workspace-heading { margin: 0; }
+.session-workspace-heading > button { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: 100%; min-height: 38px; padding: 8px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--foreground); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.session-workspace-heading > button:hover { background: var(--accent); }
+.session-workspace-heading svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--muted-foreground); }
+.session-workspace-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.session-workspace-count, .session-workspace-heading small { color: var(--muted-foreground); font-size: 10px; font-weight: 400; }
+.session-workspace-heading small { max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-browser-workspaces .session-browser-items { padding-left: 18px; }
+.session-browser-workspaces .session-browser-item { padding-top: 7px; padding-bottom: 7px; }
+.session-browser-workspaces .session-browser-item-meta { margin-top: 2px; }
+.session-browser-workspaces .session-browser-environment { display: none; }
+.session-workspace-more { display: block; width: calc(100% - 18px); min-height: 36px; margin-left: 18px; padding: 7px 11px; border: 0; border-radius: 5px; color: var(--muted-foreground); background: transparent; font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.session-workspace-more:hover { color: var(--foreground); background: var(--accent); }
+.session-workspace-heading > button:focus-visible, .session-workspace-more:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .session-browser-item { cursor: pointer; display: block; width: 100%; padding: 10px; border: 0; border-radius: 7px; background: transparent; color: var(--foreground); text-align: left; font: inherit; }
 .session-browser-item:hover { background: var(--muted); }
 .session-browser-item[aria-pressed="true"] { background: var(--yolu-selected,#edf0ff); box-shadow: inset 3px 0 var(--primary); }

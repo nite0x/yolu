@@ -11,6 +11,7 @@ import { Action, Feedback, Field, ModalHeader, NativeSelect, StatusBadge } from 
 import type { Task } from "./types"
 
 export interface Session {
+  task_ids?: string[];
   terminal?: {taskID: string; projectID?: string; attached: boolean};
   browser_key?: string; environment_id?: string; environment_name?: string;
   context?: ReturnType<typeof import("./conversation-context").conversationContext>;

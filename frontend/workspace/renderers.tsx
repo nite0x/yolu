@@ -27,6 +27,7 @@ import { conversationDefaults } from "./conversation-defaults"
 import { createShortcutPins } from "./shortcut-pins"
 import { createConversationList, conversationStatusMatches, patchConversationList } from "./conversation-list"
 import { createConversationState } from "./conversation-state"
+import { conversationTree } from "./conversation-tree"
 import { renderCreationChoices } from "./creation-choices"
 import { CodexDiagnosticsResults } from "./settings"
 
@@ -34,6 +35,7 @@ import { CodexDiagnosticsResults } from "./settings"
 // separate React roots; their native fields bridge existing API/form logic.
 export const workspaceUI = {
   createConversationState,
+  conversationTree,
   createConversationList, conversationStatusMatches, patchConversationList,
   createShortcutPins,
   conversationDefaults,

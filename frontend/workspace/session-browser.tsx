@@ -1,12 +1,14 @@
 import { uiText, uiLocale } from "../i18n";
 import { ConversationKindSwitch } from "./conversation-surface"
 import { ShortcutBadge, ShortcutIconSettingsButton, defaultShortcutIcon, type ShortcutIcon } from "./shortcut-icons"
-import { Plus, Search, ArrowLeft, X, ChevronDown, Pin, PinOff, GitBranch, SlidersHorizontal, RotateCw, Check, Folder, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2 } from "lucide-react"
+import { Plus, Search, ArrowLeft, X, ChevronDown, ChevronRight, Pin, PinOff, GitBranch, SlidersHorizontal, RotateCw, Check, Folder, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NativeSelect } from "./shared"
 import { SessionHistoryPanel, type Session } from "./sessions"
+
+import type { ConversationTreeRow } from "./conversation-tree"
 
 export interface ConversationScope { kind: string; id?: string; name: string; cwd?: string; environment?: string }
 export function SessionBrowser() {
@@ -112,8 +114,8 @@ export function ConversationShortcuts({ tasks, directories, pinnedDirectories, s
     {kind === "directory" && pinnedDirectories.length === 0 && <p className="conversation-shortcuts-empty">{uiText("点击 + 固定项目目录")}</p>}
   </section>
 }
-export function ConversationList({ sessions, selected, showDirectory, showContext = true, loading, taskID, filtered, error, canCreate = true, parallel = false, parallelSessions = [], parallelFull = false, now = Date.now() }: { sessions: Session[]; selected?: string | null; showDirectory: boolean; showContext?: boolean; loading?: boolean; taskID?: string; filtered?: boolean; error?: boolean; canCreate?: boolean; parallel?: boolean; parallelSessions?: string[]; parallelFull?: boolean; now?: number }) {
-  if (!sessions.length) return <div className="session-browser-empty-list" role="status">
+export function ConversationList({ sessions, rows, selected, showDirectory, showContext = true, loading, taskID, filtered, error, canCreate = true, parallel = false, parallelSessions = [], parallelFull = false, now = Date.now() }: { sessions: Session[]; rows?: ConversationTreeRow[]; selected?: string | null; showDirectory: boolean; showContext?: boolean; loading?: boolean; taskID?: string; filtered?: boolean; error?: boolean; canCreate?: boolean; parallel?: boolean; parallelSessions?: string[]; parallelFull?: boolean; now?: number }) {
+  if (!sessions.length && !rows?.length) return <div className="session-browser-empty-list" role="status">
     {loading ? <RotateCw className="session-list-loading" aria-hidden="true" /> : error ? <CircleAlert aria-hidden="true" /> : filtered ? <Search aria-hidden="true" /> : <MessageSquare aria-hidden="true" />}
     <strong>{loading ? uiText("正在读取对话…") : error ? uiText("暂时无法读取对话") : filtered ? uiText("没有匹配的对话") : uiText("还没有对话")}</strong>
     <p>{loading ? uiText("正在同步各执行环境的记录") : error ? uiText("检查执行环境连接后重试。") : filtered ? uiText("试试其他关键词，或清除筛选条件。") : canCreate ? uiText("新建对话，从当前工作现场开始。") : uiText("当前范围暂无对话，可切换范围查看。")}</p>
@@ -127,24 +129,43 @@ export function ConversationList({ sessions, selected, showDirectory, showContex
   week.setDate(week.getDate() - 6)
   const group = (s: Session) => s.pinned ? uiText("已固定") : !s.updated_at ? uiText("更早") : s.updated_at * 1000 >= +today ? uiText("今天") : s.updated_at * 1000 >= +yesterday ? uiText("昨天") : s.updated_at * 1000 >= +week ? uiText("近 7 天") : uiText("更早")
   const groups = [uiText("已固定"), uiText("今天"), uiText("昨天"), uiText("近 7 天"), uiText("更早")].map(label => ({label, items: sessions.filter(s => group(s) === label)})).filter(g => g.items.length)
-  return <div className="session-browser-groups">{groups.map(g => <section className="session-browser-group" key={g.label} aria-label={g.label}>
-    <h3 className="session-browser-group-heading">{g.label === uiText("已固定") && <Pin aria-hidden="true" />}{g.label}<span>{g.items.length}</span></h3>
-    <ul className="session-browser-items">{g.items.map(s => {
+  const renderSession = (s: Session, row?: ConversationTreeRow) => {
+    const sessionTaskID = row?.group.taskID || taskID
+    const directoryContext = row?.group.showContext ?? showContext
     const status = ({starting: uiText("正在连接"), running: uiText("运行中"), waiting: uiText("待确认"), stopping: uiText("正在停止"), handoff: uiText("等待交接"), failed: uiText("本轮未完成"), interrupted: uiText("已停止"), unknown: uiText("状态待核实")} as Record<string, string>)[s.chat_status || ""] || ""
     const directory = s.cwd.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() || s.cwd
     const key = s.browser_key || s.id
     const date = s.updated_at ? new Date(s.updated_at * 1000) : null
     const dateLabel = date ? date >= today ? date.toLocaleTimeString(uiLocale(), {hour: "2-digit", minute: "2-digit", hour12: false}) : date >= yesterday ? uiText("昨天") : date.toLocaleDateString(uiLocale(), {year: date.getFullYear() !== today.getFullYear() ? "numeric" : undefined, month: "numeric", day: "numeric"}) : ""
-    return <li key={key} className={parallel ? "parallel-list-item" : taskID && !s.terminal ? "has-session-menu" : undefined}><button type="button" className="session-browser-item" data-conversation-session={key} data-conversation-terminal={s.terminal ? s.id : undefined} data-environment={s.environment_id} aria-pressed={selected === key} title={`${s.name || uiText("未命名对话")}\n${s.environment_name || ""}\n${s.cwd}${s.context?.branch ? `\n${s.context.branch}` : ""}`}>
+    return <li key={key} className={parallel ? "parallel-list-item" : sessionTaskID && !s.terminal ? "has-session-menu" : undefined}><button type="button" className="session-browser-item" data-conversation-list-row={row?.key} data-conversation-session={key} data-conversation-terminal={s.terminal ? s.id : undefined} data-environment={s.environment_id} aria-pressed={selected === key} title={`${s.name || uiText("未命名对话")}\n${s.environment_name || ""}\n${s.cwd}${s.context?.branch ? `\n${s.context.branch}` : ""}`}>
       <span className="session-browser-item-heading"><span className="session-browser-item-title">{s.name || uiText("未命名对话")}</span>{s.terminal && <span className="parallel-list-badge">{uiText("终端")}</span>}{parallel && parallelSessions.includes(key) && <span className="parallel-list-badge">{uiText("已并列")}</span>}{s.unread && <span className="session-browser-unread-dot" aria-label={uiText("有新消息")} />}</span>
-      {showContext && s.context?.project ? <span className="session-browser-item-context">
+      {directoryContext && s.context?.project ? <span className="session-browser-item-context">
         <span className="session-browser-item-project" title={`${s.cwd}${s.context.branch ? `\n${s.context.branch}` : ""}`}><span>{s.context.project}</span>{s.context.branch && <span className="session-browser-item-branch"><GitBranch aria-hidden="true" /><span>{s.context.branch}</span></span>}</span>
       </span> : null}
-      {showDirectory && !s.context?.project ? <span className="session-browser-item-directory" title={s.cwd}>{directory}</span> : null}
+      {showDirectory && directoryContext && !s.context?.project ? <span className="session-browser-item-directory" title={s.cwd}>{directory}</span> : null}
       <span className="session-browser-item-meta"><span className="session-browser-item-signals">{s.environment_name && <span className="session-browser-environment" title={s.environment_name}>{s.environment_name}</span>}<span data-session-indicators={s.terminal ? undefined : s.id} data-environment={s.environment_id} data-state={s.chat_status || (s.unread ? "unread" : "idle")} hidden={!status && !s.unread}>{s.terminal ? s.terminal.attached ? uiText("已打开") : uiText("运行中") : status || (s.unread ? uiText("有新消息") : "")}</span></span><time title={date?.toLocaleString(uiLocale(), {hour12: false})} dateTime={date?.toISOString()}>{dateLabel}</time></span>
       {s.error ? <span className="table-message">{s.error}</span> : null}
-    </button>{parallel ? <Button type="button" variant="ghost" size="icon-sm" className="parallel-list-add" data-conversation-parallel={key} data-conversation-terminal={s.terminal ? s.id : undefined} disabled={s.available === false || parallelFull && !parallelSessions.includes(key)} aria-label={parallelSessions.includes(key) ? uiText("定位对话：{0}", s.name) : uiText("将对话加入并列：{0}", s.name)} title={parallelSessions.includes(key) ? uiText("定位到对应栏") : parallelFull ? uiText("最多并列三个对话，可在栏标题中更换") : uiText("加入右侧并列")}><Plus aria-hidden="true" /></Button> : taskID && !s.terminal ? <details className="session-item-menu" data-session-menu={key}><summary aria-label={uiText("对话操作：{0}", s.name || uiText("未命名对话"))} title={uiText("对话操作")}><Ellipsis aria-hidden="true" /></summary><div><Button type="button" variant="ghost" size="sm" data-conversation-unlink={s.id} data-environment={s.environment_id} data-task={taskID} aria-label={uiText("取消关联 {0}", s.name || uiText("未命名对话"))}>{uiText("取消关联")}</Button></div></details> : null}</li>
-  })}</ul></section>)}</div>
+    </button>{parallel ? <Button type="button" variant="ghost" size="icon-sm" className="parallel-list-add" data-conversation-parallel={key} data-conversation-terminal={s.terminal ? s.id : undefined} disabled={s.available === false || parallelFull && !parallelSessions.includes(key)} aria-label={parallelSessions.includes(key) ? uiText("定位对话：{0}", s.name) : uiText("将对话加入并列：{0}", s.name)} title={parallelSessions.includes(key) ? uiText("定位到对应栏") : parallelFull ? uiText("最多并列三个对话，可在栏标题中更换") : uiText("加入右侧并列")}><Plus aria-hidden="true" /></Button> : sessionTaskID && !s.terminal ? <details className="session-item-menu" data-session-menu={row?.key || key}><summary aria-label={uiText("对话操作：{0}", s.name || uiText("未命名对话"))} title={uiText("对话操作")}><Ellipsis aria-hidden="true" /></summary><div><Button type="button" variant="ghost" size="sm" data-conversation-unlink={s.id} data-environment={s.environment_id} data-task={sessionTaskID} aria-label={uiText("取消关联 {0}", s.name || uiText("未命名对话"))}>{uiText("取消关联")}</Button></div></details> : null}</li>
+  }
+  if (rows) {
+    const sections = new Map<string, { group: ConversationTreeRow["group"]; rows: ConversationTreeRow[] }>()
+    for (const row of rows) {
+      let section = sections.get(row.group.key)
+      if (!section) { section = {group: row.group, rows: []}; sections.set(row.group.key, section) }
+      section.rows.push(row)
+    }
+    return <div className="session-browser-groups session-browser-workspaces">{[...sections.values()].map(({group, rows}) => <section className="session-browser-group" key={group.key} data-conversation-group={group.key} aria-label={`${group.name}${group.environmentName ? ` · ${group.environmentName}` : ""}`}>
+      {rows.filter(row => row.kind === "group").map(row => <h3 className="session-workspace-heading" key={row.key}><button type="button" data-conversation-group-toggle={group.key} data-conversation-list-row={row.key} aria-expanded={!group.collapsed}>
+        {group.collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}<span className="session-workspace-name">{group.name}</span><span className="session-workspace-count">{group.total}</span>
+        {group.environmentName && <small>{group.environmentName}</small>}
+      </button></h3>)}
+      <ul className="session-browser-items">{rows.filter(row => row.kind === "session").map(row => renderSession(row.session, row))}</ul>
+      {rows.filter(row => row.kind === "more").map(row => <button type="button" className="session-workspace-more" key={row.key} data-conversation-group-more={group.key} data-conversation-list-row={row.key}>{uiText("更多对话（{0}）", group.total - group.shown)}</button>)}
+    </section>)}</div>
+  }
+  return <div className="session-browser-groups">{groups.map(g => <section className="session-browser-group" key={g.label} aria-label={g.label}>
+    <h3 className="session-browser-group-heading">{g.label === uiText("已固定") && <Pin aria-hidden="true" />}{g.label}<span>{g.items.length}</span></h3>
+    <ul className="session-browser-items">{g.items.map(s => renderSession(s))}</ul></section>)}</div>
 }
 export function ConversationScopes({ scopes }: { scopes: ConversationScope[] }) {
   return <>{scopes.map(s => <Button key={JSON.stringify([s.environment, s.kind, s.id, s.cwd])} type="button" variant="ghost" className="session-scope-option h-auto w-full justify-between gap-4 whitespace-normal text-left font-normal" data-conversation-scope={JSON.stringify(s)}><span>{s.name}</span><small>{({ all: uiText("所有目录"), task: uiText("任务"), project: uiText("项目"), directory: uiText("工作目录") } as Record<string, string>)[s.kind]}</small></Button>)}</>

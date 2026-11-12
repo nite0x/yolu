@@ -81,7 +81,10 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
       const p = data.projects.find(p => p.id === query.get('project_id'));
       const paths = q ? [q.path, ...q.members.map(m => m.path)] : p ? p.worktrees.map(t => t.path) : null;
       if (options.method === 'POST') { const id = url.split('/')[3]; if (!links.has(id)) links.set(id,new Set()); links.get(id).add(body.session_id); result = {message:'会话已关联'}; }
-      else result = { sessions: sessions.filter(s => (q && query.get('linked') === 'true' ? links.get(q.id)?.has(s.id) : !paths || paths.includes(s.cwd)) && (!query.has('cwd') || query.get('cwd') === s.cwd)) };
+      else result = {
+        sessions: sessions.filter(s => (q && query.get('linked') === 'true' ? links.get(q.id)?.has(s.id) : !paths || paths.includes(s.cwd)) && (!query.has('cwd') || query.get('cwd') === s.cwd)),
+        task_sessions: Object.fromEntries(sessions.map(s => [s.id, [...links].filter(([, ids]) => ids.has(s.id)).map(([task]) => task)])),
+      };
     }
     else if (url.endsWith('/git')) result = options.method === 'POST' ? { message: '已完成', output: 'fixture result' } : overview(data.projects.find(p => url.includes('/' + p.id + '/')));
     else if (url === '/api/projects' && options.method === 'POST') { data.projects.push({ id: 'new-project', ...body, folder: 'new-project', worktrees: [tree(body.path, 'master')] }); result = { id: 'new-project' }; }
@@ -1298,7 +1301,7 @@ test('conversation list omits shared context and retains active counts and refre
   assert.equal(h.$('[data-conversation-session="session-1"] .session-browser-item-context'), null);
   assert.equal(h.$('.session-browser-item-task'), null);
   assert.equal(h.$('.session-browser-item-directory'), null);
-  assert(h.$('[data-session-menu="session-1"] [data-conversation-unlink]'));
+  assert(h.$('[data-session-menu] [data-conversation-unlink="session-1"]'));
   h.sessions[0].name = 'Codex generated title';
   h.click('[data-conversation-action="refresh"]'); await settle();
   assert.equal(updated.name, 'Codex generated title');
@@ -2376,6 +2379,81 @@ test('conversation keyboard browsing, search reset and filtering preserve the ex
   h.click('[data-conversation-session="older"]'); await settle();
   h.click('[data-conversation-action="back"]');
   assert.equal(h.document.activeElement.dataset.conversationSession, 'older');
+});
+
+test('workspace conversation previews switch directly between tasks and retain active older conversations', async t => {
+  const h = await harness(t, false);
+  const task = h.data.requirements[0];
+  h.data.requirements.push({...task,id:'payments',name:'Payments',path:'/workspace/payments'});
+  h.links.set('payments',new Set(['refund']));
+  h.sessions.push({id:'refund',name:'Refund API',cwd:'/repo/backend',updated_at:1,chat_status:'running'});
+  for(let index=1;index<8;index++) {
+    const id='login-' + index;
+    h.sessions.push({id,name:'Login ' + index,cwd:task.members[0].path,updated_at:100-index,chat_status:index===7?'waiting':''});
+    h.links.get('task').add(id);
+  }
+  await h.navigate('/sessions');await settle();
+  const groups=()=>[...h.document.querySelectorAll('[data-conversation-group]')];
+  assert.deepEqual(groups().map(group=>group.querySelector('.session-workspace-name').textContent),['Billing','Payments']);
+  assert.equal(groups()[0].querySelectorAll('[data-conversation-session]').length,4);
+  assert(h.$('[data-conversation-session="login-7"]'),'a waiting conversation remains visible beyond the preview');
+  assert.equal(h.$('[data-conversation-session="login-5"]'),null);
+  assert.match(h.$('[data-conversation-session="refund"]').textContent,/运行中/);
+  h.input('#sessionChatInput','Keep the login draft');
+  h.click('[data-conversation-session="refund"]');await settle();
+  assert.equal(h.currentSession().session,'refund');
+  assert.equal(h.window.WorkHubConversations.current.scope.kind,'all');
+  assert.equal(groups().length,2);
+  h.click('[data-conversation-session="session-1"]');await settle();
+  assert.equal(h.$('#sessionChatInput').value,'Keep the login draft');
+  assert(!h.requests.some(request=>request.url.endsWith('/chat/stop')));
+});
+
+test('workspace history expands in place and collapse preferences survive leaving the conversation page', async t => {
+  const h = await harness(t);
+  for(let index=1;index<9;index++) {
+    const id='older-' + index;
+    h.sessions.push({id,name:'Older ' + index,cwd:'/external',updated_at:100-index});
+    h.links.get('task').add(id);
+  }
+  await h.navigate('/sessions');await settle();
+  const key=JSON.stringify(['local','task']);
+  const group=()=>[...h.document.querySelectorAll('[data-conversation-group]')].find(group=>group.dataset.conversationGroup===key);
+  assert.equal(group().querySelectorAll('[data-conversation-session]').length,3);
+  const controller=h.currentSession(),requests=h.requests.length;
+  group().querySelector('[data-conversation-group-more]').click();
+  assert.equal(group().querySelectorAll('[data-conversation-session]').length,9);
+  assert.equal(h.currentSession(),controller);
+  assert.equal(h.requests.length,requests,'expansion uses the existing session inventory');
+  group().querySelector('[data-conversation-group-toggle]').click();
+  assert.equal(group().querySelectorAll('[data-conversation-session]').length,0);
+  assert.equal(group().querySelector('[data-conversation-group-toggle]').getAttribute('aria-expanded'),'false');
+  const stored=JSON.parse(h.window.localStorage.getItem('workhub:conversation-view:v1:' + h.window.WorkHubConversations.current.key));
+  assert.deepEqual(stored.collapsedGroups,[key]);
+  await h.navigate('/projects');await h.navigate('/sessions');await settle();
+  assert.equal(group().querySelectorAll('[data-conversation-session]').length,0);
+  h.input('#sessionBrowserSearch','Older 8');
+  assert(h.$('[data-conversation-session="older-8"]'),'search reveals matches inside collapsed workspaces');
+  assert.equal(h.currentSession().session,controller.session);
+});
+
+test('global workspace membership refreshes after unlinking and shared-session menus stay scoped to their workspace', async t => {
+  const h = await harness(t);
+  const task=h.data.requirements[0];
+  h.data.requirements.push({...task,id:'shared',name:'Shared'});
+  h.links.set('shared',new Set(['session-1']));
+  await h.navigate('/sessions');await settle();
+  const shared=()=>[...h.document.querySelectorAll('[data-conversation-group]')].find(group=>group.dataset.conversationGroup===JSON.stringify(['local','shared']));
+  assert.equal(h.document.querySelectorAll('[data-conversation-session="session-1"]').length,2);
+  const menu=shared().querySelector('[data-session-menu]');
+  menu.open=true;menu.querySelector('summary').focus();
+  h.window.browserSessionActivity('session-1',{id:'run',status:'waiting',busy:true});
+  assert.equal(h.document.activeElement.closest('[data-conversation-group]').dataset.conversationGroup,JSON.stringify(['local','shared']));
+  shared().querySelector('[data-conversation-unlink]').click();await settle();await settle();
+  assert.equal(shared(),undefined);
+  assert.equal(h.document.querySelectorAll('[data-conversation-session="session-1"]').length,1);
+  const unlink=h.requests.find(request=>request.options.method==='DELETE'&&request.url.endsWith('/sessions/session-1'));
+  assert.equal(unlink.url,'/api/requirements/shared/sessions/session-1');
 });
 
 test('conversation date groups keep pinned records unique, handle year boundaries and expose exact timestamps', async t => {
@@ -3493,7 +3571,7 @@ test('resizing a shared list with 738 conversations does not regenerate its rows
  await settle(); await settle();
  const group = {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:false,full:false,listWidth:280,targetTitle:'当前对话'};
  post(group);
- assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,20);
+ assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,4);
  const row = h.$('[data-conversation-session="session-1"]'), ui = h.window.WorkHubUI;
  let renders = 0;
  h.window.WorkHubUI = {...ui,conversationList:props=>{renders++; return ui.conversationList(props);}};
@@ -3524,7 +3602,7 @@ test('dedicated conversation panes do not generate hidden lists and ordinary bro
  assert.equal(h.$('#sessionChatInput').value,'保留对话草稿');
  post({type:'workhub:tab-pane',split:false,shared:false});
  h.click('[data-conversation-action="back"]'); await settle();
- assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,20,'leaving host-managed conversation mode restores ordinary list browsing');
+ assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,4,'leaving host-managed conversation mode restores workspace previews');
  assert(renders>0);
  assert(!h.requests.some(request=>request.url.endsWith('/chat/stop')));
 });
@@ -3548,6 +3626,12 @@ test('background list refresh updates its own status without regenerating unchan
  assert(h.$('[data-conversation-session="large-1"]').textContent.includes('更新后的标题'));
 });
 
+function expandedConversationStorage() {
+ const scopeKey = JSON.stringify(['local','all','','','']);
+ const groupLimits = Object.fromEntries([['local','task'],['local',''],['remote','']].map(group => [JSON.stringify(group),1000]));
+ return {['workhub:conversation-view:v1:' + scopeKey]:JSON.stringify({groupLimits})};
+}
+
 // jsdom has no layout. Model a scrollable list with 88px rows to exercise
 // the actual scroll listener, batching and bounded DOM window.
 function scrollableConversations(h) {
@@ -3562,16 +3646,16 @@ function scrollableConversations(h) {
 }
 
 test('conversation lists automatically append twenty rows at the bottom and keep a bounded window', async t => {
- const h=await harness(t,false);
+ const h=await harness(t,false,{storage:expandedConversationStorage()});
  for(let i=1;i<738;i++) h.sessions.push({...h.sessions[0],id:`batch-${i}`,name:`对话 ${i}`,chat_status:i===737?'waiting':''});
  await h.navigate('/sessions');await settle();
  const list=h.$('#sessionBrowserList'),rows=()=>[...list.querySelectorAll('[data-conversation-session]')];
- assert.equal(rows().length,20);
+ assert.equal(rows().length,18);
  assert.equal(h.$('#sessionBrowserPagination'),null);
  assert.match(h.$('#sessionBrowserCount').textContent,/738 个对话/);
  const scroll=scrollableConversations(h),session=h.currentSession().session,readingState=h.currentSession();
  h.input('#sessionChatInput','自动加载保留草稿');
- await scroll('bottom');assert.equal(list.dataset.loadedCount,'40');assert.equal(rows().length,40);
+ await scroll('bottom');assert.equal(list.dataset.loadedCount,'40');assert.equal(rows().length,38);
  assert.equal(rows()[0].dataset.conversationSession,'session-1','appending does not replace the first batch');
  await scroll('bottom');assert.equal(list.dataset.loadedCount,'60');
  await scroll('bottom');assert.equal(list.dataset.loadedCount,'80');assert.equal(rows().length,60);
@@ -3579,22 +3663,22 @@ test('conversation lists automatically append twenty rows at the bottom and keep
  assert(spacer);
  assert(parseFloat(spacer.style.height)>0,'virtual rows retain their measured space');
  for(let i=0;i<33;i++) {await scroll('bottom');assert(rows().length<=60);}
- assert.equal(list.dataset.loadedCount,'738');
- assert.match(list.textContent,/已显示全部对话/);
+ assert.equal(list.dataset.loadedCount,'740');
+ assert.equal(list.querySelector('[data-list-spacer="after"]'),null);
  await scroll(0);assert.equal(rows()[0].dataset.conversationSession,'session-1','scrolling up restores previous rows');
  assert.equal(h.currentSession().session,session);
  assert.equal(h.$('#sessionChatInput').value,'自动加载保留草稿');
  assert.equal(h.currentSession(),readingState,'scrolling reuses the existing conversation controller');
  h.input('#sessionBrowserSearch','对话 737');
  assert.equal(rows().length,1);assert.equal(rows()[0].dataset.conversationSession,'batch-737');
- h.input('#sessionBrowserSearch','');assert.equal(rows().length,20);
+ h.input('#sessionBrowserSearch','');assert.equal(rows().length,18);
  h.click('[data-conversation-status="waiting"]');
  assert.equal(rows().length,1);assert.equal(rows()[0].dataset.conversationSession,'batch-737');
  assert(!h.requests.some(r=>r.url.endsWith('/chat/stop')));
 });
 
 test('automatic list windows survive refresh and restoration, support keyboard navigation and clamp on removal', async t => {
- const host=tabHost(t),h=await harness(t,false,{tabHost:host.window});
+ const host=tabHost(t),h=await harness(t,false,{tabHost:host.window,storage:expandedConversationStorage()});
  for(let i=1;i<125;i++)h.sessions.push({...h.sessions[0],id:`batch-${i}`,name:`对话 ${i}`});
  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'list',loadedCount:120,windowStart:80}}});await settle();await settle();
@@ -3609,7 +3693,7 @@ test('automatic list windows survive refresh and restoration, support keyboard n
  assert.equal(h.document.activeElement.dataset.conversationSession,'session-1');
  assert.equal(h.window.WorkHubTab.snapshot().conversation.loadedCount,120);
  h.sessions.splice(30);h.click('[data-conversation-action="refresh"]');await settle();await settle();
- assert.equal(list.dataset.loadedCount,'30');assert(Number(list.dataset.windowEnd)<=30);
+ assert.equal(list.dataset.loadedCount,'32');assert(Number(list.dataset.windowEnd)<=32);
  assert(h.document.querySelectorAll('[data-conversation-session]').length<=30);
 });
 
@@ -3633,7 +3717,7 @@ test('focusing a distant split conversation restores its window without width up
 });
 
 test('a restored automatic list window waits for every environment before clamping', async t => {
- const host=tabHost(t),h=await harness(t,false,{tabHost:host.window});
+ const host=tabHost(t),h=await harness(t,false,{tabHost:host.window,storage:expandedConversationStorage()});
  h.environments.environments.push({id:'remote',name:'WSL'});await h.window.loadEnvironments();
  const remote=Array.from({length:124},(_,i)=>({...h.sessions[0],id:`remote-${i}`,name:`远程 ${i}`}));
  let resolveRemote;
@@ -3647,7 +3731,7 @@ test('a restored automatic list window waits for every environment before clampi
 });
 
 test('appending scroll batches and evicting old rows preserve the surviving DOM nodes', async t => {
- const h=await harness(t,false);
+ const h=await harness(t,false,{storage:expandedConversationStorage()});
  for(let i=1;i<140;i++)h.sessions.push({...h.sessions[0],id:`stable-${i}`,name:`对话 ${i}`});
  await h.navigate('/sessions');await settle();
  const scroll=scrollableConversations(h),list=h.$('#sessionBrowserList');
@@ -3666,13 +3750,13 @@ test('appending scroll batches and evicting old rows preserve the surviving DOM 
 });
 
 test('a one pixel scroll around an estimated batch boundary does not bounce the mounted window', async t => {
- const host=tabHost(t),h=await harness(t,false,{tabHost:host.window});
+ const host=tabHost(t),h=await harness(t,false,{tabHost:host.window,storage:expandedConversationStorage()});
  for(let i=1;i<100;i++)h.sessions.push({...h.sessions[0],id:`stable-${i}`,name:`对话 ${i}`});
  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',loadedCount:100,windowStart:20,pane:'list'}}}}));await settle();await settle();
  const list=h.$('#sessionBrowserList'),scroll=scrollableConversations(h);
  list.getBoundingClientRect=()=>({top:0,bottom:300,height:300});
  for(const row of list.querySelectorAll('[data-conversation-session]')) {
-  const index=Number(row.dataset.conversationSession.split('-').at(-1));
+  const index=Number(row.dataset.conversationSession.split('-').at(-1)) + 2;
   row.getBoundingClientRect=()=>({top:index*88-list.scrollTop,bottom:(index+1)*88-list.scrollTop,height:88});
  }
  const anchor=h.$('[data-conversation-session="stable-40"]'),ui=h.window.WorkHubUI;let renders=0;

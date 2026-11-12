@@ -1,6 +1,7 @@
 import type {Session} from "./sessions"
 import type {Project, Task} from "./types"
 import type {SessionTarget} from "../chat/controller-types"
+import type {ConversationTreeRow} from "./conversation-tree"
 
 export interface ConversationScope {
   kind: "all" | "task" | "project" | "directory"
@@ -31,6 +32,9 @@ export interface ConversationView {
   loadedCount: number
   windowStart: number
   listItems?: Session[]
+  listRows?: ConversationTreeRow[]
+  groupLimits: Record<string, number>
+  collapsedGroups: string[]
   listHeights?: Map<string, number>
   requestID?: number
   requestKey?: string | null
@@ -85,14 +89,16 @@ export function createConversationState({storage, scopeKey, sessionKey}: {
       if (!view) {
         let saved: Partial<ConversationView> | null = null
         try { saved = JSON.parse(storage().getItem("workhub:conversation-view:v1:" + key) || "null") } catch { /* Optional cache. */ }
-        view = {key, environment, environmentFilter: "", scope, directory: typeof saved?.directory === "string" ? saved.directory : "", selected: typeof saved?.selected === "string" ? saved.selected : undefined, archived: !!saved?.archived, search: "", statusFilter: "all", pane: "list", sessions: [], loading: false, error: "", checkedAt: 0, scrollTop: 0, creating: false, loadedCount: Number.isSafeInteger(saved?.loadedCount) && saved!.loadedCount! >= 20 ? saved!.loadedCount! : 20, windowStart: Number.isSafeInteger(saved?.windowStart) && saved!.windowStart! >= 0 ? saved!.windowStart! : 0}
+        view = {key, environment, environmentFilter: "", scope, directory: typeof saved?.directory === "string" ? saved.directory : "", selected: typeof saved?.selected === "string" ? saved.selected : undefined, archived: !!saved?.archived, search: "", statusFilter: "all", pane: "list", sessions: [], loading: false, error: "", checkedAt: 0, scrollTop: 0, creating: false, groupLimits: {}, collapsedGroups: [], loadedCount: Number.isSafeInteger(saved?.loadedCount) && saved!.loadedCount! >= 20 ? saved!.loadedCount! : 20, windowStart: Number.isSafeInteger(saved?.windowStart) && saved!.windowStart! >= 0 ? saved!.windowStart! : 0}
+        view.groupLimits = Object.fromEntries(Object.entries(saved?.groupLimits || {}).filter(([, count]) => Number.isSafeInteger(count) && count >= 3))
+        view.collapsedGroups = Array.isArray(saved?.collapsedGroups) ? saved.collapsedGroups.filter(key => typeof key === "string") : []
         views.set(key, view)
       }
       return view
     },
     remember(view: ConversationView, scrollTop: number, page: boolean, environment: string) {
       view.scrollTop = scrollTop
-      try { storage().setItem("workhub:conversation-view:v1:" + view.key, JSON.stringify({directory: view.directory, selected: view.selected || null, archived: view.archived, loadedCount: view.loadedCount, windowStart: view.windowStart})) } catch { /* Keep memory fallback. */ }
+      try { storage().setItem("workhub:conversation-view:v1:" + view.key, JSON.stringify({directory: view.directory, selected: view.selected || null, archived: view.archived, loadedCount: view.loadedCount, windowStart: view.windowStart, groupLimits: view.groupLimits, collapsedGroups: view.collapsedGroups})) } catch { /* Keep memory fallback. */ }
       if (page) pageScopes.set(environment, view.scope)
     },
     catalog(environment: string) {

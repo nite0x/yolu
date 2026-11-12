@@ -174,6 +174,24 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
+	respond := func(sessions []RequirementSession, cause error) {
+		links, err := a.Workspace.Store.SessionTaskLinks()
+		if err != nil {
+			httpx.DbError(w, err)
+			return
+		}
+		memberships := map[string][]string{}
+		for _, session := range sessions {
+			if tasks := links[session.ID]; len(tasks) > 0 {
+				memberships[session.ID] = tasks
+			}
+		}
+		result := map[string]any{"sessions": sessions, "task_sessions": memberships}
+		if cause != nil {
+			result["error"] = cause.Error()
+		}
+		httpx.WriteJSON(w, 200, result)
+	}
 	failure := func(cause error) {
 		filtered := cached[:0]
 		for _, s := range cached {
@@ -183,7 +201,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		cached = filtered
-		httpx.WriteJSON(w, 200, map[string]any{"sessions": cached, "error": cause.Error()})
+		respond(cached, cause)
 	}
 	found := map[string]codex.Session{}
 	if !scope.linkedOnly {
@@ -248,7 +266,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		a.decorateSessionActivity(&sessions[i])
 	}
-	httpx.WriteJSON(w, 200, map[string]any{"sessions": sessions})
+	respond(sessions, nil)
 }
 
 func (a *Service) UnlinkSessionHandler(w http.ResponseWriter, r *http.Request) {

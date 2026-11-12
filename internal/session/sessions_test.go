@@ -84,6 +84,46 @@ func getRequirementSessions(t *testing.T, a *App, id string) []RequirementSessio
 	return result.Sessions
 }
 
+func TestSessionListsIncludeExplicitWorkspaceMembershipOnSuccessAndFailure(t *testing.T) {
+	a, q, _, _ := chatFixture(t)
+	_, other, _ := create(t, a, q.PrimaryProjectID, nil, "other")
+	if _, err := a.Workspace.Store.DB.Exec(`INSERT OR IGNORE INTO task_session_pins(requirement_id,session_id) VALUES(?,?),(?,?)`, q.ID, "session", other.ID, "session"); err != nil {
+		t.Fatal(err)
+	}
+	fakeSessions(a, map[string]codex.Session{
+		"session":  {ID: "session", Cwd: "/external"},
+		"unlinked": {ID: "unlinked", Cwd: q.Members[0].Path},
+	})
+	read := func(path string) map[string][]string {
+		t.Helper()
+		code, raw := call(t, a, "GET", path, nil)
+		var response struct {
+			Links map[string][]string `json:"task_sessions"`
+		}
+		if code != 200 || json.Unmarshal(raw, &response) != nil || response.Links == nil {
+			t.Fatalf("membership response: %d %s", code, raw)
+		}
+		return response.Links
+	}
+	links := read("/api/sessions")
+	if len(links["session"]) != 2 || len(links["unlinked"]) != 0 {
+		t.Fatalf("explicit membership: %+v", links)
+	}
+	if scoped := read("/api/sessions?task_id=" + other.ID + "&linked=true"); !reflect.DeepEqual(scoped["session"], links["session"]) {
+		t.Fatalf("scoped membership: %+v", scoped)
+	}
+	a.openSessions = func(context.Context) (codex.SessionClient, error) { return nil, fmt.Errorf("offline") }
+	if got := read("/api/sessions?refresh=1"); !reflect.DeepEqual(got, links) {
+		t.Fatalf("cached membership: %+v", got)
+	}
+	if code, raw := call(t, a, "DELETE", "/api/requirements/"+other.ID+"/sessions/session", nil); code != 200 {
+		t.Fatalf("unlink: %d %s", code, raw)
+	}
+	if got := read("/api/sessions?refresh=1"); !reflect.DeepEqual(got["session"], []string{q.ID}) {
+		t.Fatalf("membership after unlink: %+v", got)
+	}
+}
+
 func TestSessionListIncludesCurrentChatActivityWithoutPersistingIt(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
 	fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Members[0].Path}})

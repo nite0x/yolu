@@ -175,6 +175,24 @@ func (s *Store) PinnedSessionIDs(task string) (map[string]bool, error) {
 	return out, rows.Err()
 }
 
+// SessionTaskLinks supplies explicit workspace membership for an aggregate list.
+func (s *Store) SessionTaskLinks() (map[string][]string, error) {
+	rows, err := s.DB.Query(`SELECT session_id,requirement_id FROM task_session_pins ORDER BY session_id,requirement_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	links := map[string][]string{}
+	for rows.Next() {
+		var session, task string
+		if err := rows.Scan(&session, &task); err != nil {
+			return nil, err
+		}
+		links[session] = append(links[session], task)
+	}
+	return links, rows.Err()
+}
+
 func (s *Store) OrganizeSession(id string, pinned, archived bool) error {
 	_, err := s.DB.Exec(`INSERT INTO session_organization(session_id,pinned,archived,updated_at) VALUES(?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET pinned=excluded.pinned,archived=excluded.archived,updated_at=excluded.updated_at`, id, pinned, archived, time.Now().UnixMilli())
 	return err

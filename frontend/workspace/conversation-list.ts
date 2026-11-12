@@ -1,7 +1,9 @@
 import type {Session} from "./sessions"
+import type {ConversationTreeRow} from "./conversation-tree"
 
 interface ListState {
   listItems?: Session[]
+  listRows?: ConversationTreeRow[]
   loadedCount: number
   windowStart: number
   listHeights?: Map<string, number>
@@ -26,17 +28,26 @@ export function createConversationList({list, sessionKey, render, remember}: {
   remember: () => void
 }) {
   const batchSize = 20, windowSize = 60
+  const rows = (view: ListState) => view.listRows || view.listItems || []
+  const rowKey = (row: ConversationTreeRow | Session) => "kind" in row ? row.key : sessionKey(row)
+  const elements = () => [...list.querySelectorAll<HTMLElement>("[data-conversation-list-row], [data-conversation-session]:not([data-conversation-list-row])")]
+  const elementKey = (element: HTMLElement) => element.dataset.conversationListRow || element.dataset.conversationSession
   function height(view: ListState, start: number, end: number) {
+    const items = rows(view)
     let height = 0
-    for (let i = start; i < end; i++) height += view.listHeights?.get(sessionKey(view.listItems![i])) || 88
+    for (let i = start; i < end; i++) {
+      const item = items[i]
+      const estimate = "kind" in item && item.kind !== "session" ? 38 : 88
+      height += view.listHeights?.get(rowKey(item)) || estimate
+    }
     return height
   }
   function range(view: ListState) {
-    const items = view.listItems || []
+    const items = rows(view)
     view.listHeights ||= new Map()
     let scrollTarget: string | undefined
     if (view.locateSelection) {
-      const index = items.findIndex(session => sessionKey(session) === view.locateSelection)
+      const index = items.findIndex(item => "kind" in item ? item.kind === "session" && sessionKey(item.session) === view.locateSelection : sessionKey(item) === view.locateSelection)
       if (index >= 0) {
         view.loadedCount = Math.max(view.loadedCount, Math.ceil((index + 1) / batchSize) * batchSize)
         view.windowStart = Math.max(0, Math.floor(index / batchSize) * batchSize - batchSize)
@@ -64,16 +75,17 @@ export function createConversationList({list, sessionKey, render, remember}: {
       list.scrollTop = 0
     },
     sync(view: ListState | null) {
-      if (!view?.listItems?.length || !list.clientHeight) return
+      if (!view || !rows(view).length || !list.clientHeight) return
       const previousLoadedCount = view.loadedCount
-      const loaded = Math.min(view.loadedCount, view.listItems.length)
-      const append = list.scrollTop + list.clientHeight >= list.scrollHeight - 100 && loaded < view.listItems.length
-      if (append) view.loadedCount = Math.min(loaded + batchSize, view.listItems.length)
+      const items = rows(view)
+      const loaded = Math.min(view.loadedCount, items.length)
+      const append = list.scrollTop + list.clientHeight >= list.scrollHeight - 100 && loaded < items.length
+      if (append) view.loadedCount = Math.min(loaded + batchSize, items.length)
       const bounds = list.getBoundingClientRect()
-      const rows = [...list.querySelectorAll<HTMLElement>("[data-conversation-session]")]
+      const mounted = elements()
       const mountedStart = Number(list.dataset.windowStart) || 0
       const mountedEnd = Number(list.dataset.windowEnd) || 0
-      const visible = rows.map((el, index) => ({index: mountedStart + index, rect: el.getBoundingClientRect()}))
+      const visible = mounted.map((el, index) => ({index: mountedStart + index, rect: el.getBoundingClientRect()}))
         .filter(item => item.rect.bottom > bounds.top && item.rect.top < bounds.top + list.clientHeight)
       let start = view.windowStart
       if (append) {
@@ -99,14 +111,14 @@ export function createConversationList({list, sessionKey, render, remember}: {
       }
     },
     focus(view: ListState | null, index: number) {
-      if (!view?.listItems?.length) return
-      index = Math.max(0, Math.min(index, view.listItems.length - 1))
+      if (!view || !rows(view).length) return
+      const items = rows(view)
+      index = Math.max(0, Math.min(index, items.length - 1))
       view.loadedCount = Math.max(view.loadedCount, Math.ceil((index + 1) / batchSize) * batchSize)
       view.windowStart = Math.max(0, Math.floor(index / batchSize) * batchSize - batchSize)
       view.locateSelection = null
       render()
-      const target = [...list.querySelectorAll<HTMLElement>("[data-conversation-session]")]
-        .find(el => el.dataset.conversationSession === sessionKey(view.listItems![index]))
+      const target = elements().find(el => elementKey(el) === rowKey(items[index]))
       target?.focus({preventScroll: true})
       target?.scrollIntoView({block: "nearest"})
     },
@@ -117,11 +129,13 @@ export function patchConversationList(list: HTMLElement, markup: string) {
   const template = list.ownerDocument.createElement("template")
   template.innerHTML = markup
   const key = (node: HTMLElement) => {
-    if (node.matches(".session-browser-group")) return "group:" + node.getAttribute("aria-label")
+    if (node.matches(".session-browser-group")) return "group:" + (node.dataset.conversationGroup || node.getAttribute("aria-label"))
     if (node.tagName === "LI") return "session:" + node.querySelector<HTMLElement>("[data-conversation-session]")?.dataset.conversationSession
     return node.dataset.listSpacer || node.className || node.tagName
   }
-  const children = (node: ParentNode) => [...node.children] as HTMLElement[]
+  // Action-menu islands are owned by interactions.tsx. Keep their hosts and
+  // native sources mounted when a surviving conversation row is unchanged.
+  const children = (node: ParentNode) => ([...node.children] as HTMLElement[]).filter(child => !child.classList.contains("ui-action-host"))
   function sync(parent: HTMLElement, desired: ParentNode) {
     const next = children(desired), existing = new Map(children(parent).map(node => [key(node), node]))
     const keys = new Set(next.map(key))
@@ -129,12 +143,20 @@ export function patchConversationList(list: HTMLElement, markup: string) {
     for (const node of children(parent)) if (!keys.has(key(node))) node.remove()
     next.forEach((incoming, index) => {
       let node = existing.get(key(incoming)) || incoming
+      if (node.matches("details.session-item-menu") && incoming.matches("details.session-item-menu")) {
+        const menu = incoming as HTMLDetailsElement
+        menu.classList.toggle("ui-native-menu", node.classList.contains("ui-native-menu"))
+        menu.open = (node as HTMLDetailsElement).open
+      }
       if (node !== incoming && !node.isEqualNode(incoming)) {
-        if (node.matches(".session-browser-groups,.session-browser-group,.session-browser-items")) sync(node, incoming)
+        if (node.matches(".session-browser-groups,.session-browser-group,.session-browser-items,li")) {
+          node.className = incoming.className
+          sync(node, incoming)
+        }
         else if (node.hasAttribute("data-list-spacer")) node.style.height = incoming.style.height
         else { node.replaceWith(incoming); node = incoming }
       }
-      const at = parent.children[index]
+      const at = children(parent)[index]
       if (at !== node) parent.insertBefore(node, at || null)
     })
   }
