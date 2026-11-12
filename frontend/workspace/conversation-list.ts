@@ -151,6 +151,7 @@ export function patchConversationList(list: HTMLElement, markup: string) {
       if (node !== incoming && !node.isEqualNode(incoming)) {
         if (node.matches(".session-browser-groups,.session-browser-group,.session-browser-items,li")) {
           node.className = incoming.className
+          if (node.matches(".session-browser-group")) node.setAttribute("aria-label", incoming.getAttribute("aria-label") || "")
           sync(node, incoming)
         }
         else if (node.hasAttribute("data-list-spacer")) node.style.height = incoming.style.height
