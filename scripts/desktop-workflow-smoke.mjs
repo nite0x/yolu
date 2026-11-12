@@ -39,9 +39,9 @@ try {
     assert((await icon.arrayBuffer()).byteLength > 100);
   }
   assert.match(page, /name="session-mode" content="interactive"/);
-  assert.match(page, /id="workspaceTabBar"/);
-  assert.match(page, /src="\/core\/workspace-tabs.js"/);
-  const workPage = await (await fetch(host.url + '/?workspace-tab=workflow-verification')).text();
+  assert.match(page, /id="workspacePages"/);
+  assert.match(page, /src="\/core\/page-host.js"/);
+  const workPage = await (await fetch(host.url + '/?workspace-page=workflow-verification')).text();
   assert.match(workPage, /name="session-mode" content="interactive"/);
   assert.match(workPage, /src="\/features\/sessions\/session-create.js"/);
   const headers = { 'X-CSRF-Token': descriptor.token, 'Content-Type': 'application/json' };

@@ -10,7 +10,15 @@ let gitMergeIntoPreviewData = null;
 let gitMergeIntoSelectionRevision = 0;
 const mergeAIRequests = new Map();
 let gitAILaunching = false;
-async function openGit(id, path = '', requirement = '') {
+function openGit(id, path = '', requirement = '') {
+  if (state.busy || gitAILaunching) return;
+  const query = new URLSearchParams();
+  if (path) query.set('path',path);
+  if (requirement) query.set('requirement',requirement);
+  navigate('/projects/' + id + '/git' + (query.size ? '?' + query : ''));
+  return syncProjectPage();
+}
+async function loadGit(id, path = '', requirement = '') {
   if (state.busy || gitAILaunching) return;
   const revision = ++gitViewRevision;
   const environment = activeEnvironment;
@@ -23,7 +31,7 @@ async function openGit(id, path = '', requirement = '') {
   $('#gitAuthHelp').hidden = true;
   $('#gitResult').hidden = true;
   window.WorkHubUI.resetGitView($('#gitContent'));
-  $('#gitDialog').showModal();
+  $('#gitDialog').show();
   try {
     const overview = await api(`/api/projects/${id}/git`, {environment});
     if (revision !== gitViewRevision || environment !== activeEnvironment || !$('#gitDialog').open) return;
@@ -98,7 +106,7 @@ function updateGitWorktree() {
   $('#gitMergeTarget').disabled = !targets.length;
   $('#gitMergeTarget').value = ['refs/heads/main', 'refs/heads/master'].find(ref => targets.some(b => b.ref === ref)) || targets[0]?.ref || '';
   updateGitMergeInto();
-  if (t?.operation === 'merge') window.WorkHubUI.selectGitTab($('#gitContent'), 'merge');
+  if (t?.operation === 'merge') window.WorkHubUI.scrollToGitSection($('#gitContent'), 'merge');
 }
 function updateGitMergeInto() {
   gitMergeIntoPreviewData = null;
@@ -304,7 +312,7 @@ document.addEventListener('click', async event => {
   if (action === 'git-reload') {
     try { gitState = await api(`/api/projects/${gitState.project.id}/git`); $('#gitError').hidden = true; $('#gitAuthHelp').hidden = true; renderGit(); } catch (e) { $('#gitError').textContent = e.message; $('#gitError').hidden = false; } return;
   }
-  if (action === 'git-use-source') { window.WorkHubUI.selectGitTab($('#gitContent'), 'branches'); $('#gitBranchSource').value = button.dataset.ref; updateGitSource(); $('#gitBranchName').focus(); return; }
+  if (action === 'git-use-source') { window.WorkHubUI.scrollToGitSection($('#gitContent'), 'branches'); $('#gitBranchSource').value = button.dataset.ref; updateGitSource(); $('#gitBranchName').focus(); return; }
   if (action === 'git-fetch') return gitOperation({ action: 'fetch', remote: $('#gitRemote').value }, uiText("正在获取远端全部分支"));
   if (action === 'git-fetch-terminal') return gitOperation({ action: 'fetch_terminal', remote: $('#gitRemote').value }, uiText("正在打开终端获取分支"));
   if (action === 'git-prepare-master') return gitOperation({ action: 'create_branch', name: 'master', source: gitState.master_source, track: true }, uiText("正在从远端创建本地 master"));
@@ -359,4 +367,11 @@ document.addEventListener('click', async event => {
     return;
   }
   if (action === 'git-fast-forward') return gitOperation({ action: 'fast_forward', name: $('#gitFFLocal').value, source: $('#gitFFSource').value }, uiText("正在快进更新本地分支"));
+});
+
+document.addEventListener('click',event => {
+  const link = event.target.closest('.git-section-navigation a');
+  if (!link) return;
+  event.preventDefault();
+  window.WorkHubUI.scrollToGitSection($('#gitContent'),link.getAttribute('href').slice(5));
 });

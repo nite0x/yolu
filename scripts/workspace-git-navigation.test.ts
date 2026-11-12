@@ -14,7 +14,7 @@ const bundle = buildSync({
 }).outputFiles[0].text
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setTimeout(resolve, 0)) }
 
-test("Git tabs keep controller-owned fields, context and draft values mounted across navigation and refresh", async t => {
+test("Git sections keep controller-owned fields, context and draft values mounted across navigation and refresh", async t => {
   const dom = new JSDOM('<dialog open><div id="mount"></div></dialog>', { url: "http://localhost", runScripts: "outside-only", pretendToBeVisual: true })
   const channels: MessageChannel[] = []
   const { window } = dom
@@ -36,35 +36,24 @@ test("Git tabs keep controller-owned fields, context and draft values mounted ac
   branch.value = "feature/draft"
   context.textContent = "当前分支 feature/task"
   worktree.value = "/work/task/app"
-  const tabs = () => [...mount.querySelectorAll('[role="tab"]')]
-  assert.equal(tabs().find(tab => tab.getAttribute("aria-selected") === "true")?.textContent, "同步")
-  assert.equal(mount.querySelectorAll('[role="tabpanel"]').length, 3)
-  api.selectGitTab(mount, "branches")
-  assert.equal(tabs().find(tab => tab.getAttribute("aria-selected") === "true")?.textContent, "分支")
+  assert.equal(mount.querySelectorAll('[role="tab"]').length, 0)
+  assert.equal(mount.querySelectorAll('.git-operation-section').length, 3)
+  assert.equal(mount.querySelectorAll('.git-section-navigation a').length, 3)
+  api.scrollToGitSection(mount, "branches")
   assert.equal(window.document.getElementById("gitBranchName"), branch)
   assert.equal(branch.value, "feature/draft")
   assert.equal(worktree.value, "/work/task/app")
-  assert.equal(context.textContent, "当前分支 feature/task")
-  api.selectGitTab(mount, "merge")
-  assert.equal(mount.querySelector('[data-state="active"][role="tabpanel"]')?.contains(window.document.getElementById("gitMergeSource")), true)
-  assert.equal(window.document.getElementById("gitBranchName"), branch)
+  api.scrollToGitSection(mount, "merge")
   api.mountGitView(mount, { ...overview, current: "feature/task" })
-  assert.equal(tabs().find(tab => tab.getAttribute("aria-selected") === "true")?.textContent, "合并")
+  assert.equal(window.document.getElementById("gitBranchName"), branch)
   assert.equal(branch.value, "feature/draft")
   assert.equal(context.textContent, "当前分支 feature/task")
-  api.selectGitTab(mount, "sync")
-  const firstTab = tabs()[0] as HTMLElement
-  firstTab.focus()
-  firstTab.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
-  await settle()
-  assert.equal(tabs().find(tab => tab.getAttribute("aria-selected") === "true")?.textContent, "分支")
   const ids = [...mount.querySelectorAll("[id]")].map(node => node.id)
   assert.equal(new Set(ids).size, ids.length)
   api.resetGitView(mount)
   assert.equal(window.document.getElementById("gitBranchName"), null)
   assert.match(mount.textContent || "", /正在读取/)
   api.mountGitView(mount, overview)
-  assert.equal(tabs().find(tab => tab.getAttribute("aria-selected") === "true")?.textContent, "同步")
   assert.equal((window.document.getElementById("gitBranchName") as HTMLInputElement).value, "")
   api.resetGitView(mount, "")
   assert.equal(mount.childElementCount, 0)

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { Card } from "@/components/ui/card"
 import { TaskActions, TaskDetail, TaskList } from "./tasks"
 import { ProjectPicker, projectChoiceReady, projectChoiceSummary } from "./project-picker"
-import { mountGitView, resetGitView, selectGitTab } from "./git-interactive"
+import { mountGitView, resetGitView, scrollToGitSection } from "./git-interactive"
 import { notifyWorkspace } from "./interactions"
 import { Projects, type DirectoryFilter, type ProjectFilter } from "./projects"
 import { GitView } from "./git"
@@ -40,7 +40,7 @@ export const workspaceUI = {
   createShortcutPins,
   conversationDefaults,
   renderCreationChoices,
-  mountGitView, resetGitView, selectGitTab, projectChoiceReady, projectChoiceSummary, notifyWorkspace,
+  mountGitView, resetGitView, scrollToGitSection, projectChoiceReady, projectChoiceSummary, notifyWorkspace,
   setupConversationResize, conversationPathKey, conversationEnvironmentKey, createSessionRequests,
   createOperations, createConversationFiles,
   createTaskReviewController,

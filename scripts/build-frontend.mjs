@@ -24,19 +24,19 @@ if (watch) {
   await buildModule(viewerOptions);
 }
 
-const tabbarOptions = {
+const layoutOptions = {
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
-  entryPoints: ['frontend/workspace/tabbar.tsx'],
-  outfile: 'web/ui/workspace-tabs.js', bundle: true, format: 'iife',
-  globalName: 'WorkHubTabbar', target: ['es2022'], jsx: 'automatic',
+  entryPoints: ['frontend/workspace/page-layout.tsx'],
+  outfile: 'web/ui/page-layout.js', bundle: true, format: 'iife',
+  globalName: 'WorkHubLayout', target: ['es2022'], jsx: 'automatic',
   minify: true, legalComments: 'linked',
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },
 };
 if (watch) {
-  const tabbar = await context(tabbarOptions);
-  await tabbar.watch();
+  const layout = await context(layoutOptions);
+  await layout.watch();
 } else {
-  await buildModule(tabbarOptions);
+  await buildModule(layoutOptions);
 }
 
 // Terminal pages are independently mounted workspace panes. Keep xterm out of

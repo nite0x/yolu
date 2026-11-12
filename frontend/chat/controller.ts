@@ -168,7 +168,7 @@ export class ChatController {
     };
     if (this.options.persistDraft && !this.options.readOnly && typeof window !== "undefined") window.addEventListener("pagehide", this.pageHide);
     if (typeof document !== 'undefined') document.addEventListener?.("visibilitychange", this.visibilityChanged);
-    if (typeof window !== 'undefined') window.addEventListener('workhub:tab-visibility', this.visibilityChanged);
+    if (typeof window !== 'undefined') window.addEventListener('workhub:page-visibility', this.visibilityChanged);
     if (typeof window !== 'undefined') window.addEventListener('workhub:conversation-defaults', this.defaultsChanged);
     if (this.options.readOnly) {
       void this.history().then(() => {opened(); return this.watchHistory();});
@@ -188,7 +188,7 @@ export class ChatController {
   disconnect() {
     if (this.connected) this.persist();
     if (typeof window !== "undefined") window.removeEventListener("pagehide",this.pageHide);
-    if (typeof window !== 'undefined') window.removeEventListener('workhub:tab-visibility', this.visibilityChanged);
+    if (typeof window !== 'undefined') window.removeEventListener('workhub:page-visibility', this.visibilityChanged);
     if (typeof window !== 'undefined') window.removeEventListener('workhub:conversation-defaults', this.defaultsChanged);
     if (typeof document !== "undefined") document.removeEventListener?.("visibilitychange", this.visibilityChanged);
     this.connected = false; this.generation++; clearInterval(this.timer);

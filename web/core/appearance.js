@@ -27,7 +27,7 @@
   function apply(choice) {
     if (!valid(choice)) return;
     // Apply directly even when browser storage is unavailable. This includes
-    // the outer tab bar, the shared sidebar, and each open workspace pane.
+    // the page host, the shared sidebar, and each open conversation pane.
     const visit = page => {
       try {
         page.YoluTheme?.update(choice);

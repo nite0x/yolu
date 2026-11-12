@@ -1,7 +1,7 @@
 import { uiText } from "../i18n";
 import { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { PanelLeftClose, PanelLeftOpen, ListTodo, FolderGit2, MessagesSquare, SquarePlus } from "lucide-react"
+import { PanelLeftClose, PanelLeftOpen, ListTodo, FolderGit2, MessagesSquare } from "lucide-react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { setupSplitResize } from "./split-resize"
 import { setupShortcutIcons } from "./shortcut-icons"
@@ -67,7 +67,7 @@ function SidebarToggle() {
   useEffect(() => {
     const sync = () => {
       const next = preferredCollapse()
-      // Apply geometry synchronously before the tab host reveals this page.
+      // Apply geometry synchronously before the page host reveals this page.
       document.body.classList.toggle("sidebar-collapsed", next)
       setCollapsed(next)
     }
@@ -83,10 +83,6 @@ function SidebarToggle() {
   }, [])
   const label = collapsed ? uiText("展开侧栏") : uiText("收起侧栏")
   return <>
-    {window.parent !== window && <button type="button" className="sidebar-control sidebar-new-tab" aria-label={uiText("新建标签页")} title={uiText("新建标签页（⌘/Ctrl+T）")} aria-keyshortcuts="Meta+T Control+T"
-      onClick={() => window.dispatchEvent(new CustomEvent("workhub:tab-command", {detail:"new"}))}>
-      <SquarePlus aria-hidden="true" />
-    </button>}
     <button type="button" className="sidebar-control sidebar-toggle" aria-label={label} title={label} aria-expanded={!collapsed} aria-controls="workspaceSidebar"
     onClick={() => setCollapsed(current => { const next = !current; try { localStorage.setItem(storageKey, String(next)) } catch { /* Keep the current window preference. */ } return next })}>
     {collapsed ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}

@@ -9,7 +9,7 @@ const { JSDOM } = require('jsdom');
 const web = path.join(__dirname, '../web');
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
 
-async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pins = {}, storage = {}, storageUnavailable = false, width = 1024, route = '/requirements/task', intercept: initialIntercept, tabHost} = {}) {
+async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pins = {}, storage = {}, storageUnavailable = false, width = 1024, route = '/requirements/task', intercept: initialIntercept, pageHost} = {}) {
   const tree = (path, branch) => ({ path, branch, dirty: 0, status_updated_at: '2026-10-23T06:00:00Z' });
   const app = { id: 'app', name: 'App', folder: 'app', path: '/repo/app', worktrees: [tree('/repo/app', 'master'), tree('/workspace/task/app', 'feature/task')] };
   const backend = { id: 'backend', name: 'Backend', folder: 'backend', path: '/repo/backend', worktrees: [tree('/repo/backend', 'master')] };
@@ -31,15 +31,16 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
   ] });
   const dom = new JSDOM(fs.readFileSync(path.join(web, 'index.html'), 'utf8').replaceAll('__UI_LANGUAGE__', 'zh-CN').replace('__SESSION_MODE__', readOnly ? 'read-only' : 'interactive'), { url: origin + '/#' + route, runScripts: 'outside-only', pretendToBeVisual: true });
   const channels = [];
-  t.after(() => { if (dom.window.WorkHubTab) dom.window.WorkHubTab.dispose(); else dom.window.dispatchEvent(new dom.window.Event('pagehide')); dom.window.close(); for (const channel of channels) { channel.port1.close(); channel.port2.close(); } });
+  t.after(() => { if (dom.window.WorkHubPage) dom.window.WorkHubPage.dispose(); else dom.window.dispatchEvent(new dom.window.Event('pagehide')); dom.window.close(); for (const channel of channels) { channel.port1.close(); channel.port2.close(); } });
   const { window } = dom;
-  if (tabHost) Object.defineProperty(window, 'parent', {value:tabHost});
+  if (pageHost) Object.defineProperty(window, 'parent', {value:pageHost});
   Object.defineProperty(window, 'innerWidth', {value:width, configurable:true, writable:true});
   for (const [key, value] of Object.entries(storage)) window.localStorage.setItem(key, value);
   if (storageUnavailable) Object.defineProperty(window, 'localStorage', {get() {throw new Error('Storage unavailable');}});
   const document = window.document;
   Object.assign(window, { TextEncoder, TextDecoder, ReadableStream, WritableStream, TransformStream, CSS: { escape: value => value }, MessageChannel: class extends MessageChannel { constructor() { super(); channels.push(this); } }, scrollTo() {}, confirm: () => true });
   window.HTMLElement.prototype.scrollIntoView = function () {};
+  window.HTMLDialogElement.prototype.show = function () { this.open = true; };
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   window.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new window.Event('close')); };
   let conversationReturnRoute = '/requirements/task';
@@ -1308,7 +1309,7 @@ test('conversation list omits shared context and retains active counts and refre
   assert.match(h.$('[data-conversation-session="session-1"]').textContent, /Codex generated title/);
 });
 
-test('sidebar preferences follow shared storage and synchronize before a retained tab is shown', async t => {
+test('sidebar preferences follow shared storage and synchronize before a retained page is shown', async t => {
   const h = await harness(t, true, {width:1440});
   const collapsedKey = 'workhub:sidebar-collapsed:v1', widthKey = 'workhub:sidebar-width:v1';
   const body = h.document.body;
@@ -1327,7 +1328,7 @@ test('sidebar preferences follow shared storage and synchronize before a retaine
   assert(body.classList.contains('sidebar-collapsed'));
   h.window.localStorage.setItem(widthKey, '360');
   h.window.dispatchEvent(new h.window.Event('workhub:sidebar-sync'));
-  assert(!body.classList.contains('sidebar-collapsed'), 'layout updates synchronously before showing the tab');
+  assert(!body.classList.contains('sidebar-collapsed'), 'layout updates synchronously before showing the page');
   assert.equal(body.style.getPropertyValue('--sidebar-width'), '360px');
   await settle();
   assert.equal(h.$('.sidebar-toggle').getAttribute('aria-expanded'), 'true');
@@ -1397,10 +1398,11 @@ test('icon customization persists without browser storage and rollback keeps pin
 test('icon settings escape a clipped same-origin navigation iframe and restore focus', async t => {
   const outer = new JSDOM('<body><div id="workspace"></div></body>', {url:'http://localhost:4317'});
   t.after(() => outer.window.close());
+  outer.window.HTMLDialogElement.prototype.show = function () { this.open = true; };
   outer.window.HTMLDialogElement.prototype.showModal = function () {this.open = true;};
   outer.window.HTMLDialogElement.prototype.close = function () {this.open = false;};
-  const h = await harness(t, true, {tabHost:outer.window, pins:{local:{tasks:['task'], directories:[], initialized:true}}});
-  for (const data of [{type:'workhub:tab-navigation'}, {type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}}]) h.window.dispatchEvent(new h.window.MessageEvent('message',{source:outer.window,origin:'http://localhost:4317',data}));
+  const h = await harness(t, true, {pageHost:outer.window, pins:{local:{tasks:['task'], directories:[], initialized:true}}});
+  for (const data of [{type:'workhub:page-navigation'}, {type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}}]) h.window.dispatchEvent(new h.window.MessageEvent('message',{source:outer.window,origin:'http://localhost:4317',data}));
   await settle();await settle();
   h.click('[data-shortcut-icon-settings]');
   await settle();
@@ -2022,7 +2024,7 @@ for (const readOnly of [true, false]) test(`split conversation actions preserve 
   assert.equal(h.$('.task-conversation-tools'), null);
   assert.equal(h.$('#newBrowserSession').disabled, readOnly);
   assert.equal(h.$('#newBrowserSession').getAttribute('aria-label'), '新建对话');
-  assert.equal(h.document.querySelectorAll('#sessionActionPicker [data-conversation-action="new"]').length, 3);
+  assert.equal(h.document.querySelectorAll('#sessionActionPicker [data-conversation-action="new"]').length, 2);
   for (const button of h.document.querySelectorAll('[data-conversation-placement]')) {
     assert.equal(button.disabled, readOnly || button.dataset.conversationPlacement === 'split');
   }
@@ -2051,16 +2053,16 @@ for (const readOnly of [true, false]) test(`split conversation actions preserve 
 });
 
 for (const navigation of [false,true]) test(`new conversation placement keeps task association separate in ${navigation ? 'shared navigation' : 'conversation pane'}`, async t => {
-  const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+  const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
   const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  if (navigation) post({type:'workhub:tab-navigation'});
-  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',directory:'/workspace/task/app',pane:navigation ? 'list' : 'detail'}}});
+  if (navigation) post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',directory:'/workspace/task/app',pane:navigation ? 'list' : 'detail'}}});
   await settle(); await settle();
   post(navigation ? {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',canSplit:true} : {type:'workhub:parallel-layout',canSplit:true});
-  for (const placement of ['tab','split','current']) {
+  for (const placement of ['split','current']) {
     h.click('#sessionActionPicker summary');
     h.click(`[data-conversation-placement="${placement}"]`); await settle();
-    const opened = host.messages.findLast(message=>message.type==='workhub:tab-open');
+    const opened = host.messages.findLast(message=>message.type==='workhub:page-open');
     assert.equal(opened.placement,placement);
     assert.equal(opened.create,true,'all new conversation placements share the direct creation flow');
     assert.equal(opened.snapshot.conversation.scope.id,'task');
@@ -2068,32 +2070,31 @@ for (const navigation of [false,true]) test(`new conversation placement keeps ta
     assert.equal(opened.snapshot.conversation.creating,true);
     assert.equal(opened.snapshot.conversation.selected,null);
     assert.equal(h.$('#sessionActionPicker').open,false);
-    assert.equal(h.window.WorkHubTab.snapshot().conversation.creating,false,'source selection changes only when the host accepts placement');
+    assert.equal(h.window.WorkHubPage.snapshot().conversation.creating,false,'source selection changes only when the host accepts placement');
   }
   h.click('#newBrowserSession'); await settle();
-  assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-open').placement,'tab','explicit choices do not alter the default');
-  const before = host.messages.filter(message=>message.type==='workhub:tab-open').length;
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').placement,'current','explicit choices do not alter the default');
+  const before = host.messages.filter(message=>message.type==='workhub:page-open').length;
   h.click('#sessionActionPicker summary'); h.click('#linkTaskConversation'); await settle();
   assert.equal(h.$('#sessionDialog').open,true);
-  assert.equal(host.messages.filter(message=>message.type==='workhub:tab-open').length,before,'association does not create a conversation');
+  assert.equal(host.messages.filter(message=>message.type==='workhub:page-open').length,before,'association does not create a conversation');
   h.click('#sessionDialog .close-dialog'); await settle();
   post(navigation ? {type:'workhub:conversation-group',sessions:['a','b','c'],selected:'a',full:true,canSplit:false} : {type:'workhub:parallel-layout',canSplit:false});
   assert.equal(h.$('[data-conversation-placement="split"]').disabled,true);
-  assert.equal(h.$('[data-conversation-placement="tab"]').disabled,false);
   assert.equal(h.$('[data-conversation-placement="current"]').disabled,false);
   assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
 });
 
 test('task and project creation entries share the direct page with their own directory scope', async t => {
-  const host=tabHost(t), h=await harness(t,false,{tabHost:host.window});
-  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/requirements/task',environment:'local'}}}));
+  const host=pageHost(t), h=await harness(t,false,{pageHost:host.window});
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot:{route:'/requirements/task',environment:'local'}}}));
   await settle(); await settle();
   h.click('[data-session-action="new"][data-requirement="task"]'); await settle();
-  let opened=host.messages.findLast(message=>message.type==='workhub:tab-open');
+  let opened=host.messages.findLast(message=>message.type==='workhub:page-open');
   assert.equal(opened.create,true);
   assert.equal(opened.snapshot.conversation.scope.id,'task');
   h.click('[data-action="workspace-conversation-new"][data-id="app"][data-path="/workspace/task/app"]'); await settle();
-  opened=host.messages.findLast(message=>message.type==='workhub:tab-open');
+  opened=host.messages.findLast(message=>message.type==='workhub:page-open');
   assert.equal(opened.create,true);
   assert.equal(opened.snapshot.terminal.taskID,'task');
   assert.equal(opened.snapshot.terminal.projectID,'app');
@@ -2101,7 +2102,7 @@ test('task and project creation entries share the direct page with their own dir
   await h.navigate('/projects');
   h.click('[data-action="select-project"][data-id="backend"]'); await settle();
   h.click('[data-action="workspace-conversation-new"][data-id="backend"]'); await settle();
-  opened=host.messages.findLast(message=>message.type==='workhub:tab-open');
+  opened=host.messages.findLast(message=>message.type==='workhub:page-open');
   assert.equal(opened.snapshot.terminal.taskID,undefined,'an unrelated selected task must not claim this project');
   assert.equal(opened.snapshot.conversation.scope.kind,'project');
   assert.equal(opened.snapshot.conversation.scope.id,'backend');
@@ -2109,8 +2110,8 @@ test('task and project creation entries share the direct page with their own dir
 });
 
 test('new conversation page exposes inline form switching only while creating and keeps the selected directory', async t => {
-  const host=tabHost(t), h=await harness(t,false,{tabHost:host.window});
-  const post=snapshot=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot}}));
+  const host=pageHost(t), h=await harness(t,false,{pageHost:host.window});
+  const post=snapshot=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot}}));
   post({route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},creating:true,selected:null,pane:'detail'}});
   await settle(); await settle();
   assert.equal(h.$('#conversationCreationKind').hidden,false);
@@ -2132,8 +2133,8 @@ test('new conversation page exposes inline form switching only while creating an
 });
 
 test('one click opens a ready composer, remembers directory per scope and restores an explicit draft directory', async t => {
-  const host = tabHost(t), h = await harness(t, false, {tabHost:host.window});
-  const post = conversation => h.window.dispatchEvent(new h.window.MessageEvent('message', {source:host.window, origin:'http://localhost:4317', data:{type:'workhub:tab-restore', active:true, snapshot:{route:'/sessions', environment:'local', conversation}}}));
+  const host = pageHost(t), h = await harness(t, false, {pageHost:host.window});
+  const post = conversation => h.window.dispatchEvent(new h.window.MessageEvent('message', {source:host.window, origin:'http://localhost:4317', data:{type:'workhub:page-restore', active:true, snapshot:{route:'/sessions', environment:'local', conversation}}}));
   post({scope:{kind:'task', id:'task'}, creating:true, selected:null});
   await settle(); await settle();
   assert.equal(h.currentSession().target.cwd, '/workspace/task');
@@ -2142,7 +2143,7 @@ test('one click opens a ready composer, remembers directory per scope and restor
   assert.equal(h.$('#sessionBrowserNewDirectory').hidden, true);
   h.click('#sessionBrowserDirectoryChoices [data-creation-choice="/workspace/task/app"]'); await settle();
   assert.equal(h.$('#sessionBrowserDirectoryChoices [aria-pressed="true"]').dataset.creationChoice, '/workspace/task/app');
-  const saved = h.window.WorkHubTab.snapshot().conversation;
+  const saved = h.window.WorkHubPage.snapshot().conversation;
   assert.equal(saved.creationDirectory, '/workspace/task/app');
   post({scope:{kind:'task', id:'task'}, creating:true, selected:null});
   await settle(); await settle();
@@ -2617,7 +2618,7 @@ test('searchable native fields preserve disabled state, validation and controlle
   const h = await harness(t);
   h.window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
   await h.window.openGit('app', '/workspace/task/app'); await settle();
-  [...h.document.querySelectorAll('[role="tab"]')].find(tab => tab.textContent === '分支').click();
+  h.click('.git-section-navigation a[href="#git-branches"]');
   await settle();
   const source = h.$('#gitBranchSource');
   let trigger = h.$('[data-select-trigger="gitBranchSource"]');
@@ -3036,7 +3037,7 @@ test('reading splitters resize with pointer and keyboard bounds and keep the sel
   assert.equal(h.$('#conversationFilesMode').options.length,3);
 });
 
-function tabHost(t) {
+function pageHost(t) {
   const dom = new JSDOM('', {url:'http://localhost:4317/'});
   t.after(()=>dom.window.close());
   const messages=[];
@@ -3045,20 +3046,20 @@ function tabHost(t) {
 }
 
 test('startup restores the selected conversation without waiting for state, inventory or full discovery', async t => {
-  const host=tabHost(t), pending=[];
-  const h=await harness(t,true,{tabHost:host.window,route:'/sessions',intercept:url => {
+  const host=pageHost(t), pending=[];
+  const h=await harness(t,true,{pageHost:host.window,route:'/sessions',intercept:url => {
     if(url==='/api/state'||url.startsWith('/api/task-inventory')) return new Promise(resolve=>pending.push({url,resolve}));
   }});
-  assert(host.messages.some(message=>message.type==='workhub:tab-ready'));
+  assert(host.messages.some(message=>message.type==='workhub:page-ready'));
   assert.equal(h.requests.some(request=>request.url==='/api/state'||request.url.startsWith('/api/sessions?')),false,'the handshake does not start discovery for a temporary scope');
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  post({type:'workhub:tab-pane',split:false,shared:true});
-  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',title:'Saved title',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
+  post({type:'workhub:page-pane',split:false,shared:true});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',title:'Saved title',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
   await settle();await settle();
   assert.equal(h.currentSession().session,'session-1');
   assert(h.requests.some(request=>request.url==='/api/sessions/session-1/history'));
   assert.equal(h.requests.some(request=>request.url.startsWith('/api/sessions?')),false);
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.session.cwd,'/workspace/task/app','history metadata hydrates restored file context');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.session.cwd,'/workspace/task/app','history metadata hydrates restored file context');
   assert.equal(h.$('#sessionHistoryTitle').textContent,'Billing review');
   for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{requirements:[],environments:[{id:'local',name:'本机'}],project_count:0}});
   await settle();
@@ -3066,15 +3067,15 @@ test('startup restores the selected conversation without waiting for state, inve
 });
 
 test('startup list loading never advertises zero conversations and local results do not wait for workspace metadata', async t => {
-  const host=tabHost(t), pending=[];
+  const host=pageHost(t), pending=[];
   let releaseList;
-  const h=await harness(t,true,{tabHost:host.window,route:'/sessions',intercept:url=>{
+  const h=await harness(t,true,{pageHost:host.window,route:'/sessions',intercept:url=>{
     if(url==='/api/state'||url.startsWith('/api/task-inventory'))return new Promise(resolve=>pending.push({url,resolve}));
     if(url.startsWith('/api/sessions?'))return new Promise(resolve=>{releaseList=resolve;});
   }});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  post({type:'workhub:tab-navigation'});
-  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+  post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
   await settle();
   assert.match(h.$('#sessionBrowserCount').textContent,/正在加载/);
   assert.doesNotMatch(h.$('#sessionBrowserCount').textContent,/0 个对话/);
@@ -3089,20 +3090,20 @@ test('startup list loading never advertises zero conversations and local results
 });
 
 test('shared startup fills an unselected reader from list results while metadata is still pending', async t => {
-  const host=tabHost(t), pending=[];
+  const host=pageHost(t), pending=[];
   let releaseList;
-  const h=await harness(t,true,{tabHost:host.window,route:'/sessions',intercept:url=>{
+  const h=await harness(t,true,{pageHost:host.window,route:'/sessions',intercept:url=>{
     if(url==='/api/state'||url.startsWith('/api/task-inventory'))return new Promise(resolve=>pending.push({url,resolve}));
     if(url.startsWith('/api/sessions?'))return new Promise(resolve=>{releaseList=resolve;});
   }});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  post({type:'workhub:tab-navigation'});
-  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local'}});
+  post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local'}});
   post({type:'workhub:conversation-group',split:false,sessions:[],autoSelect:true});
   await settle();
   assert(!h.$('#sessionBrowser').hidden,'static list controls render with no saved conversation');
   assert.match(h.$('#sessionBrowserCount').textContent,/正在加载/);
-  assert(host.messages.some(message=>message.type==='workhub:tab-restored'));
+  assert(host.messages.some(message=>message.type==='workhub:page-restored'));
   assert(!host.messages.some(message=>message.type==='workhub:conversation-select'));
   releaseList({ok:true,json:async()=>({sessions:h.sessions})});
   await settle();await settle();
@@ -3117,38 +3118,38 @@ test('shared startup fills an unselected reader from list results while metadata
 });
 
 test('a late restored history cannot overwrite a newer conversation selection', async t => {
-  const host=tabHost(t), history=[];
-  const h=await harness(t,true,{tabHost:host.window,intercept:url=>url.endsWith('/history')?new Promise(resolve=>history.push({url,resolve})):undefined});
+  const host=pageHost(t), history=[];
+  const h=await harness(t,true,{pageHost:host.window,intercept:url=>url.endsWith('/history')?new Promise(resolve=>history.push({url,resolve})):undefined});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  const restore=id=>post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',title:id,conversation:{scope:{kind:'all'},selected:id,pane:'detail'}}});
-  post({type:'workhub:tab-pane',split:false,shared:true});
+  const restore=id=>post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',title:id,conversation:{scope:{kind:'all'},selected:id,pane:'detail'}}});
+  post({type:'workhub:page-pane',split:false,shared:true});
   restore('session-1');await settle();
   restore('session-2');await settle();
   history.find(request=>request.url.includes('session-2')).resolve({ok:true,json:async()=>({session:{id:'session-2',name:'Second',cwd:'/second'},entries:[]})});
   await settle();
   history.find(request=>request.url.includes('session-1')).resolve({ok:true,json:async()=>({session:{id:'session-1',name:'First',cwd:'/first'},entries:[]})});
   await settle();
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.selected,'session-2');
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.session.cwd,'/second');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.selected,'session-2');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.session.cwd,'/second');
   assert.equal(h.$('#sessionHistoryTitle').textContent,'Second');
 });
 
 for(const kind of ['task','project']) test(`active conversation follows its ${kind} scope and clears filters only when hidden`,async t=>{
-  const host=tabHost(t), h=await harness(t,true,{tabHost:host.window});
+  const host=pageHost(t), h=await harness(t,true,{pageHost:host.window});
   const secondTask={...h.data.requirements[0],id:'second-task',name:'Second task',members:[]};
   h.data.requirements.push(secondTask);
   h.sessions.push({id:'session-2',name:'Second conversation',cwd:'/repo/backend',updated_at:1999999999});
   h.links.set('second-task',new Set(['session-2']));
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
   const firstScope={kind:'task',id:'task',environment:'local'};
-  post({type:'workhub:tab-navigation'});
-  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:firstScope,pane:'list'}}});
+  post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:firstScope,pane:'list'}}});
   await settle();await settle();
   h.input('#sessionBrowserSearch','Billing');
   const scope=kind==='task'?{kind,id:'second-task',environment:'local'}:{kind,id:'backend',environment:'local'};
   const group={type:'workhub:conversation-group',sessions:['session-1','session-2'],selected:'session-2',full:false,listWidth:280,target:{route:'/sessions',environment:'local',conversation:{scope,selected:'session-2',session:h.sessions[1]}}};
   post(group);await settle();await settle();
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.id,scope.id);
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.id,scope.id);
   assert.equal(h.$('#sessionBrowserSearch').value,'');
   assert.equal(h.$('[data-conversation-session="session-2"]').getAttribute('aria-pressed'),'true');
   h.input('#sessionBrowserSearch','Second');
@@ -3156,37 +3157,37 @@ for(const kind of ['task','project']) test(`active conversation follows its ${ki
   assert.equal(h.$('#sessionBrowserSearch').value,'Second','resizing does not reset the list filters');
   post({...group,selected:'session-1',target:{route:'/sessions',environment:'local',conversation:{scope:firstScope,selected:'session-1',session:h.sessions[0]}}});
   await settle();await settle();
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.id,'task');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.id,'task');
   assert.equal(h.$('[data-conversation-session="session-1"]').getAttribute('aria-pressed'),'true');
 });
 
 test('following an active remote conversation keeps colliding local IDs isolated',async t=>{
-  const host=tabHost(t), h=await harness(t,true,{tabHost:host.window});
+  const host=pageHost(t), h=await harness(t,true,{pageHost:host.window});
   h.environments.environments.push({id:'remote',name:'Remote'});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  post({type:'workhub:tab-navigation'});
-  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},pane:'list'}}});
+  post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},pane:'list'}}});
   await settle();await settle();
   const selected=JSON.stringify(['remote','session-1']);
   post({type:'workhub:conversation-group',sessions:['session-1',selected],selected,full:false,listWidth:280,target:{route:'/sessions',environment:'remote',conversation:{scope:{kind:'project',id:'app',environment:'remote'},selected,session:h.sessions[0]}}});
   await settle();await settle();
   const chosen=[...h.document.querySelectorAll('[data-conversation-session]')].find(node=>node.dataset.conversationSession===selected);
   assert.equal(chosen?.getAttribute('aria-pressed'),'true');
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.environment,'remote');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.environment,'remote');
   assert(h.requests.some(request=>request.url.includes('project_id=app')&&request.options.headers['X-Environment-ID']==='remote'));
 });
 
 test('following an unlinked conversation falls back to its project instead of inventing task ownership',async t=>{
-  const host=tabHost(t), h=await harness(t,true,{tabHost:host.window});
+  const host=pageHost(t), h=await harness(t,true,{pageHost:host.window});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  post({type:'workhub:tab-navigation'});
-  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'project',id:'backend',environment:'local'},pane:'list'}}});
+  post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'project',id:'backend',environment:'local'},pane:'list'}}});
   await settle();await settle();
   h.links.get('task').delete('session-1');
   post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',full:false,listWidth:280,target:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},selected:'session-1',session:h.sessions[0]}}});
   await settle();await settle();
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.kind,'project');
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.id,'app');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.kind,'project');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.id,'app');
   assert.equal(h.$('[data-conversation-session="session-1"]').getAttribute('aria-pressed'),'true');
   assert.equal(h.links.get('task').has('session-1'),false);
 });
@@ -3201,104 +3202,52 @@ test('workspace metadata renders independently when the task inventory is slow',
   assert.equal(h.$('#reqCount').textContent,'1');
 });
 
-test('workspace tab bridge keeps a sidebar new-tab icon available with the keyboard shortcut', async t => {
-  const host=tabHost(t);
-  const h=await harness(t,false,{tabHost:host.window,width:1440});
-  const route=h.window.location.hash;
-  const button=h.$('.sidebar-new-tab');
-  assert(button);
-  assert.match(button.title,/Ctrl\+T/);
-  assert.equal(button.getAttribute('aria-label'),'新建标签页');
-  h.click('.sidebar-new-tab');await settle();
-  const opened=host.messages.filter(message=>message.type==='workhub:tab-open');
-  assert.equal(opened.length,1);
-  assert.equal(opened[0].snapshot.environment,'local');
-  assert.equal(opened[0].snapshot.conversation,undefined);
-  assert.equal(h.window.location.hash,route);
+test('page bridge exposes sidebar navigation without page-tab controls or keyboard interception', async t => {
+  const host=pageHost(t), h=await harness(t,false,{pageHost:host.window,width:1440});
+  assert.equal(h.$('.sidebar-new-tab'),null);
+  assert.equal(h.$('.workspace-tab-menu'),null);
+  const event = new h.window.KeyboardEvent('keydown',{key:'t',ctrlKey:true,bubbles:true,cancelable:true});
+  h.document.body.dispatchEvent(event);
+  assert.equal(event.defaultPrevented,false);
   h.click('.sidebar-toggle');await settle();
   assert(h.document.body.classList.contains('sidebar-collapsed'));
-  h.click('.sidebar-new-tab');await settle();
-  assert.equal(host.messages.filter(message=>message.type==='workhub:tab-open').length,2);
-  h.$('.sidebar-new-tab').dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'t',ctrlKey:true,bubbles:true,cancelable:true}));
-  assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-key').key.key,'t');
 });
 
-test('workspace tab bridge reclaims the bar space and announces layout changes without navigating', async t => {
-  const host=tabHost(t);
-  const h=await harness(t,false,{tabHost:host.window});
-  const root=h.document.documentElement;
-  const route=h.window.location.hash;
-  const events=[];
-  h.window.addEventListener('workhub:chat-layout',event=>events.push(event.detail));
-  const layout=(height,source=host.window)=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source,origin:'http://localhost:4317',data:{type:'workhub:tab-layout',height}}));
-  layout(40);
-  assert.equal(root.style.getPropertyValue('--workspace-tab-height'),'40px');
-  assert(root.hasAttribute('data-workspace-tabs-visible'));
-  assert.equal(events[0].phase,'before');
-  const count=events.length;
-  layout(40);layout(99);layout(0,h.window);
-  assert.equal(events.length,count);
-  layout(0);
-  assert.equal(root.style.getPropertyValue('--workspace-tab-height'),'0px');
-  assert(!root.hasAttribute('data-workspace-tabs-visible'));
-  assert.equal(h.window.location.hash,route);
-  assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
-});
-
-test('workspace tab bridge opens another conversation without changing the source selection or its filters', async t => {
-  const host=tabHost(t);
-  const h=await harness(t,false,{tabHost:host.window});
-  h.sessions.push({...h.sessions[0],id:'session-2',name:'Backend review'});h.links.get('task').add('session-2');
-  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}}}));
+test('page bridge opens project detail routes while sidebar navigation uses the current page', async t => {
+  const host=pageHost(t);
+  const h=await harness(t,false,{pageHost:host.window});
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot:{route:'/projects/backend',environment:'local'}}}));
   await settle();await settle();
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.selected,'session-1');
-  const other=[...h.document.querySelectorAll('[data-conversation-session]')].find(button=>button.dataset.conversationSession==='session-2');
-  assert(other);
-  other.dispatchEvent(new h.window.MouseEvent('click',{bubbles:true,cancelable:true,ctrlKey:true}));
-  await settle();
-  const opened=host.messages.find(message=>message.type==='workhub:tab-open');
-  assert.equal(opened.snapshot.conversation.selected,'session-2');
-  assert.equal(opened.snapshot.conversation.scope.id,'task');
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.selected,'session-1');
-  assert.equal(h.currentSession().session,'session-1');
-  assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
-});
-
-test('workspace tab bridge restores project detail and search while normal navigation stays in the current tab', async t => {
-  const host=tabHost(t);
-  const h=await harness(t,false,{tabHost:host.window});
-  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/projects',environment:'local',project:{id:'backend',detail:true,filter:'all'},search:'Backend'}}}));
-  await settle();await settle();
-  assert.equal(h.window.WorkHubTab.snapshot().project.id,'backend');
-  assert.equal(h.$('#search').value,'Backend');
+  assert.equal(h.window.location.hash,'#/projects/backend');
+  assert.match(h.$('#projectDetail').textContent,/Backend/);
   h.click('[data-view="sessions"]');await settle();
   assert.equal(h.window.location.hash,'#/sessions');
-  assert.equal(host.messages.filter(message=>message.type==='workhub:tab-open').length,0);
-  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-active',active:false}}));
-  assert.equal(h.window.WorkHubTab.active,false);
+  assert.equal(host.messages.filter(message=>message.type==='workhub:page-open').length,0);
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-active',active:false}}));
+  assert.equal(h.window.WorkHubPage.active,false);
   assert(h.document.documentElement.hasAttribute('data-workspace-inactive'));
-  h.window.WorkHubTab.dispose();
+  h.window.WorkHubPage.dispose();
   assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
 });
 
 test('split conversation bridges retain independent drafts and send only to their own session', async t => {
-  const host = tabHost(t);
-  const first = await harness(t, false, {tabHost:host.window});
-  const second = await harness(t, false, {tabHost:host.window});
+  const host = pageHost(t);
+  const first = await harness(t, false, {pageHost:host.window});
+  const second = await harness(t, false, {pageHost:host.window});
   second.sessions[0].id = 'session-2'; second.sessions[0].name = 'Backend review';
   const post = (h, data, source = host.window) => h.window.dispatchEvent(new h.window.MessageEvent('message', {source, origin:'http://localhost:4317', data}));
   for (const [h, id] of [[first, 'session-1'], [second, 'session-2']]) {
-    post(h, {type:'workhub:tab-restore', active:true, snapshot:{route:'/sessions', environment:'local', conversation:{scope:{kind:'all'}, selected:id, pane:'detail'}}});
+    post(h, {type:'workhub:page-restore', active:true, snapshot:{route:'/sessions', environment:'local', conversation:{scope:{kind:'all'}, selected:id, pane:'detail'}}});
     await settle(); await settle();
-    post(h, {type:'workhub:tab-pane', split:true});
+    post(h, {type:'workhub:page-pane', split:true});
     assert(h.document.documentElement.hasAttribute('data-workspace-pane'));
-    assert.equal(h.window.WorkHubTab.active, true);
+    assert.equal(h.window.WorkHubPage.active, true);
   }
   first.input('#sessionChatInput', '只发给前端');
   second.input('#sessionChatInput', '只发给后端');
   first.$('#sessionChatInput').dispatchEvent(new first.window.Event('focusin', {bubbles:true}));
-  assert.equal(host.messages.at(-1).type, 'workhub:tab-focus');
-  post(second, {type:'workhub:tab-pane', split:false}, second.window);
+  assert.equal(host.messages.at(-1).type, 'workhub:page-focus');
+  post(second, {type:'workhub:page-pane', split:false}, second.window);
   assert(second.document.documentElement.hasAttribute('data-workspace-pane'), 'foreign pane messages are ignored');
   await first.submit('#sessionChatForm');
   assert.equal(second.$('#sessionChatInput').value, '只发给后端');
@@ -3308,32 +3257,32 @@ test('split conversation bridges retain independent drafts and send only to thei
     assert.equal(sends.length, 1);
     assert.equal(sends[0].url, `/api/sessions/${id}/chat`);
     assert.equal(sends[0].body.text, text);
-    post(h, {type:'workhub:tab-pane', split:false});
+    post(h, {type:'workhub:page-pane', split:false});
     assert(!h.document.documentElement.hasAttribute('data-workspace-pane'));
     assert.equal(h.requests.some(request => request.url.endsWith('/chat/stop')), false);
   }
 });
 
-test('shared sidebar opens destinations in workspace tabs and leaves grouped conversations intact', async t => {
-  const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+test('shared sidebar navigates to independent pages and leaves grouped conversations intact', async t => {
+  const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
   const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
   await settle(); await settle();
-  post({type:'workhub:tab-pane',split:true});
+  post({type:'workhub:page-pane',split:true});
   h.input('#sessionChatInput','保留在当前栏');
   h.click('[data-view="projects"]'); await settle();
-  assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-open').snapshot.route,'/projects');
-  assert.equal(h.window.WorkHubTab.snapshot().conversation.selected,'session-1');
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').snapshot.route,'/projects');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.selected,'session-1');
   assert.equal(h.$('#sessionChatInput').value,'保留在当前栏');
-  post({type:'workhub:tab-navigation'});
+  post({type:'workhub:page-navigation'});
   assert(h.document.documentElement.hasAttribute('data-workspace-navigation'));
   h.click('[data-view="requirements"]'); await settle();
-  assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-open').snapshot.route,'/requirements');
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').snapshot.route,'/requirements');
   assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
 });
 
 test('shared list synchronizes read markers from a visible reader and keeps background completions unread', async t => {
- const host = tabHost(t), nav = await harness(t,false,{tabHost:host.window}), reader = await harness(t,false,{tabHost:host.window});
+ const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window}), reader = await harness(t,false,{pageHost:host.window});
  const post = (h,data) => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
  const key = 'workhub:session-read:' + JSON.stringify(['local','session-1']);
  const values = new Map([[key,nav.window.localStorage.getItem(key)]]);
@@ -3352,8 +3301,8 @@ test('shared list synchronizes read markers from a visible reader and keeps back
  }});
  let opened;
  reader.window.WorkHubAssistant = {open(options) {opened = options; setImmediate(() => options.loaded?.({...reader.sessions[0]}));},close() {},updateSession() {}};
- post(nav,{type:'workhub:tab-navigation'});
- post(nav,{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},pane:'list'}}});
+ post(nav,{type:'workhub:page-navigation'});
+ post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},pane:'list'}}});
  await settle(); await settle();
  post(nav,{type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:true});
  nav.sessions[0].completed_run = reader.sessions[0].completed_run = 'before-open';
@@ -3361,8 +3310,8 @@ test('shared list synchronizes read markers from a visible reader and keeps back
  const row = () => nav.$('[data-conversation-session="session-1"]');
  assert.match(row().textContent,/有新消息/,'a selected row alone does not mark a hidden conversation read');
  assert(nav.$('.session-browser-unread-dot'));
- post(reader,{type:'workhub:tab-pane',shared:true});
- post(reader,{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
+ post(reader,{type:'workhub:page-pane',shared:true});
+ post(reader,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
  await settle(); await settle();
  assert.equal(JSON.parse(values.get(key)).run,'before-open');
  assert.doesNotMatch(row().textContent,/有新消息/);
@@ -3383,7 +3332,7 @@ test('shared list synchronizes read markers from a visible reader and keeps back
  opened.activity('session-1',{id:'visible-run',busy:false,status:'completed',turn_id:'visible-turn'});
  await settle();
  assert.equal(writes,acknowledgedWrites,'repeated rendering does not broadcast identical read acknowledgements');
- post(reader,{type:'workhub:tab-active',active:false});
+ post(reader,{type:'workhub:page-active',active:false});
  nav.sessions[0].completed_run = 'background-run';
  opened.activity('session-1',{id:'background-run',busy:false,status:'completed',turn_id:'background-turn'});
  await nav.window.refreshSessionWorkspace(true); await settle();
@@ -3394,22 +3343,22 @@ test('shared list synchronizes read markers from a visible reader and keeps back
  values.set(remoteKey,remoteRead);
  nav.window.dispatchEvent(new nav.window.StorageEvent('storage',{key:remoteKey,newValue:remoteRead}));
  assert.match(row().textContent,/有新消息/,'reading the same ID in another environment does not clear this reminder');
- post(reader,{type:'workhub:tab-active',active:true});
+ post(reader,{type:'workhub:page-active',active:true});
  await settle();
  assert.equal(JSON.parse(values.get(key)).run,'background-run');
  assert.doesNotMatch(row().textContent,/有新消息/);
 });
 
 test('shared conversation list browses scopes without reading hidden history and distinguishes locate from add', async t => {
- const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:tab-navigation'});
+ post({type:'workhub:page-navigation'});
  const historyRequests = () => h.requests.filter(request=>request.url.includes('/history')).length;
  const before = historyRequests();
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},pane:'list'}}});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},pane:'list'}}});
  await settle(); await settle();
  post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',full:false,listWidth:280});
- assert.equal(h.window.WorkHubTab.navigationOnly,true);
+ assert.equal(h.window.WorkHubPage.navigationOnly,true);
  assert.equal(historyRequests(),before,'a shared list must not load or mark the hidden chat as read');
  assert(h.$('.parallel-list-badge').textContent.includes('已并列'));
  h.click('[data-conversation-session="session-1"]'); await settle();
@@ -3419,7 +3368,7 @@ test('shared conversation list browses scopes without reading hidden history and
  h.$('#sessionScopePicker').open = true; await settle();
  const all = [...h.document.querySelectorAll('[data-conversation-scope]')].find(button=>JSON.parse(button.dataset.conversationScope).kind==='all');
  assert(all); all.click(); await settle(); await settle();
- assert.equal(h.window.WorkHubTab.snapshot().conversation.scope.kind,'all');
+ assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.kind,'all');
  post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:false,full:false,listWidth:400,targetTitle:'当前对话'});
  assert.equal(h.$('.parallel-list-badge'),null,'single conversations do not claim to be parallel');
  assert.equal(h.$('#sharedConversationTarget').textContent,'当前对话：当前对话');
@@ -3427,42 +3376,42 @@ test('shared conversation list browses scopes without reading hidden history and
  assert.equal(historyRequests(),before);
 });
 
-for (const scope of [{kind:'directory',cwd:'/workspace/task/app',environment:'local'}, {kind:'project',id:'app',environment:'local'}, {kind:'task',id:'task',environment:'local'}]) test(`shared new conversation preserves an explicit draft across tabs (${scope.kind})`, async t => {
- const host = tabHost(t), nav = await harness(t,false,{tabHost:host.window});
+for (const scope of [{kind:'directory',cwd:'/workspace/task/app',environment:'local'}, {kind:'project',id:'app',environment:'local'}, {kind:'task',id:'task',environment:'local'}]) test(`shared new conversation preserves an explicit draft across pages (${scope.kind})`, async t => {
+ const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
  const post = (h,data) => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post(nav,{type:'workhub:tab-navigation'});
- post(nav,{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,directory:'/workspace/task/app',pane:'list'}}});
+ post(nav,{type:'workhub:page-navigation'});
+ post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,directory:'/workspace/task/app',pane:'list'}}});
  await settle();await settle();
  assert.equal(nav.$('#newBrowserSession').disabled,false);
  nav.click('#newBrowserSession');await settle();
- const opened = host.messages.findLast(message=>message.type==='workhub:tab-open').snapshot;
+ const opened = host.messages.findLast(message=>message.type==='workhub:page-open').snapshot;
  assert.equal(opened.conversation.creating,true);
  assert.equal(opened.conversation.selected,null);
  assert.equal(opened.conversation.directory,'/workspace/task/app');
- const draft = await harness(t,false,{tabHost:host.window});
- post(draft,{type:'workhub:tab-restore',active:true,snapshot:opened});await settle();await settle();
+ const draft = await harness(t,false,{pageHost:host.window});
+ post(draft,{type:'workhub:page-restore',active:true,snapshot:opened});await settle();await settle();
  assert.equal(draft.currentSession().session,null, 'existing conversations must not replace a new draft');
- assert.equal(draft.window.WorkHubTab.snapshot().conversation.creating,true);
- assert.equal(draft.window.WorkHubTab.snapshot().title,'新建对话');
+ assert.equal(draft.window.WorkHubPage.snapshot().conversation.creating,true);
+ assert.equal(draft.window.WorkHubPage.snapshot().title,'新建对话');
  assert.equal(draft.$('#sessionBrowserNewDirectoryField').hidden,scope.kind === 'directory');
  assert.equal(draft.currentSession().target.cwd,'/workspace/task/app');
  assert.equal(draft.requests.some(r=>r.url.endsWith('/chat') && r.options.method==='POST'),false);
- const saved = draft.window.WorkHubTab.snapshot();
- post(draft,{type:'workhub:tab-restore',active:true,snapshot:saved});await settle();await settle();
+ const saved = draft.window.WorkHubPage.snapshot();
+ post(draft,{type:'workhub:page-restore',active:true,snapshot:saved});await settle();await settle();
  assert.equal(draft.currentSession().session,null);
  assert.equal(draft.currentSession().target.cwd,'/workspace/task/app');
 });
 
 test('running terminals share the conversation list, retain scope and reconnect by process identity', async t => {
- const host=tabHost(t), rows=[
+ const host=pageHost(t), rows=[
   {id:'session-1',name:'Terminal Shell',task_id:'task',project_id:'app',cwd:'/workspace/task/app',state:'running',attached:false,created_at:Math.floor(Date.now()/1000)},
   {id:'other',name:'Other task',task_id:'other-task',project_id:'backend',cwd:'/workspace/other/backend',state:'running',attached:false,created_at:1},
   {id:'ended',name:'Ended terminal',task_id:'task',cwd:'/workspace/task',state:'exited',created_at:1},
  ];
- const h=await harness(t,false,{tabHost:host.window,intercept:url=>url==='/api/terminals'?{ok:true,json:async()=>rows}:null});
+ const h=await harness(t,false,{pageHost:host.window,intercept:url=>url==='/api/terminals'?{ok:true,json:async()=>rows}:null});
  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:tab-navigation'});
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},pane:'list'}}});
+ post({type:'workhub:page-navigation'});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},pane:'list'}}});
  await settle();await settle();
  const terminal=()=>h.$('[data-conversation-terminal="session-1"]');
  assert(terminal());assert.match(terminal().textContent,/终端.*运行中/);
@@ -3474,7 +3423,7 @@ test('running terminals share the conversation list, retain scope and reconnect 
  assert.equal(terminal().getAttribute('aria-pressed'),'true');
  const historyCount=h.requests.filter(r=>r.url.includes('/history')).length;
  terminal().click();await settle();
- const opened=host.messages.findLast(m=>m.type==='workhub:tab-open');
+ const opened=host.messages.findLast(m=>m.type==='workhub:page-open');
  assert.equal(opened.snapshot.route,'/terminals');assert.equal(opened.snapshot.terminal.id,'session-1');
  assert.equal(opened.snapshot.terminal.taskID,'task');
  assert.equal(h.requests.filter(r=>r.url.includes('/history')).length,historyCount);
@@ -3486,7 +3435,7 @@ test('running terminals share the conversation list, retain scope and reconnect 
  h.click('[data-conversation-status="waiting"]');assert.equal(terminal(),null);
  h.click('[data-conversation-status="all"]');
  const add=h.$('[data-conversation-parallel][data-conversation-terminal="session-1"]');add.click();
- assert.equal(host.messages.findLast(m=>m.type==='workhub:tab-open').placement,'split');
+ assert.equal(host.messages.findLast(m=>m.type==='workhub:page-open').placement,'split');
  for (const [scope,expected] of [
   [{kind:'project',id:'backend',environment:'local'},'other'],
   [{kind:'directory',cwd:'/workspace/task/app',environment:'local'},'session-1'],
@@ -3494,7 +3443,7 @@ test('running terminals share the conversation list, retain scope and reconnect 
   [{kind:'task',id:'task',environment:'remote'},null],
   [{kind:'task',id:'task',environment:'local'},'session-1'],
  ]) {
-  post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,pane:'list'}}});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,pane:'list'}}});
   await settle();await settle();
   assert.deepEqual([...h.document.querySelectorAll('button.session-browser-item[data-conversation-terminal]')].map(b=>b.dataset.conversationTerminal),expected?[expected]:[]);
  }
@@ -3507,67 +3456,67 @@ test('running terminals share the conversation list, retain scope and reconnect 
 });
 
 test('parallel pane toolbar commands stay scoped to the originating conversation', async t => {
- const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:tab-pane',split:true});
+ post({type:'workhub:page-pane',split:true});
  post({type:'workhub:parallel-layout',split:true,zoomed:true,canZoom:true});
  assert(h.document.documentElement.hasAttribute('data-workspace-zoomed'));
  h.window.dispatchEvent(new h.window.CustomEvent('workhub:parallel-command',{detail:'zoom'}));
- assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-pane-command').command,'zoom');
+ assert.equal(host.messages.findLast(message=>message.type==='workhub:page-pane-command').command,'zoom');
  h.window.dispatchEvent(new h.window.CustomEvent('workhub:parallel-command',{detail:'close'}));
- assert.equal(host.messages.findLast(message=>message.type==='workhub:tab-pane-command').command,'close');
+ assert.equal(host.messages.findLast(message=>message.type==='workhub:page-pane-command').command,'close');
  assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
 });
 
 
 test('a shared single conversation restores its detail without duplicating the shared list or parallel actions', async t => {
- const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:tab-pane',split:false,shared:true});
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'list'}}});
+ post({type:'workhub:page-pane',split:false,shared:true});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'list'}}});
  await settle(); await settle();
  assert(h.document.documentElement.hasAttribute('data-workspace-conversation'));
  assert(!h.document.documentElement.hasAttribute('data-workspace-pane'));
- assert.equal(h.window.WorkHubTab.snapshot().conversation.pane,'detail');
+ assert.equal(h.window.WorkHubPage.snapshot().conversation.pane,'detail');
  assert.equal(h.currentSession().session,'session-1');
  h.window.dispatchEvent(new h.window.CustomEvent('workhub:parallel-command',{detail:'close'}));
- assert(!host.messages.some(message=>message.type==='workhub:tab-pane-command'));
+ assert(!host.messages.some(message=>message.type==='workhub:page-pane-command'));
 });
 
 
 test('ordinary navigation prepares the shared reader before selection and later layout messages retain its draft', async t => {
- const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/requirements/task',environment:'local'}});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/requirements/task',environment:'local'}});
  await settle(); await settle();
  const listsBefore = h.requests.filter(request=>request.url.startsWith('/api/sessions?')).length;
  h.click('[data-view="sessions"]'); await settle(); await settle();
- assert.equal(h.window.WorkHubTab.snapshot().conversation.pane,'detail');
+ assert.equal(h.window.WorkHubPage.snapshot().conversation.pane,'detail');
  assert(h.document.documentElement.hasAttribute('data-workspace-conversation'));
- assert(host.messages.some(message=>message.type==='workhub:tab-state' && message.snapshot.route==='/sessions'));
+ assert(host.messages.some(message=>message.type==='workhub:page-state' && message.snapshot.route==='/sessions'));
  assert.equal(h.requests.filter(request=>request.url.startsWith('/api/sessions?')).length,listsBefore,'only the shared navigation fetches the list');
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'detail'}}});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'detail'}}});
  await settle(); await settle();
  h.input('#sessionChatInput','保留进入共享布局前的草稿');
  const before = h.requests.filter(request=>request.url.includes('/history')).length;
- post({type:'workhub:tab-pane',split:false,shared:true});
+ post({type:'workhub:page-pane',split:false,shared:true});
  await settle(); await settle();
- assert.equal(h.window.WorkHubTab.snapshot().conversation.pane,'detail');
+ assert.equal(h.window.WorkHubPage.snapshot().conversation.pane,'detail');
  assert.equal(h.$('#sessionBrowser').dataset.pane,'detail');
  assert.equal(h.currentSession().session,'session-1');
  assert.equal(h.$('#sessionChatInput').value,'保留进入共享布局前的草稿');
  assert.equal(h.requests.filter(request=>request.url.includes('/history')).length,before);
  h.click('[data-conversation-action="back"]'); await settle();
- assert.equal(h.window.WorkHubTab.snapshot().conversation.pane,'detail','a host-managed pane cannot reintroduce another list');
+ assert.equal(h.window.WorkHubPage.snapshot().conversation.pane,'detail','a host-managed pane cannot reintroduce another list');
  assert(!h.requests.some(request=>request.url.endsWith('/chat/stop')));
 });
 
 test('resizing a shared list with 738 conversations does not regenerate its rows', async t => {
- const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
  for (let index=1; index<738; index++) h.sessions.push({...h.sessions[0],id:`large-${index}`,name:`对话 ${index}`});
  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:tab-navigation'});
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+ post({type:'workhub:page-navigation'});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
  await settle(); await settle();
  const group = {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:false,full:false,listWidth:280,targetTitle:'当前对话'};
  post(group);
@@ -3585,13 +3534,13 @@ test('resizing a shared list with 738 conversations does not regenerate its rows
 });
 
 test('dedicated conversation panes do not generate hidden lists and ordinary browsing can restore them', async t => {
- const host = tabHost(t), h = await harness(t,false,{tabHost:host.window});
+ const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
  for (let index=1; index<738; index++) h.sessions.push({...h.sessions[0],id:`large-${index}`,name:`对话 ${index}`});
  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
  const ui = h.window.WorkHubUI; let renders = 0;
  h.window.WorkHubUI = {...ui,conversationList:props=>{renders++; return ui.conversationList(props);}};
- post({type:'workhub:tab-pane',split:true,shared:true});
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'detail'}}});
+ post({type:'workhub:page-pane',split:true,shared:true});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'detail'}}});
  await settle(); await settle();
  assert.equal(renders,0,'only the shared navigation frame should generate conversation rows');
  assert.equal(h.$('#sessionBrowserList').childElementCount,0,'previous rows must also be released');
@@ -3600,7 +3549,7 @@ test('dedicated conversation panes do not generate hidden lists and ordinary bro
  h.click('[data-conversation-action="refresh"]'); await settle(); await settle();
  assert.equal(renders,0,'background refresh must not rebuild an invisible list');
  assert.equal(h.$('#sessionChatInput').value,'保留对话草稿');
- post({type:'workhub:tab-pane',split:false,shared:false});
+ post({type:'workhub:page-pane',split:false,shared:false});
  h.click('[data-conversation-action="back"]'); await settle();
  assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,4,'leaving host-managed conversation mode restores workspace previews');
  assert(renders>0);
@@ -3608,11 +3557,11 @@ test('dedicated conversation panes do not generate hidden lists and ordinary bro
 });
 
 test('background list refresh updates its own status without regenerating unchanged conversation rows', async t => {
- const host=tabHost(t), h=await harness(t,false,{tabHost:host.window});
+ const host=pageHost(t), h=await harness(t,false,{pageHost:host.window});
  for(let i=1;i<738;i++) h.sessions.push({...h.sessions[0],id:`large-${i}`,name:`对话 ${i}`});
  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:tab-navigation'});
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+ post({type:'workhub:page-navigation'});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
  await settle();await settle();
  const ui=h.window.WorkHubUI;let renders=0;
  h.window.WorkHubUI={...ui,conversationList:props=>{renders++;return ui.conversationList(props);}};
@@ -3678,10 +3627,10 @@ test('conversation lists automatically append twenty rows at the bottom and keep
 });
 
 test('automatic list windows survive refresh and restoration, support keyboard navigation and clamp on removal', async t => {
- const host=tabHost(t),h=await harness(t,false,{tabHost:host.window,storage:expandedConversationStorage()});
+ const host=pageHost(t),h=await harness(t,false,{pageHost:host.window,storage:expandedConversationStorage()});
  for(let i=1;i<125;i++)h.sessions.push({...h.sessions[0],id:`batch-${i}`,name:`对话 ${i}`});
  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'list',loadedCount:120,windowStart:80}}});await settle();await settle();
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'list',loadedCount:120,windowStart:80}}});await settle();await settle();
  const list=h.$('#sessionBrowserList');
  assert.equal(list.dataset.loadedCount,'120');assert.equal(list.dataset.windowStart,'80');
  h.click('[data-conversation-action="refresh"]');await settle();await settle();
@@ -3691,18 +3640,18 @@ test('automatic list windows survive refresh and restoration, support keyboard n
  assert.equal(h.document.activeElement.dataset.conversationSession,'batch-60');
  h.document.activeElement.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}));
  assert.equal(h.document.activeElement.dataset.conversationSession,'session-1');
- assert.equal(h.window.WorkHubTab.snapshot().conversation.loadedCount,120);
+ assert.equal(h.window.WorkHubPage.snapshot().conversation.loadedCount,120);
  h.sessions.splice(30);h.click('[data-conversation-action="refresh"]');await settle();await settle();
  assert.equal(list.dataset.loadedCount,'32');assert(Number(list.dataset.windowEnd)<=32);
  assert(h.document.querySelectorAll('[data-conversation-session]').length<=30);
 });
 
 test('focusing a distant split conversation restores its window without width updates resetting browsing', async t => {
- const host=tabHost(t),h=await harness(t,false,{tabHost:host.window});
+ const host=pageHost(t),h=await harness(t,false,{pageHost:host.window});
  for(let i=1;i<125;i++)h.sessions.push({...h.sessions[0],id:`batch-${i}`,name:`对话 ${i}`});
  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:tab-navigation'});
- post({type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});await settle();await settle();
+ post({type:'workhub:page-navigation'});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});await settle();await settle();
  const group={type:'workhub:conversation-group',sessions:['session-1','batch-110'],selected:'session-1',full:false,listWidth:280};
  post(group);post({...group,selected:'batch-110'});
  assert.equal(h.$('[data-conversation-session="batch-110"]').getAttribute('aria-pressed'),'true');
@@ -3717,12 +3666,12 @@ test('focusing a distant split conversation restores its window without width up
 });
 
 test('a restored automatic list window waits for every environment before clamping', async t => {
- const host=tabHost(t),h=await harness(t,false,{tabHost:host.window,storage:expandedConversationStorage()});
+ const host=pageHost(t),h=await harness(t,false,{pageHost:host.window,storage:expandedConversationStorage()});
  h.environments.environments.push({id:'remote',name:'WSL'});await h.window.loadEnvironments();
  const remote=Array.from({length:124},(_,i)=>({...h.sessions[0],id:`remote-${i}`,name:`远程 ${i}`}));
  let resolveRemote;
  h.setIntercept((url,options)=>url.startsWith('/api/sessions?')&&options.headers['X-Environment-ID']==='remote'?new Promise(resolve=>{resolveRemote=resolve;}):undefined);
- h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',loadedCount:120,windowStart:80,pane:'list'}}}}));
+ h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',loadedCount:120,windowStart:80,pane:'list'}}}}));
  await settle();await settle();assert.equal(typeof resolveRemote,'function');
  resolveRemote({ok:true,json:async()=>({sessions:remote})});await settle();await settle();
  assert.equal(h.$('#sessionBrowserList').dataset.loadedCount,'120');
@@ -3750,9 +3699,9 @@ test('appending scroll batches and evicting old rows preserve the surviving DOM 
 });
 
 test('a one pixel scroll around an estimated batch boundary does not bounce the mounted window', async t => {
- const host=tabHost(t),h=await harness(t,false,{tabHost:host.window,storage:expandedConversationStorage()});
+ const host=pageHost(t),h=await harness(t,false,{pageHost:host.window,storage:expandedConversationStorage()});
  for(let i=1;i<100;i++)h.sessions.push({...h.sessions[0],id:`stable-${i}`,name:`对话 ${i}`});
- h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:tab-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',loadedCount:100,windowStart:20,pane:'list'}}}}));await settle();await settle();
+ h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',loadedCount:100,windowStart:20,pane:'list'}}}}));await settle();await settle();
  const list=h.$('#sessionBrowserList'),scroll=scrollableConversations(h);
  list.getBoundingClientRect=()=>({top:0,bottom:300,height:300});
  for(const row of list.querySelectorAll('[data-conversation-session]')) {

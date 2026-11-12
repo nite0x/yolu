@@ -5,7 +5,7 @@ const {JSDOM} = require('jsdom');
 const source = readFileSync('src-tauri/src/window-chrome.js', 'utf8');
 
 function setup() {
-  const dom = new JSDOM('<header class="workspace-tabbar"><span>空白</span><button><svg></svg></button><a>链接</a><input><span contenteditable="true">编辑</span></header>', {url:'http://127.0.0.1:12345/', runScripts:'outside-only'});
+  const dom = new JSDOM('<header class="page-heading"><span>空白</span><button><svg></svg></button><a>链接</a><input><span contenteditable="true">编辑</span></header>', {url:'http://127.0.0.1:12345/', runScripts:'outside-only'});
   const calls = [];
   dom.window.__TAURI_INTERNALS__ = {invoke: command => {calls.push(command); return Promise.resolve();}};
   dom.window.eval(source);
@@ -41,7 +41,7 @@ test('double click zooms only when released at its original position', () => {
   } finally { dom.window.close(); }
 });
 
-test('tab iframe header drags through the host bridge without creating duplicate overlays', () => {
+test('page iframe header drags through the host bridge without creating duplicate overlays', () => {
   const {dom, calls} = setup();
   try {
     const frame = dom.window.document.createElement('iframe');
@@ -61,7 +61,7 @@ test('sidebar blank space drags while brand menus and resize handles keep their 
   const {dom,calls,mouse,doc} = setup();
   try {
     const sidebar = doc.createElement('aside'); sidebar.className = 'sidebar';
-    sidebar.innerHTML = '<span>空白</span><button>Yolu 菜单</button><summary>更多</summary><div role="menuitem">新建标签页</div><div role="separator"></div>';
+    sidebar.innerHTML = '<span>空白</span><button>Yolu 菜单</button><summary>更多</summary><div role="menuitem">任务首页</div><div role="separator"></div>';
     doc.body.append(sidebar);
     mouse(sidebar.querySelector('span'));
     assert.deepEqual(calls,['plugin:window|start_dragging']);

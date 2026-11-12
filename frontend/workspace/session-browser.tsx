@@ -20,9 +20,8 @@ export function SessionBrowser() {
             <Button type="button" size="sm" className="h-[30px] rounded-r-none" id="newBrowserSession" data-conversation-action="new" aria-label={uiText("新建对话")}><Plus aria-hidden="true" /><span>{uiText("新建对话")}</span></Button>
             <details id="sessionActionPicker" className="session-action-picker"><summary aria-label={uiText("更多对话操作")} title={uiText("选择新建方式或关联对话")}><ChevronDown aria-hidden="true" /></summary>
               <div className="session-action-menu" role="group" aria-label={uiText("对话操作")}>
-                <Button type="button" variant="ghost" size="sm" className="justify-start" data-conversation-action="new" data-conversation-placement="tab">{uiText("在新标签页新建")}<span className="session-action-default">{uiText("默认")}</span></Button>
                 <Button type="button" variant="ghost" size="sm" className="justify-start" data-conversation-action="new" data-conversation-placement="split">{uiText("在右侧分栏新建")}</Button>
-                <Button type="button" variant="ghost" size="sm" className="justify-start" data-conversation-action="new" data-conversation-placement="current">{uiText("在当前标签页新建")}</Button>
+                <Button type="button" variant="ghost" size="sm" className="justify-start" data-conversation-action="new" data-conversation-placement="current">{uiText("在当前栏新建")}</Button>
                 <div id="taskConversationTools" className="session-action-association" hidden>
                   <Button type="button" variant="ghost" size="sm" className="justify-start" id="linkTaskConversation" data-session-action="picker" aria-label={uiText("关联已有对话")}>{uiText("关联已有对话")}</Button>
                 </div>

@@ -37,8 +37,6 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/language", a.languageHandler)
 	mux.HandleFunc("GET /api/settings/appearance", a.appearanceHandler)
 	mux.HandleFunc("PUT /api/settings/appearance", a.appearanceHandler)
-	mux.HandleFunc("GET /api/workspace-tabs", a.workspaceTabsHandler)
-	mux.HandleFunc("PUT /api/workspace-tabs", a.workspaceTabsHandler)
 	a.Projects.RegisterRoutes(mux)
 	a.Tasks.RegisterRoutes(mux, a.Projects.InvalidateStateAfter)
 	a.Sessions.RegisterRoutes(mux)

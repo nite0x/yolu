@@ -27,7 +27,7 @@ func TestAppearancePersistsAcrossPortsEnvironmentsAndPageKinds(t *testing.T) {
 		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &got) != nil || got["color_theme"] != theme {
 			t.Fatalf("restore global appearance: %d %s", w.Code, w.Body.String())
 		}
-		for _, url := range []string{"/", "/?workspace-tab=task", "/?workspace-tab=terminal&workspace-terminal=1"} {
+		for _, url := range []string{"/", "/?workspace-page=task", "/?workspace-page=terminal&workspace-terminal=1"} {
 			page := httptest.NewRecorder()
 			a.assetsHandler().ServeHTTP(page, httptest.NewRequest("GET", "http://localhost"+url, nil))
 			body := page.Body.String()

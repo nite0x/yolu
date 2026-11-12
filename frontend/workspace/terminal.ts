@@ -8,7 +8,7 @@ import { conversationDefaults } from "./conversation-defaults"
 import { renderCreationChoices } from "./creation-choices"
 import "./terminal.css"
 
-const unmountSurface = mountTerminalSurface(command => window.parent.postMessage({type:"workhub:tab-pane-command", command}, location.origin))
+const unmountSurface = mountTerminalSurface(command => window.parent.postMessage({type:"workhub:page-pane-command", command}, location.origin))
 
 interface Member { project_id: string; project_name: string; path: string; state: string; worktree?: {branch?: string} }
 interface Task { id: string; name: string; path: string; has_workspace: boolean; state: string; environment_id?: string; members: Member[] }
@@ -72,7 +72,7 @@ function terminalExited(code?: number) {
   post("workhub:terminals-changed")
 }
 function snapshot(): Snapshot { return {...saved, kind:"terminals", terminal:{...saved.terminal}} }
-function publish() { if (!restoring && !disposed) post("workhub:tab-state", {snapshot:snapshot()}) }
+function publish() { if (!restoring && !disposed) post("workhub:page-state", {snapshot:snapshot()}) }
 function context() {
   const task = tasks.find(t => t.id === saved.terminal?.taskID)
   const member = task?.members.find(m => m.project_id === saved.terminal?.projectID)
@@ -153,7 +153,7 @@ function showRows() {
     path.textContent = row.cwd; path.title = row.cwd; description.append(title, path)
     const actions = document.createElement("div"); actions.className = "terminal-row-actions"
     const attach = document.createElement("button"); attach.type = "button"; attach.textContent = row.attached ? uiText("查看") : uiText("连接")
-    attach.onclick = () => post("workhub:tab-open", {placement:"current", snapshot:{route:"/terminals", environment:saved.environment, title:row.name, terminal:{id:row.id, taskID:row.task_id, projectID:row.project_id}}})
+    attach.onclick = () => post("workhub:page-open", {placement:"current", snapshot:{route:"/terminals", environment:saved.environment, title:row.name, terminal:{id:row.id, taskID:row.task_id, projectID:row.project_id}}})
     actions.append(attach)
     if (row.state !== "running") {const remove = document.createElement("button"); remove.type = "button"; remove.textContent = uiText("移除"); remove.onclick = () => void api(`/api/terminals/${encodeURIComponent(row.id)}`, "DELETE").then(refreshRows).catch(error => feedback(error.message)); actions.append(remove)}
     item.append(description, actions); list.append(item)
@@ -297,7 +297,7 @@ async function restore(value: Snapshot) {
       await showTerminal(info)
     }
   } catch (error) {feedback((error as Error).message)}
-  finally {if (!disposed && revision === restoreRevision) {restoring = false; syncLauncher(); publish(); post("workhub:tab-restored")}}
+  finally {if (!disposed && revision === restoreRevision) {restoring = false; syncLauncher(); publish(); post("workhub:page-restored")}}
 }
 
 taskSelect.onchange = () => {saved.terminal = {...saved.terminal, taskID:taskSelect.value, projectID:undefined}; refreshDirectories(); showRows(); context(); publish()}
@@ -329,7 +329,7 @@ element<HTMLFormElement>("terminalForm").onsubmit = event => {
   })()
 }
 element("terminalContext").onclick = () => {
-  if (taskSelect.value) post("workhub:tab-open", {snapshot:{route:`/requirements/${taskSelect.value}`,environment:saved.environment}})
+  if (taskSelect.value) post("workhub:page-open", {snapshot:{route:`/requirements/${taskSelect.value}`,environment:saved.environment}})
 }
 element("terminalKindUI").onclick = () => {
   if (current || pending) return
@@ -363,23 +363,15 @@ element<HTMLDialogElement>("stopTerminalDialog").onclose = () => {
   })
 }
 
-document.addEventListener("pointerdown", () => post("workhub:tab-focus"), true)
-document.addEventListener("focusin", () => post("workhub:tab-focus"))
-document.addEventListener("keydown", event => {
-  const key = event.key.toLowerCase()
-  const tabKey = ["t", "w", "tab", "pageup", "pagedown"].includes(key) || /^[1-9]$/.test(key)
-  if (!event.altKey && tabKey && (event.metaKey || event.ctrlKey && (["tab", "pageup", "pagedown"].includes(key) || event.shiftKey && ["t", "w"].includes(key)))) {
-    event.preventDefault(); event.stopImmediatePropagation()
-    post("workhub:tab-key", {key:{key:event.key, metaKey:event.metaKey, ctrlKey:event.ctrlKey, shiftKey:event.ctrlKey && ["t", "w"].includes(key) ? false : event.shiftKey, altKey:false}})
-  }
-}, true)
+document.addEventListener("pointerdown", () => post("workhub:page-focus"), true)
+document.addEventListener("focusin", () => post("workhub:page-focus"))
 function dispose() {if (disposed) return; disposed = true; ++restoreRevision; disconnect(); resize.disconnect(); term?.dispose(); clearInterval(poll); unmountSurface()}
 window.addEventListener("pagehide", dispose)
 window.addEventListener("message", event => {
   if (event.source !== host || event.origin !== location.origin || !event.data) return
   const message = event.data
-  if (message.type === "workhub:tab-restore") {active = !!message.active; void restore(message.snapshot)}
-  else if (message.type === "workhub:tab-active") {active = !!message.active; if (active) requestAnimationFrame(measure)}
+  if (message.type === "workhub:page-restore") {active = !!message.active; void restore(message.snapshot)}
+  else if (message.type === "workhub:page-active") {active = !!message.active; if (active) requestAnimationFrame(measure)}
   else if (message.type === "workhub:parallel-layout") {
     document.documentElement.toggleAttribute("data-workspace-pane", !!message.split)
     document.documentElement.toggleAttribute("data-workspace-focused", !!message.focused)
@@ -388,9 +380,9 @@ window.addEventListener("message", event => {
     const zoomLabel = message.zoomed ? uiText("恢复分栏") : uiText("放大当前对话")
     element("zoomTerminal").setAttribute("aria-label", zoomLabel); element("zoomTerminal").title = zoomLabel
     element("zoomTerminal").dataset.zoomed = String(!!message.zoomed)
-  } else if (message.type === "workhub:tab-closing") dispose()
-  else if (message.type === "workhub:tab-navigate" && typeof message.route === "string") post("workhub:tab-open", {snapshot:{route:message.route, environment:saved.environment}})
+  } else if (message.type === "workhub:page-closing") dispose()
+  else if (message.type === "workhub:page-navigate" && typeof message.route === "string") post("workhub:page-open", {snapshot:{route:message.route, environment:saved.environment}})
 })
 const poll = setInterval(() => {if (active && !current && !restoring && !disposed && saved.environment === "local") void refreshRows().catch(() => {})}, 5000)
-;(window as Window & {WorkHubTab?: object}).WorkHubTab = {snapshot, canClose:() => !pending, dispose, get restoring() {return restoring}}
-post("workhub:tab-ready")
+;(window as Window & {WorkHubPage?: object}).WorkHubPage = {snapshot, canClose:() => !pending, dispose, get restoring() {return restoring}}
+post("workhub:page-ready")

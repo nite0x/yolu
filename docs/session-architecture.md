@@ -86,7 +86,7 @@ Task entry points use explicit links by default; project entry points aggregate 
 
 An aggregate scope requires a concrete directory before creating a session. Selecting one directory fixes the creation target. Detached project worktrees and an actually created task directory are valid targets. History-only mode preserves history and terminal continuation while disabling UI chat creation.
 
-Controllers are shared by environment/session identity. Unsent new-session drafts are keyed by creation target. Leaving a page cancels UI subscriptions without calling stop. Hidden panes/tabs do not mark an unseen reply as read. Browser storage is a fast cache; database-backed drafts and tab layouts survive desktop port changes.
+Controllers are shared by environment/session identity. Unsent new-session drafts are keyed by creation target. Leaving a page cancels UI subscriptions without calling stop. Hidden panes do not mark an unseen reply as read. Browser storage is a fast cache; database-backed drafts survive desktop port changes.
 
 ## Sending, questions and recovery
 

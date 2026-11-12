@@ -624,14 +624,14 @@ test("inactive tabs pause both interactive and read-only observation without sto
     try {
       await new Promise(resolve=>setImmediate(resolve));
       c.setDraft('切回时保留草稿');
-      inactive=true; windowEvents.dispatchEvent(new Event('workhub:tab-visibility'));
+      inactive=true; windowEvents.dispatchEvent(new Event('workhub:page-visibility'));
       const count=paths.length;
       tick();await c.poll();await c.history();await new Promise(resolve=>setImmediate(resolve));
       assert.equal(paths.length,count,'CSS-hidden tabs must not keep fetching');
       assert(streamClosed,'only the observation stream is disconnected');
       assert.equal(c.getSnapshot().draft,'切回时保留草稿');
       if(!readOnly) assert(c.getSnapshot().chat.busy,'hiding does not stop a backend run');
-      inactive=false;windowEvents.dispatchEvent(new Event('workhub:tab-visibility'));
+      inactive=false;windowEvents.dispatchEvent(new Event('workhub:page-visibility'));
       await new Promise(resolve=>setImmediate(resolve));
       assert(paths.length>count,'becoming visible catches up immediately');
       assert(!paths.some(path=>path.endsWith('/stop')));

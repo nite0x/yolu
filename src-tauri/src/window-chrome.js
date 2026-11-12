@@ -1,7 +1,7 @@
 // Injected by the macOS host only. Browser pages keep their existing layout.
 (() => {
   'use strict';
-  // Business pages live in same-origin tab iframes. Invoke through the host
+  // Business pages live in same-origin page iframes. Invoke through the host
   // frame so a child frame never needs a separate native bridge or capability.
   let host;
   try {
@@ -9,7 +9,7 @@
     if (host.location.origin !== location.origin) return;
   } catch { return; }
   const interactive = 'a,button,input,textarea,select,label,summary,[role="button"],[role="tab"],[role="menuitem"],[role="separator"],[contenteditable]:not([contenteditable="false"]),[data-no-window-drag]';
-  const regions = '.workhub-window-drag,.workspace-tabbar,.sidebar,.page-heading,.session-browser-header,.session-chat-header';
+  const regions = '.workhub-window-drag,.sidebar,.page-heading,.session-browser-header,.session-chat-header';
   function draggable(event) {
     const target = event.target;
     return event.button === 0 && target instanceof Element &&

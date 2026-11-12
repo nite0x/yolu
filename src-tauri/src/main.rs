@@ -143,8 +143,6 @@ fn set_ui_language(app: tauri::AppHandle, window: tauri::WebviewWindow, language
 fn menu(app: &tauri::AppHandle, chinese: bool) -> tauri::Result<Menu<tauri::Wry>> {
     let label = |zh, en| if chinese { zh } else { en };
     let reconnect = MenuItem::with_id(app, "reconnect", label("重新连接后台", "Reconnect backend"), true, None::<&str>)?;
-    let new_tab = MenuItem::with_id(app, "new-tab", label("新建标签页", "New tab"), true, Some("CmdOrCtrl+T"))?;
-    let close_tab = MenuItem::with_id(app, "close-tab", label("关闭当前标签页", "Close current tab"), true, Some("CmdOrCtrl+W"))?;
     let close = MenuItem::with_id(
         app,
         "close",
@@ -166,8 +164,6 @@ fn menu(app: &tauri::AppHandle, chinese: bool) -> tauri::Result<Menu<tauri::Wry>
         &[
             &reconnect,
             &PredefinedMenuItem::separator(app)?,
-            &new_tab,
-            &close_tab,
             &close,
             &quit,
         ],
@@ -295,12 +291,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             "reconnect" => connect(app.clone(), false),
             "quit" => connect(app.clone(), true),
             "close" => { if let Some(window) = app.get_webview_window("main") { let _ = window.close(); } }
-            "new-tab" | "close-tab" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let command = if event.id().as_ref() == "new-tab" { "new" } else { "close" };
-                    let _ = window.eval(&format!("window.dispatchEvent(new CustomEvent('workhub:tab-command', {{detail:'{command}'}}))"));
-                }
-            }
             _ => (),
         })
         .run(context)?;

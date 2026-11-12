@@ -55,7 +55,7 @@ function conversationSelectedSession(view = conversationState.current) {
 function restoreConversationSelection(saved, title) {
   const view = conversationState.current;
   view.directSession = null;
-  if (!saved.selected || saved.creating || window.WorkHubTab?.navigationOnly) return;
+  if (!saved.selected || saved.creating || window.WorkHubPage?.navigationOnly) return;
   let environment = activeEnvironment, id = saved.selected;
   try {
     const pair = JSON.parse(id);
@@ -139,7 +139,7 @@ function conversationListedSessions(result, environment) {
 function conversationVisible() { return conversationState.mode !== 'hidden' && !conversationHost.hidden; }
 function conversationReadingSession(id, environment = activeEnvironment) {
   const width = conversationHost.getBoundingClientRect().width;
-  return !window.WorkHubTab?.navigationOnly && !document.hidden && window.WorkHubTab?.active !== false && conversationVisible() && !conversationState.current?.creating && conversationState.current?.selected === conversationEnvironmentKey(environment, id) && (conversationState.current.pane === 'detail' || !width || width > 620);
+  return !window.WorkHubPage?.navigationOnly && !document.hidden && window.WorkHubPage?.active !== false && conversationVisible() && !conversationState.current?.creating && conversationState.current?.selected === conversationEnvironmentKey(environment, id) && (conversationState.current.pane === 'detail' || !width || width > 620);
 }
 function conversationItems(environment) { return environment ? conversationState.sessions(environment) : conversationEnvironments().flatMap(e => conversationState.sessions(e.id)); }
 const shortcutPins = window.WorkHubUI.createShortcutPins({
@@ -264,7 +264,7 @@ window.addEventListener('workhub:shortcut-icon-save', async event => {
   await saveShortcutPins(environment);
 });
 function refreshConversationShortcuts(force = false) {
-  if (window.WorkHubTab?.restoring || window.WorkHubTab?.active === false || document.documentElement?.hasAttribute('data-workspace-conversation')) return;
+  if (window.WorkHubPage?.restoring || window.WorkHubPage?.active === false || document.documentElement?.hasAttribute('data-workspace-conversation')) return;
   return Promise.allSettled(conversationEnvironments().flatMap(entry => [loadShortcutPins(entry.id), refreshConversationEnvironment(entry.id, force)]));
 }
 function refreshConversationEnvironment(environment, force = false) {
@@ -472,7 +472,7 @@ function renderConversationList() {
   view.listItems = sessions;
   view.listRows = window.WorkHubUI.conversationTree(sessions, {
     tasks: shortcutTasks(true).map(task => ({...task,environment_id:task.environment_id || activeEnvironment})), scope: view.scope,
-    selected: window.WorkHubTab?.navigationOnly ? window.WorkHubTab.parallelSelected : view.creating ? null : view.selected,
+    selected: window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected,
     reveal: view.locateSelection, limits: view.groupLimits, collapsed: view.collapsedGroups,
     filtered: !!text || statusFilter !== 'all' || view.archived,
   });
@@ -493,7 +493,7 @@ function renderConversationList() {
   const list = $('#sessionBrowserList');
   list.setAttribute('aria-busy',String(initialLoading || view.loading));
   const rows = view.listRows.slice(start, end);
-  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, parallel:!!window.WorkHubTab?.navigationOnly, parallelSessions:window.WorkHubTab?.parallelSessions || [], parallelFull:!!window.WorkHubTab?.parallelFull, selected: window.WorkHubTab?.navigationOnly ? window.WorkHubTab.parallelSelected : view.creating ? null : view.selected, showDirectory: showContext, showContext, loading: initialLoading, taskID: view.scope.kind === 'task' ? view.scope.id : undefined, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
+  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, parallel:!!window.WorkHubPage?.navigationOnly, parallelSessions:window.WorkHubPage?.parallelSessions || [], parallelFull:!!window.WorkHubPage?.parallelFull, selected: window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected, showDirectory: showContext, showContext, loading: initialLoading, taskID: view.scope.kind === 'task' ? view.scope.id : undefined, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
   const emptyError = !!view.error && !items.length && !view.loading;
   const renderKey = JSON.stringify([new Date().toDateString(), emptyError, props, before, after, loaded, sessions.length]);
   if (conversationListRenderKeys.get(list) !== renderKey) {
@@ -591,9 +591,9 @@ function renderConversationBrowser() {
   const available = conversationFilteredDirectories().filter(d => !d.disabled && d.target);
   const creationDirectories = view.creating ? conversationDirectories(view.scope, view.environmentFilter).filter(d => !d.disabled && d.target) : available;
   $('#newBrowserSession').disabled = sessionReadOnly || !available.length;
-  $('#newBrowserSession').title = sessionReadOnly ? uiText("当前为只读模式，请在终端新建对话") : !available.length ? uiText("当前范围没有可用于新建对话的工作目录") : uiText("在新标签页新建对话");
+  $('#newBrowserSession').title = sessionReadOnly ? uiText("当前为只读模式，请在终端新建对话") : !available.length ? uiText("当前范围没有可用于新建对话的工作目录") : uiText("在当前栏新建对话");
   updateConversationCreationActions();
-  $('#conversationCreationKind').hidden = !view.creating || !window.WorkHubTab || window.WorkHubTab.navigationOnly;
+  $('#conversationCreationKind').hidden = !view.creating || !window.WorkHubPage || window.WorkHubPage.navigationOnly;
   const terminalKind = $('[data-conversation-kind="terminal"]');
   terminalKind.disabled = (view.targetEnvironment || conversationScopeEnvironment(view.scope) || activeEnvironment) !== 'local' || !!sessionHistoryState?.submitting;
   terminalKind.title = terminalKind.disabled ? uiText("终端目前仅支持本机环境，且需等待当前操作完成") : uiText("在当前栏切换为终端");
@@ -616,7 +616,7 @@ function renderConversationBrowser() {
   syncConversationScopePanel();
 }
 async function refreshSessionWorkspace(force = false) {
-  if (window.WorkHubTab?.restoring || window.WorkHubTab?.active === false) return;
+  if (window.WorkHubPage?.restoring || window.WorkHubPage?.active === false) return;
   // A dedicated detail page gets metadata with its history. Only the shared
   // navigation loads lists; no full discovery per parallel conversation.
   if (document.documentElement?.hasAttribute('data-workspace-conversation')) return;
@@ -689,7 +689,7 @@ async function refreshSessionWorkspace(force = false) {
 }
 function showConversationSelection() {
   const view = conversationState.current;
-  if (!view || !conversationVisible() || window.WorkHubTab?.navigationOnly) return;
+  if (!view || !conversationVisible() || window.WorkHubPage?.navigationOnly) return;
   const session = view.creating ? null : conversationSelectedSession(view);
   const fileContext = session?.cwd ? window.WorkHubUI.conversationContext(session.cwd, {tasks: conversationWorkspace(session.environment_id || activeEnvironment).requirements, projects: conversationWorkspace(session.environment_id || activeEnvironment).projects}) : null;
   conversationFiles.setContext(session?.cwd ? {session: session.id, path: session.cwd, environment: session.environment_id || activeEnvironment, project: fileContext?.projectID, additionalDirectories: session.additional_directories} : undefined);
@@ -806,7 +806,7 @@ function suspendSessionWorkspace() {
   updateConversationNavigation();
 }
 function syncSessionWorkspace() {
-  if (window.WorkHubTab?.restoring) return;
+  if (window.WorkHubPage?.restoring) return;
   if (conversationState.current && conversationState.current.environment !== activeEnvironment) suspendSessionWorkspace();
   if (state.view === 'sessions') {
     if (conversationState.mode !== 'page') {
@@ -827,8 +827,8 @@ function updateConversationCreationActions() {
   const primary = $('#newBrowserSession');
   for (const button of document.querySelectorAll('[data-conversation-placement]')) {
     const split = button.dataset.conversationPlacement === 'split';
-    button.disabled = primary.disabled || split && !window.WorkHubTab?.canSplit;
-    button.title = primary.disabled ? primary.title : split && !window.WorkHubTab?.canSplit ? uiText("最多支持三栏，请先打开对话并留出空栏") : button.dataset.conversationPlacement === 'current' ? uiText("切换当前栏，原对话及草稿保留，运行中的任务继续执行") : '';
+    button.disabled = primary.disabled || split && !window.WorkHubPage?.canSplit;
+    button.title = primary.disabled ? primary.title : split && !window.WorkHubPage?.canSplit ? uiText("最多支持三栏，请先打开对话并留出空栏") : button.dataset.conversationPlacement === 'current' ? uiText("切换当前栏，原对话及草稿保留，运行中的任务继续执行") : '';
   }
 }
 function startBrowserConversation(focus = true) {

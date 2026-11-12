@@ -231,3 +231,38 @@ document.addEventListener('click', event => {
     toast(result.message);
   });
 });
+
+// Project tools are addressable pages in the workspace document. Reuse their
+// existing controllers and operation guards while keeping native form state.
+let projectPageKey = '';
+let projectPageLoad = Promise.resolve();
+let leavingProjectPage = false;
+function syncProjectPage() {
+  const route = location.hash.slice(1), path = route.split('?')[0];
+  const match = path.match(/^\/projects\/([a-zA-Z0-9_-]+)\/(git|worktrees)$/);
+  const key = match ? JSON.stringify([activeEnvironment,route]) : '';
+  document.body.classList.toggle('project-tool-page',!!match);
+  const dialog = match ? $(match[2] === 'git' ? '#gitDialog' : '#worktreeDialog') : null;
+  if (key === projectPageKey && (!dialog || dialog.open)) return projectPageLoad;
+  projectPageKey = key;
+  leavingProjectPage = true;
+  for (const id of ['gitDialog','worktreeDialog']) {
+    const dialog = $('#' + id);
+    if (dialog.open) dialog.close();
+  }
+  leavingProjectPage = false;
+  if (!match) return;
+  $('main').append(dialog);
+  const params = new URLSearchParams(route.split('?')[1] || '');
+  if (match[2] === 'git') projectPageLoad = loadGit(match[1],params.get('path') || '',params.get('requirement') || '');
+  else projectPageLoad = loadWorktree(match[1]);
+  return projectPageLoad;
+}
+for (const id of ['gitDialog','worktreeDialog']) {
+  $('#' + id).addEventListener('close',() => {
+    // Close events are queued, so check the current route and displayed page.
+    if (leavingProjectPage || !document.body.classList.contains('project-tool-page')) return;
+    const current = location.hash.slice(1).split('?')[0].match(/^\/projects\/([\w-]+)\/(git|worktrees)$/);
+    if (current && !$(current[2] === 'git' ? '#gitDialog' : '#worktreeDialog').open) navigate('/projects/' + current[1]);
+  });
+}

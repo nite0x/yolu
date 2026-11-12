@@ -128,7 +128,7 @@ test("hidden workspace pages defer quota reads until activated",async()=>{
     await until(()=>h.w.document.querySelector('.codex-quota-trigger'))
     assert.equal(calls,0)
     h.w.document.documentElement.removeAttribute('data-workspace-inactive')
-    h.w.dispatchEvent(new h.w.CustomEvent('workhub:tab-visibility'))
+    h.w.dispatchEvent(new h.w.CustomEvent('workhub:page-visibility'))
     await until(()=>calls===1)
     await until(()=>h.w.document.body.textContent?.includes('未提供额度'))
   }finally{h.close()}

@@ -1,7 +1,7 @@
 /* The desktop host opts into this frame; browser pages keep their layout. */
 html[data-workhub-desktop],html[data-workhub-desktop] body{background:var(--yolu-subtle,#f3f5fa)}
 html[data-workhub-desktop] .sidebar{padding:calc(20px + var(--workspace-sidebar-inset,0px)) 16px 16px;background:var(--yolu-subtle,#f3f5fa);border-right:0}
-html[data-workhub-desktop][data-workspace-tab] .sidebar .brand{visibility:hidden}
+html[data-workhub-desktop][data-workspace-page] .sidebar .brand{visibility:hidden}
 html[data-workhub-desktop] .sidebar .brand{display:flex;gap:10px;padding:0 8px;font-size:16px;font-weight:600;letter-spacing:-.2px;color:var(--yolu-primary-ink,#414a64)}
 html[data-workhub-desktop] .brand-mark{width:30px;height:30px;border-radius:7px}
 html[data-workhub-desktop] .brand small,html[data-workhub-desktop] .nav-label,html[data-workhub-desktop] .sidebar-controls{display:none}

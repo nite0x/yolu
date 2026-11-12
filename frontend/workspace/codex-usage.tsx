@@ -124,8 +124,8 @@ export function CodexUsage({ portal }: { portal: HTMLElement }) {
     const refresh = () => { void load() }
     const timer = window.setInterval(refresh, 60000)
     document.addEventListener("visibilitychange", refresh)
-    window.addEventListener("workhub:tab-visibility", refresh)
-    return () => { abort.abort(); clearInterval(timer); document.removeEventListener("visibilitychange", refresh); window.removeEventListener("workhub:tab-visibility", refresh) }
+    window.addEventListener("workhub:page-visibility", refresh)
+    return () => { abort.abort(); clearInterval(timer); document.removeEventListener("visibilitychange", refresh); window.removeEventListener("workhub:page-visibility", refresh) }
   }, [environment, revision, resetBusy])
 
   useEffect(() => {

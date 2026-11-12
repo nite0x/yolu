@@ -34,14 +34,14 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 			return
 		}
 		pageName := "workspace.html"
-		if r.URL.Query().Get("workspace-tab") != "" {
+		if r.URL.Query().Get("workspace-page") != "" {
 			pageName = "index.html"
 			// Only the internal workspace page may be framed by this origin.
 			// The outer window retains frame-ancestors 'none'.
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'")
 		}
 		styleNonce := ""
-		if r.URL.Query().Get("workspace-tab") != "" && r.URL.Query().Get("workspace-terminal") == "1" {
+		if r.URL.Query().Get("workspace-page") != "" && r.URL.Query().Get("workspace-terminal") == "1" {
 			pageName = "terminal.html"
 			var random [18]byte
 			if _, err := rand.Read(random[:]); err != nil {

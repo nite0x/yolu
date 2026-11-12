@@ -152,7 +152,7 @@ async function refresh(force = false) {
     if (revision !== environmentRevision) return;
     state.refreshing = false; $('#refreshButton').disabled = false;
     if (!needsScopedState && (state.view !== 'requirements' || state.selectedRequirement)) nextRefresh = 0;
-    refreshTimer = setTimeout(() => { if (!document.hidden && window.WorkHubTab?.active !== false) refresh(); }, nextRefresh);
+    refreshTimer = setTimeout(() => { if (!document.hidden && window.WorkHubPage?.active !== false) refresh(); }, nextRefresh);
     window.dispatchEvent(new CustomEvent('workhub:workspace-refreshed'));
   }
 }
@@ -180,22 +180,29 @@ function updateCheckTimes() {
 
 function readRoute() {
   suspendTaskListView();
-  const route = location.hash.slice(1);
-  state.view = route === '/settings' ? 'settings' : route === '/projects' ? 'projects' : route === '/sessions' ? 'sessions' : 'requirements';
+  const route = location.hash.slice(1).split('?')[0];
+  const project = route.match(/^\/projects\/([a-zA-Z0-9_-]+)(?:\/(git|worktrees))?$/);
+  if (project) state.selectedProject = project[1];
+  projectDetailOpen = !!project;
+  state.view = route === '/settings' ? 'settings' : route === '/projects' || project ? 'projects' : route === '/sessions' ? 'sessions' : 'requirements';
   const match = route.match(/^\/requirements\/([a-zA-Z0-9_-]+)$/);
   state.selectedRequirement = match ? match[1] : null;
   window.dispatchEvent(new CustomEvent('workhub:route-read'));
 }
 
 function navigate(route) {
-  if (location.hash === '#' + route) { readRoute(); render(); }
-  else location.hash = route;
+  if (location.hash === '#' + route) { readRoute(); render(); return; }
+  const previous = location.href, url = new URL(previous);
+  url.hash = route;
+  history[window.WorkHubPage ? 'replaceState' : 'pushState'](null,'',url);
+  window.dispatchEvent(new HashChangeEvent('hashchange',{oldURL:previous,newURL:url.href}));
 }
 window.addEventListener('hashchange', () => {
+  const previousView = state.view;
   readRoute(); $('#search').value = '';
   render();
   if (!taskListMounted || state.selectedRequirement) { $('main').scrollTop = 0; $(state.view === 'sessions' ? '#sessionBrowserSearch' : state.view === 'projects' ? '#panelTitle' : '#pageTitle').focus({ preventScroll: true }); }
-  refresh();
+  if (previousView !== 'projects' || state.view !== 'projects' || !state.loaded) refresh();
 });
 function render() {
   saveTaskListView();
@@ -247,6 +254,7 @@ function render() {
   $('#taskStatusFilterWrap').hidden = !reqView;
   $('#projectEnvironmentWrap').hidden = reqView;
   $('#projectAddButton').hidden = state.view !== 'projects';
+  syncProjectPage();
   renderSettings();
   if (typeof syncSessionWorkspace === 'function') syncSessionWorkspace();
   if (settingsView || sessionsView) { if (typeof syncTaskWorkspace === 'function') syncTaskWorkspace(null); return; }
@@ -290,8 +298,8 @@ async function handleAction(action, target) {
   if (action === 'change-task-directory') return openTaskDirectory(id, target.dataset.project);
   if (action === 'remove-task-project') return removeTaskProject(id, target.dataset.project);
   if (action === 'add-requirement-projects') return openRequirementProjects(id);
-  if (action === 'select-project') { state.selectedProject = id; projectDetailOpen = true; render(); $('#projectDetail h2')?.focus({ preventScroll: true }); return; }
-  if (action === 'project-list') { projectDetailOpen = false; render(); $('#content [aria-pressed="true"][data-action="select-project"]')?.focus(); return; }
+  if (action === 'select-project') { navigate('/projects/' + id); $('#projectDetail h2')?.focus({ preventScroll: true }); return; }
+  if (action === 'project-list') { navigate('/projects'); $('#content [aria-pressed="true"][data-action="select-project"]')?.focus(); return; }
   if (action === 'project-filter') { projectFilter = target.dataset.filter; projectDetailOpen = false; render(); $('#content [data-filter="' + projectFilter + '"]')?.focus(); return; }
   if (action === 'project-directory-filter') {
     projectDirectoryFilters.set(projectDirectoryFilterKey(id), target.dataset.filter);
@@ -342,9 +350,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Hosted pages restore their scope/selection before starting any data work.
   // The shell handshake must not wait for repository or environment scans.
   window.dispatchEvent(new CustomEvent('workhub:workspace-ready'));
-  if (!window.WorkHubTab) await refresh();
+  if (!window.WorkHubPage) await refresh();
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden && window.WorkHubTab?.active !== false) refresh(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && window.WorkHubPage?.active !== false) refresh(); });
 
 // Keep the impact and any failure visible until the user closes the dialog.
 let removalContext;

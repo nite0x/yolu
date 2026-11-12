@@ -30,9 +30,9 @@ async function mount(t, terminal = {taskID:'task',projectID:'app'}, rows = [], {
   };
   w.eval(fs.readFileSync('web/ui/terminal.js','utf8'));
   const send = data => w.dispatchEvent(new w.MessageEvent('message',{source:host.window,origin:w.location.origin,data}));
-  send({type:'workhub:tab-restore',active:true,snapshot:{route:'/terminals',environment:'local',terminal,conversation}});
+  send({type:'workhub:page-restore',active:true,snapshot:{route:'/terminals',environment:'local',terminal,conversation}});
   for (let i=0;i<4;i++) await new Promise(resolve=>setImmediate(resolve));
-  t.after(()=>{w.WorkHubTab.dispose();dom.window.close();host.window.close();});
+  t.after(()=>{w.WorkHubPage.dispose();dom.window.close();host.window.close();});
   return {w,send,messages,requests,sockets,$:selector=>w.document.querySelector(selector)};
 }
 

@@ -15,7 +15,7 @@ A task can span several repositories, branches and working directories. Yolu bri
 - **Organize work by task.** Associate multiple projects with a goal. Create a new branch and worktree for each project, or reuse an existing directory.
 - **Inspect and manage Git work.** See actual branches, local changes and upstream status; preview diffs and perform Git operations from the task.
 - **Continue conversations in context.** Create, link and resume Codex sessions with streaming replies, approvals, questions, attachments and persistent drafts.
-- **Keep several workspaces open.** Use tabs and up to three panes, including embedded terminals for installed command-line tools.
+- **Work with parallel Agents.** Open up to three conversation panes, including embedded terminals for installed command-line tools.
 - **Review before cleanup.** Archive a task, inspect its worktrees and remove eligible directories after explicit confirmation. Branches and conversation history are retained.
 - **Work locally or in WSL.** Windows installations can connect to a WSL distribution and user. Each task belongs to one execution environment.
 

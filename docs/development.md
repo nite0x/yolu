@@ -57,7 +57,7 @@ The browser-mode process runs in the foreground. Stop the test process and use i
 | `internal/codex/` | Codex protocol clients, event dispatch and relay |
 | `internal/overview/` | Read-only composition of workspace state |
 | `internal/platform/`, `internal/httpx/` | Platform integration and shared HTTP/security helpers |
-| `frontend/workspace/` | React-rendered workspace markup, forms, lists and tab bar |
+| `frontend/workspace/` | React-rendered workspace markup, forms, lists and conversation pane layout |
 | `frontend/chat/`, `frontend/components/assistant-ui/` | Interactive chat adapter and registry-derived message/composer components |
 | `web/` | Embedded HTML, controllers, styles and generated UI/chat bundles |
 | `desktop/`, `src-tauri/` | Startup page, Rust host and native bundle configuration |
@@ -65,13 +65,13 @@ The browser-mode process runs in the foreground. Stop the test process and use i
 
 The application composes task, project, session and workspace services; lower-level packages do not depend on `app`. Each environment shares its workspace storage, root and write locks. Cross-module behavior uses small interfaces and injected callbacks rather than making sessions owned by tasks. Existing `Requirement` types, `requirements` tables and API paths are retained for compatibility.
 
-Most workspace components render static HTML through `renderToStaticMarkup` and `window.WorkHubUI`; existing controllers retain event handling, polling, forms and dialog lifecycles. The interactive chat UI mounts through its own React bridge. Avoid a global CSS reset that changes legacy pages. The tab container loads independent same-origin workspace pages and persists layout through `/api/workspace-tabs`.
+Most workspace components render static HTML through `renderToStaticMarkup` and `window.WorkHubUI`; existing controllers retain event handling, polling, forms and dialog lifecycles. The interactive chat UI mounts through its own React bridge. Avoid a global CSS reset that changes legacy pages. The page host keeps one workspace document for route-based navigation and independent same-origin conversation readers for up to three parallel Agents. Project details, Worktree creation and Git operations have addressable routes. Conversation pane groups live for the current window session. Conversation history and drafts use their own storage.
 
 The conversation page controller delegates shortcut persistence to `frontend/workspace/shortcut-pins.ts` and list mechanics to `conversation-list.ts`. The shortcut store owns legacy browser-cache migration, serialized database writes, cross-window reloads and rollback after failed saves. The list module owns the bounded scroll window, keyboard positioning and DOM row reuse. `conversation-state.ts` owns scope preferences, environment caches, request generations and partial-result publication. The page controller connects these modules to navigation, filters and DOM events.
 
 The chat controller delegates debounced, ordered draft persistence to `frontend/chat/draft-persistence.ts` and saved-history pagination to `history-loader.ts`. The history loader receives connection and live-output revisions so delayed pages cannot replace a newer turn or title. Shared controller contracts live in `controller-types.ts`; type-only dependencies do not load the controller runtime.
 
-The tab bridge, environment controls and legacy history controls access shared conversation state through `window.WorkHubConversations`. They must not depend on page-local variables for the selected view or page mode.
+The page bridge, environment controls and legacy history controls access shared conversation state through `window.WorkHubConversations`. They must not depend on page-local variables for the selected view or page mode.
 
 Git HTTP handlers decode requests and translate errors. `internal/project/git_actions.go` coordinates repository serialization, task metadata changes and cache invalidation, with network, branch and merge operations in the corresponding `git_actions_*.go` files. Branch switching keeps its metadata lock through task-context publication.
 

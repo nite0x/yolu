@@ -9,7 +9,7 @@ import (
 
 func TestTerminalPageUsesScopedStyleNonceAndLocalBundle(t *testing.T) {
 	w := httptest.NewRecorder()
-	Handler("test-token", false).ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/?workspace-tab=terminal&workspace-terminal=1", nil))
+	Handler("test-token", false).ServeHTTP(w, httptest.NewRequest("GET", "http://localhost/?workspace-page=terminal&workspace-terminal=1", nil))
 	body := w.Body.String()
 	match := regexp.MustCompile(`name="style-nonce" content="([^"]+)"`).FindStringSubmatch(body)
 	if len(match) != 2 || match[1] == "__STYLE_NONCE__" {
@@ -23,7 +23,7 @@ func TestTerminalPageUsesScopedStyleNonceAndLocalBundle(t *testing.T) {
 		t.Fatal("terminal bundle/token missing")
 	}
 	ordinary := httptest.NewRecorder()
-	Handler("test-token", false).ServeHTTP(ordinary, httptest.NewRequest("GET", "http://localhost/?workspace-tab=conversation", nil))
+	Handler("test-token", false).ServeHTTP(ordinary, httptest.NewRequest("GET", "http://localhost/?workspace-page=conversation", nil))
 	if strings.Contains(ordinary.Header().Get("Content-Security-Policy"), "nonce-") {
 		t.Fatal("terminal style policy leaked into conversation page")
 	}

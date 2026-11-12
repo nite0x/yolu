@@ -14,7 +14,7 @@ function Help({ children }: { children: ReactNode }) {
 export function SettingsPage() {
   return <>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="appearanceTitle"><form id="appearanceForm">
-      <Heading id="appearanceTitle" title={uiText("界面配色")}>{uiText("为工作台选择配色，立即应用到所有标签页，无需重新加载。")}</Heading>
+      <Heading id="appearanceTitle" title={uiText("界面配色")}>{uiText("为工作台选择配色，立即应用到整个工作台，无需重新加载。")}</Heading>
       <Field id="colorThemeSelect" label={uiText("配色方案")}><NativeSelect id="colorThemeSelect" name="color_theme"><Option value="mint">{uiText("Yolu 薄荷")}</Option><Option value="classic">{uiText("经典蓝紫")}</Option><Option value="light">{uiText("浅色")}</Option><Option value="dark">{uiText("深色")}</Option><Option value="system">{uiText("跟随系统")}</Option></NativeSelect></Field>
       <div className="appearance-swatches" data-theme-preview="mint" aria-hidden="true"><span className="appearance-swatch-paper" /><span className="appearance-swatch-teal" /><span className="appearance-swatch-mint" /><small>{uiText("暖白 · 深青 · 薄荷绿")}</small></div>
       <div className="appearance-swatches" data-theme-preview="classic" aria-hidden="true" hidden><span className="appearance-swatch-cool" /><span className="appearance-swatch-indigo" /><span className="appearance-swatch-lavender" /><small>{uiText("冷白 · 蓝紫 · 淡紫")}</small></div>

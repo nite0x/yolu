@@ -4,7 +4,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 let worktreeOverview = null;
 let worktreeRequest = 0;
 
-async function openWorktree(id) {
+function openWorktree(id) {
+  if (state.busy) return;
+  navigate('/projects/' + id + '/worktrees');
+  return syncProjectPage();
+}
+async function loadWorktree(id) {
   if (state.busy) return;
   const request = ++worktreeRequest;
   worktreeOverview = null;
@@ -16,7 +21,7 @@ async function openWorktree(id) {
   $('#worktreeLoading').hidden = false;
   $('#worktreeTitle').textContent = uiText("创建 Worktree");
   $('#worktreeProject').textContent = state.projects.find(p => p.id === id)?.name || '';
-  $('#worktreeDialog').showModal();
+  $('#worktreeDialog').show();
   try {
     const overview = await api(`/api/projects/${id}/git`);
     if (request !== worktreeRequest || !$('#worktreeDialog').open) return;
@@ -68,7 +73,7 @@ $('#worktreeForm').addEventListener('submit', async event => {
   try {
     await mutation(uiText("正在创建独立 Worktree"), async () => {
       const result = await api(`/api/projects/${id}/worktrees`, { method: 'POST', body: JSON.stringify(body) });
-      state.selectedProject = id; navigate('/projects'); $('#search').value = '';
+      state.selectedProject = id; navigate('/projects/' + id); $('#search').value = '';
       $('#worktreeDialog').close();
       toast(`${result.message} · ${result.branch}`);
     }, $('#worktreeError'));

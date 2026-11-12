@@ -20,7 +20,7 @@ func TestEmbeddedPageAssetsInBothSessionModes(t *testing.T) {
 			a.Workspace.ReadOnlySessions = readOnly
 			handler := a.handler()
 			page := httptest.NewRecorder()
-			handler.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost:4317/?workspace-tab=fixture", nil))
+			handler.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost:4317/?workspace-page=fixture", nil))
 			html := page.Body.String()
 			if page.Code != http.StatusOK || strings.Contains(html, "__CSRF_TOKEN__") || !strings.Contains(html, `name="session-mode" content="`+name+`"`) {
 				t.Fatalf("invalid page: %d %s", page.Code, html)
@@ -45,13 +45,13 @@ func TestEmbeddedPageAssetsInBothSessionModes(t *testing.T) {
 	}
 }
 
-func TestWorkspaceTabsFramePolicy(t *testing.T) {
+func TestWorkspacePagesFramePolicy(t *testing.T) {
 	handler := testApp(t).handler()
 	for _, tc := range []struct {
 		path, contains, ancestors string
 	}{
-		{"/", `id="workspaceTabBar"`, "frame-ancestors 'none'"},
-		{"/?workspace-tab=fixture", `id="sessionPageMount"`, "frame-ancestors 'self'"},
+		{"/", `id="workspacePages"`, "frame-ancestors 'none'"},
+		{"/?workspace-page=fixture", `id="sessionPageMount"`, "frame-ancestors 'self'"},
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("GET", "http://localhost:4317"+tc.path, nil))
@@ -62,11 +62,11 @@ func TestWorkspaceTabsFramePolicy(t *testing.T) {
 			t.Fatalf("unexpected frame policy for %s: %s", tc.path, csp)
 		}
 	}
-	for _, path := range []string{"/core/workspace-tabs.js", "/core/workspace-tab.js", "/core/workspace-tabs.css", "/ui/workspace-tabs.js"} {
+	for _, path := range []string{"/core/page-host.js", "/core/page-bridge.js", "/core/page-host.css", "/ui/page-layout.js"} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("GET", "http://localhost:4317"+path, nil))
 		if response.Code != http.StatusOK || response.Body.Len() == 0 {
-			t.Errorf("missing tab asset %s: %d", path, response.Code)
+			t.Errorf("missing page asset %s: %d", path, response.Code)
 		}
 	}
 }

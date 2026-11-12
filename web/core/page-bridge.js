@@ -2,8 +2,8 @@
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
 
 
-// Each tab retains its own existing controllers and DOM. Only navigation
-// metadata crosses the host boundary; repositories and runs stay server-owned.
+// Independent conversation readers retain their controllers and drafts.
+// Page navigation is owned by the workspace document.
 (() => {
   if (!window.parent || window.parent === window) return;
   const host = window.parent;
@@ -22,7 +22,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   window.addEventListener('workhub:conversation-list-ready',selectInitialConversation);
   if (navigationOnly) document.documentElement.setAttribute('data-workspace-navigation','');
-  document.documentElement.setAttribute('data-workspace-tab', '');
+  document.documentElement.setAttribute('data-workspace-page', '');
   const post = (type, detail = {}) => host.postMessage({type, ...detail}, location.origin);
   let chromeSignature = '';
   function publishChrome() {
@@ -34,7 +34,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (navigationOnly) document.documentElement.style.setProperty('--workspace-navigation-left',Math.round(box.right) + 'px');
     const chrome = {left:compact ? 0 : Math.round(box.right), top:compact ? Math.round(box.bottom) : 0};
     const signature = JSON.stringify(chrome);
-    if (signature !== chromeSignature) {chromeSignature = signature; post('workhub:tab-chrome', {chrome});}
+    if (signature !== chromeSignature) {chromeSignature = signature; post('workhub:page-chrome', {chrome});}
   }
   function snapshot() {
     const route = location.hash.slice(1) || '/requirements';
@@ -53,25 +53,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         return (context?.tasks.map(task => task.name).join('、') || conversationScopeName(view.scope)) + ' · ' + environmentName(environment);
       })() : '',
       status:session?.chat_status || '',
-      project: {id:state.selectedProject, detail:projectDetailOpen, filter:projectFilter},
-      taskList: {...taskListMemory, focus:null},
-      search: $('#search').value,
       conversation: view ? {scope:view.scope, creating:!!view.creating, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(session.environment_id || activeEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
     };
   }
   function publish() {
-    if (!restoring && !disposed && !navigationOnly) post('workhub:tab-state', {snapshot:snapshot()});
+    if (!restoring && !disposed && !navigationOnly) post('workhub:page-state', {snapshot:snapshot()});
   }
   function schedule() { clearTimeout(timer); timer = setTimeout(publish, 100); }
-  function layout(height) {
-    if (height !== 0 && height !== 40) return;
-    const root = document.documentElement;
-    if (root.style.getPropertyValue('--workspace-tab-height') === height + 'px') return;
-    window.dispatchEvent(new CustomEvent('workhub:chat-layout', {detail:{phase:'before'}}));
-    root.style.setProperty('--workspace-tab-height', height + 'px');
-    root.toggleAttribute('data-workspace-tabs-visible', height > 0);
-    window.dispatchEvent(new CustomEvent('workhub:chat-layout', {detail:{visible:active}}));
-  }
   function pane(split, shared = split) {
     parallelPane = split;
     const root = document.documentElement;
@@ -102,7 +90,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (!visible) window.dispatchEvent(new CustomEvent('workhub:chat-layout', {detail:{phase:'before'}}));
     active = visible;
     document.documentElement.toggleAttribute('data-workspace-inactive', !active);
-    if (changed) window.dispatchEvent(new CustomEvent('workhub:tab-visibility', {detail:{visible:active}}));
+    if (changed) window.dispatchEvent(new CustomEvent('workhub:page-visibility', {detail:{visible:active}}));
     if (active) {
       chromeSignature = ''; publishChrome(); requestAnimationFrame(publishChrome);
       window.dispatchEvent(new CustomEvent('workhub:chat-layout', {detail:{visible:true}}));
@@ -113,15 +101,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const revision = ++restoreRevision;
     restoring = true;
     try {
-      if (saved.taskList) { taskListMounted = false; Object.assign(taskListMemory, saved.taskList); restoreTaskListControls(); }
       await selectEnvironment(saved.environment || 'local', saved.route || '/requirements', 'replace', {refreshState:false});
       if (disposed || revision !== restoreRevision) return;
-      if (state.view === 'projects' && saved.project) {
-        state.selectedProject = saved.project.id;
-        projectDetailOpen = !!saved.project.detail;
-        projectFilter = ['all','dirty','error'].includes(saved.project.filter) ? saved.project.filter : 'all';
-        $('#search').value = saved.search || ''; render();
-      }
       if (state.view === 'sessions') {
         creationHint = {...saved.terminal};
         const savedView = saved.conversation?.scope ? saved.conversation : {scope:{kind:'all'},pane:'list'};
@@ -153,14 +134,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         void refreshSessionWorkspace(false);
         $('#sessionBrowserList').scrollTop = savedView.scrollTop || 0;
       }
-    } catch (error) { if (!disposed) toast(uiText("恢复标签页失败：") + error.message, true); }
+    } catch (error) { if (!disposed) toast(uiText("页面加载失败：") + error.message, true); }
     finally {
       if (!disposed && revision === restoreRevision) {
         restoring = false;
         document.documentElement.removeAttribute('data-workspace-initial-route');
         performance.mark?.('workhub:selection-ready');
         visibility(active); publish();
-        post('workhub:tab-restored');
+        post('workhub:page-restored');
         selectInitialConversation();
       }
     }
@@ -183,7 +164,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const taskButton = target.closest('[data-action="open-requirement"], [data-action="jump-requirement"]');
     if (taskButton) return {route:'/requirements/' + taskButton.dataset.id, environment:taskButton.dataset.environment || activeEnvironment, title:taskButton.textContent.trim()};
     const projectButton = target.closest('[data-action="select-project"]');
-    if (projectButton) return {route:'/projects', environment:activeEnvironment, title:state.projects.find(p => p.id === projectButton.dataset.id)?.name || uiText("项目"), project:{id:projectButton.dataset.id, detail:true, filter:'all'}};
+    if (projectButton) return {route:'/projects/' + projectButton.dataset.id, environment:activeEnvironment, title:state.projects.find(p => p.id === projectButton.dataset.id)?.name || uiText("项目")};
     const taskShortcut = target.closest('[data-task-shortcut]');
     if (taskShortcut) {
       const task = shortcutTasks().find(item => shortcutTaskKey(item) === taskShortcut.dataset.taskShortcut);
@@ -202,26 +183,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (link) return {route:link.getAttribute('href').slice(1),environment:activeEnvironment};
     return null;
   }
-  const open = saved => post('workhub:tab-open', {snapshot:saved});
-  const command = event => { if (event.detail === 'new' && !disposed) open({environment:activeEnvironment}); };
-  window.addEventListener('workhub:tab-command', command);
-  const menu = document.createElement('div'); menu.className = 'workspace-tab-menu'; menu.hidden = true; menu.setAttribute('role','menu');
-  const item = document.createElement('button'); item.type = 'button'; item.textContent = uiText("在新标签页打开"); item.setAttribute('role','menuitem'); menu.append(item); document.body.append(menu);
-  let menuDestination;
-  item.addEventListener('click', () => { if (menuDestination) open(menuDestination); menu.hidden = true; });
-  document.addEventListener('contextmenu', event => {
-    const saved = destination(event.target);
-    if (!saved) return;
-    event.preventDefault(); menuDestination = saved; menu.hidden = false;
-    menu.style.left = Math.min(event.clientX, Math.max(8, window.innerWidth - 180)) + 'px';
-    menu.style.top = Math.min(event.clientY, Math.max(8, window.innerHeight - 45)) + 'px'; item.focus();
-  });
+  const open = saved => post('workhub:page-open', {snapshot:saved});
   document.addEventListener('click', event => {
-    if (!menu.contains(event.target)) menu.hidden = true;
     const terminalButton = event.target.closest('[data-conversation-terminal]');
     if (terminalButton && !terminalButton.disabled && event.button === 0 && !(event.metaKey || event.ctrlKey)) {
       const saved = destination(event.target);
-      if (saved) {event.preventDefault(); event.stopImmediatePropagation(); post('workhub:tab-open',{snapshot:saved,placement:terminalButton.dataset.conversationParallel ? 'split' : undefined});}
+      if (saved) {event.preventDefault(); event.stopImmediatePropagation(); post('workhub:page-open',{snapshot:saved,placement:terminalButton.dataset.conversationParallel ? 'split' : undefined});}
       return;
     }
     const formKind = event.target.closest('[data-conversation-kind="terminal"]');
@@ -239,21 +206,21 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       const path = projectCreate.dataset.path;
       const matches = q => q.members.some(m => m.project_id === projectID && m.path === path);
       const task = state.requirements.find(q => q.id === taskID && matches(q)) || state.requirements.find(matches);
-      post('workhub:tab-open',{create:true,snapshot:{route:'/sessions',environment:activeEnvironment,title:uiText("新建对话"),terminal:{taskID:task?.id,projectID},conversation:{scope:task ? {kind:'task',id:task.id,environment:activeEnvironment} : {kind:'project',id:projectID,environment:activeEnvironment},directory:path ? conversationEnvironmentKey(activeEnvironment,conversationPathKey(path)) : '',creating:true,selected:null,pane:'detail'}}}); return;
+      post('workhub:page-open',{create:true,snapshot:{route:'/sessions',environment:activeEnvironment,title:uiText("新建对话"),terminal:{taskID:task?.id,projectID},conversation:{scope:task ? {kind:'task',id:task.id,environment:activeEnvironment} : {kind:'project',id:projectID,environment:activeEnvironment},directory:path ? conversationEnvironmentKey(activeEnvironment,conversationPathKey(path)) : '',creating:true,selected:null,pane:'detail'}}}); return;
     }
     const create = event.target.closest('[data-conversation-action="new"], [data-session-action="new"]');
     if (create && event.button === 0 && !create.disabled && !state.busy) {
       const taskAction = create.dataset.sessionAction === 'new';
       const task = taskAction ? state.requirements.find(task => task.id === create.dataset.requirement) : null;
       if (taskAction ? !task || task.state !== 'ready' || sessionReadOnly : $('#newBrowserSession').disabled) return;
-      const placement = create.dataset.conversationPlacement || 'tab';
+      const placement = create.dataset.conversationPlacement || 'current';
       if (placement === 'split' && !canSplit) return;
       event.preventDefault(); event.stopImmediatePropagation();
       $('#sessionActionPicker').open = false;
       const selectedSession = !task && window.WorkHubConversations.current ? conversationSelectedSession(window.WorkHubConversations.current) : null;
       const scope = task ? {kind:'task',id:task.id,environment:activeEnvironment} : window.WorkHubConversations.current?.scope || {kind:'all'};
       const directory = !task && window.WorkHubConversations.current ? defaultConversationDirectory(window.WorkHubConversations.current, conversationFilteredDirectories().filter(d => !d.disabled && d.target)) : null;
-      post('workhub:tab-open',{create:true,placement,snapshot:{route:'/sessions',environment:selectedSession?.environment_id || activeEnvironment,title:uiText("新建对话"),terminal:{taskID:task?.id || directory?.target?.task_id || (scope.kind === 'task' ? scope.id : undefined),projectID:directory?.target?.project_id},conversation:{scope,directory:task ? '' : window.WorkHubConversations.current?.directory || '',creationDirectory:directory?.key || '',environmentFilter:task ? '' : window.WorkHubConversations.current?.environmentFilter || '',selected:null,creating:true,pane:'detail'}}}); return;
+      post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:selectedSession?.environment_id || activeEnvironment,title:uiText("新建对话"),terminal:{taskID:task?.id || directory?.target?.task_id || (scope.kind === 'task' ? scope.id : undefined),projectID:directory?.target?.project_id},conversation:{scope,directory:task ? '' : window.WorkHubConversations.current?.directory || '',creationDirectory:directory?.key || '',environmentFilter:task ? '' : window.WorkHubConversations.current?.environmentFilter || '',selected:null,creating:true,pane:'detail'}}}); return;
     }
     if (event.target.closest('.brand[href="/"]') && !(event.metaKey || event.ctrlKey)) {
       event.preventDefault(); event.stopImmediatePropagation(); if (navigationOnly) open({route:'/requirements',environment:activeEnvironment}); else navigate('/requirements'); return;
@@ -268,37 +235,21 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         return;
       }
     }
-    if (parallelPane && event.button === 0 && !(event.metaKey || event.ctrlKey)) {
+    if ((parallelPane || document.documentElement.hasAttribute('data-workspace-conversation')) && event.button === 0 && !(event.metaKey || event.ctrlKey)) {
       const saved = destination(event.target);
       if (saved) {event.preventDefault(); event.stopImmediatePropagation(); open(saved); return;}
-    }
-    if (event.button !== 0 || !(event.metaKey || event.ctrlKey)) return;
-    const saved = destination(event.target);
-    if (saved) {event.preventDefault(); event.stopImmediatePropagation(); open(saved);}
-  }, true);
-  document.addEventListener('auxclick', event => {
-    if (event.button !== 1) return;
-    const saved = destination(event.target);
-    if (saved) {event.preventDefault(); event.stopImmediatePropagation(); open(saved);}
-  }, true);
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !menu.hidden) {menu.hidden = true; event.preventDefault(); return;}
-    if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
-    if ((!event.shiftKey && ['t','w'].includes(event.key.toLowerCase())) || ['Tab','PageUp','PageDown'].includes(event.key) || /^[1-9]$/.test(event.key)) {
-      event.preventDefault(); event.stopImmediatePropagation();
-      post('workhub:tab-key', {key:{key:event.key,metaKey:event.metaKey,ctrlKey:event.ctrlKey,shiftKey:event.shiftKey,altKey:event.altKey}});
     }
   }, true);
   document.addEventListener('click', schedule);
   document.addEventListener('input', schedule);
   document.addEventListener('change', schedule);
-  const focus = event => { if (!disposed && (!restoring || event?.type === 'pointerdown')) post('workhub:tab-focus'); };
+  const focus = event => { if (!disposed && (!restoring || event?.type === 'pointerdown')) post('workhub:page-focus'); };
   document.addEventListener('pointerdown', focus, true);
   document.addEventListener('focusin', focus);
   window.addEventListener('hashchange', schedule);
   window.addEventListener('workhub:workspace-refreshed', schedule);
   window.addEventListener('workhub:session-loaded', schedule);
-  window.addEventListener('workhub:parallel-command',event => {if (parallelPane && ['close','zoom'].includes(event.detail)) post('workhub:tab-pane-command',{command:event.detail});});
+  window.addEventListener('workhub:parallel-command',event => {if (parallelPane && ['close','zoom'].includes(event.detail)) post('workhub:page-pane-command',{command:event.detail});});
   window.addEventListener('message', event => {
     if (event.source !== host || event.origin !== location.origin) return;
     const message = event.data;
@@ -322,9 +273,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       }
       selectInitialConversation();
     }
-    else if (message?.type === 'workhub:tab-navigation') {navigationOnly = true; document.documentElement.setAttribute('data-workspace-navigation','');}
-    else if (message?.type === 'workhub:tab-restore') { layout(message.tabBarHeight); visibility(!!message.active); void restore(message.snapshot); }
-    else if (message?.type === 'workhub:tab-layout') layout(message.height);
+    else if (message?.type === 'workhub:page-navigation') {navigationOnly = true; document.documentElement.setAttribute('data-workspace-navigation','');}
+    else if (message?.type === 'workhub:page-restore') { visibility(!!message.active); void restore(message.snapshot); }
     else if (message?.type === 'workhub:parallel-layout') {
       canSplit = !!message.canSplit; updateConversationCreationActions();
       const root = document.documentElement;
@@ -335,10 +285,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         window.dispatchEvent(new Event('workhub:parallel-layout'));
       }
     }
-    else if (message?.type === 'workhub:tab-pane') pane(!!message.split,message.shared ?? !!message.split);
-    else if (message?.type === 'workhub:tab-active') visibility(!!message.active);
-    else if (message?.type === 'workhub:tab-navigate' && typeof message.route === 'string') navigate(message.route);
-    else if (message?.type === 'workhub:tab-closing') dispose();
+    else if (message?.type === 'workhub:page-pane') pane(!!message.split,message.shared ?? !!message.split);
+    else if (message?.type === 'workhub:page-active') visibility(!!message.active);
+    else if (message?.type === 'workhub:page-navigate' && typeof message.route === 'string') navigate(message.route);
+    else if (message?.type === 'workhub:page-closing') dispose();
   });
   const observer = new MutationObserver(schedule);
   observer.observe(document.querySelector('title'), {childList:true});
@@ -348,7 +298,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   if (document.querySelector('.sidebar')) chromeResize?.observe(document.querySelector('.sidebar'));
   window.addEventListener('resize', publishChrome);
   function canClose() {
-    if (state.busy || blockingMutationDialog()) {toast(uiText("请等待当前操作完成后关闭标签页")); return false;}
+    if (state.busy || blockingMutationDialog()) {toast(uiText("请等待当前操作完成后关闭视图")); return false;}
     return true;
   }
   function dispose() {
@@ -357,11 +307,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     window.dispatchEvent(new Event('pagehide'));
     disposed = true; clearTimeout(timer); observer.disconnect(); chromeObserver.disconnect(); chromeResize?.disconnect();
     window.removeEventListener('resize', publishChrome);
-    window.removeEventListener('workhub:tab-command', command);
     document.removeEventListener('pointerdown', focus, true);
     document.removeEventListener('focusin', focus);
   }
-  window.WorkHubTab = {snapshot,canClose,dispose,get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
+  window.WorkHubPage = {snapshot,canClose,dispose,get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
   visibility(false);
-  window.addEventListener('workhub:workspace-ready', () => post('workhub:tab-ready'), {once:true});
+  window.addEventListener('workhub:workspace-ready', () => post('workhub:page-ready'), {once:true});
 })();
