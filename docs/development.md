@@ -5,7 +5,7 @@ Run Git, build and test commands from the repository root. See the [user guide](
 ## Prerequisites
 
 - Node.js 22.12 or later and npm. Use `npm ci` with the committed lockfile.
-- Go satisfying `go.mod` (currently a minimum of 1.26.10). Core checks and desktop packaging read their Go version directly from this file.
+- Go satisfying `go.mod` (currently a minimum of 1.26.11). Core checks and desktop packaging read their Go version directly from this file.
 - Rust and the [Tauri platform dependencies](https://v2.tauri.app/start/prerequisites/) for desktop work. CI uses Rust 1.95.0.
 - Git. Real conversation checks also require a separately installed and authenticated Codex CLI in the target environment.
 
