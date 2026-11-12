@@ -3,6 +3,13 @@ name: Desktop installers
 on:
   workflow_dispatch:
     inputs:
+      platform:
+        description: Installer platforms to build
+        type: choice
+        options:
+          - windows-x64
+          - all
+        default: windows-x64
       require_signing:
         description: Require macOS notarization and Windows signing (configure repository secrets first)
         type: boolean
@@ -18,19 +25,39 @@ env:
   NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
+  targets:
+    name: Select installer targets
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - id: select
+        env:
+          PACKAGE_PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'all' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          targets = [
+              {"os": "macos-15", "target": "aarch64-apple-darwin"},
+              {"os": "macos-15-intel", "target": "x86_64-apple-darwin"},
+              {"os": "windows-2022", "target": "x86_64-pc-windows-msvc"},
+              {"os": "ubuntu-22.04", "target": "x86_64-unknown-linux-gnu"},
+          ]
+          platform = os.environ["PACKAGE_PLATFORM"]
+          if platform == "windows-x64":
+              targets = [target for target in targets if target["os"] == "windows-2022"]
+          elif platform != "all":
+              raise SystemExit("Unsupported installer platform: " + platform)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("matrix=" + json.dumps({"include": targets}) + "\n")
+          PY
   package:
+    needs: targets
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            target: aarch64-apple-darwin
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     env:
       CARGO_INCREMENTAL: '0'
@@ -49,6 +76,16 @@ jobs:
           rustup toolchain install 1.95.0 --profile minimal
           rustup default 1.95.0
           rustup target add '${{ matrix.target }}'
+      - name: Restore Rust build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: rust-${{ runner.os }}-${{ matrix.target }}-1.95.0-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-${{ matrix.target }}-1.95.0-
       - name: Linux build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -61,11 +98,11 @@ jobs:
         run: |
           npm run desktop:check
           npm run chat:check
-          npm run chat:test
           npm run chat:build
-          node --test scripts/*.test.cjs
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             test "$GITHUB_REF_NAME" = "desktop-v$(node -p 'require("./package.json").version')"
+            npm run chat:test
+            node --test scripts/*.test.cjs
           fi
       - name: Check reachable Go vulnerabilities
         shell: bash
@@ -121,7 +158,7 @@ jobs:
           npm run desktop:package -- "${args[@]}"
       - name: Rust launcher tests
         shell: bash
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target '${{ matrix.target }}' --release --features custom-protocol --locked
       - name: macOS DMG install and lifecycle
         if: runner.os == 'macOS'
         shell: bash

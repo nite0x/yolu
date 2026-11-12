@@ -196,7 +196,9 @@ The old Windows thumbprint variable `WORK_HUB_WINDOWS_CERTIFICATE_THUMBPRINT` re
 
 See Tauri's [macOS signing](https://v2.tauri.app/distribute/sign/macos/) and [Windows signing](https://v2.tauri.app/distribute/sign/windows/) documentation for platform setup. An unsigned or ad-hoc local build does not demonstrate notarization or publisher verification. Linux packages have checksums; `--require-signing` is not a Linux packaging mode.
 
-[.github/workflows/desktop.yml](../.github/workflows/desktop.yml) runs manually or on `desktop-v<version>` tags. The tag must match `package.json`. Tag builds require macOS/Windows signing; manual runs default to permitting unsigned test artifacts. The jobs build the four configured targets, run native lifecycle/installer checks and upload Actions artifacts. They do not automatically create a GitHub Release.
+[.github/workflows/desktop.yml](../.github/workflows/desktop.yml) runs manually or on `desktop-v<version>` tags. Manual runs default to Windows x64 and can select all four configured targets. Tag builds target all platforms, require macOS/Windows signing and must match the version in `package.json`. Manual runs permit unsigned test artifacts by default. Rust dependencies and build outputs are cached by platform, toolchain and lockfile. Launcher tests use the same Release target and features as packaging.
+
+The full Web/Chat suite runs in Core checks for branch commits. Manual packaging runs type checks, packaging contracts, the Go vulnerability scan, backend upgrade safety tests, Rust launcher tests and native lifecycle/installer checks. Tag builds also repeat the full Web/Chat suite on the native runners. Successful jobs upload Actions artifacts. GitHub Releases are published separately.
 
 Use the [release checklist](open-source-release.md) to record the actual target commit, artifacts, signing status and native results before publication. Yolu has no automatic update server or in-app updater.
 
