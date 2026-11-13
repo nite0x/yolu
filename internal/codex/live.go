@@ -4,20 +4,18 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
-
-	"worktree-hub/internal/platform"
 )
 
 type Event struct {
@@ -64,47 +62,62 @@ func OpenLive(ctx context.Context) (LiveClient, error) {
 func DialDaemon(ctx context.Context) (*websocket.Conn, error) {
 	// CLI sessions and the web client must use the same runtime. An isolated
 	// `codex app-server` cannot report whether a terminal owns an active turn.
-	startup, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	start := Command(startup, "app-server", "daemon", "start")
-	platform.HideCommand(start)
-	err := start.Run()
-	if err != nil {
-		return nil, fmt.Errorf("无法连接 Codex 共享后台服务，请确认 CLI 支持 app-server daemon：%w", err)
-	}
-	version := Command(startup, "app-server", "daemon", "version")
-	platform.HideCommand(version)
-	raw, err := version.Output()
+	socket, err := daemonSocketPath(ctx, Command)
 	if err != nil {
 		return nil, err
+	}
+	return dialDaemonSocket(ctx, socket)
+}
+
+func daemonSocketPath(ctx context.Context, command func(context.Context, ...string) *exec.Cmd) (string, error) {
+	startup, endStartup := context.WithTimeout(ctx, 20*time.Second)
+	raw, err := diagnosticOutput(command(startup, "app-server", "daemon", "start"))
+	err = errors.Join(startup.Err(), err)
+	endStartup()
+	if err != nil {
+		return "", fmt.Errorf("启动 Codex 共享后台失败（daemon start）：%w", err)
 	}
 	var daemon struct {
 		SocketPath string `json:"socketPath"`
 	}
+	if json.Unmarshal(raw, &daemon) == nil && filepath.IsAbs(daemon.SocketPath) {
+		return daemon.SocketPath, nil
+	}
+	// Older CLIs do not include the socket in the start response. Give the
+	// fallback its own budget so a slow startup cannot exhaust the query.
+	versionCtx, endVersion := context.WithTimeout(ctx, 10*time.Second)
+	raw, err = diagnosticOutput(command(versionCtx, "app-server", "daemon", "version"))
+	err = errors.Join(versionCtx.Err(), err)
+	endVersion()
+	if err != nil {
+		return "", fmt.Errorf("读取 Codex 共享后台地址失败（daemon version）：%w", err)
+	}
+	daemon.SocketPath = ""
 	if err := json.Unmarshal(raw, &daemon); err != nil {
-		return nil, err
+		return "", fmt.Errorf("读取 Codex 共享后台地址失败：无法解析 daemon version 输出：%w", err)
 	}
 	if !filepath.IsAbs(daemon.SocketPath) {
-		return nil, fmt.Errorf("Codex 未返回可用的共享套接字路径")
+		return "", fmt.Errorf("读取 Codex 共享后台地址失败：Codex 未返回可用的共享套接字路径")
 	}
-	return dialDaemonSocket(startup, ctx, daemon.SocketPath)
+	return daemon.SocketPath, nil
 }
 
 // Also used by diagnostics: inspect an existing daemon without starting one.
-func dialDaemonSocket(dialCtx, lifetime context.Context, socket string) (*websocket.Conn, error) {
+func dialDaemonSocket(ctx context.Context, socket string) (*websocket.Conn, error) {
 	if !filepath.IsAbs(socket) {
-		return nil, fmt.Errorf("Codex 未返回可用的共享套接字路径")
+		return nil, fmt.Errorf("连接 Codex 共享套接字失败：Codex 未返回可用的共享套接字路径")
 	}
-	if info, err := os.Stat(socket); err != nil || info.Mode()&os.ModeSocket == 0 {
-		return nil, fmt.Errorf("Codex 共享套接字不可用")
+	info, err := os.Stat(socket)
+	if err != nil {
+		return nil, fmt.Errorf("连接 Codex 共享套接字失败：%w", err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return nil, fmt.Errorf("连接 Codex 共享套接字失败：路径不是套接字")
 	}
 	dialer := websocket.Dialer{HandshakeTimeout: 5 * time.Second, NetDialContext: func(dialCtx context.Context, _, _ string) (net.Conn, error) {
-		if runtime.GOOS == "windows" {
-			return dialCodexProxy(lifetime, socket)
-		}
 		return (&net.Dialer{}).DialContext(dialCtx, "unix", socket)
 	}}
-	conn, _, err := dialer.DialContext(dialCtx, "ws://localhost/", nil)
+	conn, _, err := dialer.DialContext(ctx, "ws://localhost/", nil)
 	if err != nil {
 		return nil, fmt.Errorf("连接 Codex 共享套接字失败：%w", err)
 	}

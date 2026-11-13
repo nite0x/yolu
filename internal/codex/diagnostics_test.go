@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -188,9 +187,6 @@ func TestDiagnosticsRejectsInvalidDaemonResponses(t *testing.T) {
 }
 
 func TestDiagnosticsConnectsExistingDaemonWithoutLoadingThreads(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Unix socket transport; native Windows uses the CLI proxy")
-	}
 	// Keep the socket below Unix path length limits on macOS CI.
 	dir, err := os.MkdirTemp("", "wh-diag-")
 	if err != nil {

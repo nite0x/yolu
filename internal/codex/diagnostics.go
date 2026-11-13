@@ -154,7 +154,7 @@ func diagnose(parent context.Context, openSessions func(context.Context) (Sessio
 		add("daemon", "共享后台", "warning", "共享后台未运行；检测没有启动后台", "首次发送会尝试启动；若启动失败，在此环境运行 codex app-server daemon start 查看原因。")
 		return report
 	}
-	conn, err := dialDaemonSocket(daemonCtx, daemonCtx, daemon.SocketPath)
+	conn, err := dialDaemonSocket(daemonCtx, daemon.SocketPath)
 	if err == nil {
 		var live LiveClient
 		live, err = StartWebSocket(daemonCtx, conn)
