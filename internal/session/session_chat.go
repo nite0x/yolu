@@ -435,8 +435,6 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	}
 	watch := time.NewTicker(time.Second)
 	defer watch.Stop()
-	budget := time.NewTimer(30 * time.Minute)
-	defer budget.Stop()
 	for {
 		select {
 		case event, ok := <-c.Events():
@@ -467,11 +465,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 			}
 		case <-ctx.Done():
 			_ = run.interrupt()
-			fail("页面对话已停止或达到 30 分钟运行上限，请刷新历史检查进展")
-			return
-		case <-budget.C:
-			_ = run.interrupt()
-			fail("已达到 30 分钟运行上限并请求停止，请检查已保存的进展后继续")
+			fail("页面对话已停止，请刷新历史检查进展")
 			return
 		}
 	}
