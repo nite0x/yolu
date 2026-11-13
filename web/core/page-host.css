@@ -54,7 +54,6 @@ html[data-workhub-desktop] .workspace-shared-navigation{top:var(--workspace-wind
 .workspace-list-placeholder{position:absolute;inset:6px 0 8px 8px;border:1px solid var(--yolu-border,#dfe4ee);border-radius:8px;background:var(--yolu-surface,#fff);padding:16px 12px;color:var(--yolu-muted-ink,#71809a);font-size:12px}
 .workspace-list-placeholder strong{display:block;color:var(--yolu-foreground,#334155);font-size:14px;margin-bottom:16px}
 .workspace-list-placeholder-search{height:32px;border:1px solid var(--yolu-border,#dfe4ee);border-radius:6px;background:var(--yolu-canvas,#f8f9fd)}
-.workspace-list-placeholder-filters{height:28px;border-radius:5px;background:var(--yolu-subtle,#f1f3fa);margin-top:8px}
 .workspace-list-placeholder p{margin:20px 0}
 .workspace-shared-navigation:not([data-ready]) .workspace-navigation-frame{visibility:hidden}
 .workspace-shared-navigation[data-ready] .workspace-list-placeholder{display:none}

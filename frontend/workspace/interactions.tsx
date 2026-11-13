@@ -110,7 +110,7 @@ export function setupWorkspaceInteractions() {
     for (const collection of [selects, menus]) for (const [source, entry] of collection) if (!source.isConnected) {
       entry.dispose?.(); entry.root.unmount(); entry.host.remove(); collection.delete(source as never)
     }
-    for (const source of document.querySelectorAll<HTMLSelectElement>("select[data-searchable-select], #gitWorktree, #gitSwitch, #gitMergeSource, #gitBranchSource, #gitFFLocal, #gitFFSource, #worktreeSource, #worktreeExisting, #sessionDirectoryFilter")) {
+    for (const source of document.querySelectorAll<HTMLSelectElement>("select[data-searchable-select], #gitWorktree, #gitSwitch, #gitMergeSource, #gitBranchSource, #gitFFLocal, #gitFFSource, #worktreeSource, #worktreeExisting")) {
       if (!source.id) continue
       let entry = selects.get(source)
       if (!entry) {

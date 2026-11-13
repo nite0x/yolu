@@ -216,14 +216,22 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       const placement = create.dataset.conversationPlacement || 'current';
       if (placement === 'split' && !canSplit) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      $('#sessionActionPicker').open = false;
+      $('#sessionScopePicker').open = false;
       const selectedSession = !task && window.WorkHubConversations.current ? conversationSelectedSession(window.WorkHubConversations.current) : null;
       const scope = task ? {kind:'task',id:task.id,environment:activeEnvironment} : window.WorkHubConversations.current?.scope || {kind:'all'};
       const directory = !task && window.WorkHubConversations.current ? defaultConversationDirectory(window.WorkHubConversations.current, conversationFilteredDirectories().filter(d => !d.disabled && d.target)) : null;
       post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:selectedSession?.environment_id || activeEnvironment,title:uiText("新建对话"),terminal:{taskID:task?.id || directory?.target?.task_id || (scope.kind === 'task' ? scope.id : undefined),projectID:directory?.target?.project_id},conversation:{scope,directory:task ? '' : window.WorkHubConversations.current?.directory || '',creationDirectory:directory?.key || '',environmentFilter:task ? '' : window.WorkHubConversations.current?.environmentFilter || '',selected:null,creating:true,pane:'detail'}}}); return;
     }
     if (event.target.closest('.brand[href="/"]') && !(event.metaKey || event.ctrlKey)) {
-      event.preventDefault(); event.stopImmediatePropagation(); if (navigationOnly) open({route:'/requirements',environment:activeEnvironment}); else navigate('/requirements'); return;
+      event.preventDefault(); event.stopImmediatePropagation(); open({route:'/requirements',environment:activeEnvironment}); return;
+    }
+    if (!navigationOnly && !parallelPane && !document.documentElement.hasAttribute('data-workspace-conversation') && event.button === 0 && !(event.metaKey || event.ctrlKey)) {
+      const saved = destination(event.target);
+      if (saved && (event.target.closest('[data-view]') || saved.route === '/sessions')) {
+        // The host switches complete views after their readers and navigation
+        // are ready. Do not paint a temporary conversation layout here first.
+        event.preventDefault(); event.stopImmediatePropagation(); open(saved); return;
+      }
     }
     if (navigationOnly && event.button === 0 && !(event.metaKey || event.ctrlKey)) {
       const saved = destination(event.target);
@@ -265,8 +273,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       canSplit = !!message.canSplit; updateConversationCreationActions();
       document.documentElement.toggleAttribute('data-workspace-single',message.split === false);
       document.documentElement.style.setProperty('--workspace-shared-list-width',Math.max(220,Math.min(520,message.listWidth || 280)) + 'px');
-      const tools = document.querySelector('.session-browser-list-tools');
-      if (tools) {let hint = document.getElementById('sharedConversationTarget'); if (!hint) {hint = document.createElement('p'); hint.id = 'sharedConversationTarget'; tools.append(hint);} const label = (message.split === false ? uiText("当前对话：") : uiText("切换当前栏：")) + (message.targetTitle || uiText("对话")); if (hint.textContent !== label) hint.textContent = label;}
+      const listPane = document.getElementById('sessionBrowserListPane');
+      if (listPane) {
+        const label = (message.split === false ? uiText("当前对话：") : uiText("切换当前栏：")) + (message.targetTitle || uiText("对话"));
+        if (listPane.getAttribute('aria-description') !== label) listPane.setAttribute('aria-description',label);
+      }
       if (window.WorkHubConversations.current && selectionChanged) {
         if (focusChanged && message.target) followConversationSelection(message.target);
         else {window.WorkHubConversations.current.selected = message.selected; if (focusChanged) window.WorkHubConversations.current.locateSelection = message.selected; renderConversationList();}

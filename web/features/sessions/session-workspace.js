@@ -183,12 +183,13 @@ function syncConversationScopePanel() {
   }
   // The top layer escapes the resizable panel's overflow boundary.
   const anchor = picker.querySelector('summary').getBoundingClientRect();
+  const searchBar = $('#sessionBrowserScopeBar').getBoundingClientRect();
   const width = Math.min(420, window.innerWidth - 24);
   const below = window.innerHeight - anchor.bottom - 18;
   const above = anchor.top - 18;
   const useBelow = below >= 300 || below >= above;
   panel.style.width = width + 'px';
-  panel.style.left = Math.max(12, Math.min(anchor.left, window.innerWidth - width - 12)) + 'px';
+  panel.style.left = Math.max(12, Math.min(searchBar.width ? searchBar.left : anchor.left, window.innerWidth - width - 12)) + 'px';
   panel.style.top = useBelow ? anchor.bottom + 6 + 'px' : 'auto';
   panel.style.bottom = useBelow ? 'auto' : window.innerHeight - anchor.top + 6 + 'px';
   panel.style.maxHeight = Math.max(0, Math.min(560, useBelow ? below : above)) + 'px';
@@ -404,10 +405,16 @@ function conversationScopeName(scope) {
 }
 function renderConversationScopes() {
   const tasks = taskInventory.loaded ? taskInventory.requirements : state.requirements;
-  const scopes = [{ kind: 'all', name: uiText("全部对话") }, ...tasks.map(q => ({ kind: 'task', id: q.id, environment: q.environment_id || activeEnvironment, name: q.name + ' · ' + environmentName(q.environment_id || activeEnvironment) })), ...conversationEnvironments().flatMap(e => conversationWorkspace(e.id).projects.map(p => ({ kind: 'project', id: p.id, environment: e.id, name: p.name + ' · ' + environmentName(e.id) }))), ...conversationDirectories({ kind: 'all' }, '').map(d => ({ kind: 'directory', cwd: d.cwd, environment: d.environment, name: d.cwd + ' · ' + environmentName(d.environment) }))];
+  const showEnvironments = conversationEnvironments().length > 1;
+  const scopes = [
+    {kind:'all', name:uiText("全部对话")},
+    ...tasks.map(q => ({kind:'task', id:q.id, environment:q.environment_id || activeEnvironment, name:q.name, environmentName:showEnvironments ? environmentName(q.environment_id || activeEnvironment) : ''})),
+    ...conversationEnvironments().flatMap(e => conversationWorkspace(e.id).projects.map(p => ({kind:'project', id:p.id, environment:e.id, name:p.name, environmentName:showEnvironments ? environmentName(e.id) : ''}))),
+    ...conversationDirectories({kind:'all'}, '').map(d => ({kind:'directory', cwd:d.cwd, environment:d.environment, name:d.cwd, environmentName:showEnvironments ? environmentName(d.environment) : ''})),
+  ];
   const search = $('#sessionScopeSearch').value.trim().toLowerCase();
-  const matching = scopes.filter(s => !search || [s.name, s.cwd].join(' ').toLowerCase().includes(search));
-  $('#sessionScopeOptions').innerHTML = matching.length ? window.WorkHubUI.conversationScopes(matching) : uiText("<p class=\"session-empty\">没有匹配的范围</p>");
+  const matching = scopes.filter(s => (s.kind !== 'all' || conversationState.current.scope.kind === 'all') && (!search || [s.name, s.cwd, s.environmentName].join(' ').toLowerCase().includes(search)));
+  $('#sessionScopeOptions').innerHTML = matching.length ? window.WorkHubUI.conversationScopes(matching, conversationState.current.scope) : uiText("<p class=\"session-empty\">没有匹配的范围</p>");
 }
 function updateConversationNavigation() {
   if (!window.document) return;
@@ -487,8 +494,15 @@ function renderConversationList() {
     button.setAttribute('aria-label', `${({all:uiText("全部"), running:uiText("进行中"), waiting:uiText("待确认"), unread:uiText("未读")})[status]}，${initialLoading ? uiText("正在加载") : view.error && !items.length ? uiText("数量暂不可用") : count + uiText(" 个对话")}`);
   }
   $('#sessionSearchClear').hidden = !view.search;
-  const filterCount = Number(!!view.directory) + Number(!!view.archived) + Number(!!view.environmentFilter);
-  $('#sessionClearFilters').hidden = !filterCount && statusFilter === 'all';
+  const filterCount = Number(!!view.directory) + Number(!!view.archived) + Number(!!view.environmentFilter) + Number(statusFilter !== 'all');
+  const directoryPath = view.directory && (conversationDirectories().find(d => d.key === view.directory)?.cwd || view.directory);
+  const statusLabel = ({running:uiText("进行中"), waiting:uiText("待确认"), unread:uiText("未读")})[statusFilter] || '';
+  const filterLabels = [directoryPath ? directoryPath.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || directoryPath : '', view.archived ? uiText("已归档") : '', view.environmentFilter ? environmentName(view.environmentFilter) : '', statusLabel].filter(Boolean);
+  $('#sessionClearFilters').hidden = !filterCount;
+  $('#sessionActiveFilterLabel').hidden = !filterCount;
+  $('#sessionActiveFilterLabel').textContent = filterLabels.join(' · ');
+  $('#sessionActiveFilterLabel').title = directoryPath || '';
+  $('#sessionScopePicker').querySelector('summary').title = [conversationScopeName(view.scope), directoryPath, ...filterLabels].filter(Boolean).join(' · ');
   const showContext = !view.directory && view.scope.kind !== 'directory' && new Set(items.map(session => conversationPathKey(session.cwd))).size > 1;
   const list = $('#sessionBrowserList');
   list.setAttribute('aria-busy',String(initialLoading || view.loading));
@@ -540,15 +554,23 @@ function renderConversationList() {
   if (list.clientHeight && list.scrollHeight <= list.clientHeight && loaded < view.listRows.length) scheduleConversationListScroll();
   const running = sessions.filter(s => ['starting','running','stopping','handoff'].includes(s.chat_status)).length;
   const waiting = sessions.filter(s => s.chat_status === 'waiting').length;
-  const countMarkup = initialLoading ? uiText("<span>正在加载对话…</span>") : view.error && !items.length ? uiText("<span>数量暂不可用</span>") : uiText("<span>{0}{1} 个对话{2}</span><span class=\"sr-only\">{3}{4}{5}</span>", sessions.length, text || statusFilter !== 'all' ? ' / ' + items.length : '', view.error ? uiText(" · 部分结果未更新") : '', running ? uiText(" · {0} 个运行中", running) : '', waiting ? uiText(" · {0} 个待确认", waiting) : '', view.loading ? uiText(" · 更新中") : '');
-  if ($('#sessionBrowserCount').innerHTML !== countMarkup) $('#sessionBrowserCount').innerHTML = countMarkup;
-  const refresh = $('[data-conversation-action="refresh"]');
-  refresh.classList.toggle('is-loading', view.loading);
-  refresh.disabled = view.loading;
-  refresh.setAttribute('aria-label', view.loading ? uiText("正在刷新对话列表") : uiText("刷新对话列表"));
+  const unavailable = view.error && !items.length;
+  const count = $('#sessionBrowserCount');
+  const countText = initialLoading ? '…' : unavailable ? '—' : `${sessions.length}${text || statusFilter !== 'all' ? '/' + items.length : ''}`;
+  if (count.textContent !== countText) count.textContent = countText;
+  const countLabel = initialLoading ? uiText("正在加载对话…") : unavailable ? uiText("数量暂不可用") : [
+    text || statusFilter !== 'all' ? uiText("{0} / {1} 个对话", sessions.length, items.length) : uiText("{0} 个对话", sessions.length),
+    view.error ? uiText(" · 部分结果未更新") : '',
+    running ? uiText(" · {0} 个运行中", running) : '',
+    waiting ? uiText(" · {0} 个待确认", waiting) : '',
+    view.loading ? uiText(" · 更新中") : '',
+  ].join('');
+  count.setAttribute('aria-label', countLabel);
+  count.title = countLabel;
   $('#sessionBrowserError').hidden = !view.error;
   const errorMarkup = view.error ? uiText("<strong>{0}</strong><p>{1}</p><button type=\"button\" data-conversation-action=\"refresh\" class=\"session-error-retry\">重新加载</button><details><summary>错误详情</summary><pre>{2}</pre></details>", view.sessions.length ? uiText("部分对话未能刷新") : uiText("暂时无法读取对话"), view.sessions.length ? uiText("保留上次结果，你可以继续查看已有对话。") : uiText("检查执行环境连接后重试。"), esc(view.error)) : '';
   if ($('#sessionBrowserError').innerHTML !== errorMarkup) $('#sessionBrowserError').innerHTML = errorMarkup;
+  for (const refresh of document.querySelectorAll('[data-conversation-action="refresh"]')) refresh.disabled = view.loading;
   updateConversationNavigation();
 }
 function renderConversationBrowser() {
@@ -565,29 +587,12 @@ function renderConversationBrowser() {
   $('#sessionsEnvironment').value = view.environmentFilter;
   $('#sessionEnvironmentField').hidden = conversationEnvironments().length < 2 || !!conversationScopeEnvironment(view.scope);
   $('#sessionScopeAll').hidden = view.scope.kind === 'all';
-  const dirs = conversationDirectories();
-  const missingDirectory = view.directory && !dirs.some(d => d.key === view.directory);
   $('#taskConversationTools').hidden = view.scope.kind !== 'task';
   $('#linkTaskConversation').dataset.requirement = view.scope.kind === 'task' ? view.scope.id : '';
   $('#linkTaskConversation').dataset.environment = conversationScopeEnvironment(view.scope);
-  $('#sessionDirectoryField').hidden = (!view.directory && dirs.length < 2) || view.scope.kind === 'directory';
-  const filter = $('#sessionDirectoryFilter');
-  const options = uiText("<option value=\"\">全部目录</option>") + dirs.map(d => `<option value="${esc(d.key)}">${esc(d.label)} · ${esc(d.cwd)}</option>`).join('') + (missingDirectory ? uiText("<option value=\"{0}\">目录待核实 · {1}</option>", esc(view.directory), esc(view.directory)) : '');
-  if (filter.innerHTML !== options) filter.innerHTML = options;
-  filter.value = view.directory;
   updateDirectoryPinButton();
   $('#sessionBrowserSearch').value = view.search;
   $('#sessionBrowserArchived').checked = !!view.archived;
-  const filterCount = Number(!!view.directory) + Number(!!view.archived) + Number(!!view.environmentFilter);
-  $('#sessionFilterCount').textContent = String(filterCount);
-  $('#sessionFilterCount').hidden = !filterCount;
-  $('#sessionClearFilters').hidden = !filterCount;
-  $('#sessionFilterPicker').classList.toggle('has-filters', !!filterCount);
-  $('#sessionFilterPicker').querySelector('summary').title = [view.directory, view.archived ? uiText("已归档对话") : '', view.environmentFilter ? environmentName(view.environmentFilter) : ''].filter(Boolean).join(' · ') || uiText("筛选环境、目录与归档");
-  $('#sessionActiveFilterLabel').hidden = !filterCount;
-  const directoryPath = dirs.find(d => d.key === view.directory)?.cwd || view.directory;
-  $('#sessionActiveFilterLabel').textContent = [directoryPath ? directoryPath.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || directoryPath : '', view.archived ? uiText("已归档") : '', view.environmentFilter ? environmentName(view.environmentFilter) : ''].filter(Boolean).join(' · ');
-  $('#sessionActiveFilterLabel').title = directoryPath;
   const available = conversationFilteredDirectories().filter(d => !d.disabled && d.target);
   const creationDirectories = view.creating ? conversationDirectories(view.scope, view.environmentFilter).filter(d => !d.disabled && d.target) : available;
   $('#newBrowserSession').disabled = sessionReadOnly || !available.length;
@@ -749,7 +754,6 @@ function selectConversationScope(scope) {
   conversationState.current = conversationViewFor(scope);
   $('#sessionScopePicker').open = false;
   $('#sessionScopeSearch').value = '';
-  $('#sessionFilterPicker').open = false;
   if (pickerFocused) $('#sessionScopePicker summary').focus({preventScroll:true});
   renderConversationBrowser(); refreshSessionWorkspace(true); showConversationSelection();
   $('#sessionBrowserList').scrollTop = conversationState.current.scrollTop;
@@ -793,7 +797,7 @@ function closeConversationWorkspace() {
   conversationState.mode = 'hidden';
   conversationFiles.setContext();
   conversationHost.hidden = true;
-  for (const id of ['sessionScopePicker', 'sessionFilterPicker', 'sessionActionPicker']) $('#' + id).open = false;
+  $('#sessionScopePicker').open = false;
   syncConversationScopePanel();
   closeSessionHistory(false);
   renderConversationShortcuts();
@@ -825,11 +829,9 @@ function openSessionWorkspaceHistory(requirement, session) {
 }
 function updateConversationCreationActions() {
   const primary = $('#newBrowserSession');
-  for (const button of document.querySelectorAll('[data-conversation-placement]')) {
-    const split = button.dataset.conversationPlacement === 'split';
-    button.disabled = primary.disabled || split && !window.WorkHubPage?.canSplit;
-    button.title = primary.disabled ? primary.title : split && !window.WorkHubPage?.canSplit ? uiText("最多支持三栏，请先打开对话并留出空栏") : button.dataset.conversationPlacement === 'current' ? uiText("切换当前栏，原对话及草稿保留，运行中的任务继续执行") : '';
-  }
+  const split = $('#newBrowserSplitSession');
+  split.disabled = primary.disabled || !window.WorkHubPage?.canSplit;
+  split.title = primary.disabled ? primary.title : !window.WorkHubPage?.canSplit ? uiText("最多支持三栏，请先打开对话并留出空栏") : uiText("在右侧分栏新建");
 }
 function startBrowserConversation(focus = true) {
   const view = conversationState.current;
@@ -914,8 +916,11 @@ document.addEventListener('click', event => {
   if (scope) { selectConversationScope(JSON.parse(scope.dataset.conversationScope)); rememberConversationView(); return; }
   const statusButton = event.target.closest('[data-conversation-status]');
   if (statusButton && conversationState.current) {
+    const pickerFocused = $('#sessionScopePicker').contains(document.activeElement);
     conversationState.current.statusFilter = statusButton.dataset.conversationStatus; resetConversationListWindow();
     $('#sessionBrowserList').scrollTop = 0;
+    $('#sessionScopePicker').open = false;
+    if (pickerFocused) $('#sessionScopePicker summary').focus();
     renderConversationList(); return;
   }
   const button = event.target.closest('[data-conversation-action]');
@@ -925,8 +930,6 @@ document.addEventListener('click', event => {
     case 'pin-directory': toggleDirectoryShortcutPin(selectedConversationDirectoryKey()); break;
     case 'refresh': refreshSessionWorkspace(true); break;
     case 'refresh-shortcuts': refreshConversationShortcuts(true); break;
-    case 'close-filters':
-      $('#sessionFilterPicker').open = false; $('#sessionFilterPicker summary').focus(); break;
     case 'clear-search':
       conversationState.current.search = ''; resetConversationListWindow(); $('#sessionBrowserSearch').value = ''; $('#sessionBrowserList').scrollTop = 0;
       renderConversationList(); $('#sessionBrowserSearch').focus(); break;
@@ -947,33 +950,32 @@ document.addEventListener('click', event => {
 });
 function resetConversationListFilters() {
   const view = conversationState.current;
+  const pickerFocused = $('#sessionScopePicker').contains(document.activeElement);
   const reload = !!(view.environmentFilter || view.directory || view.archived);
   view.statusFilter = 'all'; view.environmentFilter = ''; view.archived = false; resetConversationListWindow(view); $('#sessionBrowserList').scrollTop = 0;
   $('#sessionBrowserArchived').checked = false;
-  $('#sessionFilterPicker').open = false;
-  if (reload) {
-    $('#sessionDirectoryFilter').value = '';
-    $('#sessionDirectoryFilter').dispatchEvent(new Event('change', {bubbles:true}));
-  } else renderConversationBrowser();
+  $('#sessionScopePicker').open = false;
+  if (reload) setConversationDirectory('');
+  else renderConversationBrowser();
+  if (pickerFocused) $('#sessionScopePicker summary').focus();
 }
-$('#sessionDirectoryFilter').addEventListener('change', event => {
+function setConversationDirectory(directory) {
   if (!conversationState.current) return;
   rememberConversationView(); conversationState.selection++;
   closeSessionHistory(false);
   resetConversationListWindow();
-  conversationState.current.directory = event.target.value; conversationState.current.selected = undefined; conversationState.current.creating = false; conversationState.current.target = null; conversationState.current.pane = 'list'; conversationState.current.sessions = []; conversationState.current.checkedAt = 0;
+  conversationState.current.directory = directory; conversationState.current.selected = undefined; conversationState.current.creating = false; conversationState.current.target = null; conversationState.current.pane = 'list'; conversationState.current.sessions = []; conversationState.current.checkedAt = 0;
   conversationState.current.requestedSession = null;
   // Invalidate the previous request before allowing a different directory query.
   conversationState.current.requestID = (conversationState.current.requestID || 0) + 1;
   conversationState.current.requestKey = null; conversationState.current.loading = false;
   renderConversationBrowser(); refreshSessionWorkspace(true); showConversationSelection();
-});
+}
 $('#sessionBrowserSearch').addEventListener('input', event => { if (conversationState.current) { conversationState.current.search = event.target.value; resetConversationListWindow(); $('#sessionBrowserList').scrollTop = 0; renderConversationList(); } });
 $('#sessionsEnvironment').addEventListener('change', event => {
   if (!conversationState.current) return;
   conversationState.current.environmentFilter = event.target.value;
-  $('#sessionDirectoryFilter').value = '';
-  $('#sessionDirectoryFilter').dispatchEvent(new Event('change', {bubbles: true}));
+  setConversationDirectory('');
 });
 $('#sessionScopeSearch').addEventListener('input', renderConversationScopes);
 document.addEventListener('input', event => {
@@ -1013,11 +1015,9 @@ $('#sessionBrowserNewDirectory').addEventListener('change', event => {
   conversationState.selection++; closeSessionHistory(false); renderConversationBrowser(); showConversationSelection();
 });
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && $('#sessionActionPicker').open) { $('#sessionActionPicker').open = false; $('#sessionActionPicker summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
   const itemMenu = document.activeElement?.closest('.session-item-menu[open]');
   if (event.key === 'Escape' && itemMenu) { itemMenu.open = false; itemMenu.querySelector('summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
   if (event.key === 'Escape' && $('#taskShortcutPicker')?.open) { $('#taskShortcutPicker').open = false; $('#taskShortcutPicker summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
-  if (event.key === 'Escape' && $('#sessionFilterPicker').open) { $('#sessionFilterPicker').open = false; $('#sessionFilterPicker summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
   if (event.key === 'Escape' && $('#sessionScopePicker').open) { $('#sessionScopePicker').open = false; $('#sessionScopePicker summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
   if (event.key === 'Escape' && event.target.id === 'sessionBrowserSearch' && conversationState.current?.search) {
     conversationState.current.search = ''; resetConversationListWindow(); event.target.value = ''; $('#sessionBrowserList').scrollTop = 0; renderConversationList(); event.preventDefault(); event.stopPropagation(); return;
@@ -1033,17 +1033,8 @@ document.addEventListener('keydown', event => {
   const next = event.key === 'Home' ? 0 : event.key === 'End' ? lastLoaded : index + ({ArrowDown:1,ArrowUp:-1,PageDown:conversationBatchSize,PageUp:-conversationBatchSize})[event.key];
   focusConversationListIndex(positions[Math.max(0,Math.min(next,positions.length - 1))]); event.preventDefault();
 }, true);
-for (const id of ['sessionFilterPicker', 'sessionScopePicker', 'sessionActionPicker']) {
-  const picker = $('#' + id);
-  picker.addEventListener('toggle', () => {
-    if (!window.document || !picker.open) return;
-    for (const other of ['sessionFilterPicker', 'sessionScopePicker', 'sessionActionPicker']) if (other !== id) $('#' + other).open = false;
-    syncConversationScopePanel();
-  });
-}
 document.addEventListener('click', event => { if (!event.target.closest('#sessionScopePicker')) $('#sessionScopePicker').open = false; });
-document.addEventListener('click', event => { if (!event.target.closest('#sessionFilterPicker')) $('#sessionFilterPicker').open = false; });
-document.addEventListener('click', event => { if (!event.target.closest('#sessionActionPicker > summary')) $('#sessionActionPicker').open = false; });
+$('#linkTaskConversation').addEventListener('click', () => { $('#sessionScopePicker').open = false; });
 document.addEventListener('click', event => { const picker = $('#taskShortcutPicker'); if (picker && !event.target.closest('#taskShortcutPicker')) picker.open = false; });
 document.addEventListener('click', event => { for (const menu of document.querySelectorAll('.session-item-menu[open]')) if (!menu.contains(event.target)) menu.open = false; });
 window.addEventListener('pagehide', suspendSessionWorkspace);

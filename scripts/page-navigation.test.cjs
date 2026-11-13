@@ -21,19 +21,91 @@ function harness(t, hash = '#/requirements') {
   const frames = () => [...w.document.querySelectorAll('iframe.workspace-page')];
   const send = (frame,type,extra = {},origin = w.location.origin) => w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin,data:{type,...extra}}));
   const messages = new Map();
-  const ready = frame => {
+  const ready = (frame,restored = true) => {
     const received = [];
     frame.contentWindow.postMessage = message => received.push(message);
     frame.contentWindow.WorkHubPage = {canClose:() => true,dispose() {}};
     messages.set(frame,received); send(frame,'workhub:page-ready');
+    if (restored) send(frame,'workhub:page-restored');
     return received;
   };
   const workspace = frames()[0]; ready(workspace);
   return {w,frames,send,ready,messages,layouts,requests,workspace,nav:() => w.document.querySelector('.workspace-navigation-frame')};
 }
 const conversation = id => ({route:'/sessions',environment:'local',title:id,conversation:{scope:{kind:'all'},selected:id,pane:'detail'}});
-const open = (h,snapshot,placement) => h.send(h.workspace,'workhub:page-open',{snapshot,placement});
+const open = (h,snapshot,placement) => {
+  h.send(h.workspace,'workhub:page-open',{snapshot,placement});
+  // Complete the normal frame handshake. Transition tests below deliver the
+  // two readiness notifications individually to model slow document loads.
+  if (h.nav() && !h.messages.has(h.nav())) h.ready(h.nav());
+  for (const frame of h.frames()) if (frame !== h.workspace && !h.messages.has(frame)) h.ready(frame);
+};
 const visible = h => h.frames().filter(frame => !frame.hidden);
+
+for (const first of ['navigation','reader']) test(`projects remain visible until both conversation documents restore (${first} first)`, t => {
+  const h = harness(t,'#/projects');
+  const document = h.workspace.contentDocument, source = h.workspace.src;
+  h.send(h.workspace,'workhub:page-open',{snapshot:{route:'/sessions',environment:'local'}});
+  const reader = h.frames().find(frame => frame !== h.workspace), navigation = h.nav();
+  assert.deepEqual(visible(h),[h.workspace]);
+  assert.equal(h.w.document.body.hasAttribute('data-workspace-conversations'),false);
+  assert.equal(navigation.parentElement.hidden,true);
+  h.ready(reader,false); h.ready(navigation,false);
+  assert.deepEqual(visible(h),[h.workspace],'registered listeners do not imply a restored layout');
+  assert.equal(h.messages.get(reader).findLast(message=>message.type==='workhub:page-restore').active,false);
+  const order = first === 'navigation' ? [navigation,reader] : [reader,navigation];
+  h.send(order[0],'workhub:page-restored');
+  assert.deepEqual(visible(h),[h.workspace]);
+  h.send(order[1],'workhub:page-restored');
+  assert.deepEqual(visible(h),[reader]);
+  assert.equal(navigation.parentElement.hidden,false);
+  assert.equal(h.w.document.body.hasAttribute('data-workspace-conversations'),true);
+  assert.equal(h.workspace.contentDocument,document);
+  assert.equal(h.workspace.src,source);
+  assert.equal(h.messages.get(reader).findLast(message=>message.type==='workhub:page-active').active,true);
+});
+
+test('a late conversation restore cannot override navigation back to projects', t => {
+  const h = harness(t,'#/projects');
+  h.send(h.workspace,'workhub:page-open',{snapshot:conversation('one')});
+  const reader = h.frames().find(frame => frame !== h.workspace), navigation = h.nav();
+  h.ready(reader,false); h.ready(navigation,false);
+  open(h,{route:'/projects/app',environment:'local'});
+  h.send(reader,'workhub:page-restored'); h.send(navigation,'workhub:page-restored');
+  assert.deepEqual(visible(h),[h.workspace]);
+  assert.equal(navigation.parentElement.hidden,true);
+  assert.equal(h.w.location.hash,'#/projects/app');
+  open(h,{route:'/sessions',environment:'local'});
+  assert.deepEqual(visible(h),[reader]);
+});
+
+test('loading an additional pane keeps the existing conversation on screen', t => {
+  const h = harness(t);
+  open(h,conversation('one'));
+  const reader = visible(h)[0];
+  h.send(h.workspace,'workhub:page-open',{snapshot:conversation('two'),placement:'split'});
+  assert.equal(reader.hidden,false);
+  assert.equal(h.workspace.hidden,true);
+  assert.equal(h.nav().parentElement.hidden,false);
+});
+
+test('a retained creation form can finish restoring while its alternate is visible', t => {
+  const h = harness(t);
+  const draft = {route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},creating:true,pane:'detail'}};
+  open(h,draft);
+  const reader = visible(h)[0];
+  h.send(reader,'workhub:conversation-kind',{kind:'terminal',snapshot:draft});
+  const terminal = visible(h)[0];
+  h.ready(terminal,false);
+  h.send(terminal,'workhub:conversation-kind',{kind:'ui',snapshot:{route:'/terminals',environment:'local'}});
+  assert.deepEqual(visible(h),[reader]);
+  h.send(terminal,'workhub:page-restored');
+  h.send(reader,'workhub:conversation-kind',{kind:'terminal',snapshot:draft});
+  assert.deepEqual(visible(h),[terminal]);
+  open(h,{route:'/projects',environment:'local'});
+  open(h,{route:'/sessions',environment:'local'});
+  assert.deepEqual(visible(h),[terminal]);
+});
 
 test('independent pages reuse one document and preserve project routes and directory parameters', t => {
   const h = harness(t);

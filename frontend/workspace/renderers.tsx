@@ -50,7 +50,7 @@ export const workspaceUI = {
   conversationContext,
   conversationShortcuts: (props: Parameters<typeof ConversationShortcuts>[0]) => renderToStaticMarkup(<ConversationShortcuts {...props} />),
   conversationList: (props: Parameters<typeof ConversationList>[0]) => renderToStaticMarkup(<ConversationList {...props} />),
-  conversationScopes: (scopes: Parameters<typeof ConversationScopes>[0]["scopes"]) => renderToStaticMarkup(<ConversationScopes scopes={scopes} />),
+  conversationScopes: (scopes: Parameters<typeof ConversationScopes>[0]["scopes"], selected?: Parameters<typeof ConversationScopes>[0]["selected"]) => renderToStaticMarkup(<ConversationScopes scopes={scopes} selected={selected} />),
   readElicitation,
   tasks: (tasks: Task[], selectedID?: string | null, environment?: string) => renderToStaticMarkup(<TaskList tasks={tasks} selectedID={selectedID} environment={environment} />),
   taskDetail: (task: Task, projects: Project[], environment: string, openTool?: ProjectOpenTool, filter?: TaskFilter) => renderToStaticMarkup(<TaskDetail task={task} projects={projects} environment={environment} openTool={openTool} filter={filter} />),

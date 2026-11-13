@@ -70,7 +70,6 @@ html[data-workspace-navigation] .session-browser-list{display:flex!important;fle
 html[data-workspace-navigation] .session-browser-detail,html[data-workspace-navigation] .ui-narrow-detail{display:none!important}
 html[data-workspace-navigation] .ui-narrow-list{flex:1;min-height:0}
 html[data-workspace-navigation] .session-scope-menu{width:calc(var(--workspace-shared-list-width,280px) - 24px)!important}
-html[data-workspace-navigation] #sharedConversationTarget{font-size:11px;color:var(--muted-foreground);margin:0;padding-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 html[data-workspace-navigation] .sidebar .nav-item:not([data-view="sessions"]){background:transparent}
 html[data-workspace-navigation] .sidebar .nav-item[data-view="sessions"]{background:var(--accent-soft);color:var(--yolu-primary-ink,#454b9b)}

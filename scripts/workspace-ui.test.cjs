@@ -818,7 +818,7 @@ test('the global scope picker searches tasks, projects and directories without r
   assert.equal(h.$('#sessionScopePicker').open, false);
   assert.equal(h.$('[data-conversation-session]').dataset.conversationSession, 'outside');
   assert.equal(h.$('#newBrowserSession').disabled, true);
-  assert.equal(h.$('#sessionDirectoryField').hidden, true);
+  assert.equal(h.$('#sessionDirectoryField'), null);
   h.click('[data-conversation-action="all"]'); await settle();
   assert.equal(h.document.querySelectorAll('[data-conversation-session]').length, 2);
 });
@@ -835,10 +835,12 @@ test('conversation scope menu uses the top layer, fits the viewport and closes o
   panel.matches = selector => selector === ':popover-open' ? visible : matches(selector);
   h.window.innerWidth = 800; h.window.innerHeight = 600;
   picker.querySelector('summary').getBoundingClientRect = () => ({left:650, right:780, top:500, bottom:530});
+  h.$('#sessionBrowserScopeBar').getBoundingClientRect = () => ({left:300, width:280});
   picker.open = true; await settle();
   assert.equal(visible, true);
   assert.equal(panel.style.top, 'auto');
   assert.equal(panel.style.bottom, '106px');
+  assert.equal(panel.style.left, '300px');
   assert(parseFloat(panel.style.left) >= 12);
   assert(parseFloat(panel.style.left) + parseFloat(panel.style.width) <= 788);
   assert(parseFloat(panel.style.maxHeight) <= 482);
@@ -922,11 +924,14 @@ test('assistant activity immediately updates the shared list and navigation', as
   h.window.WorkHubAssistant = { open(options) { opened = options; }, close() {} };
   await h.openConversations('task');
   opened.activity('session-1', { id: 'live', status: 'running', busy: true });
-  assert.equal(h.$('[data-session-indicators="session-1"]').textContent, '运行中');
-  opened.activity('session-1', { id: 'live', status: 'waiting', busy: true });
-  assert.equal(h.$('[data-session-indicators="session-1"]').textContent, '待确认');
-  opened.activity('session-1', { id: 'live', turn_id: 'turn', status: 'completed', busy: false });
+  assert.equal(h.$('[data-session-indicators="session-1"]').getAttribute('aria-label'), '运行中');
+  assert(h.$('.session-browser-item-heading [data-session-indicators="session-1"] svg'));
   assert.equal(h.$('[data-session-indicators="session-1"]').textContent, '');
+  opened.activity('session-1', { id: 'live', status: 'waiting', busy: true });
+  assert.equal(h.$('[data-session-indicators="session-1"]').getAttribute('title'), '待确认');
+  assert.equal(h.$('[data-session-indicators="session-1"]').dataset.state, 'waiting');
+  opened.activity('session-1', { id: 'live', turn_id: 'turn', status: 'completed', busy: false });
+  assert.equal(h.$('[data-session-indicators="session-1"]').hidden, true);
 });
 
 test('interactive approval questions keep native values, secret fields and answer requests', async t => {
@@ -1015,7 +1020,7 @@ test('conversation entry opens the page directly and restores the same scope and
   h.window.WorkHubAssistant = { open() { opens++; }, close() { closes++; } };
   await h.openConversations('task');
   const browser = h.$('#sessionBrowser'), panel = h.$('#assistantChatRoot'), current = h.currentSession();
-  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  h.window.setConversationDirectory('/workspace/task/app'); await settle();
   const afterFilter = h.currentSession();
   const beforeOpens = opens, beforeCloses = closes;
   h.window.render(); await settle();
@@ -1025,14 +1030,14 @@ test('conversation entry opens the page directly and restores the same scope and
   assert.equal(h.$('#sessionPageMount #sessionBrowser'), browser);
   assert.equal(h.$('#assistantChatRoot'), panel); assert.equal(h.currentSession(), afterFilter);
   assert.equal(opens, beforeOpens); assert.equal(closes, beforeCloses);
-  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
   h.click('[data-conversation-action="all"]'); await settle();
   assert.equal(h.$('#sessionScopeLabel').textContent, '全部对话');
   await h.navigate('/requirements/task');
   await h.openConversations('task');
   assert.equal(h.$('#sessionPageMount #sessionBrowser'), browser);
   assert.equal(h.$('#assistantChatRoot'), panel);
-  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
   assert.notEqual(h.currentSession(), current); // The controller registry, not DOM history state, owns drafts.
   assert(!h.requests.some(r => r.url.endsWith('/chat/stop')));
 });
@@ -1107,14 +1112,14 @@ test('task and project directory unions stay distinct and exact filters exclude 
   const ids = () => [...h.document.querySelectorAll('[data-conversation-session]')].map(b => b.dataset.conversationSession).sort();
   assert.deepEqual(ids(), ['session-1', 'task-root']);
   assert.equal(h.document.querySelectorAll('.session-browser-item-directory').length, 1);
-  assert.match(h.$('[data-conversation-session="session-1"] .session-browser-item-context').textContent, /App.*feature\/task/);
-  h.change('#sessionDirectoryFilter', '/workspace/task'); await settle();
+  assert.match(h.$('[data-conversation-session="session-1"] .session-browser-item-project').textContent, /App.*feature\/task/);
+  h.window.setConversationDirectory('/workspace/task'); await settle();
   assert.deepEqual(ids(), ['task-root']); assert.equal(h.$('.session-browser-item-directory'), null);
   await h.leaveConversations();
   await h.navigate('/projects'); h.click('[data-action="select-project"][data-id="app"]');
   await h.openConversations('project');
   assert.deepEqual(ids(), ['main', 'session-1']);
-  h.change('#sessionDirectoryFilter', '/repo/app'); await settle(); assert.deepEqual(ids(), ['main']);
+  h.window.setConversationDirectory('/repo/app'); await settle(); assert.deepEqual(ids(), ['main']);
   assert(h.requests.some(r => r.url.includes('project_id=app') && r.url.includes('cwd=%2Frepo%2Fapp')));
 });
 
@@ -1136,7 +1141,7 @@ test('task-root and unattached detached worktree creation use an explicit target
   assert(!taskRequest.body.project_id);
   await h.leaveConversations();
   await h.navigate('/projects'); h.click('[data-action="select-project"][data-id="app"]'); await h.openConversations('project');
-  h.change('#sessionDirectoryFilter', '/repo/detached'); await settle(); h.click('#newBrowserSession');
+  h.window.setConversationDirectory('/repo/detached'); await settle(); h.click('#newBrowserSession');
   assert.equal(h.$('#sessionBrowserNewDirectoryField').hidden, false, 'directory filtering does not add a step before switching the creation directory');
   h.input('#sessionChatInput', '检查游离工作目录'); await h.submit('#sessionChatForm');
   const projectRequest = h.requests.filter(r => r.url === '/api/sessions/new').at(-1);
@@ -1152,16 +1157,16 @@ test('late directory responses cannot replace the latest filter, including switc
   const pending = [];
   h.setIntercept(url => url.startsWith('/api/sessions?') && url.includes('cwd=') ? new Promise(resolve => pending.push({ url, resolve })) : undefined);
   await h.openConversations('task');
-  h.change('#sessionDirectoryFilter', '/workspace/task/app');
-  h.change('#sessionDirectoryFilter', '/workspace/task');
-  h.change('#sessionDirectoryFilter', '/workspace/task/app');
+  h.window.setConversationDirectory('/workspace/task/app');
+  h.window.setConversationDirectory('/workspace/task');
+  h.window.setConversationDirectory('/workspace/task/app');
   assert.equal(pending.length, 3);
   const ok = sessions => ({ ok: true, json: async () => ({ sessions }) });
   pending[2].resolve(ok([{ id: 'latest', name: 'Latest response', cwd: '/workspace/task/app' }])); await settle();
   pending[0].resolve(ok([{ id: 'stale', name: 'Old response', cwd: '/workspace/task/app' }]));
   pending[1].resolve(ok([{ id: 'wrong-dir', name: 'Wrong directory', cwd: '/workspace/task' }])); await settle();
   assert.equal(h.$('[data-conversation-session]').dataset.conversationSession, 'latest');
-  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
 });
 
 test('returning from the conversation page preserves task scroll and details across refresh and task navigation', async t => {
@@ -1241,14 +1246,14 @@ test('project refresh never silently widens a saved directory filter while workt
   const h = await harness(t);
   await h.navigate('/projects'); h.click('[data-action="select-project"][data-id="app"]');
   await h.openConversations('project');
-  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  h.window.setConversationDirectory('/workspace/task/app'); await settle();
   h.data.projects[0].worktrees = [];
   await h.window.refresh(true);
-  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
-  assert.equal(h.$('#sessionDirectoryField').hidden, false);
-  assert.match(h.$('#sessionDirectoryFilter').selectedOptions[0].textContent, /目录待核实/);
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
+  assert.equal(h.$('#sessionDirectoryFilter'), null);
+  assert.match(h.$('#sessionActiveFilterLabel').title, /workspace\/task\/app/);
   await h.window.refreshSessionWorkspace(true);
-  assert.equal(h.$('#sessionDirectoryFilter').value, '/workspace/task/app');
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
   assert(h.requests.filter(r => r.url.startsWith('/api/sessions?')).at(-1).url.includes('cwd=%2Fworkspace%2Ftask%2Fapp'));
 });
 
@@ -1298,13 +1303,13 @@ test('conversation list omits shared context and retains active counts and refre
   h.sessions[0].chat_status = 'running';
   await h.openConversations('task');
   assert.match(h.$('#sessionBrowserContext').textContent, /任务 · Billing · 本机/);
-  assert.match(h.$('#sessionBrowserCount').textContent, /1 个运行中/);
+  assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'), /1 个运行中/);
   assert.equal(h.$('[data-conversation-session="session-1"] .session-browser-item-context'), null);
   assert.equal(h.$('.session-browser-item-task'), null);
   assert.equal(h.$('.session-browser-item-directory'), null);
   assert(h.$('[data-session-menu] [data-conversation-unlink="session-1"]'));
   h.sessions[0].name = 'Codex generated title';
-  h.click('[data-conversation-action="refresh"]'); await settle();
+  await h.window.refreshSessionWorkspace(true); await settle();
   assert.equal(updated.name, 'Codex generated title');
   assert.match(h.$('[data-conversation-session="session-1"]').textContent, /Codex generated title/);
 });
@@ -1455,10 +1460,10 @@ test('fixed tasks persist and open only explicitly linked conversations', async 
   await h.navigate('/projects');
   h.click('[data-task-shortcut="task"]'); await settle();
   assert.equal(h.currentSession().session, 'session-1');
-  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  h.window.setConversationDirectory('/workspace/task/app'); await settle();
   h.input('#sessionBrowserSearch', 'no match');
   h.click('[data-task-shortcut="task"]'); await settle();
-  assert.equal(h.$('#sessionDirectoryFilter').value, '');
+  assert.equal(h.window.WorkHubConversations.current.directory, '');
   assert.equal(h.$('#sessionBrowserSearch').value, '');
   assert.equal(h.$('#sessionBrowserArchived').checked, false);
   h.$('.conversation-shortcut-row [data-task-shortcut-pin="task"]').focus();
@@ -1601,7 +1606,7 @@ test('fixed directories persist by environment and open exact directory conversa
 test('directory pinning is available from known directory filters and keeps same-name paths distinct', async t => {
   const h = await harness(t);
   await h.navigate('/sessions');
-  h.change('#sessionDirectoryFilter', '/repo/app'); await settle();
+  h.window.setConversationDirectory('/repo/app'); await settle();
   assert.equal(h.$('#pinConversationDirectory').hidden, false);
   h.click('#pinConversationDirectory');
   h.click('[data-directory-shortcut-pin="/workspace/task/app"]');
@@ -1668,21 +1673,35 @@ test('compact conversation filters expose active choices, clear together and set
   assert.equal(h.$('.sidebar nav [data-view="settings"]'), null);
   assert(h.$('.sidebar-footer-actions #refreshControl + [data-view="settings"]'));
   assert(h.$('#sessionScopeAll').closest('#sessionScopePicker'));
-  assert(h.$('#sessionDirectoryField').closest('#sessionFilterPicker'));
-  assert.equal(h.$('#sessionDirectoryField').hidden, false);
-  assert(h.$('#sessionBrowserArchived').closest('#sessionFilterPicker'));
-  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  assert.equal(h.$('#sessionFilterPicker'), null);
+  assert.equal(h.$('#sessionDirectoryFilter'), null);
+  assert(h.$('#sessionBrowserArchived').closest('#sessionScopePicker'));
+  assert(h.$('#sessionsEnvironment').closest('#sessionScopePicker'));
+  assert(h.$('#sessionStatusFilters').closest('#sessionScopePicker'));
+  assert(h.$('#sessionBrowserCount').closest('.session-browser-list-heading'));
+  assert.equal(h.$('#sessionBrowserCount').textContent, '1');
+  assert.equal(h.$('.session-browser-list-heading [data-conversation-action="refresh"]'), null);
+  assert.equal(h.$('.session-browser-list-caption'), null);
+  assert.equal(h.$('#sessionScopePicker').parentElement, h.$('#sessionBrowserSearch').closest('.session-browser-search-row'));
+  assert.equal(h.$('#sessionBrowserScopeBar').firstElementChild, h.$('#sessionBrowserSearch').parentElement);
+  assert.equal(h.$('#sessionBrowserScopeBar').lastElementChild, h.$('#sessionScopePicker'));
+  assert(h.$('#sessionScopeLabel').classList.contains('sr-only'));
+  assert.equal(h.$('#sessionScopePicker summary').querySelectorAll('svg').length, 1);
+  assert.equal(h.$('#newBrowserSession').dataset.variant, 'ghost');
+  assert(h.$('#pinConversationDirectory').closest('#sessionScopePicker'));
+  h.window.setConversationDirectory('/workspace/task/app'); await settle();
   h.click('#sessionBrowserArchived'); await settle();
-  assert.equal(h.$('#sessionFilterCount').textContent, '2');
-  assert.equal(h.$('#sessionFilterCount').hidden, false);
+  assert.equal(h.$('#sessionClearFilters').hidden, false);
   assert.match(h.$('#sessionActiveFilterLabel').textContent, /app.*已归档/);
   h.click('#sessionClearFilters'); await settle();
-  assert.equal(h.$('#sessionDirectoryFilter').value, '');
+  assert.equal(h.window.WorkHubConversations.current.directory, '');
   assert.equal(h.$('#sessionBrowserArchived').checked, false);
-  assert.equal(h.$('#sessionFilterCount').hidden, true);
-  h.$('#sessionFilterPicker').open = true;
-  h.$('#sessionFilterPicker summary').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
-  assert.equal(h.$('#sessionFilterPicker').open, false);
+  assert.equal(h.$('#sessionClearFilters').hidden, true);
+  h.$('#sessionScopePicker').open = true;
+  h.$('#sessionBrowserArchived').focus();
+  h.$('#sessionBrowserArchived').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+  assert.equal(h.$('#sessionScopePicker').open, false);
+  assert.equal(h.document.activeElement, h.$('#sessionScopePicker summary'));
   const settingsChanged = new Promise(resolve => h.window.addEventListener('hashchange', resolve, {once:true}));
   h.click('.sidebar-settings'); await settingsChanged; await settle();
   assert.equal(h.window.location.hash, '#/settings');
@@ -2019,37 +2038,30 @@ test('task conversations exclude directory-only matches until linked and unlinki
 for (const readOnly of [true, false]) test(`split conversation actions preserve task scope and creation permissions in ${readOnly ? 'read-only' : 'interactive'} mode`, async t => {
   const h = await harness(t, readOnly);
   await h.openConversations('task');
-  assert(h.$('.session-browser-list-heading #linkTaskConversation'));
+  assert(h.$('#sessionScopePicker #linkTaskConversation'));
   assert(h.$('.session-browser-list-heading #newBrowserSession'));
-  assert.equal(h.$('.task-conversation-tools'), null);
+  assert(h.$('.session-browser-list-heading #newBrowserSplitSession'));
+  assert.equal(h.$('#sessionActionPicker'), null);
   assert.equal(h.$('#newBrowserSession').disabled, readOnly);
   assert.equal(h.$('#newBrowserSession').getAttribute('aria-label'), '新建对话');
-  assert.equal(h.document.querySelectorAll('#sessionActionPicker [data-conversation-action="new"]').length, 2);
-  for (const button of h.document.querySelectorAll('[data-conversation-placement]')) {
-    assert.equal(button.disabled, readOnly || button.dataset.conversationPlacement === 'split');
-  }
-  assert.equal(h.$('#sessionActionPicker').hidden, false);
-  h.click('#sessionActionPicker summary'); await settle();
+  assert.equal(h.$('#newBrowserSplitSession').disabled, true, 'a split needs an available host pane');
+  h.$('#sessionScopePicker').open = true; await settle();
   h.click('#linkTaskConversation'); await settle();
-  assert.equal(h.$('#sessionActionPicker').open, false);
+  assert.equal(h.$('#sessionScopePicker').open, false);
   assert.equal(h.$('#sessionDialog').open, true);
   assert.equal(h.$('#sessionDialogTitle').textContent, '关联已有对话');
   h.click('#sessionDialog .close-dialog'); await settle();
-  h.click('#sessionActionPicker summary'); await settle();
-  h.$('#sessionActionPicker summary').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
-  assert.equal(h.$('#sessionActionPicker').open, false);
-  assert.equal(h.document.activeElement, h.$('#sessionActionPicker summary'));
+  h.$('#sessionScopePicker').open = true; await settle();
+  h.$('#sessionScopePicker summary').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+  assert.equal(h.$('#sessionScopePicker').open, false);
+  assert.equal(h.document.activeElement, h.$('#sessionScopePicker summary'));
   if (!readOnly) {
-    h.click('#sessionActionPicker summary'); await settle();
     h.click('#newBrowserSession'); await settle();
-    assert.equal(h.$('#sessionActionPicker').open, false);
     h.change('#sessionBrowserNewDirectory', '/workspace/task/app'); await settle();
     assert.equal(h.currentSession().target.task_id, 'task');
   }
   h.click('[data-conversation-action="all"]'); await settle();
-  assert.equal(h.$('#sessionActionPicker').hidden, false);
   assert.equal(h.$('#taskConversationTools').hidden, true);
-  assert.equal(h.$('#sessionActionPicker').open, false);
 });
 
 for (const navigation of [false,true]) test(`new conversation placement keeps task association separate in ${navigation ? 'shared navigation' : 'conversation pane'}`, async t => {
@@ -2060,28 +2072,28 @@ for (const navigation of [false,true]) test(`new conversation placement keeps ta
   await settle(); await settle();
   post(navigation ? {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',canSplit:true} : {type:'workhub:parallel-layout',canSplit:true});
   for (const placement of ['split','current']) {
-    h.click('#sessionActionPicker summary');
-    h.click(`[data-conversation-placement="${placement}"]`); await settle();
+    h.click(placement === 'split' ? '#newBrowserSplitSession' : '#newBrowserSession'); await settle();
     const opened = host.messages.findLast(message=>message.type==='workhub:page-open');
     assert.equal(opened.placement,placement);
-    assert.equal(opened.create,true,'all new conversation placements share the direct creation flow');
+    assert.equal(opened.create,true,'both buttons share the direct creation flow');
     assert.equal(opened.snapshot.conversation.scope.id,'task');
     assert.equal(opened.snapshot.conversation.directory,'/workspace/task/app');
     assert.equal(opened.snapshot.conversation.creating,true);
     assert.equal(opened.snapshot.conversation.selected,null);
-    assert.equal(h.$('#sessionActionPicker').open,false);
     assert.equal(h.window.WorkHubPage.snapshot().conversation.creating,false,'source selection changes only when the host accepts placement');
   }
   h.click('#newBrowserSession'); await settle();
-  assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').placement,'current','explicit choices do not alter the default');
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').placement,'current');
   const before = host.messages.filter(message=>message.type==='workhub:page-open').length;
-  h.click('#sessionActionPicker summary'); h.click('#linkTaskConversation'); await settle();
+  h.$('#sessionScopePicker').open = true; await settle();
+  h.click('#linkTaskConversation'); await settle();
   assert.equal(h.$('#sessionDialog').open,true);
+  assert.equal(h.$('#sessionScopePicker').open,false);
   assert.equal(host.messages.filter(message=>message.type==='workhub:page-open').length,before,'association does not create a conversation');
   h.click('#sessionDialog .close-dialog'); await settle();
   post(navigation ? {type:'workhub:conversation-group',sessions:['a','b','c'],selected:'a',full:true,canSplit:false} : {type:'workhub:parallel-layout',canSplit:false});
-  assert.equal(h.$('[data-conversation-placement="split"]').disabled,true);
-  assert.equal(h.$('[data-conversation-placement="current"]').disabled,false);
+  assert.equal(h.$('#newBrowserSplitSession').disabled,true);
+  assert.equal(h.$('#newBrowserSession').disabled,false);
   assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
 });
 
@@ -2189,7 +2201,7 @@ test('creating from the task list opens the saved task without a transient not-f
 });
 
 
-test('all conversations include environment tags and duplicate IDs open in their own environment without switching', async t => {
+test('conversation groups identify environments and duplicate IDs open in their own environment without switching', async t => {
   const h = await harness(t, false);
   h.environments.environments.push({id: 'remote', name: 'WSL · Ubuntu'});
   await h.window.loadEnvironments();
@@ -2200,8 +2212,8 @@ test('all conversations include environment tags and duplicate IDs open in their
   const entries = [...h.document.querySelectorAll('[data-conversation-session]')];
   assert.equal(entries.length, 2);
   assert.notEqual(entries[0].dataset.conversationSession, entries[1].dataset.conversationSession);
-  assert.match(h.$('[data-conversation-session][data-environment="local"]').textContent, /本机/);
-  assert.match(h.$('[data-conversation-session][data-environment="remote"]').textContent, /WSL · Ubuntu/);
+  assert.match(h.$('[data-conversation-session][data-environment="local"]').closest('.session-browser-group').getAttribute('aria-label'), /本机/);
+  assert.match(h.$('[data-conversation-session][data-environment="remote"]').closest('.session-browser-group').getAttribute('aria-label'), /WSL · Ubuntu/);
   h.click('[data-conversation-session][data-environment="remote"]'); await settle();
   assert.equal(h.currentSession().environment, 'remote');
   assert.equal(h.currentSession().session, 'session-1');
@@ -2293,7 +2305,7 @@ test('cross-environment assistant callbacks and read markers remain isolated for
   const localRead = h.window.localStorage.getItem(localKey);
   opened.activity('session-1', {id: 'remote-run', status: 'completed', busy: false, turn_id: 'remote-turn'});
   assert.equal(h.window.localStorage.getItem(localKey), localRead);
-  assert.doesNotMatch(h.$('[data-conversation-session][data-environment="local"]').textContent, /有新消息/);
+  assert.equal(h.$('[data-conversation-session][data-environment="local"] .session-browser-unread-dot'), null);
 });
 
 
@@ -2370,13 +2382,12 @@ test('conversation keyboard browsing, search reset and filtering preserve the ex
   h.input('#sessionBrowserSearch', 'no results'); search.focus(); key(search, 'Escape');
   assert.equal(search.value, '');
   assert.equal(h.document.activeElement, search);
-  h.$('#sessionFilterPicker').open = true; await settle();
-  const directory = h.$('#sessionDirectoryFilter'); directory.focus();
-  h.change('#sessionDirectoryFilter', '/repo/backend'); await settle();
-  assert.equal(h.document.activeElement, directory);
-  key(directory, 'Escape');
-  assert.equal(h.$('#sessionFilterPicker').open, false);
-  assert.equal(h.document.activeElement, h.$('#sessionFilterPicker summary'));
+  h.$('#sessionScopePicker').open = true; await settle();
+  const archive = h.$('#sessionBrowserArchived'); archive.focus();
+  key(archive, 'Escape');
+  assert.equal(h.$('#sessionScopePicker').open, false);
+  assert.equal(h.document.activeElement, h.$('#sessionScopePicker summary'));
+  h.window.setConversationDirectory('/repo/backend'); await settle();
   h.click('[data-conversation-session="older"]'); await settle();
   h.click('[data-conversation-action="back"]');
   assert.equal(h.document.activeElement.dataset.conversationSession, 'older');
@@ -2399,7 +2410,7 @@ test('workspace conversation previews switch directly between tasks and retain a
   assert.equal(groups()[0].querySelectorAll('[data-conversation-session]').length,4);
   assert(h.$('[data-conversation-session="login-7"]'),'a waiting conversation remains visible beyond the preview');
   assert.equal(h.$('[data-conversation-session="login-5"]'),null);
-  assert.match(h.$('[data-conversation-session="refund"]').textContent,/运行中/);
+  assert.equal(h.$('[data-conversation-session="refund"] .session-browser-item-status').getAttribute('aria-label'),'运行中');
   h.input('#sessionChatInput','Keep the login draft');
   h.click('[data-conversation-session="refund"]');await settle();
   assert.equal(h.currentSession().session,'refund');
@@ -2662,12 +2673,12 @@ test('failed conversation refresh retains cached results but a new directory nev
   h.setIntercept(url => url.startsWith('/api/sessions?') ? {ok:false,json:async()=>({error:'fixture offline'})} : undefined);
   await h.window.refreshSessionWorkspace(true); await settle();
   assert(h.$('[data-conversation-session="session-1"]'));
-  assert.match(h.$('#sessionBrowserCount').textContent, /部分结果未更新/);
+  assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'), /部分结果未更新/);
   assert.match(h.$('#sessionBrowserError').textContent, /保留上次结果/);
-  h.change('#sessionDirectoryFilter', '/workspace/task/app'); await settle();
+  h.window.setConversationDirectory('/workspace/task/app'); await settle();
   assert.equal(h.$('[data-conversation-session="session-1"]'), null);
-  assert.match(h.$('#sessionBrowserCount').textContent, /数量暂不可用/);
-  assert.doesNotMatch(h.$('#sessionBrowserCount').textContent, /0 个对话/);
+  assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'), /数量暂不可用/);
+  assert.doesNotMatch(h.$('#sessionBrowserCount').getAttribute('aria-label'), /0 个对话/);
   assert.equal(h.$('#sessionBrowserList').textContent, '');
 });
 
@@ -3077,8 +3088,8 @@ test('startup list loading never advertises zero conversations and local results
   post({type:'workhub:page-navigation'});
   post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
   await settle();
-  assert.match(h.$('#sessionBrowserCount').textContent,/正在加载/);
-  assert.doesNotMatch(h.$('#sessionBrowserCount').textContent,/0 个对话/);
+  assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/正在加载/);
+  assert.doesNotMatch(h.$('#sessionBrowserCount').getAttribute('aria-label'),/0 个对话/);
   assert.equal(h.$('#sessionBrowserList').getAttribute('aria-busy'),'true');
   assert.equal(h.requests.some(request=>request.url.includes('/history')),false,'navigation does not load a conversation body');
   releaseList({ok:true,json:async()=>({sessions:h.sessions})});
@@ -3102,7 +3113,7 @@ test('shared startup fills an unselected reader from list results while metadata
   post({type:'workhub:conversation-group',split:false,sessions:[],autoSelect:true});
   await settle();
   assert(!h.$('#sessionBrowser').hidden,'static list controls render with no saved conversation');
-  assert.match(h.$('#sessionBrowserCount').textContent,/正在加载/);
+  assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/正在加载/);
   assert(host.messages.some(message=>message.type==='workhub:page-restored'));
   assert(!host.messages.some(message=>message.type==='workhub:conversation-select'));
   releaseList({ok:true,json:async()=>({sessions:h.sessions})});
@@ -3213,7 +3224,7 @@ test('page bridge exposes sidebar navigation without page-tab controls or keyboa
   assert(h.document.body.classList.contains('sidebar-collapsed'));
 });
 
-test('page bridge opens project detail routes while sidebar navigation uses the current page', async t => {
+test('page bridge delegates sidebar conversation navigation before changing the project document', async t => {
   const host=pageHost(t);
   const h=await harness(t,false,{pageHost:host.window});
   h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot:{route:'/projects/backend',environment:'local'}}}));
@@ -3221,8 +3232,14 @@ test('page bridge opens project detail routes while sidebar navigation uses the 
   assert.equal(h.window.location.hash,'#/projects/backend');
   assert.match(h.$('#projectDetail').textContent,/Backend/);
   h.click('[data-view="sessions"]');await settle();
-  assert.equal(h.window.location.hash,'#/sessions');
-  assert.equal(host.messages.filter(message=>message.type==='workhub:page-open').length,0);
+  assert.equal(h.window.location.hash,'#/projects/backend');
+  assert.equal(h.$('#sessionsPage').hidden,true);
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').snapshot.route,'/sessions');
+  h.click('[data-action="project-conversations"]');await settle();
+  const scoped = host.messages.findLast(message=>message.type==='workhub:page-open').snapshot;
+  assert.equal(scoped.conversation.scope.kind,'project');
+  assert.equal(scoped.conversation.scope.id,'backend');
+  assert.equal(h.window.location.hash,'#/projects/backend');
   h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-active',active:false}}));
   assert.equal(h.window.WorkHubPage.active,false);
   assert(h.document.documentElement.hasAttribute('data-workspace-inactive'));
@@ -3308,26 +3325,26 @@ test('shared list synchronizes read markers from a visible reader and keeps back
  nav.sessions[0].completed_run = reader.sessions[0].completed_run = 'before-open';
  await nav.window.refreshSessionWorkspace(true);
  const row = () => nav.$('[data-conversation-session="session-1"]');
- assert.match(row().textContent,/有新消息/,'a selected row alone does not mark a hidden conversation read');
+ assert(row().querySelector('.session-browser-unread-dot'),'a selected row alone does not mark a hidden conversation read');
  assert(nav.$('.session-browser-unread-dot'));
  post(reader,{type:'workhub:page-pane',shared:true});
  post(reader,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
  await settle(); await settle();
  assert.equal(JSON.parse(values.get(key)).run,'before-open');
- assert.doesNotMatch(row().textContent,/有新消息/);
+ assert.equal(row().querySelector('.session-browser-unread-dot'),null);
  assert.equal(nav.$('.session-browser-unread-dot'),null);
  assert.equal(nav.$('#sessionNavigationStatus').hidden,true);
  nav.sessions[0].completed_run = 'visible-run';
  await nav.window.refreshSessionWorkspace(true);
- assert.match(row().textContent,/有新消息/);
+ assert(row().querySelector('.session-browser-unread-dot'));
  opened.activity('session-1',{id:'visible-run',busy:false,status:'completed',turn_id:'visible-turn'});
  await settle();
  assert.equal(JSON.parse(values.get(key)).run,'visible-run');
- assert.doesNotMatch(row().textContent,/有新消息/,'visible completion is acknowledged without reopening the reader');
+ assert.equal(row().querySelector('.session-browser-unread-dot'),null,'visible completion is acknowledged without reopening the reader');
  opened.loaded({...reader.sessions[0],completed_run:'before-open'});
  await settle();
  assert.equal(JSON.parse(values.get(key)).run,'visible-run','late history metadata cannot replace the latest acknowledged activity');
- assert.doesNotMatch(row().textContent,/有新消息/);
+ assert.equal(row().querySelector('.session-browser-unread-dot'),null);
  const acknowledgedWrites = writes;
  opened.activity('session-1',{id:'visible-run',busy:false,status:'completed',turn_id:'visible-turn'});
  await settle();
@@ -3337,16 +3354,16 @@ test('shared list synchronizes read markers from a visible reader and keeps back
  opened.activity('session-1',{id:'background-run',busy:false,status:'completed',turn_id:'background-turn'});
  await nav.window.refreshSessionWorkspace(true); await settle();
  assert.equal(JSON.parse(values.get(key)).run,'visible-run');
- assert.match(row().textContent,/有新消息/);
+ assert(row().querySelector('.session-browser-unread-dot'));
  const remoteKey = 'workhub:session-read:' + JSON.stringify(['remote','session-1']);
  const remoteRead = JSON.stringify({time:Date.now() / 1000,run:'background-run'});
  values.set(remoteKey,remoteRead);
  nav.window.dispatchEvent(new nav.window.StorageEvent('storage',{key:remoteKey,newValue:remoteRead}));
- assert.match(row().textContent,/有新消息/,'reading the same ID in another environment does not clear this reminder');
+ assert(row().querySelector('.session-browser-unread-dot'),'reading the same ID in another environment does not clear this reminder');
  post(reader,{type:'workhub:page-active',active:true});
  await settle();
  assert.equal(JSON.parse(values.get(key)).run,'background-run');
- assert.doesNotMatch(row().textContent,/有新消息/);
+ assert.equal(row().querySelector('.session-browser-unread-dot'),null);
 });
 
 test('shared conversation list browses scopes without reading hidden history and distinguishes locate from add', async t => {
@@ -3360,18 +3377,21 @@ test('shared conversation list browses scopes without reading hidden history and
  post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',full:false,listWidth:280});
  assert.equal(h.window.WorkHubPage.navigationOnly,true);
  assert.equal(historyRequests(),before,'a shared list must not load or mark the hidden chat as read');
- assert(h.$('.parallel-list-badge').textContent.includes('已并列'));
+ assert.match(h.$('[data-parallel-open]').title,/已并列/);
+ assert(h.$('[data-parallel-open] svg'));
+ assert.equal(h.$('[data-conversation-session="session-1"]').dataset.parallelMember,'true');
  h.click('[data-conversation-session="session-1"]'); await settle();
  assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-select').snapshot.conversation.selected,'session-1');
  h.click('[data-conversation-parallel="session-1"]'); await settle();
  assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-add').snapshot.conversation.scope.id,'task');
  h.$('#sessionScopePicker').open = true; await settle();
- const all = [...h.document.querySelectorAll('[data-conversation-scope]')].find(button=>JSON.parse(button.dataset.conversationScope).kind==='all');
- assert(all); all.click(); await settle(); await settle();
+ h.click('#sessionScopeAll'); await settle(); await settle();
  assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.kind,'all');
  post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:false,full:false,listWidth:400,targetTitle:'当前对话'});
- assert.equal(h.$('.parallel-list-badge'),null,'single conversations do not claim to be parallel');
- assert.equal(h.$('#sharedConversationTarget').textContent,'当前对话：当前对话');
+ assert.equal(h.$('[data-parallel-open]'),null,'single conversations do not claim to be parallel');
+ assert.equal(h.$('[data-conversation-session="session-1"]').hasAttribute('data-parallel-member'),false);
+ assert.equal(h.$('#sharedConversationTarget'),null);
+ assert.equal(h.$('#sessionBrowserListPane').getAttribute('aria-description'),'当前对话：当前对话');
  assert(h.document.documentElement.hasAttribute('data-workspace-single'));
  assert.equal(historyRequests(),before);
 });
@@ -3414,10 +3434,12 @@ test('running terminals share the conversation list, retain scope and reconnect 
  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},pane:'list'}}});
  await settle();await settle();
  const terminal=()=>h.$('[data-conversation-terminal="session-1"]');
- assert(terminal());assert.match(terminal().textContent,/终端.*运行中/);
+ assert(terminal());assert.equal(terminal().querySelector('.session-browser-item-kind'),null);
+ assert.equal(terminal().querySelector('.session-browser-item-heading .sr-only').textContent,'终端');
+ assert.equal(terminal().querySelector('.session-browser-item-status').getAttribute('aria-label'),'运行中');
  assert.equal(h.$('[data-conversation-terminal="other"]'),null);
  assert.equal(h.$('[data-conversation-terminal="ended"]'),null);
- assert.match(h.$('#sessionBrowserCount').textContent,/2 个对话/);
+ assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/2 个对话/);
  assert.notEqual(terminal().dataset.conversationSession,'session-1','terminal and UI session IDs never collide');
  post({type:'workhub:conversation-group',split:false,sessions:[],selected:terminal().dataset.conversationSession,target:{route:'/terminals',terminal:{id:'session-1',taskID:'task'}},canSplit:true});
  assert.equal(terminal().getAttribute('aria-pressed'),'true');
@@ -3428,7 +3450,7 @@ test('running terminals share the conversation list, retain scope and reconnect 
  assert.equal(opened.snapshot.terminal.taskID,'task');
  assert.equal(h.requests.filter(r=>r.url.includes('/history')).length,historyCount);
  assert.equal(h.requests.some(r=>r.url==='/api/terminals'&&r.options.method==='POST'),false);
- h.input('#sessionBrowserSearch','终端');assert(terminal());assert.match(h.$('#sessionBrowserCount').textContent,/1 \/ 2 个对话/);
+ h.input('#sessionBrowserSearch','终端');assert(terminal());assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/1 \/ 2 个对话/);
  h.input('#sessionBrowserSearch','no match');assert.equal(terminal(),null);
  h.input('#sessionBrowserSearch','');
  h.click('[data-conversation-status="running"]');assert(terminal());
@@ -3450,9 +3472,9 @@ test('running terminals share the conversation list, retain scope and reconnect 
  h.$('#sessionBrowserArchived').checked=true;h.$('#sessionBrowserArchived').dispatchEvent(new h.window.Event('change',{bubbles:true}));await settle();
  assert.equal(terminal(),null,'running terminals do not appear among archived UI conversations');
  h.$('#sessionBrowserArchived').checked=false;h.$('#sessionBrowserArchived').dispatchEvent(new h.window.Event('change',{bubbles:true}));await settle();
- rows[0].attached=true;post({type:'workhub:terminals-changed'});await settle();assert.match(terminal().textContent,/已打开/);
+ rows[0].attached=true;post({type:'workhub:terminals-changed'});await settle();assert.equal(terminal().querySelector('.session-browser-item-status').getAttribute('aria-label'),'已打开');
  rows[0].state='exited';post({type:'workhub:terminals-changed'});await settle();assert.equal(terminal(),null);
- assert.match(h.$('#sessionBrowserCount').textContent,/1 个对话/);
+ assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/1 个对话/);
 });
 
 test('parallel pane toolbar commands stay scoped to the originating conversation', async t => {
@@ -3484,17 +3506,18 @@ test('a shared single conversation restores its detail without duplicating the s
 });
 
 
-test('ordinary navigation prepares the shared reader before selection and later layout messages retain its draft', async t => {
+test('delegated navigation leaves the workspace intact and shared reader layout messages retain its draft', async t => {
  const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
  post({type:'workhub:page-restore',active:true,snapshot:{route:'/requirements/task',environment:'local'}});
  await settle(); await settle();
  const listsBefore = h.requests.filter(request=>request.url.startsWith('/api/sessions?')).length;
  h.click('[data-view="sessions"]'); await settle(); await settle();
- assert.equal(h.window.WorkHubPage.snapshot().conversation.pane,'detail');
- assert(h.document.documentElement.hasAttribute('data-workspace-conversation'));
- assert(host.messages.some(message=>message.type==='workhub:page-state' && message.snapshot.route==='/sessions'));
+ assert.equal(h.window.WorkHubPage.snapshot().route,'/requirements/task');
+ assert(!h.document.documentElement.hasAttribute('data-workspace-conversation'));
+ assert(host.messages.some(message=>message.type==='workhub:page-open' && message.snapshot.route==='/sessions'));
  assert.equal(h.requests.filter(request=>request.url.startsWith('/api/sessions?')).length,listsBefore,'only the shared navigation fetches the list');
+ post({type:'workhub:page-pane',split:false,shared:true});
  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'detail'}}});
  await settle(); await settle();
  h.input('#sessionChatInput','保留进入共享布局前的草稿');
@@ -3546,7 +3569,7 @@ test('dedicated conversation panes do not generate hidden lists and ordinary bro
  assert.equal(h.$('#sessionBrowserList').childElementCount,0,'previous rows must also be released');
  assert.equal(h.currentSession().session,'session-1');
  h.input('#sessionChatInput','保留对话草稿');
- h.click('[data-conversation-action="refresh"]'); await settle(); await settle();
+ await h.window.refreshSessionWorkspace(true); await settle(); await settle();
  assert.equal(renders,0,'background refresh must not rebuild an invisible list');
  assert.equal(h.$('#sessionChatInput').value,'保留对话草稿');
  post({type:'workhub:page-pane',split:false,shared:false});
@@ -3566,11 +3589,11 @@ test('background list refresh updates its own status without regenerating unchan
  const ui=h.window.WorkHubUI;let renders=0;
  h.window.WorkHubUI={...ui,conversationList:props=>{renders++;return ui.conversationList(props);}};
  const row=h.$('[data-conversation-session="large-1"]');
- h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ await h.window.refreshSessionWorkspace(true);await settle();await settle();
  assert.equal(renders,0,'loading and refresh metadata do not invalidate populated rows');
  assert.equal(h.$('[data-conversation-session="large-1"]'),row);
  h.sessions[1].name='更新后的标题';
- h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ await h.window.refreshSessionWorkspace(true);await settle();await settle();
  assert.equal(renders,1,'actual visible data still updates the list');
  assert(h.$('[data-conversation-session="large-1"]').textContent.includes('更新后的标题'));
 });
@@ -3601,7 +3624,7 @@ test('conversation lists automatically append twenty rows at the bottom and keep
  const list=h.$('#sessionBrowserList'),rows=()=>[...list.querySelectorAll('[data-conversation-session]')];
  assert.equal(rows().length,18);
  assert.equal(h.$('#sessionBrowserPagination'),null);
- assert.match(h.$('#sessionBrowserCount').textContent,/738 个对话/);
+ assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/738 个对话/);
  const scroll=scrollableConversations(h),session=h.currentSession().session,readingState=h.currentSession();
  h.input('#sessionChatInput','自动加载保留草稿');
  await scroll('bottom');assert.equal(list.dataset.loadedCount,'40');assert.equal(rows().length,38);
@@ -3633,7 +3656,7 @@ test('automatic list windows survive refresh and restoration, support keyboard n
  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},selected:'session-1',pane:'list',loadedCount:120,windowStart:80}}});await settle();await settle();
  const list=h.$('#sessionBrowserList');
  assert.equal(list.dataset.loadedCount,'120');assert.equal(list.dataset.windowStart,'80');
- h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ await h.window.refreshSessionWorkspace(true);await settle();await settle();
  assert.equal(list.dataset.windowStart,'80');
  const row=h.$('[data-conversation-session="batch-80"]');row.focus();
  row.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'PageUp',bubbles:true,cancelable:true}));
@@ -3641,7 +3664,7 @@ test('automatic list windows survive refresh and restoration, support keyboard n
  h.document.activeElement.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}));
  assert.equal(h.document.activeElement.dataset.conversationSession,'session-1');
  assert.equal(h.window.WorkHubPage.snapshot().conversation.loadedCount,120);
- h.sessions.splice(30);h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ h.sessions.splice(30);await h.window.refreshSessionWorkspace(true);await settle();await settle();
  assert.equal(list.dataset.loadedCount,'32');assert(Number(list.dataset.windowEnd)<=32);
  assert(h.document.querySelectorAll('[data-conversation-session]').length<=30);
 });
@@ -3660,7 +3683,7 @@ test('focusing a distant split conversation restores its window without width up
  assert.equal(h.$('#sessionBrowserList').dataset.windowStart,'0');
  post({...group,selected:'batch-110',listWidth:400});
  assert.equal(h.$('#sessionBrowserList').dataset.windowStart,'0');
- h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ await h.window.refreshSessionWorkspace(true);await settle();await settle();
  assert.equal(h.$('#sessionBrowserList').dataset.windowStart,'0');
  post(group);assert.equal(h.$('[data-conversation-session="session-1"]').getAttribute('aria-pressed'),'true');
 });
@@ -3694,7 +3717,7 @@ test('appending scroll batches and evicting old rows preserve the surviving DOM 
  assert.equal(list.querySelector('.session-browser-groups').querySelectorAll('li').length,60);
  assert.equal(list.dataset.windowEnd,list.dataset.loadedCount,'new batches must be mounted immediately at the bottom');
  assert.equal(list.querySelector('[data-list-spacer="after"]'),null,'appending must not briefly replace the new batch with blank space');
- h.click('[data-conversation-action="refresh"]');await settle();await settle();
+ await h.window.refreshSessionWorkspace(true);await settle();await settle();
  assert.equal(h.$('[data-conversation-session="stable-40"]'),survivor);
 });
 

@@ -5,7 +5,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 // stay mounted independently so navigating away preserves each Agent's draft.
 (() => {
   let navigation = null, navigationWidth = 244, conversationListWidth = 280;
-  let conversationsVisible = false, appliedURL = location.href;
+  let conversationsVisible = false, conversationsPresented = false, appliedURL = location.href;
   const group = {pages:[], focused:'', zoomed:'', widths:[]};
   try {
     const width = Number(localStorage.getItem('workhub:conversation-list-width:v1'));
@@ -78,8 +78,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     document.title = snapshot.title + ' · Yolu';
   }
   function renderChrome() {
-    const page = conversationsVisible ? sharedLayout() ? navigation : group.pages[0] : workspace;
-    const sidebarWidth = sharedLayout() ? navigationWidth : page?.chrome?.left ?? navigationWidth;
+    const page = conversationsPresented ? sharedLayout() ? navigation : group.pages[0] : workspace;
+    const sidebarWidth = conversationsPresented && sharedLayout() ? navigationWidth : page?.chrome?.left ?? navigationWidth;
     document.body.toggleAttribute('data-workspace-sidebar-collapsed',sidebarWidth < 120);
     document.body.style.setProperty('--workspace-window-sidebar-width',sidebarWidth + 'px');
     const controls = document.getElementById('workhubWindowControls');
@@ -91,13 +91,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   function renderPaneChrome() {
     const owner = group, visible = visiblePages(group);
-    window.WorkHubLayout.renderPanes(paneChrome,conversationsVisible && grouped(owner) ? {
+    window.WorkHubLayout.renderPanes(paneChrome,conversationsPresented && grouped(owner) ? {
       count:visible.length,resize:(index,width) => resizePane(owner,index,width),
       frames:visible.map(page => page.frame),container:pages,
     } : null);
     // On narrow windows keep every conversation reachable through a native selector.
     let switcher = document.getElementById('workspaceNarrowPanes');
-    if (conversationsVisible && grouped(owner) && !wide(owner)) {
+    if (conversationsPresented && grouped(owner) && !wide(owner)) {
       if (!switcher) {switcher = document.createElement('select'); switcher.id = 'workspaceNarrowPanes'; switcher.setAttribute('aria-label',uiText("查看并列组合中的页面")); pages.append(switcher);}
       switcher.replaceChildren(...owner.pages.map(page => {const option = document.createElement('option'); option.value = page.id; option.textContent = [page.snapshot.context,page.snapshot.title].filter(Boolean).join(' / '); return option;}));
       switcher.value = owner.focused; switcher.onchange = () => {owner.zoomed = ''; focusPane(owner,switcher.value);}; switcher.hidden = false;
@@ -113,27 +113,33 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   function renderLayout() {
     const visible = visiblePages(group), split = grouped(group), shared = sharedLayout();
     if (shared && !navigation) createNavigation();
+    for (const page of visible) mountPage(page);
+    // Prepare readers and shared navigation offscreen. Keep the current
+    // workspace and its sidebar visible until the whole destination is ready.
+    const destinationReady = visible.length > 0 && visible.every(page => page.restored) && (!shared || !!navigation?.restored);
+    conversationsPresented = conversationsVisible && (conversationsPresented || destinationReady);
+    const sharedVisible = shared && conversationsPresented;
     if (navigation) {
-      navigation.wrapper.hidden = !shared;
-      navigation.resizeHandle.hidden = !shared;
-      if (navigation.visible !== shared) {
-        navigation.visible = shared;
-        send(navigation,'workhub:page-active',{active:shared});
+      navigation.wrapper.hidden = !sharedVisible;
+      navigation.resizeHandle.hidden = !sharedVisible;
+      if (navigation.visible !== sharedVisible) {
+        navigation.visible = sharedVisible;
+        send(navigation,'workhub:page-active',{active:sharedVisible});
       }
     }
     document.body.style.setProperty('--workspace-shared-sidebar-width',navigationWidth + 'px');
     paintConversationListWidth();
-    document.body.toggleAttribute('data-workspace-conversations',shared);
-    pages.style.gridTemplateColumns = shared ? visible.map(page => (visible.length === 1 ? 1 : group.widths[group.pages.indexOf(page)] || 1) + 'fr').join(' 8px ') : '';
+    document.body.toggleAttribute('data-workspace-conversations',sharedVisible);
+    pages.style.gridTemplateColumns = sharedVisible ? visible.map(page => (visible.length === 1 ? 1 : group.widths[group.pages.indexOf(page)] || 1) + 'fr').join(' 8px ') : '';
     send(workspace,'workhub:page-pane',{split:false,shared:false});
-    workspace.frame.hidden = conversationsVisible;
-    if (workspace.visible !== !conversationsVisible) {
-      workspace.visible = !conversationsVisible;
+    const workspaceVisible = !conversationsVisible || !conversationsPresented && !!workspace.visible;
+    workspace.frame.hidden = !workspaceVisible;
+    if (workspace.visible !== workspaceVisible) {
+      workspace.visible = workspaceVisible;
       send(workspace,'workhub:page-active',{active:workspace.visible});
     }
     for (const page of group.pages) {
-      const index = visible.indexOf(page), active = index >= 0;
-      if (active) mountPage(page);
+      const index = visible.indexOf(page), active = conversationsPresented && index >= 0;
       page.frame.hidden = !active;
       page.frame.style.gridColumn = shared && active ? String(index * 2 + 1) : '';
       page.frame.dataset.focused = String(page.id === group.focused);
@@ -141,7 +147,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (page.visible !== active) {page.visible = active; send(page,'workhub:page-active',{active});}
       send(page,'workhub:parallel-layout',{split,focused:page.id === group.focused,zoomed:!!group.zoomed,canZoom:wide(group),canSplit:canSplit(group)});
     }
-    if (navigation && shared) send(navigation,'workhub:conversation-group',{
+    if (navigation && sharedVisible) send(navigation,'workhub:conversation-group',{
       targetTitle:group.pages.find(page => page.id === group.focused)?.snapshot.title,
       target:group.pages.find(page => page.id === group.focused)?.snapshot,
       sessions:group.pages.map(page => listIdentity(page.snapshot)),selected:listIdentity(group.pages.find(page => page.id === group.focused)?.snapshot || {}),
@@ -190,7 +196,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const page = createPage({...current?.snapshot,route:'/sessions',environment:current?.snapshot.environment || 'local',conversation:{...current?.snapshot.conversation,scope:pageScope(current?.snapshot || {}),pane:'list'}},'shared-navigation');
     page.frame.className = 'workspace-navigation-frame'; page.frame.removeAttribute('role'); page.frame.title = uiText("工作台导航与对话列表"); page.frame.hidden = false;
     const listSize = document.createElement('div'); listSize.className = 'workspace-shared-list-size'; listSize.setAttribute('aria-hidden','true');
-    listSize.innerHTML = uiText("<div class=\"workspace-list-placeholder\"><strong>对话</strong><div class=\"workspace-list-placeholder-search\"></div><div class=\"workspace-list-placeholder-filters\"></div><p>正在读取对话…</p></div>");
+    listSize.innerHTML = uiText("<div class=\"workspace-list-placeholder\"><strong>对话</strong><div class=\"workspace-list-placeholder-search\"></div><p>正在读取对话…</p></div>");
     const resizeHandle = document.createElement('div'); resizeHandle.className = 'workspace-shared-list-resize'; resizeHandle.setAttribute('role','separator'); resizeHandle.tabIndex = 0;
     resizeHandle.setAttribute('aria-label',uiText("调整共享对话列表宽度")); resizeHandle.setAttribute('aria-orientation','vertical'); resizeHandle.setAttribute('aria-controls',wrapper.id);
     resizeHandle.title = uiText("拖动调整对话列表宽度，双击恢复默认");
@@ -340,8 +346,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (navigation?.frame.contentWindow === event.source) {
       if (message.type === 'workhub:page-ready') {
         navigation.ready = true;
-        send(navigation,'workhub:page-restore',{snapshot:navigation.snapshot,active:conversationsVisible}); renderLayout();
-      } else if (message.type === 'workhub:page-restored') navigation.wrapper.setAttribute('data-ready','');
+        send(navigation,'workhub:page-restore',{snapshot:navigation.snapshot,active:!!navigation.visible}); renderLayout();
+      } else if (message.type === 'workhub:page-restored') {
+        navigation.restored = true;
+        navigation.wrapper.setAttribute('data-ready','');
+        renderLayout();
+      }
       else if (message.type === 'workhub:conversation-select') {
         if (message.initial && (!conversationsVisible || group.pages.some(page => isPaneView(page.snapshot)))) return;
         openConversation(message.snapshot);
@@ -355,11 +365,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const page = allPages().find(page => page.frame.contentWindow === event.source);
     if (!page) return;
     const displayed = page === workspace || group.pages.includes(page);
-    if (!displayed && !['workhub:page-ready','workhub:page-state'].includes(message.type)) return;
+    if (!displayed && !['workhub:page-ready','workhub:page-restored','workhub:page-state'].includes(message.type)) return;
     if (message.type === 'workhub:page-ready') {
       page.ready = true;
       send(page,'workhub:page-pane',{split:page !== workspace && grouped(group),shared:page !== workspace && sharedLayout()});
-      send(page,'workhub:page-restore',{snapshot:page.snapshot,active:page === workspace ? !conversationsVisible : visiblePages(group).includes(page)});
+      send(page,'workhub:page-restore',{snapshot:page.snapshot,active:!!page.visible});
+      renderLayout();
+    } else if (message.type === 'workhub:page-restored') {
+      page.restored = true;
       renderLayout();
     } else if (message.type === 'workhub:page-state') {
       const clean = normalize(message.snapshot);
