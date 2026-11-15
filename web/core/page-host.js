@@ -4,15 +4,19 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 // A single workspace document handles page navigation. Conversation readers
 // stay mounted independently so navigating away preserves each Agent's draft.
 (() => {
-  let navigation = null, navigationWidth = 244, conversationListWidth = 280;
+  const desktop = document.documentElement.hasAttribute('data-workhub-desktop');
+  const sharedListWidth = window.WorkHubListWidth;
+  let navigation = null, navigationWidth = desktop ? 52 : 244, conversationListWidth = 280;
   let conversationsVisible = false, conversationsPresented = false, appliedURL = location.href;
   const group = {pages:[], focused:'', zoomed:'', widths:[]};
   try {
     const width = Number(localStorage.getItem('workhub:conversation-list-width:v1'));
     if (width >= 220 && width <= 520) conversationListWidth = width;
-    const collapsed = localStorage.getItem('workhub:sidebar-collapsed:v1');
-    const sidebar = Number(localStorage.getItem('workhub:sidebar-width:v1'));
-    navigationWidth = collapsed === 'true' || collapsed === null && innerWidth > 760 && innerWidth < 1100 ? (document.documentElement.hasAttribute('data-workhub-desktop') ? 60 : 72) : sidebar >= 212 && sidebar <= 420 ? sidebar : 244;
+    if (!desktop) {
+      const collapsed = localStorage.getItem('workhub:sidebar-collapsed:v1');
+      const sidebar = Number(localStorage.getItem('workhub:sidebar-width:v1'));
+      navigationWidth = collapsed === 'true' || collapsed === null && innerWidth > 760 && innerWidth < 1100 ? 72 : sidebar >= 212 && sidebar <= 420 ? sidebar : 244;
+    }
   } catch {}
   const reads = new Map();
   // Same-origin pages share startup metadata, with independent response bodies.
@@ -65,7 +69,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const grouped = group => group.pages.length > 1;
   const sharedLayout = () => conversationsVisible && (innerWidth > 760 || grouped(group) || group.pages.some(page => isTerminal(page.snapshot)));
   const canSplit = group => group.pages.length < 3 && group.pages.every(page => isPaneView(page.snapshot));
-  const wide = group => innerWidth - navigationWidth - conversationListWidth >= Math.max(761,group.pages.length * 320 + 32);
+  const conversationListBounds = () => sharedListWidth?.bounds() ?? {min:220,max:Math.max(220,Math.min(520,innerWidth - navigationWidth - 360))};
+  const renderedConversationListWidth = () => sharedListWidth?.current() ?? conversationListWidth;
+  const wide = group => innerWidth - navigationWidth - renderedConversationListWidth() >= Math.max(761,group.pages.length * 320 + 32);
   const visiblePages = group => !conversationsVisible ? [] : group.zoomed || !wide(group) ? [group.pages.find(page => page.id === (group.zoomed || group.focused)) || group.pages[0]].filter(Boolean) : group.pages;
   function syncURL() {
     const page = conversationsVisible ? group.pages.find(page => page.id === group.focused) || group.pages[0] : workspace;
@@ -79,13 +85,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   function renderChrome() {
     const page = conversationsPresented ? sharedLayout() ? navigation : group.pages[0] : workspace;
-    const sidebarWidth = conversationsPresented && sharedLayout() ? navigationWidth : page?.chrome?.left ?? navigationWidth;
-    document.body.toggleAttribute('data-workspace-sidebar-collapsed',sidebarWidth < 120);
-    document.body.style.setProperty('--workspace-window-sidebar-width',sidebarWidth + 'px');
     const controls = document.getElementById('workhubWindowControls');
     if (controls) window.WorkHubLayout.renderChrome(controls,{
-      collapsed:sidebarWidth < 120,ready:!!page?.ready,
-      toggle:() => page?.frame.contentDocument?.querySelector('.sidebar-toggle')?.click(),
+      ready:!!page?.ready,
       home:() => openPage({route:'/requirements',environment:page?.snapshot.environment}),
     });
   }
@@ -104,7 +106,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     } else if (switcher) switcher.hidden = true;
   }
   function paintConversationListWidth() {
-    const width = conversationListWidth + 'px';
+    const width = renderedConversationListWidth() + 'px';
     document.body.style.setProperty('--workspace-conversation-list-width',width);
     // These frames are same-origin: resize both surfaces in the same paint,
     // without waiting for the navigation frame's message queue.
@@ -148,7 +150,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       const index = visible.indexOf(page), active = conversationsPresented && index >= 0;
       page.frame.hidden = !active;
       page.frame.style.gridColumn = shared && active ? String(index * 2 + 1) : '';
-      page.frame.dataset.focused = String(page.id === group.focused);
+      page.frame.dataset.focused = String((!desktop || split) && page.id === group.focused);
       send(page,'workhub:page-pane',{split,shared});
       if (page.visible !== active) {page.visible = active; send(page,'workhub:page-active',{active});}
       send(page,'workhub:parallel-layout',{split,focused:page.id === group.focused,zoomed:!!group.zoomed,canZoom:wide(group),canSplit:canSplit(group)});
@@ -158,7 +160,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       target:group.pages.find(page => page.id === group.focused)?.snapshot,
       sessions:group.pages.map(page => listIdentity(page.snapshot)),selected:listIdentity(group.pages.find(page => page.id === group.focused)?.snapshot || {}),
       autoSelect:!group.pages.some(page => isTerminal(page.snapshot) || page.snapshot.conversation?.selected || page.snapshot.conversation?.creating),
-      full:group.pages.length >= 3,listWidth:conversationListWidth,split,canSplit:canSplit(group),
+      full:group.pages.length >= 3,listWidth:renderedConversationListWidth(),split,canSplit:canSplit(group),
     });
     renderPaneChrome(); renderChrome();
     if (!performance.getEntriesByName?.('workhub:layout-ready').length) performance.mark?.('workhub:layout-ready');
@@ -187,9 +189,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     page.mounted = true;
     if (sharedLayout() && page.id !== 'workspace' && page.id !== 'shared-navigation') page.url.searchParams.set('workspace-conversation','1');
     if (grouped(group) && group.pages.includes(page)) page.url.searchParams.set('workspace-pane','1');
-    page.url.searchParams.set('workspace-list-width',String(conversationListWidth));
+    page.url.searchParams.set('workspace-list-width',String(renderedConversationListWidth()));
     page.url.searchParams.set('workspace-sidebar-width',String(navigationWidth));
-    if (document.documentElement.hasAttribute('data-workhub-desktop')) {
+    if (desktop) {
       page.url.searchParams.set('workspace-desktop','1');
       page.url.searchParams.set('workspace-sidebar-inset','0');
     }
@@ -208,10 +210,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     resizeHandle.title = uiText("拖动调整对话列表宽度，双击恢复默认");
     wrapper.append(page.frame,listSize); document.body.append(wrapper,resizeHandle); navigation = {...page,wrapper,resizeHandle};
     mountPage(navigation);
-    const bounds = () => ({min:220,max:Math.max(220,Math.min(520,innerWidth - navigationWidth - 360))});
     let resizeFrame = 0;
     const paint = () => {resizeFrame = 0; paintConversationListWidth();};
     const resize = width => {
+      if (sharedListWidth) { sharedListWidth.resize(width); return; }
       conversationListWidth = width;
       if (typeof requestAnimationFrame !== 'function') paint();
       else if (!resizeFrame) resizeFrame = requestAnimationFrame(paint);
@@ -219,11 +221,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const commit = () => {
       if (resizeFrame) {cancelAnimationFrame(resizeFrame); resizeFrame = 0;}
       paint(); renderLayout();
-      try {localStorage.setItem('workhub:conversation-list-width:v1',String(conversationListWidth));} catch {}
-
+      if (sharedListWidth) sharedListWidth.save();
+      else try {localStorage.setItem('workhub:conversation-list-width:v1',String(conversationListWidth));} catch {}
     };
-    window.WorkHubLayout.setupSplitResize({handle:resizeHandle,container:document.body,panel:listSize,axis:'x',bounds,resize,commit});
-    resizeHandle.addEventListener('dblclick',() => {const limit = bounds(); resize(Math.min(280,limit.max)); commit(); resizeHandle.setAttribute('aria-valuenow',String(conversationListWidth));});
+    window.WorkHubLayout.setupSplitResize({handle:resizeHandle,container:document.body,panel:listSize,axis:'x',bounds:conversationListBounds,resize,commit});
+    resizeHandle.addEventListener('dblclick',() => {resize(sharedListWidth?.defaultWidth ?? Math.min(280,conversationListBounds().max)); commit(); resizeHandle.setAttribute('aria-valuenow',String(renderedConversationListWidth()));});
   }
   function canClose(page) {
     try {return !page.ready || page.frame.contentWindow.WorkHubPage.canClose();} catch {return false;}
@@ -320,7 +322,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       conversationsVisible = false;
       workspace.snapshot = clean;
       send(workspace,'workhub:page-restore',{snapshot:clean,active:true});
-      workspace.frame.contentWindow.dispatchEvent(new workspace.frame.contentWindow.Event('workhub:sidebar-sync'));
+      if (!desktop) workspace.frame.contentWindow.dispatchEvent(new workspace.frame.contentWindow.Event('workhub:sidebar-sync'));
     }
     update();
   }
@@ -366,7 +368,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         openConversation(message.snapshot);
       } else if (message.type === 'workhub:conversation-add') openConversation(message.snapshot,'split');
       else if (message.type === 'workhub:page-open') dispatchOpen(message);
-      else if (message.type === 'workhub:page-chrome' && Number.isFinite(message.chrome?.left)) {
+      else if (!desktop && message.type === 'workhub:page-chrome' && Number.isFinite(message.chrome?.left)) {
         navigationWidth = Math.max(60,Math.min(520,message.chrome.left)); renderLayout();
       }
       return;
@@ -404,7 +406,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (message.command === 'close') removePane(group,page.id);
       else if (message.command === 'zoom' && wide(group)) {group.focused = page.id; group.zoomed = group.zoomed ? '' : page.id; update();}
     } else if (message.type === 'workhub:page-focus' && visiblePages(group).includes(page)) focusPane(group,page.id);
-    else if (message.type === 'workhub:page-chrome' && Number.isFinite(message.chrome?.left)) {page.chrome = message.chrome; renderChrome();}
   });
   window.addEventListener('resize',renderLayout);
   window.addEventListener('workhub:desktop-chrome',renderLayout);
@@ -417,6 +418,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('popstate',followURL);
   const initial = {route:location.hash.slice(1),environment:new URLSearchParams(location.search).get('environment') || 'local'};
   const workspace = createPage({...initial,route:initial.route === '/sessions' ? '/requirements' : initial.route},'workspace');
+  sharedListWidth?.subscribe(paintConversationListWidth);
   mountPage(workspace);
   openPage(initial);
 })();

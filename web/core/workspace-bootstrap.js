@@ -18,6 +18,6 @@
   const listWidth = Number(params.get('workspace-list-width'));
   if (listWidth >= 220 && listWidth <= 520) root.style.setProperty('--workspace-shared-list-width',listWidth + 'px');
   const sidebarWidth = Number(params.get('workspace-sidebar-width'));
-  if (sidebarWidth >= 60 && sidebarWidth <= 520) root.style.setProperty('--workspace-navigation-left',sidebarWidth + 'px');
+  if (sidebarWidth >= 52 && sidebarWidth <= 520) root.style.setProperty('--workspace-navigation-left',sidebarWidth + 'px');
   performance.mark?.('workhub:page-bootstrap');
 })();

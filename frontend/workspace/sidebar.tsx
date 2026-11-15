@@ -97,12 +97,16 @@ export function mountWorkspaceSidebar() {
     const icon = sidebar.querySelector(`[data-view="${view}"] .nav-icon`)
     if (icon) icon.innerHTML = renderToStaticMarkup(<Icon aria-hidden="true" size={18} />)
   }
+  const disposePins = setupShortcutIcons(sidebar)
+  const disposeUsage = mountCodexUsage(sidebar)
+  if (document.documentElement.hasAttribute("data-workhub-desktop")) {
+    window.addEventListener("pagehide", () => { disposeUsage(); disposePins() }, { once: true })
+    return
+  }
   document.body.classList.toggle("sidebar-collapsed", preferredCollapse())
   const host = document.createElement("div"); host.className = "sidebar-controls"
   sidebar.querySelector(".brand")?.after(host)
   const root = createRoot(host); root.render(<SidebarToggle />)
   const disposeResize = setupSidebarResize(sidebar)
-  const disposePins = setupShortcutIcons(sidebar)
-  const disposeUsage = mountCodexUsage(sidebar)
   window.addEventListener("pagehide", () => { disposeUsage(); disposePins(); disposeResize(); root.unmount() }, { once: true })
 }

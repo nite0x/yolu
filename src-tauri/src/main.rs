@@ -242,7 +242,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             app.set_menu(menu(app.handle(), false)?)?;
             let handle = app.handle().clone();
             let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title(app.config().product_name.as_deref().unwrap_or("Yolu")).inner_size(1380.0, 900.0).min_inner_size(900.0, 600.0).center();
+                .title(app.config().product_name.as_deref().unwrap_or("Yolu")).inner_size(1380.0, 900.0).min_inner_size(900.0, 600.0).center()
+                .initialization_script_for_all_frames(format!("{}({});", include_str!("window-chrome.js"), cfg!(target_os = "macos")));
             #[cfg(target_os = "macos")]
             let builder = {
                 app.add_capability(tauri::ipc::CapabilityBuilder::new("startup-window-drag")
@@ -252,7 +253,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 builder.title_bar_style(tauri::TitleBarStyle::Overlay)
                     .hidden_title(true)
                     .traffic_light_position(tauri::LogicalPosition::new(12.0, 20.0))
-                    .initialization_script_for_all_frames(include_str!("window-chrome.js"))
             };
             let window = builder
                 .on_page_load(|window, _| {

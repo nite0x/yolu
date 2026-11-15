@@ -35,26 +35,31 @@ try {
 } catch { /* Keep the default when storage is unavailable. */ }
 $('#workContent').style.setProperty('--task-list-width', taskListWidth + 'px');
 function taskResizeBounds() {
-  if (state.view !== 'requirements' || window.innerWidth <= 1100) return null;
+  if (state.view !== 'requirements' || !wideTaskLayout()) return null;
   const width = $('#workContent').getBoundingClientRect().width;
-  return width >= 668 ? { min: 240, max: Math.min(640, Math.floor(width - 428)) } : null;
+  if (!width) return null;
+  return desktopListWidth?.bounds() ?? (width >= 668 ? { min: 240, max: Math.min(640, Math.floor(width - 428)) } : null);
 }
+function currentTaskListWidth(bounds) { return desktopListWidth?.current() ?? Math.max(bounds.min,Math.min(bounds.max,taskListWidth)); }
 function syncTaskResize() {
   const handle = $('#taskListResize');
   const bounds = taskResizeBounds();
-  handle.hidden = state.view !== 'requirements' || window.innerWidth <= 1100;
+  handle.hidden = state.view !== 'requirements' || !wideTaskLayout();
   if (!bounds) { finishTaskResize(); return; }
+  handle.setAttribute('aria-valuemin', String(bounds.min));
   handle.setAttribute('aria-valuemax', String(bounds.max));
-  handle.setAttribute('aria-valuenow', String(Math.round(Math.max(bounds.min, Math.min(bounds.max, taskListWidth)))));
+  handle.setAttribute('aria-valuenow', String(currentTaskListWidth(bounds)));
 }
 function resizeTaskList(width) {
   const bounds = taskResizeBounds();
   if (!bounds) return;
+  if (desktopListWidth) { desktopListWidth.resize(width); return; }
   taskListWidth = Math.round(Math.max(bounds.min, Math.min(bounds.max, width)));
   $('#workContent').style.setProperty('--task-list-width', taskListWidth + 'px');
   syncTaskResize();
 }
 function rememberTaskWidth() {
+  if (desktopListWidth) { desktopListWidth.save(); return; }
   try { localStorage.setItem(taskWidthKey, String(taskListWidth)); } catch { /* Retain the in-memory width. */ }
 }
 function finishTaskResize(event) {
@@ -71,7 +76,7 @@ $('#taskListResize').addEventListener('pointerdown', event => {
   if (event.button !== 0 || taskResizeDrag || !bounds) return;
   event.preventDefault();
   event.currentTarget.focus({preventScroll:true});
-  taskResizeDrag = {id:event.pointerId, x:event.clientX, width:Math.max(bounds.min, Math.min(bounds.max, taskListWidth)), moved:false};
+  taskResizeDrag = {id:event.pointerId, x:event.clientX, width:currentTaskListWidth(bounds), moved:false};
   $('#workContent').dataset.taskResizing = '';
   $('#workContent').setPointerCapture?.(event.pointerId);
 });
@@ -86,10 +91,14 @@ $('#taskListResize').addEventListener('keydown', event => {
   const bounds = taskResizeBounds();
   if (!bounds || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
-  const width = Math.max(bounds.min, Math.min(bounds.max, taskListWidth));
+  const width = currentTaskListWidth(bounds);
   resizeTaskList(event.key === 'Home' ? bounds.min : event.key === 'End' ? bounds.max : width + (event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 40 : 10));
   rememberTaskWidth();
 });
+$('#taskListResize').addEventListener('dblclick', () => {
+  if (desktopListWidth && taskResizeBounds()) { desktopListWidth.resize(desktopListWidth.defaultWidth); desktopListWidth.save(); }
+});
+if (desktopListWidth) window.addEventListener('pagehide',desktopListWidth.subscribe(syncTaskResize),{once:true});
 window.addEventListener('resize', syncTaskResize);
 window.addEventListener('blur', () => finishTaskResize());
 window.addEventListener('pagehide', () => finishTaskResize());

@@ -9,7 +9,7 @@ const { JSDOM } = require('jsdom');
 const web = path.join(__dirname, '../web');
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
 
-async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pins = {}, storage = {}, storageUnavailable = false, width = 1024, route = '/requirements/task', intercept: initialIntercept, pageHost} = {}) {
+async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pins = {}, storage = {}, storageUnavailable = false, width = 1024, route = '/requirements/task', intercept: initialIntercept, pageHost, desktop = false} = {}) {
   const tree = (path, branch) => ({ path, branch, dirty: 0, status_updated_at: '2026-10-23T06:00:00Z' });
   const app = { id: 'app', name: 'App', folder: 'app', path: '/repo/app', worktrees: [tree('/repo/app', 'master'), tree('/workspace/task/app', 'feature/task')] };
   const backend = { id: 'backend', name: 'Backend', folder: 'backend', path: '/repo/backend', worktrees: [tree('/repo/backend', 'master')] };
@@ -38,6 +38,7 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
   for (const [key, value] of Object.entries(storage)) window.localStorage.setItem(key, value);
   if (storageUnavailable) Object.defineProperty(window, 'localStorage', {get() {throw new Error('Storage unavailable');}});
   const document = window.document;
+  if (desktop) document.documentElement.setAttribute('data-workhub-desktop', '');
   Object.assign(window, { TextEncoder, TextDecoder, ReadableStream, WritableStream, TransformStream, CSS: { escape: value => value }, MessageChannel: class extends MessageChannel { constructor() { super(); channels.push(this); } }, scrollTo() {}, confirm: () => true });
   window.HTMLElement.prototype.scrollIntoView = function () {};
   window.HTMLDialogElement.prototype.show = function () { this.open = true; };
@@ -140,6 +141,48 @@ test('search, archive filtering and project selection retain their existing acti
   assert.equal(h.$('[data-action="select-project"][data-id="app"]').getAttribute('aria-pressed'), 'true');
   assert(h.$('#content [data-slot="table"]'));
   assert.equal(h.$('[data-action="new-worktree"]').dataset.id, 'app');
+});
+
+test('desktop project controls stay in the list through search, refresh and page changes', async t => {
+  const h = await harness(t, true, {desktop:true, width:960, route:'/projects'});
+  const toolbar = h.$('#projectListPane #panelToolbar');
+  const search = h.$('#projectListPane #search');
+  const projectList = h.$('#projectListPane');
+  assert(toolbar.querySelector('#projectAddButton button'));
+  assert(toolbar.querySelector('.list-search #taskListFilters .project-filters'));
+  assert(toolbar.querySelector('#taskListFilters #projectEnvironment'));
+  const width = () => h.document.documentElement.style.getPropertyValue('--workspace-list-width');
+  const key = (selector, key) => h.$(selector).dispatchEvent(new h.window.KeyboardEvent('keydown', {key,bubbles:true}));
+  assert.equal(width(),'280px');
+  h.$('.project-workspace').getBoundingClientRect = () => ({width:900});
+  key('[data-project-resize]','ArrowRight');
+  assert.equal(width(),'290px');
+  search.focus();
+  h.input('#search','Backend');
+  await h.window.refresh(true);
+  assert.equal(h.$('#projectListPane'), projectList);
+  assert.equal(h.document.activeElement, search);
+  assert.deepEqual([...projectList.querySelectorAll('.project-list-item')].map(row => row.dataset.id), ['backend']);
+  await h.navigate('/requirements');
+  assert.equal(h.$('#taskBrowser #panelToolbar'), toolbar);
+  assert.equal(width(),'290px');
+  assert(toolbar.querySelector('.list-search #taskListFilters #taskStatusFilter'));
+  assert.equal(h.$('#taskListResize').hidden, false);
+  h.$('#workContent').getBoundingClientRect = () => ({width:900});
+  key('#taskListResize','ArrowRight');
+  assert.equal(width(),'300px');
+  assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'),'300');
+  await h.navigate('/sessions');
+  assert(h.$('.list-search #sessionScopePicker #sessionStatusFilters'));
+  await h.navigate('/projects');
+  assert.equal(width(),'300px');
+  assert.equal(h.$('#projectListPane #panelToolbar'), toolbar);
+  await h.window.selectEnvironment('wsl-test', '/projects');
+  assert.equal(h.$('#projectListPane #panelToolbar'), toolbar);
+  h.data.projects = [];
+  await h.window.refresh(true);
+  assert.equal(h.$('#projectListPane #panelToolbar'), toolbar);
+  assert.match(h.$('.project-list-empty').textContent, /没有已登记的项目/);
 });
 
 test('mixed task directory choices and custom branches submit through the original API', async t => {
@@ -1385,7 +1428,7 @@ test('sidebar preferences follow shared storage and synchronize before a retaine
 test('collapsed sidebar keeps individual task and directory shortcuts visible with direct navigation', async t => {
   const h = await harness(t, true, {width:1024, pins:{local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}}});
   const panel = h.$('#conversationShortcuts');
-  assert.equal(h.$('.sidebar-pins-toggle'), null);
+  assert.equal(h.$('.sidebar-shortcut-rail'), null);
   assert(h.document.body.classList.contains('sidebar-collapsed'));
   assert(!panel.hasAttribute('popover'));
   assert(h.$('[data-task-shortcut="task"] .shortcut-badge'));
@@ -1400,6 +1443,34 @@ test('collapsed sidebar keeps individual task and directory shortcuts visible wi
   h.click('.sidebar-toggle'); await settle();
   assert.equal(h.$('[data-task-shortcut="task"]').dataset.shortcutIcon, identity);
   assert(h.$('[data-directory-shortcut="/workspace/task/app"]'));
+});
+
+test('desktop shows pinned icons directly and keeps their management in the picker', async t => {
+  const pins = {local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}};
+  const h = await harness(t, true, {desktop:true, width:1440, pins});
+  assert.equal(h.$('.sidebar-toggle, .sidebar-resize'), null);
+  assert.equal(h.$('#taskShortcutPicker').open, false);
+  const list = h.$('.sidebar-shortcut-list');
+  assert(list.querySelector('[data-task-shortcut="task"] .shortcut-badge'));
+  assert(list.querySelector('[data-directory-shortcut="/workspace/task/app"] .shortcut-badge'));
+  h.click('.sidebar-shortcut-list [data-task-shortcut="task"]');
+  await settle();
+  assert.equal(h.$('#sessionScopeLabel').textContent, '任务 · Billing');
+  h.click('.sidebar-shortcut-list [data-directory-shortcut="/workspace/task/app"]');
+  await settle();
+  assert.equal(h.$('[data-directory-shortcut="/workspace/task/app"]').getAttribute('aria-current'), 'true');
+  h.click('#taskShortcutPicker summary');
+  await settle();
+  h.$('.sidebar-shortcut-list').scrollTop = 48;
+  h.click('#shortcutPickerPanel [data-task-shortcut-pin="task"]');
+  await settle();
+  assert.equal(h.$('#taskShortcutPicker').open, true);
+  assert.equal(h.$('.sidebar-shortcut-list').scrollTop, 48);
+  assert.equal(h.$('[data-task-shortcut="task"]'), null);
+  assert.deepEqual(pins.local.tasks, []);
+  h.$('#shortcutPickerPanel').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+  assert.equal(h.$('#taskShortcutPicker').open, false);
+  assert.equal(h.document.activeElement, h.$('#taskShortcutPicker summary'));
 });
 
 test('icon customization persists without browser storage and rollback keeps pins intact', async t => {
@@ -1717,7 +1788,7 @@ test('compact conversation filters expose active choices, clear together and set
   assert.equal(h.$('#sessionBrowserCount').textContent, '1');
   assert.equal(h.$('.session-browser-list-heading [data-conversation-action="refresh"]'), null);
   assert.equal(h.$('.session-browser-list-caption'), null);
-  assert.equal(h.$('#sessionScopePicker').parentElement, h.$('#sessionBrowserSearch').closest('.session-browser-search-row'));
+  assert.equal(h.$('#sessionScopePicker').parentElement, h.$('#sessionBrowserSearch').closest('.list-search'));
   assert.equal(h.$('#sessionBrowserScopeBar').firstElementChild, h.$('#sessionBrowserSearch').parentElement);
   assert.equal(h.$('#sessionBrowserScopeBar').lastElementChild, h.$('#sessionScopePicker'));
   assert(h.$('#sessionScopeLabel').classList.contains('sr-only'));

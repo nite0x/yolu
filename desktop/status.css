@@ -1,4 +1,4 @@
-:root { color-scheme: light dark; font: 15px/1.7 system-ui, sans-serif; background: #f6f7f9; color: #192332; }
+:root { color-scheme: light dark; font-size: var(--yolu-font-size-body, 15px); line-height: 1.7; background: #f6f7f9; color: #192332; }
 body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
 main { width: min(600px, 80vw); padding: 48px; }
 .brand { display: flex; align-items: center; gap: 12px; color: #203f42; font-size: 22px; font-weight: 600; }

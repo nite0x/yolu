@@ -27,7 +27,6 @@ let tasks: Task[] = [], profiles: Profile[] = [], customProfiles: Profile[] = []
 let term: Terminal | undefined, fit: FitAddon | undefined, search: SearchAddon | undefined, socket: WebSocket | undefined
 let current: TerminalInfo | undefined, seq = 0, generation = 0, retry: ReturnType<typeof setTimeout> | undefined, reconnecting = false
 let restoreRevision = 0, busy = false, finished = false, lastSize = ""
-const terminalFontFamily = '"JetBrains Mono Variable", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, "Microsoft YaHei UI", monospace'
 const terminalFonts = document.fonts?.load('14px "JetBrains Mono Variable"').catch(() => []) ?? Promise.resolve([])
 const storedFontSize = Number(conversationDefaults.get("terminal-font-size"))
 let fontSize = Number.isInteger(storedFontSize) && storedFontSize >= 12 && storedFontSize <= 20 ? storedFontSize : 14
@@ -196,7 +195,7 @@ function createTerminal() {
   if (term) return
   term = new Terminal({
     cursorBlink:true, cursorStyle:"bar", cursorInactiveStyle:"bar", cursorWidth:2,
-    fontSize, fontFamily:terminalFontFamily, fontWeight:400, fontWeightBold:600,
+    fontSize, fontFamily:getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() || "monospace", fontWeight:400, fontWeightBold:600,
     lineHeight:1.35, letterSpacing:0, customGlyphs:true, drawBoldTextInBrightColors:false, minimumContrastRatio:4.5,
     scrollback:5000,
     theme:terminalTheme(), allowProposedApi:false,

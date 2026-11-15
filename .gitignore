@@ -15,5 +15,6 @@
 /dist/
 
 /desktop/i18n.js
+/desktop/typography.css
 
 /.codegraph/

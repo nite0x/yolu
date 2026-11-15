@@ -1,4 +1,6 @@
 import { uiText } from "../i18n";
+import { syncListFilter } from "./list-controls"
+import type { ComponentProps } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { Card } from "@/components/ui/card"
 import { TaskActions, TaskDetail, TaskList } from "./tasks"
@@ -34,6 +36,7 @@ import { CodexDiagnosticsResults } from "./settings"
 // Static views retain their native controllers. Interactive islands have
 // separate React roots; their native fields bridge existing API/form logic.
 export const workspaceUI = {
+  syncListFilter,
   createConversationState,
   conversationTree,
   createConversationList, conversationStatusMatches, patchConversationList,
@@ -55,7 +58,7 @@ export const workspaceUI = {
   tasks: (tasks: Task[], selectedID?: string | null, environment?: string) => renderToStaticMarkup(<TaskList tasks={tasks} selectedID={selectedID} environment={environment} />),
   taskDetail: (task: Task, projects: Project[], environment: string, openTool?: ProjectOpenTool, filter?: TaskFilter) => renderToStaticMarkup(<TaskDetail task={task} projects={projects} environment={environment} openTool={openTool} filter={filter} />),
   taskActions: (task: Task, environment: string) => renderToStaticMarkup(<TaskActions task={task} environment={environment} />),
-  projects: (projects: Project[], selectedID: string | null, openTool?: ProjectOpenTool, filter?: ProjectFilter, detailOpen?: boolean, tasks?: Task[], directoryFilter?: DirectoryFilter, searching?: boolean) => renderToStaticMarkup(<Projects projects={projects} selectedID={selectedID} openTool={openTool} filter={filter} detailOpen={detailOpen} tasks={tasks} directoryFilter={directoryFilter} searching={searching} />),
+  projects: (projects: Project[], selectedID: string | null, openTool?: ProjectOpenTool, filter?: ProjectFilter, detailOpen?: boolean, tasks?: Task[], directoryFilter?: DirectoryFilter, searching?: boolean, status?: ComponentProps<typeof Projects>["status"]) => renderToStaticMarkup(<Projects projects={projects} selectedID={selectedID} openTool={openTool} filter={filter} detailOpen={detailOpen} tasks={tasks} directoryFilter={directoryFilter} searching={searching} status={status} />),
   git: (overview: GitOverview) => renderToStaticMarkup(<GitView overview={overview} />),
   projectPicker: (rows: PickerRow[]) => renderToStaticMarkup(<ProjectPicker rows={rows} />),
   badge: (kind: string, text?: string) => renderToStaticMarkup(<span className="shadcn-scope"><StatusBadge kind={kind}>{text}</StatusBadge></span>),

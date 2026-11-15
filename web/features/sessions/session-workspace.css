@@ -11,17 +11,6 @@
 .session-environment-label > div { min-width: 0; flex: 1; }
 .session-environment-label select { width: 100%; }
 .session-environment-label > span { white-space: nowrap; flex-shrink: 0; }
-.session-scope-picker { position: relative; min-width: 0; max-width: 100%; }
-.session-scope-picker > summary { cursor: pointer; display: flex; align-items: center; gap: 7px; min-height: 28px; padding: 3px 6px; border-radius: 5px; color: var(--muted-foreground); font-size: 12px; list-style: none; }
-.session-scope-picker > summary:hover, .session-scope-picker[open] > summary { background: var(--muted); color: var(--foreground); }
-.session-scope-picker > summary > span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.session-scope-picker > summary::-webkit-details-marker { display: none; }
-.session-scope-picker > summary svg { flex-shrink: 0; width: 14px; height: 14px; }
-.session-scope-picker > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.session-scope-menu { position: absolute; top: calc(100% + 8px); left: 0; z-index: 8; width: min(420px, calc(100vw - 80px)); max-height: min(560px, 65dvh); overflow: hidden; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--background, var(--yolu-surface,#fff)); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px #15213a18; }
-.session-scope-menu[popover]:not(:popover-open) { display: none; }
-.session-scope-menu:popover-open { position: fixed; inset: auto; margin: 0; color: var(--foreground); }
-.session-scope-menu > input, .session-scope-menu > button { flex-shrink: 0; }
 #sessionScopeOptions { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .session-scope-filters { display: grid; flex-shrink: 0; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .session-scope-group + .session-scope-group { margin-top: 6px; }
@@ -44,27 +33,14 @@
 .session-browser-list-heading strong { flex-shrink: 0; font-size: 14px; font-weight: 650; color: var(--foreground); }
 .session-browser-heading-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; flex-shrink: 0; }
 .session-browser-heading-actions > button { padding: 6px; color: var(--muted-foreground); }
-.session-browser-search { position: relative; min-width: 0; flex: 1; }
-.session-browser-search-row { position: relative; display: flex; align-items: center; min-width: 0; min-height: 34px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); }
-.session-browser-search-row:focus-within { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 18%, transparent); }
-.session-browser-search-row > .session-scope-picker { flex: 0 0 28px; min-width: 0; margin-right: 2px; }
-.session-browser-search-row > .session-scope-picker > summary { width: 28px; min-height: 28px; padding: 6px; gap: 0; justify-content: center; border-radius: 4px; }
-.session-browser-search-row > .session-scope-picker > summary:focus-visible { outline: none; }
-#sessionSearchClear { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 5px; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); }
-#sessionSearchClear:hover { color: var(--foreground); background: var(--muted); }
-#sessionSearchClear svg { width: 14px; height: 14px; }
 .session-active-filter-label { font-size: 11px; margin: 0; padding: 4px 7px; border-radius: 4px; color: var(--primary); background: var(--secondary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.session-browser-search > svg { position: absolute; width: 14px; height: 14px; top: 50%; transform: translateY(-50%); left: 8px; color: var(--muted-foreground); pointer-events: none; }
-.session-browser .session-browser-search input { width: 100%; height: 32px; padding: 0 28px 0 26px; font-size: 12px; background: transparent; }
-.session-browser-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
-#sessionSearchClear { position: absolute; top: 2px; right: 1px; }
 .session-status-filters { display: flex; align-items: center; gap: 2px; min-width: 0; padding: 3px; border-radius: 7px; background: var(--muted); }
 .session-status-filters button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; min-height: 28px; padding: 3px 2px; border: 0; border-radius: 5px; font-size: 11px; line-height: 1.4; white-space: nowrap; color: var(--muted-foreground); background: transparent; }
 .session-status-filters button:hover { color: var(--foreground); }
 .session-status-filters button[aria-pressed="true"] { background: var(--background); color: var(--primary); font-weight: 600; box-shadow: 0 1px 3px #15213a12; }
 .session-status-filters [data-status-count] { font-size: 10px; font-variant-numeric: tabular-nums; }
 .session-status-filters [data-conversation-status="waiting"] [data-status-count] { color: var(--yolu-warning,#9a5a12); }
-.session-status-filters button:focus-visible, #sessionSearchClear:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.session-status-filters button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 #sessionBrowserCount { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
 #sessionBrowserError { margin: 0 12px 8px; padding: 9px; font-size: 12px; white-space: pre-wrap; color: var(--destructive); background: var(--muted); border-radius: 6px; }
 #sessionBrowserList { overflow-y: auto; min-height: 0; flex: 1; padding: 0 7px 12px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; overflow-anchor: none; }

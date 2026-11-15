@@ -157,43 +157,35 @@ function shortcutPickerState() {
   if (!shortcutPickerStates.has(key)) shortcutPickerStates.set(key, { search: '', archived: false });
   return shortcutPickerStates.get(key);
 }
+function closeShortcutPicker(restoreFocus = false) {
+  const picker = $('#taskShortcutPicker');
+  if (!picker?.open) return;
+  picker.open = false;
+  syncShortcutPickerPanel();
+  if (restoreFocus) picker.querySelector('summary').focus({preventScroll:true});
+}
 function syncShortcutPickerPanel() {
   const picker = $('#taskShortcutPicker');
   const panel = $('#shortcutPickerPanel');
   // The native top layer escapes the sidebar's scrolling and clipping boundary.
-  if (!panel || typeof panel.showPopover !== 'function') return;
-  if (!picker.open) { if (panel.matches(':popover-open')) panel.hidePopover(); return; }
+  if (!panel) return;
+  const nativePopover = typeof panel.showPopover === 'function';
+  if (!picker.open) { if (nativePopover && panel.matches(':popover-open')) panel.hidePopover(); return; }
+  const rail = picker.closest('.sidebar-shortcut-rail');
+  if (!nativePopover && !rail) return;
   const anchor = picker.querySelector('summary').getBoundingClientRect();
   const below = window.innerHeight - anchor.bottom - 18;
   const above = anchor.top - 18;
   const useBelow = below >= 300 || below >= above;
-  panel.style.left = Math.max(12, Math.min(anchor.right - 340, window.innerWidth - 352)) + 'px';
+  const left = rail ? rail.closest('.sidebar').getBoundingClientRect().right + 8 : anchor.right - 340;
+  panel.style.left = Math.max(12, Math.min(left, window.innerWidth - 352)) + 'px';
   panel.style.top = useBelow ? anchor.bottom + 6 + 'px' : 'auto';
   panel.style.bottom = useBelow ? 'auto' : window.innerHeight - anchor.top + 6 + 'px';
   panel.style.maxHeight = Math.max(100, Math.min(540, useBelow ? below : above)) + 'px';
-  if (!panel.matches(':popover-open')) panel.showPopover();
+  if (nativePopover && !panel.matches(':popover-open')) panel.showPopover();
 }
 function syncConversationScopePanel() {
-  const picker = $('#sessionScopePicker');
-  const panel = picker.querySelector('[popover]');
-  if (!panel || typeof panel.showPopover !== 'function') return;
-  if (!picker.open || !conversationVisible()) {
-    if (panel.matches(':popover-open')) panel.hidePopover();
-    return;
-  }
-  // The top layer escapes the resizable panel's overflow boundary.
-  const anchor = picker.querySelector('summary').getBoundingClientRect();
-  const searchBar = $('#sessionBrowserScopeBar').getBoundingClientRect();
-  const width = Math.min(420, window.innerWidth - 24);
-  const below = window.innerHeight - anchor.bottom - 18;
-  const above = anchor.top - 18;
-  const useBelow = below >= 300 || below >= above;
-  panel.style.width = width + 'px';
-  panel.style.left = Math.max(12, Math.min(searchBar.width ? searchBar.left : anchor.left, window.innerWidth - width - 12)) + 'px';
-  panel.style.top = useBelow ? anchor.bottom + 6 + 'px' : 'auto';
-  panel.style.bottom = useBelow ? 'auto' : window.innerHeight - anchor.top + 6 + 'px';
-  panel.style.maxHeight = Math.max(0, Math.min(560, useBelow ? below : above)) + 'px';
-  if (!panel.matches(':popover-open')) panel.showPopover();
+  window.WorkHubUI.syncListFilter($('#sessionScopePicker'), conversationVisible());
 }
 function shortcutTasks(includeArchived = false) {
   const tasks = taskInventory.loaded ? taskInventory.requirements : state.requirements;
@@ -221,6 +213,7 @@ function renderConversationShortcuts() {
     directories,
     pinnedDirectories: directories.filter(d => d.pinned),
     kind: host.dataset.shortcutKind,
+    desktopRail: document.documentElement.hasAttribute('data-workhub-desktop'),
     selected: selectedScope?.kind === 'task' ? conversationEnvironmentKey(selectedScope.environment, selectedScope.id) : null,
     selectedDirectory: selectedScope?.kind === 'directory' ? directories.find(directory => directory.environment === selectedScope.environment && conversationPathKey(directory.cwd) === conversationPathKey(selectedScope.cwd))?.key : null,
     ...shortcutPickerState(), environment: uiText("全部环境"),
@@ -232,12 +225,13 @@ function renderConversationShortcuts() {
     const focusAttribute = ['data-task-shortcut', 'data-task-shortcut-pin', 'data-directory-shortcut', 'data-directory-shortcut-pin'].find(attribute => focused?.hasAttribute(attribute));
     const focusValue = focusAttribute && focused.getAttribute(focusAttribute);
     const selection = focused?.id === 'shortcutSearch' ? [focused.selectionStart, focused.selectionEnd] : null;
-    const top = host.scrollTop;
+    const top = (host.querySelector('.sidebar-shortcut-list') || host).scrollTop;
     const resultsTop = host.querySelector('.shortcut-picker-results')?.scrollTop || 0;
     host.innerHTML = markup; host.dataset.markup = markup;
     if (expanded) { const picker = host.querySelector('#taskShortcutPicker'); picker.dataset.restored = 'true'; picker.open = true; }
     syncShortcutPickerPanel();
-    host.scrollTop = top;
+    const list = host.querySelector('.sidebar-shortcut-list') || host;
+    list.scrollTop = top;
     host.querySelector('.shortcut-picker-results').scrollTop = resultsTop;
     if (focused) {
       const button = focusID ? host.querySelector('#' + focusID) : focusAttribute ? [...host.querySelectorAll('[' + focusAttribute + ']')].find(button => button.getAttribute(focusAttribute) === focusValue && (!button.closest('details') || button.closest('details').open)) : null;
@@ -502,7 +496,9 @@ function renderConversationList() {
   $('#sessionActiveFilterLabel').hidden = !filterCount;
   $('#sessionActiveFilterLabel').textContent = filterLabels.join(' · ');
   $('#sessionActiveFilterLabel').title = directoryPath || '';
-  $('#sessionScopePicker').querySelector('summary').title = [conversationScopeName(view.scope), directoryPath, ...filterLabels].filter(Boolean).join(' · ');
+  const picker = $('#sessionScopePicker');
+  picker.toggleAttribute('data-active', !!(directoryPath || filterLabels.length || view.scope.kind !== 'all'));
+  picker.querySelector('summary').title = [conversationScopeName(view.scope), directoryPath, ...filterLabels].filter(Boolean).join(' · ');
   const showContext = !view.directory && view.scope.kind !== 'directory' && new Set(items.map(session => conversationPathKey(session.cwd))).size > 1;
   const list = $('#sessionBrowserList');
   list.setAttribute('aria-busy',String(initialLoading || view.loading));
@@ -876,6 +872,10 @@ function browserSessionActivity(id, chat, environment = activeEnvironment) {
   }
   if (conversationVisible()) renderConversationList(); else updateConversationNavigation();
 }
+// Dismiss before the page bridge can consume a navigation click.
+document.addEventListener('click', event => {
+  if (!event.target.closest('#taskShortcutPicker')) closeShortcutPicker();
+}, true);
 document.addEventListener('click', event => {
   const directoryShortcut = event.target.closest('[data-directory-shortcut]');
   if (directoryShortcut) {
@@ -998,6 +998,7 @@ document.addEventListener('toggle', event => {
   if (!state.loaded && !state.refreshing) refresh(true);
 }, true);
 window.addEventListener('resize', syncShortcutPickerPanel);
+window.addEventListener('workhub:page-visibility', event => { if (!event.detail.visible) closeShortcutPicker(); });
 $('#sessionScopePicker').addEventListener('toggle', () => { syncConversationScopePanel(); if ($('#sessionScopePicker').open) { renderConversationScopes(); $('#sessionScopeSearch').focus({preventScroll:true}); } });
 window.addEventListener('resize', syncConversationScopePanel);
 document.addEventListener('scroll', syncConversationScopePanel, true);
@@ -1018,7 +1019,7 @@ $('#sessionBrowserNewDirectory').addEventListener('change', event => {
 document.addEventListener('keydown', event => {
   const itemMenu = document.activeElement?.closest('.session-item-menu[open]');
   if (event.key === 'Escape' && itemMenu) { itemMenu.open = false; itemMenu.querySelector('summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
-  if (event.key === 'Escape' && $('#taskShortcutPicker')?.open) { $('#taskShortcutPicker').open = false; $('#taskShortcutPicker summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
+  if (event.key === 'Escape' && $('#taskShortcutPicker')?.open) { closeShortcutPicker(true); event.preventDefault(); event.stopPropagation(); return; }
   if (event.key === 'Escape' && $('#sessionScopePicker').open) { $('#sessionScopePicker').open = false; $('#sessionScopePicker summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
   if (event.key === 'Escape' && event.target.id === 'sessionBrowserSearch' && conversationState.current?.search) {
     conversationState.current.search = ''; resetConversationListWindow(); event.target.value = ''; $('#sessionBrowserList').scrollTop = 0; renderConversationList(); event.preventDefault(); event.stopPropagation(); return;
@@ -1036,7 +1037,6 @@ document.addEventListener('keydown', event => {
 }, true);
 document.addEventListener('click', event => { if (!event.target.closest('#sessionScopePicker')) $('#sessionScopePicker').open = false; });
 $('#linkTaskConversation').addEventListener('click', () => { $('#sessionScopePicker').open = false; });
-document.addEventListener('click', event => { const picker = $('#taskShortcutPicker'); if (picker && !event.target.closest('#taskShortcutPicker')) picker.open = false; });
 document.addEventListener('click', event => { for (const menu of document.querySelectorAll('.session-item-menu[open]')) if (!menu.contains(event.target)) menu.open = false; });
 window.addEventListener('pagehide', suspendSessionWorkspace);
 

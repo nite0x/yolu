@@ -10,7 +10,8 @@ let taskListMounted = false;
 const taskSelectionStorageKey = 'workhub:selected-task:v1';
 let lastTaskSelection = null;
 try { lastTaskSelection = JSON.parse(localStorage.getItem(taskSelectionStorageKey) || 'null'); } catch {}
-function wideTaskLayout() { return window.innerWidth > 1100; }
+const desktopWorkspace = document.documentElement.hasAttribute('data-workhub-desktop');
+function wideTaskLayout() { return window.innerWidth > (desktopWorkspace ? 760 : 1100); }
 function rememberTaskSelection(task) {
   if (lastTaskSelection?.id === task.id && lastTaskSelection?.environment === activeEnvironment) return;
   lastTaskSelection = { id: task.id, environment: activeEnvironment };
@@ -40,7 +41,7 @@ function syncTaskPageLayout(tasks) {
     move($('#newTaskButton'), heading);
     if (heading.parentElement !== $('main')) $('main').insertBefore(heading, $('#offlineFeedback'));
     if ($('#backToRequirements').parentElement !== $('main')) $('main').insertBefore($('#backToRequirements'), heading);
-    if ($('#panelToolbar').parentElement !== $('#workContent')) $('#workContent').insertBefore($('#panelToolbar'), pane);
+    if (!(desktopWorkspace && state.view === 'projects') && $('#panelToolbar').parentElement !== $('#workContent')) $('#workContent').insertBefore($('#panelToolbar'), pane);
   }
 }
 let taskLayoutWide = wideTaskLayout();
@@ -147,7 +148,7 @@ async function refresh(force = false) {
     $('#syncText').title = error.message;
     $('#syncDot').classList.remove('updating');
     $('#syncDot').classList.toggle('offline', true);
-    if (!state.loaded) $('#content').innerHTML = window.WorkHubUI.offline();
+    if (!state.loaded && !(desktopWorkspace && state.view === 'projects')) $('#content').innerHTML = window.WorkHubUI.offline();
   } finally {
     if (revision !== environmentRevision) return;
     state.refreshing = false; $('#refreshButton').disabled = false;
@@ -184,7 +185,9 @@ function readRoute() {
   const project = route.match(/^\/projects\/([a-zA-Z0-9_-]+)(?:\/(git|worktrees))?$/);
   if (project) state.selectedProject = project[1];
   projectDetailOpen = !!project;
+  const previousView = state.view;
   state.view = route === '/settings' ? 'settings' : route === '/projects' || project ? 'projects' : route === '/sessions' ? 'sessions' : 'requirements';
+  if (state.view !== previousView) $('#taskListFilters').open = false;
   const match = route.match(/^\/requirements\/([a-zA-Z0-9_-]+)$/);
   state.selectedRequirement = match ? match[1] : null;
   window.dispatchEvent(new CustomEvent('workhub:route-read'));
@@ -232,26 +235,39 @@ function render() {
   $('.page-heading').hidden = state.view === 'projects';
   $('#stats').hidden = true;
   $('#panelToolbar').hidden = false;
-  $('#newButton').hidden = settingsView || sessionsView;
+  $('#newButton').hidden = !reqView;
   $('#settingsPage').hidden = !settingsView;
   $('#workContent').hidden = settingsView || sessionsView;
   $('#sessionsPage').hidden = !sessionsView;
   document.body.classList.toggle('sessions-page-open', sessionsView);
   $('#reqCount').textContent = taskInventory.loaded ? taskInventory.requirements.filter(q => q.state !== 'archived').length : '…';
   $('#projectCount').textContent = taskInventory.loaded ? taskInventory.project_count : '…';
-  document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
+  document.querySelectorAll('[data-view]').forEach(button => {
+    const active = button.dataset.view === state.view;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
   $('#eyebrow').textContent = sessionsView ? 'SESSIONS' : settingsView ? 'SETTINGS' : detailView ? 'TASK' : reqView ? 'TASKS' : 'PROJECTS';
   $('#pageTitle').textContent = sessionsView ? uiText("对话") : settingsView ? uiText("设置") : detailView ? requirement?.name || (!state.loaded ? uiText("正在加载任务…") : uiText("任务不存在")) : reqView ? uiText("选择任务") : uiText("项目");
   $('#pageSubtitle').textContent = settingsView ? uiText("配置执行环境、对话默认设置与终端工具。") : detailView ? uiText("查看关联项目和 Codex 对话，继续当前任务中的开发。") : reqView ? uiText("围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。") : uiText("登记项目，掌握它的全部工作目录、分支与任务归属。");
   $('#pageSubtitle').hidden = reqView || sessionsView;
-  $('#newButton').innerHTML = `<span>＋</span> ${reqView ? uiText("创建任务") : uiText("添加项目")}`;
-  $('#panelTitle').textContent = reqView ? uiText("全部任务") : taskInventory.loaded ? uiText("项目 · 当前环境 {0} / 全部 {1}", state.projects.length, taskInventory.project_count) : uiText("已登记项目");
+  $('#panelTitle').textContent = reqView ? uiText("全部任务") : desktopWorkspace ? uiText("项目") : taskInventory.loaded ? uiText("项目 · 当前环境 {0} / 全部 {1}", state.projects.length, taskInventory.project_count) : uiText("已登记项目");
   $('#search').placeholder = reqView ? uiText("搜索任务名称、说明…") : uiText("搜索项目名称、目录…");
-  $('#taskListFilters').hidden = !reqView;
+  const listFilter = $('#taskListFilters');
+  const projectListFilter = desktopWorkspace && state.view === 'projects';
+  listFilter.hidden = !reqView && !projectListFilter;
   const taskFilterCount = Number($('#archiveFilter').checked) + Number($('#taskStatusFilter').value !== 'all');
-  $('#taskListFilters summary').textContent = uiText("筛选") + (taskFilterCount ? ' · ' + taskFilterCount : '');
+  const filterCount = projectListFilter ? Number(projectFilter !== 'all') + Number(activeEnvironment !== 'local') : taskFilterCount;
+  const filterLabel = uiText("筛选") + (filterCount ? ' · ' + filterCount : '');
+  listFilter.toggleAttribute('data-active', !!filterCount);
+  const summary = listFilter.querySelector('summary');
+  summary.title = filterLabel;
+  summary.setAttribute('aria-label',filterLabel);
+  $('#clearListSearch').hidden = !$('#search').value;
   $('#archiveFilterWrap').hidden = !reqView;
   $('#taskStatusFilterWrap').hidden = !reqView;
+  $('#desktopProjectFilters').hidden = !projectListFilter;
   $('#projectEnvironmentWrap').hidden = reqView;
   $('#projectAddButton').hidden = state.view !== 'projects';
   syncProjectPage();
@@ -261,9 +277,11 @@ function render() {
   $('#stats').innerHTML = '';
   const focusedRow = reqView && document.activeElement?.closest?.('#taskListContent [data-action="open-requirement"]');
   if (reqView) $('#taskListContent').innerHTML = renderRequirements();
-  $('#content').innerHTML = detailView
+  const content = detailView
     ? requirement ? requirementDetail(requirement) : !state.loaded ? empty(uiText("暂时无法读取任务"), uiText("请检查任务所属环境的连接，可在设置中重新连接。")) : empty(uiText("这个任务不存在"), uiText("可返回任务列表，重新选择一个任务。"))
-    : reqView ? empty(uiText("选择一个任务，继续工作"), uiText("从左侧选择任务，查看关联项目、分支与工作目录。")) : renderProjects();
+    : reqView ? empty(uiText("选择一个任务，继续工作"), uiText("从左侧选择任务，查看关联项目、分支与工作目录。")) : desktopWorkspace && state.view !== 'projects' ? '' : renderProjects();
+  if (desktopWorkspace && state.view === 'projects') renderDesktopProjects(content);
+  else $('#content').innerHTML = content;
   if (state.view === 'projects') syncProjectResize();
   if (typeof refreshSessionWorkspace === 'function') refreshSessionWorkspace(false);
   if (typeof syncTaskWorkspace === 'function') syncTaskWorkspace(requirement);
@@ -336,9 +354,26 @@ document.addEventListener('click', event => {
   const nav = event.target.closest('[data-view]'); if (nav) navigate('/' + nav.dataset.view);
   if (event.target.closest('.close-dialog') && !event.target.closest('dialog')?.hasAttribute('data-block-close')) event.target.closest('dialog').close();
 });
-$('#newButton').addEventListener('click', () => state.view === 'requirements' ? openRequirement() : openProject());
+$('#newButton').addEventListener('click', () => openRequirement());
 $('#refreshButton').addEventListener('click', () => refresh(true));
 $('#search').addEventListener('input', changeListFilters);
+$('#clearListSearch').addEventListener('click', () => {
+  $('#search').value = '';
+  changeListFilters();
+  $('#search').focus();
+});
+const listFilterPicker = $('#taskListFilters');
+const syncWorkspaceListFilter = () => window.WorkHubUI.syncListFilter(listFilterPicker, !listFilterPicker.hidden && window.WorkHubPage?.active !== false);
+listFilterPicker.addEventListener('toggle',syncWorkspaceListFilter);
+window.addEventListener('resize',syncWorkspaceListFilter);
+window.addEventListener('workhub:page-visibility',event => { if (!event.detail.visible) listFilterPicker.open = false; });
+document.addEventListener('click',event => { if (!listFilterPicker.contains(event.target)) listFilterPicker.open = false; });
+document.addEventListener('keydown',event => {
+  if (event.key !== 'Escape' || !listFilterPicker.open) return;
+  event.preventDefault();
+  listFilterPicker.open = false;
+  listFilterPicker.querySelector('summary').focus({preventScroll:true});
+});
 $('#archiveFilter').addEventListener('change', changeListFilters);
 $('#taskStatusFilter')?.addEventListener('change', changeListFilters);
 document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('cancel', event => { if (dialog.hasAttribute('data-block-close')) event.preventDefault(); }));

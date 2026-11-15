@@ -1259,6 +1259,8 @@
   "正在创建独立 Worktree": "Creating independent worktree",
   " 打开": " Open",
   "<div class=\"loading\">正在读取当前环境的项目…</div>": "<div class=\"loading\">Loading projects in the current environment…</div>",
+  "正在读取当前环境的项目…": "Loading projects in the current environment…",
+  "当前环境没有已登记的项目": "No projects registered in this environment",
   "你的项目，从这里连接": "Connect your projects here",
   "输入已有 Git 仓库的主目录。已有 Worktree 会自动发现，后续每 10 秒刷新本地状态。": "Enter an existing main repository directory. Worktrees are discovered automatically; local state refreshes every 10 seconds.",
   "添加第一个项目": "Add first project",

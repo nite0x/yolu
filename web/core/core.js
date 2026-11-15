@@ -1,4 +1,5 @@
 'use strict';
+const desktopListWidth = window.WorkHubListWidth;
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
 
 

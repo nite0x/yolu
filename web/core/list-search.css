@@ -1,0 +1,25 @@
+.list-search { position: relative; display: flex; align-items: center; min-width: 0; min-height: 34px; border: 1px solid var(--border); border-radius: 6px; background: var(--yolu-subtle, var(--background)); }
+.list-search:focus-within { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 18%, transparent); }
+.list-search-field { position: relative; flex: 1; min-width: 0; }
+.list-search-field > svg { position: absolute; left: 8px; top: 50%; width: 14px; height: 14px; transform: translateY(-50%); color: var(--muted-foreground); pointer-events: none; }
+.list-search-field input[type="search"][data-slot="input"] { background-image: none; }
+.list-search-field input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.list-search-clear, .list-filter > summary { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 5px; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); cursor: pointer; }
+.list-search-clear { position: absolute; top: 2px; right: 1px; }
+.list-search-clear svg, .list-filter > summary svg { width: 14px; height: 14px; }
+.list-filter { flex: 0 0 28px; margin-right: 2px; }
+.list-filter > summary { list-style: none; }
+.list-filter > summary::-webkit-details-marker { display: none; }
+.list-search-clear:hover, .list-filter > summary:hover, .list-filter[open] > summary { background: var(--muted); color: var(--foreground); }
+.list-filter[data-active] > summary { background: var(--secondary); color: var(--primary); }
+.list-search-clear:focus-visible, .list-filter > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -1px; }
+.list-filter-menu { position: absolute; inset: calc(100% + 6px) auto auto 0; z-index: 25; width: min(420px, calc(100vw - 24px)); max-height: 65dvh; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--background, var(--yolu-surface,#fff)); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px #15213a18; }
+.list-filter-menu[popover]:not(:popover-open) { display: none; }
+.list-filter-menu:popover-open { position: fixed; inset: auto; margin: 0; color: var(--foreground); }
+.list-filter-menu > * { flex-shrink: 0; }
+.list-filter-menu > #sessionScopeOptions { flex-shrink: 1; }
+#desktopProjectFilters { display: grid; gap: 8px; }
+#desktopProjectFilters .project-filters { padding: 0; border: 0; }
+#desktopProjectFilters #projectEnvironmentWrap select { width: 100%; }
+:where(html:not([data-workhub-desktop])) .projects-page #searchField { width: min(14rem,100%); }
+.list-create-button { color: var(--muted-foreground); }

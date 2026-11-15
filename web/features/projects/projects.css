@@ -135,15 +135,15 @@
   .project-detail { padding: 18px; }
 }
 @media (max-width: 1020px) {
-  .project-workspace { display: flex; }
-  .project-resize-handle { display: none; }
-  .project-browser, .project-detail { flex: 1; border: 0; }
-  .project-workspace[data-pane="list"] .project-detail, .project-workspace[data-pane="detail"] .project-browser { display: none; }
+  :where(html:not([data-workhub-desktop])) .project-workspace { display: flex; }
+  :where(html:not([data-workhub-desktop])) .project-resize-handle { display: none; }
+  :where(html:not([data-workhub-desktop])) :is(.project-browser, .project-detail) { flex: 1; border: 0; }
+  :where(html:not([data-workhub-desktop])) .project-workspace :is([data-pane="list"] .project-detail, [data-pane="detail"] .project-browser) { display: none; }
   .project-list-scroll .project-list-item { padding: 14px; }
   .project-list-path { white-space: normal; overflow-wrap: anywhere; }
   .project-workspace[data-pane="list"] .project-list-item[aria-pressed="true"] { background: transparent !important; box-shadow: none; }
-  .project-list-enter { display: inline; }
-  .project-detail .project-list-back { display: inline-flex; margin: -4px 0 14px; padding-left: 0 !important; color: var(--muted-foreground); }
+  :where(html:not([data-workhub-desktop])) .project-list-enter { display: inline; }
+  :where(html:not([data-workhub-desktop])) .project-detail .project-list-back { display: inline-flex; margin: -4px 0 14px; padding-left: 0 !important; color: var(--muted-foreground); }
 }
 @media (max-width: 760px) {
   .projects-page #panelToolbar { padding: 10px 12px; }

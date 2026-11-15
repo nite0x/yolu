@@ -13,6 +13,7 @@
   <title>Yolu</title>
   <meta name="theme-color" content="#203f42">
   <script src="/core/workspace-bootstrap.js"></script>
+  <script src="/core/workspace-list-width.js" defer></script>
   <link rel="icon" href="/yolu.ico" sizes="16x16 32x32 48x48 256x256">
   <link rel="icon" href="/yolu.svg" type="image/svg+xml" sizes="any">
   <link rel="stylesheet" href="/core/style.css">
@@ -21,6 +22,7 @@
   <link rel="stylesheet" href="/features/tasks/workspace.css">
   <link rel="stylesheet" href="/features/sessions/sessions.css">
   <link rel="stylesheet" href="/features/sessions/session-workspace.css">
+  <link rel="stylesheet" href="/core/list-search.css">
   <link rel="stylesheet" href="/features/settings/settings.css">
   <link rel="stylesheet" href="/ui/ui.css">
   <link rel="stylesheet" href="/chat/assistant.css">
@@ -47,6 +49,7 @@
   <script src="/features/sessions/session-workspace.js" defer></script>
   <script src="/core/page-bridge.js" defer></script>
   <link rel="stylesheet" href="/core/shortcut-icons.css">
+  <link rel="stylesheet" href="/core/typography.css">
   <link rel="stylesheet" href="/core/appearance.css">
   <link rel="stylesheet" href="/core/chrome.css">
 </head>
@@ -83,7 +86,7 @@
           </div>
           <div id="taskListContent" class="task-list-scroll" aria-label="全部任务" data-i18n-aria-label="全部任务"></div>
         </aside>
-        <div class="panel-toolbar" id="panelToolbar"><div class="panel-title" id="panelTitle" tabindex="-1" data-i18n="全部任务">全部任务</div><div class="toolbar-actions"><div class="shadcn-scope" id="projectEnvironmentWrap" hidden></div><div id="searchField" class="shadcn-scope"></div><details class="task-list-filters" id="taskListFilters"><summary data-i18n="筛选">筛选</summary><div class="task-list-filter-options"><div class="shadcn-scope" id="archiveFilterWrap"></div><div class="shadcn-scope" id="taskStatusFilterWrap"></div></div></details><span id="projectAddButton" class="shadcn-scope" hidden></span></div></div>
+        <div class="panel-toolbar" id="panelToolbar"><div class="panel-title" id="panelTitle" tabindex="-1" data-i18n="全部任务">全部任务</div><div class="toolbar-actions"><div class="shadcn-scope" id="projectEnvironmentWrap" hidden></div><div id="searchField" class="shadcn-scope"></div><span id="projectAddButton" class="shadcn-scope" hidden></span></div></div>
         <div id="taskListResize" class="task-resize-handle" role="separator" tabindex="0" aria-label="调整任务列表宽度" aria-orientation="vertical" aria-controls="taskBrowser taskDetailPane" aria-valuemin="240" aria-valuemax="640" aria-valuenow="300" hidden data-i18n-aria-label="调整任务列表宽度"></div>
         <section id="taskDetailPane" class="task-detail-pane"><div id="taskHeadingSlot"></div><section id="taskProjectsView" class="task-projects-view" aria-label="项目工作区" data-i18n-aria-label="项目工作区"><div id="content" aria-live="polite"><div class="loading" data-i18n="正在读取本地状态…">正在读取本地状态…</div></div></section></section>
       </section>

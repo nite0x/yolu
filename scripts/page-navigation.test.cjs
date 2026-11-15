@@ -5,19 +5,25 @@ const path = require('node:path');
 const {JSDOM} = require('jsdom');
 const root = path.join(__dirname, '../web');
 
-function harness(t, hash = '#/requirements') {
+function harness(t, hash = '#/requirements', {desktop = false, listWidth} = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(root,'workspace.html'),'utf8'), {url:'http://localhost:4317/' + hash, runScripts:'outside-only'});
   t.after(() => dom.window.close());
   const {window:w} = dom;
   Object.defineProperty(w,'innerWidth',{value:1800,configurable:true});
-  const layouts = [];
+  if (listWidth) w.localStorage.setItem('workhub:conversation-list-width:v1',String(listWidth));
+  if (desktop) {
+    w.document.documentElement.setAttribute('data-workhub-desktop','');
+    w.localStorage.setItem('workhub:sidebar-collapsed:v1','false');
+    w.localStorage.setItem('workhub:sidebar-width:v1','360');
+  }
+  const layouts = [], splitters = [];
   w.WorkHubLayout = {
-    renderPanes:(_,props) => layouts.push(props), renderChrome() {}, setupSplitResize() {},
+    renderPanes:(_,props) => layouts.push(props), renderChrome() {}, setupSplitResize(options) { splitters.push(options); },
     conversationDefaults:{get() {return 'ui';},set() {}},
   };
   const requests = [];
   w.fetch = async (...args) => {requests.push(args); return new Response('{}');};
-  w.eval(fs.readFileSync(path.join(root,'core/page-host.js'),'utf8'));
+  for (const file of ['core/workspace-list-width.js','core/page-host.js']) w.eval(fs.readFileSync(path.join(root,file),'utf8'));
   const frames = () => [...w.document.querySelectorAll('iframe.workspace-page')];
   const send = (frame,type,extra = {},origin = w.location.origin) => w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin,data:{type,...extra}}));
   const messages = new Map();
@@ -30,7 +36,7 @@ function harness(t, hash = '#/requirements') {
     return received;
   };
   const workspace = frames()[0]; ready(workspace);
-  return {w,frames,send,ready,messages,layouts,requests,workspace,nav:() => w.document.querySelector('.workspace-navigation-frame')};
+  return {w,frames,send,ready,messages,layouts,requests,splitters,workspace,nav:() => w.document.querySelector('.workspace-navigation-frame')};
 }
 const conversation = id => ({route:'/sessions',environment:'local',title:id,conversation:{scope:{kind:'all'},selected:id,pane:'detail'}});
 const open = (h,snapshot,placement) => {
@@ -41,6 +47,35 @@ const open = (h,snapshot,placement) => {
   for (const frame of h.frames()) if (frame !== h.workspace && !h.messages.has(frame)) h.ready(frame);
 };
 const visible = h => h.frames().filter(frame => !frame.hidden);
+
+test('desktop shares a 52px rail from the first paint and ignores expanded sidebar preferences', t => {
+  const h = harness(t, '#/requirements', {desktop:true});
+  const width = frame => new URL(frame.src).searchParams.get('workspace-sidebar-width');
+  assert.equal(width(h.workspace), '52');
+  open(h, conversation('one'));
+  const nav = h.nav();
+  assert.equal(width(nav), '52');
+  h.send(nav, 'workhub:page-chrome', {chrome:{left:360}});
+  assert.equal(h.w.document.body.style.getPropertyValue('--workspace-shared-sidebar-width'), '52px');
+});
+
+test('desktop conversation list leaves space for detail on resize and restores the saved width', t => {
+  const h = harness(t, '#/requirements', {desktop:true, listWidth:520});
+  open(h, conversation('one'));
+  const current = () => h.w.document.body.style.getPropertyValue('--workspace-conversation-list-width');
+  assert.equal(current(), '520px');
+  Object.defineProperty(h.w,'innerWidth',{value:780});
+  h.w.dispatchEvent(new h.w.Event('resize'));
+  assert.equal(current(), '360px');
+  assert.equal(h.w.localStorage.getItem('workhub:conversation-list-width:v1'), '520');
+  Object.defineProperty(h.w,'innerWidth',{value:1400});
+  h.w.dispatchEvent(new h.w.Event('resize'));
+  assert.equal(current(), '520px');
+  h.splitters[0].resize(390);
+  h.splitters[0].commit();
+  assert.equal(h.w.WorkHubListWidth.current(),390);
+  assert.equal(h.w.localStorage.getItem('workhub:desktop-list-width:v1'),'390');
+});
 
 for (const first of ['navigation','reader']) test(`projects remain visible until both conversation documents restore (${first} first)`, t => {
   const h = harness(t,'#/projects');

@@ -44,16 +44,11 @@
 .task-browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 16px 12px; }
 .task-browser-heading h2 { font-size: 19px; margin: 0; }
 .tasks-page #newTaskButton { display: inline-block; }
-.tasks-page #newButton { font-size: 12px; padding: 0 10px; height: 32px; }
 .tasks-page #panelToolbar { flex-direction: column; align-items: stretch; min-height: 0; gap: 10px; padding: 0 16px 14px; border-bottom: 0; }
 .tasks-page #panelTitle { font-size: 12px; color: var(--muted-foreground); font-weight: 400; }
 .tasks-page .toolbar-actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .tasks-page #searchField { flex: 1; min-width: 0; }
 .tasks-page #search { min-width: 0; }
-.task-list-filters { position: relative; flex-shrink: 0; font-size: 13px; }
-.task-list-filters > summary { display: flex; align-items: center; cursor: pointer; min-height: 36px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; list-style: none; white-space: nowrap; }
-.task-list-filters > summary::-webkit-details-marker { display: none; }
-.task-list-filter-options { position: absolute; right: 0; top: calc(100% + 6px); z-index: 25; display: grid; gap: 14px; padding: 16px; min-width: 215px; border: 1px solid var(--border); border-radius: 8px; background: var(--background, var(--yolu-surface,#fff)); box-shadow: 0 10px 30px #15213a18; }
 .task-list-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 8px; }
 .task-list-scroll .task-list { border: 0; }
 .task-list-scroll .task-list > [data-slot="card"] { border: 0; }
@@ -174,13 +169,13 @@
   .task-project-primary-actions { justify-content: flex-start; }
 }
 @media (max-width: 1100px) {
-  .tasks-page #workContent { grid-template-columns: minmax(0, 1fr); }
-  .tasks-page .task-resize-handle { display: none; }
-  .tasks-page #taskHeadingSlot, .tasks-page .task-projects-view { grid-column: 1; }
-  .tasks-page .task-detail-pane { display: none; }
-  .tasks-page.task-selection-open .task-browser { display: none; }
-  .tasks-page.task-selection-open .task-detail-pane { display: contents; }
-  .tasks-page .workspace-back { display: inline-block; margin: 0 0 10px; font-size: 13px; }
+  :where(html:not([data-workhub-desktop])) .tasks-page #workContent { grid-template-columns: minmax(0, 1fr); }
+  :where(html:not([data-workhub-desktop])) .tasks-page .task-resize-handle { display: none; }
+  :where(html:not([data-workhub-desktop])) .tasks-page :is(#taskHeadingSlot, .task-projects-view) { grid-column: 1; }
+  :where(html:not([data-workhub-desktop])) .tasks-page .task-detail-pane { display: none; }
+  :where(html:not([data-workhub-desktop])) .tasks-page.task-selection-open .task-browser { display: none; }
+  :where(html:not([data-workhub-desktop])) .tasks-page.task-selection-open .task-detail-pane { display: contents; }
+  :where(html:not([data-workhub-desktop])) .tasks-page .workspace-back { display: inline-block; margin: 0 0 10px; font-size: 13px; }
   .task-list-scroll .list-row { padding: 16px; }
   .tasks-page #panelTitle { display: none; }
 }

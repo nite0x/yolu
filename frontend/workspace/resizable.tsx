@@ -12,7 +12,11 @@ function NativePanel({ node, className = "" }: { node: HTMLElement; className?: 
   return <div ref={ref} className={`ui-panel-node ${className}`} />
 }
 type PanelPair = { container: HTMLElement; list: HTMLElement; detail: HTMLElement; legacy: HTMLElement; conversation: boolean; width: number }
-const narrowLayout = (conversation: boolean, width: number) => conversation && (document.documentElement.hasAttribute("data-workspace-pane") || document.documentElement.hasAttribute("data-workspace-conversation") || document.documentElement.hasAttribute("data-workspace-navigation")) || width < (conversation ? 620 : 680)
+const desktop = () => document.documentElement.hasAttribute("data-workhub-desktop")
+const narrowLayout = (conversation: boolean, width: number) => {
+  if (conversation && (document.documentElement.hasAttribute("data-workspace-pane") || document.documentElement.hasAttribute("data-workspace-conversation") || document.documentElement.hasAttribute("data-workspace-navigation"))) return true
+  return desktop() ? window.innerWidth <= 760 : width < (conversation ? 620 : 680)
+}
 function Panels({ container, list, detail, legacy, conversation, width }: PanelPair) {
   const key = conversation ? "workhub:conversation-list-width:v1" : "workhub:project-list-width:v1"
   let saved = conversation ? 280 : 248
@@ -48,7 +52,7 @@ export function setupWorkspacePanels() {
     queued = false
     if (disposed) return
     for (const [container, entry] of roots) if (!container.isConnected) { entry.observer.disconnect(); entry.root.unmount(); roots.delete(container) }
-    for (const container of document.querySelectorAll<HTMLElement>(".project-workspace, .session-browser-body")) {
+    for (const container of document.querySelectorAll<HTMLElement>(desktop() ? ".session-browser-body" : ".project-workspace, .session-browser-body")) {
       if (roots.has(container)) continue
       const conversation = container.classList.contains("session-browser-body")
       const list = container.querySelector<HTMLElement>(conversation ? ".session-browser-list" : ".project-browser")
@@ -70,8 +74,10 @@ export function setupWorkspacePanels() {
         else entry.root.render(<Panels {...entry.pair} />)
       })
       roots.set(container, { root, observer, width, pair })
+      const focused = container.contains(document.activeElement) ? document.activeElement as HTMLElement : null
       container.replaceChildren(host)
       flushSync(() => root.render(<Panels {...pair} />))
+      focused?.focus({ preventScroll: true })
       observer.observe(container)
     }
   }

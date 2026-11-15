@@ -51,8 +51,8 @@ function DirectoryLocalStatus({ tree: t, project, title }: { tree: Worktree; pro
   </div>
 }
 
-export function Projects({ projects, selectedID, openTool = "vscode", filter = "all", detailOpen = false, tasks = [], directoryFilter = "all", searching = false }: {
-  projects: Project[]; selectedID: string | null; openTool?: ProjectOpenTool; filter?: ProjectFilter; detailOpen?: boolean; tasks?: Task[]; directoryFilter?: DirectoryFilter; searching?: boolean
+export function Projects({ projects, selectedID, openTool = "vscode", filter = "all", detailOpen = false, tasks = [], directoryFilter = "all", searching = false, status }: {
+  projects: Project[]; selectedID: string | null; openTool?: ProjectOpenTool; filter?: ProjectFilter; detailOpen?: boolean; tasks?: Task[]; directoryFilter?: DirectoryFilter; searching?: boolean; status?: "loading" | "empty"
 }) {
   const visible = projects.filter(p => filter === "dirty" ? hasChanges(p) : filter === "error" ? hasIssue(p) : true)
   const p = visible.find(p => p.id === selectedID) || visible[0]
@@ -61,7 +61,7 @@ export function Projects({ projects, selectedID, openTool = "vscode", filter = "
   const directories = p?.worktrees.filter(t => directoryFilter === "all" || directoryHasIssue(t)) || []
   return <div className="project-workspace shadcn-scope" data-pane={detailOpen && p ? "detail" : "list"}>
     <aside id="projectListPane" className="project-browser" aria-label={uiText("项目列表")}>
-      <div className="project-filters" role="group" aria-label={uiText("筛选项目")}>{filters.map(f => <Action key={f.value} action="project-filter" data-filter={f.value} variant={filter === f.value ? "secondary" : "ghost"} aria-pressed={filter === f.value}>{f.label}<span>{f.count}</span></Action>)}</div>
+      <div className="project-filters" role="group" aria-label={uiText("筛选项目")} hidden={!!status}>{filters.map(f => <Action key={f.value} action="project-filter" data-filter={f.value} variant={filter === f.value ? "secondary" : "ghost"} aria-pressed={filter === f.value}>{f.label}<span>{f.count}</span></Action>)}</div>
       <div className="project-list-scroll">{visible.map(project => {
         const dirty = project.worktrees.filter(t => (t.dirty || 0) > 0).length
         return <Button key={project.id} type="button" variant="ghost" className="project-list-item flex h-auto w-full min-w-0 flex-col items-stretch gap-2 whitespace-normal p-3 text-left font-normal" data-action="select-project" data-id={project.id} aria-pressed={p?.id === project.id} aria-controls="projectDetail" aria-label={uiText("打开 {0} 的工作目录", project.name)}>
@@ -69,7 +69,7 @@ export function Projects({ projects, selectedID, openTool = "vscode", filter = "
           <span className="project-list-path" title={project.path}>{project.path}</span>
           <span className="project-list-meta"><span>{project.worktrees.length}{" "}{uiText("个目录")}</span>{hasIssue(project) ? <StatusBadge kind="failed">{project.error ? uiText("读取失败") : uiText("{0} 个异常", project.worktrees.filter(directoryHasIssue).length)}</StatusBadge> : null}{dirty ? <span className="project-change-indicator" title={uiText("{0} 个工作目录有未提交改动", dirty)} aria-label={uiText("{0} 个工作目录有未提交改动", dirty)}><Circle className="project-change-dot size-1.5" aria-hidden="true" />{dirty}{" "}{uiText("个目录有改动")}</span> : !project.status_updated_at && project.refreshing ? <span>{uiText("正在检查")}</span> : null}<span className="project-list-enter">{uiText("查看目录 →")}</span></span>
         </Button>
-      })}{!visible.length ? <div className="project-list-empty">{uiText("没有匹配的项目")}{searching ? <Action action="clear-project-search" variant="link">{uiText("清除搜索")}</Action> : null}{filter !== "all" ? <Action action="project-filter" data-filter="all" variant="link">{uiText("查看全部项目")}</Action> : null}{!searching && filter === "all" ? <span>{uiText("试试其他名称或路径")}</span> : null}</div> : null}</div>
+      })}{status ? <div className="project-list-empty" role="status">{status === "loading" ? uiText("正在读取当前环境的项目…") : uiText("当前环境没有已登记的项目")}</div> : !visible.length ? <div className="project-list-empty">{uiText("没有匹配的项目")}{searching ? <Action action="clear-project-search" variant="link">{uiText("清除搜索")}</Action> : null}{filter !== "all" ? <Action action="project-filter" data-filter="all" variant="link">{uiText("查看全部项目")}</Action> : null}{!searching && filter === "all" ? <span>{uiText("试试其他名称或路径")}</span> : null}</div> : null}</div>
     </aside>
     <div className="project-resize-handle" role="separator" aria-label={uiText("调整项目列表宽度")} aria-orientation="vertical" aria-controls="projectListPane projectDetail" aria-valuemin={200} aria-valuemax={640} aria-valuenow={248} tabIndex={0} data-project-resize title={uiText("拖动调整两栏宽度，也可使用左右方向键")} />
     <section id="projectDetail" className="project-detail" aria-label={p ? uiText("{0} 项目详情", p.name) : uiText("项目详情")}>
@@ -93,7 +93,7 @@ export function Projects({ projects, selectedID, openTool = "vscode", filter = "
           <TableCell className="project-status-cell p-[var(--project-cell-padding)] align-top whitespace-normal"><DirectoryLocalStatus tree={t} project={p.id} title={title || t.path} /></TableCell>
           <TableCell className="project-actions-cell p-[var(--project-cell-padding)] align-top"><div className="project-directory-actions"><ProjectOpenActions project={p.id} path={t.path} tool={openTool} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at} /><Action action="changes-open" id={p.id} data-path={t.path} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at}>{uiText("文件与改动")}</Action><details className="task-more project-directory-more"><summary aria-label={uiText("{0} 更多操作", t.branch || uiText("当前目录"))}><MoreHorizontal aria-hidden="true" /></summary><div className="task-more-menu"><Action action="workspace-conversation-new" id={p.id} data-path={t.path} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at}>{uiText("新建对话…")}</Action><hr /><Action action="git-open" id={p.id} data-path={t.path} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at}>{uiText("Git 操作")}</Action><Action action="project-open-remote" id={p.id} data-path={t.path} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at}>{uiText("打开远端仓库")}</Action></div></details></div></TableCell>
         </TableRow>{directoryHasIssue(t) ? <TableRow className="project-directory-recovery-row" data-project-id={p.id}><TableCell colSpan={5}><DirectoryRecovery tree={t} project={p} tasks={tasks} /></TableCell></TableRow> : null}</Fragment>})}</DataTable></div> : directoryFilter === "issues" && p.worktrees.length ? <div className="project-detail-empty">{uiText("没有需要处理的工作目录。")}<Action action="project-directory-filter" id={p.id} data-filter="all">{uiText("查看全部目录")}</Action></div> : <div className="project-detail-empty">{p.refreshing ? uiText("正在发现工作目录…") : uiText("尚未发现工作目录，请检查项目路径后重新扫描。")}{!p.refreshing ? <Action action="project-refresh" id={p.id}>{uiText("重新检查")}</Action> : null}</div>}
-      </> : <div className="project-detail-empty">{uiText("没有匹配的项目，请调整搜索或筛选条件。")}</div>}
+      </> : <div className="project-detail-empty">{status === "empty" ? uiText("登记本地 Git 仓库，或从 Git 克隆新项目。已有 Worktree 会自动发现。") : status === "loading" ? null : uiText("没有匹配的项目，请调整搜索或筛选条件。")}</div>}
     </section>
   </div>
 }

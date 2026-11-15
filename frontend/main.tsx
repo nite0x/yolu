@@ -1,11 +1,10 @@
 import { uiText } from "./i18n";
 import { renderToStaticMarkup } from "react-dom/server"
 import type { ReactNode } from "react"
-import { Copy, Search, X, RotateCw } from "lucide-react"
+import { Copy, X, RotateCw } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Check, Feedback, NativeSelect, Option } from "./workspace/shared"
 import { ProjectForm, TaskForm, TaskProjectsForm, TaskEditForm, TaskDirectoryForm, WorktreeForm, GitDialog } from "./workspace/forms"
@@ -21,15 +20,7 @@ import { TaskReviewDialog, ChangesDialog } from "./workspace/task-review"
 import { setupWorkspaceInteractions, mountWorkspaceToaster } from "./workspace/interactions"
 import { mountWorkspaceSidebar } from "./workspace/sidebar"
 import { setupWorkspacePanels } from "./workspace/resizable"
-
-function SearchField() {
-  return (
-    <div className="relative">
-      <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input id="search" type="search" placeholder={uiText("搜索任务名称、分支…")} aria-label={uiText("搜索")} className="h-9 w-56 pl-9 text-sm max-sm:w-44 [.tasks-page_&]:w-full" />
-    </div>
-  )
-}
+import { ListCreateButton, ListFilter, ListSearch } from "./workspace/list-controls"
 
 function CommandDialog() {
   return (
@@ -65,11 +56,16 @@ function mount(id: string, content: ReactNode) {
 }
 
 window.WorkHubUI = workspaceUI
-mount("searchField", <SearchField />)
+mount("searchField", <ListSearch input="search" label={uiText("搜索")} placeholder={uiText("搜索任务名称、说明…")} clear={{ id:"clearListSearch" }} filter={
+  <ListFilter id="taskListFilters" label={uiText("筛选")}>
+    <div id="archiveFilterWrap" /><div id="taskStatusFilterWrap" />
+    <div id="desktopProjectFilters" hidden><div id="projectEnvironmentSlot" /><div id="projectListFilterSlot" /></div>
+  </ListFilter>
+} />)
 mount("commandDialog", <CommandDialog />)
 mount("toast", <ToastContent />)
-mount("newTaskButton", <Button type="button" id="newButton">{uiText("＋ 创建任务")}</Button>)
-mount("projectAddButton", <Button type="button" size="sm" data-action="new-project">{uiText("＋ 添加项目")}</Button>)
+mount("newTaskButton", <ListCreateButton id="newButton" label={uiText("创建任务")} />)
+mount("projectAddButton", <ListCreateButton data-action="new-project" label={uiText("添加项目")} />)
 mount("refreshControl", <Button type="button" id="refreshButton" variant="ghost" size="icon-sm" title={uiText("刷新 Git 状态")} aria-label={uiText("刷新 Git 状态")}><RotateCw aria-hidden="true" /></Button>)
 mount("archiveFilterWrap", <Check id="archiveFilter" label={uiText("显示归档")} />)
 mount("taskStatusFilterWrap", <label className="flex items-center gap-2 text-sm"><span className="sr-only">{uiText("筛选工作目录状态")}</span><NativeSelect id="taskStatusFilter" aria-label={uiText("筛选工作目录状态")}><Option value="all">{uiText("全部状态")}</Option><Option value="issues">{uiText("目录异常")}</Option><Option value="dirty">{uiText("有改动")}</Option><Option value="push">{uiText("待推送")}</Option><Option value="conflicts">{uiText("Git 操作待处理")}</Option></NativeSelect></label>)

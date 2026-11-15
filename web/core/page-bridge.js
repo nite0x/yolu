@@ -27,6 +27,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   let chromeSignature = '';
   function publishChrome() {
     if (!active || disposed) return;
+    if (document.documentElement.hasAttribute('data-workhub-desktop')) return;
     const sidebar = document.querySelector('.sidebar');
     if (!sidebar) return;
     const box = sidebar.getBoundingClientRect();
@@ -98,6 +99,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
   }
   async function restore(saved) {
+    closeShortcutPicker();
     const revision = ++restoreRevision;
     restoring = true;
     try {
@@ -251,11 +253,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   document.addEventListener('click', schedule);
   document.addEventListener('input', schedule);
   document.addEventListener('change', schedule);
-  // A modal's top layer is local to its iframe. Tell the host when the
-  // shared navigation needs the full window instead of the clipped sidebar.
+  // Top-layer elements stay inside their iframe. Expand the shared navigation
+  // while its dialog or shortcut picker extends into the conversation panes.
   let navigationModal = false;
   const modalObserver = navigationOnly ? new MutationObserver(() => {
-    const open = !!document.querySelector('dialog[open]');
+    const open = !!document.querySelector('dialog[open], .sidebar-shortcut-rail #taskShortcutPicker[open]');
     if (open === navigationModal) return;
     navigationModal = open;
     post('workhub:navigation-modal', {open});

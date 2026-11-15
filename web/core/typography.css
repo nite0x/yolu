@@ -1,0 +1,15 @@
+:root {
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, "Microsoft YaHei UI", monospace;
+  --yolu-font-size-label: 12px;
+  --yolu-font-size-compact: 13px;
+  --yolu-font-size-row: 14px;
+  --yolu-font-size-body: 15px;
+  --yolu-font-size-list-title: 16px;
+  --yolu-font-size-detail-title: 19px;
+  --yolu-font-weight-row: 600;
+  --yolu-font-weight-title: 650;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}

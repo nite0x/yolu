@@ -29,7 +29,7 @@ function harness({ fullPage = false, readOnly = false } = {}) {
         content: selector === 'meta[name="ui-language"]' ? 'zh-CN' : selector === 'meta[name="session-mode"]' ? (readOnly ? 'read-only' : 'interactive') : 'token',
         value: '', checked: false, hidden: false, writes: 0, scrollTop: 0, dataset: {},
         style: {setProperty() {}}, getBoundingClientRect() { return {width: 0}; },
-        append() {}, insertBefore() {}, setAttribute() {}, removeAttribute() {}, getAttribute() { return null; }, hasAttribute() { return false; },
+        append() {}, insertBefore() {}, setAttribute() {}, removeAttribute() {}, toggleAttribute() {}, getAttribute() { return null; }, hasAttribute() { return false; },
         querySelector: element, contains() { return false; }, closest() { return null; },
         classList: { toggle() {}, remove() {} }, addEventListener() {}, querySelectorAll() { return []; },
         get innerHTML() { return html; },

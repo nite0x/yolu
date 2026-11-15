@@ -46,7 +46,7 @@ async function selectEnvironment(id, route = '/requirements', updateHistory = tr
   if (changed) Object.assign(state, { projects: [], requirements: [], selectedProject: null, selectedRequirement: null, view: 'requirements', root: '', terminal: {}, loaded: false, refreshing: false });
   readRoute();
   $('#search').value = '';
-  if (changed) $('#content').textContent = uiText("正在连接任务所属环境…");
+  if (changed && !$('#content').contains($('#panelToolbar'))) $('#content').textContent = uiText("正在连接任务所属环境…");
   $('#reconnectEnvironment').hidden = id === 'local';
   $('#environmentSelect').value = id;
   $('#projectEnvironment').value = id;

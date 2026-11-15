@@ -2,13 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const {JSDOM} = require('jsdom');
-const source = readFileSync('src-tauri/src/window-chrome.js', 'utf8');
+const source = overlay => `${readFileSync('src-tauri/src/window-chrome.js', 'utf8')}(${overlay});`;
 
-function setup() {
+function setup(overlay = true) {
   const dom = new JSDOM('<header class="page-heading"><span>空白</span><button><svg></svg></button><a>链接</a><input><span contenteditable="true">编辑</span></header>', {url:'http://127.0.0.1:12345/', runScripts:'outside-only'});
   const calls = [];
   dom.window.__TAURI_INTERNALS__ = {invoke: command => {calls.push(command); return Promise.resolve();}};
-  dom.window.eval(source);
+  dom.window.eval(source(overlay));
   dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
   const mouse = (target, type = 'mousedown', options = {}) => target.dispatchEvent(new dom.window.MouseEvent(type, {bubbles:true, button:0, detail:1, ...options}));
   return {dom, calls, mouse, doc:dom.window.document};
@@ -49,12 +49,23 @@ test('page iframe header drags through the host bridge without creating duplicat
     dom.window.document.body.append(frame);
     const child = frame.contentWindow;
     child.document.write('<body><div class="page-heading"><span>任务</span><button>新建</button></div></body>');
-    child.eval(source);
+    child.eval(source(true));
     child.document.dispatchEvent(new child.Event('DOMContentLoaded'));
     child.document.querySelector('span').dispatchEvent(new child.MouseEvent('mousedown', {bubbles:true, button:0, detail:1}));
     assert.deepEqual(calls, ['plugin:window|start_dragging']);
     assert.equal(child.document.querySelector('.workhub-window-drag'), null);
   } finally { dom.window.close(); }
+});
+
+test('desktop windows with a native title bar still mount the brand menu without custom dragging', () => {
+  const {dom, calls, mouse, doc} = setup(false);
+  try {
+    assert(doc.documentElement.hasAttribute('data-workhub-desktop'));
+    assert(!doc.documentElement.hasAttribute('data-workhub-window-overlay'));
+    assert(doc.getElementById('workhubWindowControls'));
+    mouse(doc.querySelector('header > span'));
+    assert.deepEqual(calls, []);
+  } finally {dom.window.close();}
 });
 
 test('sidebar blank space drags while brand menus and resize handles keep their interactions', () => {
