@@ -110,6 +110,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     // without waiting for the navigation frame's message queue.
     navigation?.frame.contentDocument?.documentElement?.style.setProperty('--workspace-shared-list-width',width);
   }
+  function renderNavigationModal() {
+    const open = !!(navigation?.visible && navigation.modalOpen);
+    navigation?.wrapper.toggleAttribute('data-modal',open);
+    pages.toggleAttribute('inert',open);
+    if (navigation) navigation.resizeHandle.hidden = !navigation.visible || open;
+  }
   function renderLayout() {
     const visible = visiblePages(group), split = grouped(group), shared = sharedLayout();
     if (shared && !navigation) createNavigation();
@@ -121,12 +127,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const sharedVisible = shared && conversationsPresented;
     if (navigation) {
       navigation.wrapper.hidden = !sharedVisible;
-      navigation.resizeHandle.hidden = !sharedVisible;
       if (navigation.visible !== sharedVisible) {
         navigation.visible = sharedVisible;
         send(navigation,'workhub:page-active',{active:sharedVisible});
       }
     }
+    renderNavigationModal();
     document.body.style.setProperty('--workspace-shared-sidebar-width',navigationWidth + 'px');
     paintConversationListWidth();
     document.body.toggleAttribute('data-workspace-conversations',sharedVisible);
@@ -351,6 +357,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         navigation.restored = true;
         navigation.wrapper.setAttribute('data-ready','');
         renderLayout();
+      } else if (message.type === 'workhub:navigation-modal') {
+        navigation.modalOpen = message.open === true;
+        renderNavigationModal();
       }
       else if (message.type === 'workhub:conversation-select') {
         if (message.initial && (!conversationsVisible || group.pages.some(page => isPaneView(page.snapshot)))) return;

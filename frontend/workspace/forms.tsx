@@ -26,13 +26,19 @@ export function ProjectForm() {
 }
 
 export function TaskForm() {
-  return <form id="requirementForm" className="task-dialog-form"><ModalHeader id="requirementDialogTitle" title={uiText("创建任务")} /><div className="task-dialog-scroll"><p className="dialog-description">{uiText("填写开发目标并选择项目；每个项目的目录与分支可单独配置。")}</p>
+  return <form id="requirementForm" className="task-dialog-form"><ModalHeader id="requirementDialogTitle" title={uiText("创建任务")} /><div className="task-dialog-scroll"><div id="requirementInputs" className="task-creation-inputs"><p className="dialog-description">{uiText("填写开发目标并选择项目；每个项目的目录与分支可单独配置。")}</p>
     <Field id="requirementEnvironment" label={uiText("任务执行环境")} required help={uiText("只能关联此环境中的项目，创建后任务环境固定。")}><NativeSelect id="requirementEnvironment" required /></Field>
     <div><Field id="requirementName" label={uiText("任务名称")} required><Input id="requirementName" name="name" required maxLength={100} placeholder={uiText("例如：订单审批流程")} /></Field></div>
     <Field id="requirementDescription" label={uiText("任务说明")}><Textarea id="requirementDescription" name="description" rows={3} maxLength={6000} placeholder={uiText("描述开发目标、涉及的修改和完成标准，新建任务对话时会提供这份说明。")} /></Field>
 
     <div className="mb-5"><div className="mb-2 flex items-center justify-between gap-3 text-sm font-medium"><span>{uiText("参与项目")}{" "}<small className="text-muted-foreground">{uiText("最多 30 个")}</small></span><Button type="button" variant="outline" size="sm" id="registerNewTaskProject">{uiText("＋ 登记新项目")}</Button></div><PickerSearch id="projectPicker" /><div id="projectPicker" className="project-picker" /></div>
-    <details className="task-preview-details"><summary>{uiText("查看工作目录预览")}</summary><Preview title={uiText("项目工作目录预览")} id="workspacePreview" /></details><Feedback id="requirementError" variant="destructive" hidden /></div>
+    <details className="task-preview-details"><summary>{uiText("查看工作目录预览")}</summary><Preview title={uiText("项目工作目录预览")} id="workspacePreview" /></details></div>
+    <div id="requirementProgress" className="task-creation-progress" hidden>
+      <h3 id="requirementProgressTitle" tabIndex={-1}>{uiText("正在创建任务并准备工作目录")}</h3>
+      <p id="requirementProgressSummary" className="text-muted-foreground" />
+      <ul id="requirementProgressProjects" aria-live="polite" />
+    </div>
+    <Feedback id="requirementError" variant="destructive" tabIndex={-1} hidden /></div>
     <ModalFooter note={uiText("创建前检查全部仓库，已有目录和分支不会被覆盖。")}><Button type="submit" id="requirementSubmit">{uiText("创建任务")}</Button></ModalFooter>
   </form>
 }
@@ -61,6 +67,7 @@ export function WorktreeForm() {
 
 export function GitDialog() {
   return <><ModalHeader id="gitTitle" title={uiText("Git 操作")} />
+    <p id="gitTaskContext" className="git-task-context" hidden />
     <Feedback id="gitProgress" className="git-progress bg-muted text-muted-foreground" role="status" hidden />
     <Feedback id="gitError" variant="destructive" hidden />
     <Feedback id="gitAuthHelp" className="bg-muted" hidden><span>{uiText("在终端完成一次登录，接入的凭证助手会保存并供页面复用。")}</span><Action action="git-fetch-terminal" variant="default">{uiText("在终端登录并获取分支 ↗")}</Action></Feedback>

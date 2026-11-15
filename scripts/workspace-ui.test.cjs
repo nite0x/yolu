@@ -192,6 +192,41 @@ test('existing branch choices create a new task directory and retain selections 
   assert.deepEqual(h.requests.find(r => r.url === '/api/requirements' && r.options.method === 'POST').body.members, [{project_id: 'app', mode: 'existing', branch: 'release'}]);
 });
 
+test('task creation shows each project status during the request and restores inputs after validation failure', async t => {
+  const h = await harness(t);
+  h.window.openRequirement(); await settle();
+  h.input('#requirementName', 'Slow checkout');
+  h.click('#projectPicker-app-selected');
+  h.click('#projectPicker-backend-selected'); await settle();
+  let release;
+  h.setIntercept((url, options) => {
+    if (url === '/api/requirements' && options.method === 'POST') return new Promise(resolve => { release = resolve; });
+    if (url.startsWith('/api/requirements/creation-progress?')) {
+      const slug = new URL(url, h.window.location.origin).searchParams.get('slug');
+      return {ok:true, json:async () => ({slug, members:[{project_id:'app',state:'ready'}, {project_id:'backend',state:'creating'}]})};
+    }
+  });
+  await h.submit('#requirementForm');
+  assert.equal(h.$('#requirementProgress').hidden, false);
+  assert.equal(h.$('#requirementInputs').hidden, true);
+  assert.equal(h.$('#requirementProgressSummary').textContent, '已就绪 1 / 2');
+  const rows = [...h.document.querySelectorAll('#requirementProgressProjects li')].map(row => row.textContent);
+  assert(rows.some(row => /App.*已就绪/.test(row)));
+  assert(rows.some(row => /Backend.*创建中/.test(row)));
+  const progress = h.requests.find(request => request.url.includes('/creation-progress?'));
+  const create = h.requests.find(request => request.url === '/api/requirements' && request.options.method === 'POST');
+  assert.equal(new URL(progress.url, h.window.location.origin).searchParams.get('slug'), create.body.slug);
+  assert.equal(progress.options.headers['X-Environment-ID'], create.options.headers['X-Environment-ID']);
+  release({ok:false, json:async () => ({error:'fixture validation error'})});
+  await settle();
+  assert.equal(progress.options.signal.aborted, true);
+  assert.equal(h.$('#requirementProgress').hidden, true);
+  assert.equal(h.$('#requirementInputs').hidden, false);
+  assert.equal(h.$('#requirementName').value, 'Slow checkout');
+  assert.equal(h.$('#requirementSubmit').disabled, false);
+  assert.equal(h.$('#requirementError').textContent, 'fixture validation error');
+});
+
 test('existing branches can be used when adding a project or replacing its directory', async t => {
   const h = await harness(t);
   h.window.openRequirementProjects('task');
@@ -2023,9 +2058,11 @@ test('changing and detaching a task project use the selected project and retain 
 test('task conversations exclude directory-only matches until linked and unlinking preserves the global session', async t => {
   const h = await harness(t);
   h.sessions.push({id:'directory-only',name:'Another task in the same directory',cwd:'/workspace/task/app'});
+  h.links.set('task', new Set());
   await h.openConversations('task');
   assert.equal(h.$('[data-conversation-session="directory-only"]'), null);
-  h.click('#linkTaskConversation'); await settle();
+  assert.match(h.$('#sessionBrowserList').textContent, /还没有关联的对话/);
+  h.click('[data-conversation-action="link-task"]'); await settle();
   const link = [...h.document.querySelectorAll('[data-session-action="link"]')].find(b => b.dataset.session === 'directory-only');
   link.click(); await settle();
   assert(h.$('[data-conversation-session="directory-only"]'));
@@ -2110,7 +2147,8 @@ test('task and project creation entries share the direct page with their own dir
   assert.equal(opened.create,true);
   assert.equal(opened.snapshot.terminal.taskID,'task');
   assert.equal(opened.snapshot.terminal.projectID,'app');
-  assert.equal(opened.snapshot.conversation.directory,'/workspace/task/app');
+  assert.equal(opened.snapshot.conversation.creationDirectory,'/workspace/task/app');
+  assert(!opened.snapshot.conversation.directory, 'preselecting a draft directory must not filter the task conversation list');
   await h.navigate('/projects');
   h.click('[data-action="select-project"][data-id="backend"]'); await settle();
   h.click('[data-action="workspace-conversation-new"][data-id="backend"]'); await settle();
@@ -2664,6 +2702,31 @@ test('Radix action menus route through the original project context', async t =>
   assert.equal(h.$('#gitDialog').open, true);
   assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
   assert.equal(h.$('#gitWorktree').disabled, true);
+  h.click('#gitDialog .close-dialog'); await settle();
+  assert.equal(h.document.activeElement, trigger);
+});
+
+test('the workspace branch opens the Git branches in place and preserves the workspace on close', async t => {
+  const h = await harness(t, true, {width:1440});
+  const scrolled = [];
+  h.window.HTMLElement.prototype.scrollIntoView = function () { scrolled.push(this.id); };
+  h.input('#search', 'Billing');
+  h.$('#taskProjectsView').scrollTop = 134;
+  h.click('.task-current-branch'); await settle();
+  assert.equal(h.$('#gitDialog').open, true);
+  assert.equal(h.$('#gitDialog').hasAttribute('data-task-git'), true);
+  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  assert(scrolled.includes('git-branches'));
+  assert.equal(h.$('.git-section-navigation [aria-current="location"]').getAttribute('href'), '#git-branches');
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  const oldTrigger = h.$('.task-current-branch');
+  h.window.render(); await settle();
+  assert(!oldTrigger.isConnected, 'a background refresh can replace the project row');
+  h.click('#gitDialog .close-dialog'); await settle();
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  assert.equal(h.$('#search').value, 'Billing');
+  assert.equal(h.$('#taskProjectsView').scrollTop, 134);
+  assert.equal(h.document.activeElement, h.$('.task-current-branch'));
 });
 
 test('failed conversation refresh retains cached results but a new directory never inherits them', async t => {

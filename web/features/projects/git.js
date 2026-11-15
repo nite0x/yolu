@@ -10,15 +10,31 @@ let gitMergeIntoPreviewData = null;
 let gitMergeIntoSelectionRevision = 0;
 const mergeAIRequests = new Map();
 let gitAILaunching = false;
-function openGit(id, path = '', requirement = '') {
+let taskGitReturn = null;
+function taskGitMenuTrigger(menu) {
+  return menu?.previousElementSibling?.querySelector('.ui-menu-trigger') || menu?.querySelector('summary');
+}
+function openGit(id, path = '', requirement = '', section = '', trigger = null) {
   if (state.busy || gitAILaunching) return;
+  if (requirement && state.view === 'requirements' && state.selectedRequirement === requirement) {
+    const dialog = $('#gitDialog');
+    if (dialog.open) return;
+    const menu = trigger?.closest('.task-project-more');
+    taskGitReturn = {
+      environment:activeEnvironment, requirement, project:id, action:trigger?.dataset.action,
+      trigger:taskGitMenuTrigger(menu) || trigger, fromMenu:!!menu,
+      scrollTop:$('#taskProjectsView').scrollTop,
+    };
+    if (menu) menu.open = false;
+    return loadGit(id, path, requirement, { modal: true, section });
+  }
   const query = new URLSearchParams();
   if (path) query.set('path',path);
   if (requirement) query.set('requirement',requirement);
   navigate('/projects/' + id + '/git' + (query.size ? '?' + query : ''));
   return syncProjectPage();
 }
-async function loadGit(id, path = '', requirement = '') {
+async function loadGit(id, path = '', requirement = '', { modal = false, section = '' } = {}) {
   if (state.busy || gitAILaunching) return;
   const revision = ++gitViewRevision;
   const environment = activeEnvironment;
@@ -30,8 +46,16 @@ async function loadGit(id, path = '', requirement = '') {
   $('#gitError').hidden = true;
   $('#gitAuthHelp').hidden = true;
   $('#gitResult').hidden = true;
+  $('#gitProgress').hidden = true;
+  $('#gitTitle').textContent = uiText("Git 操作");
+  const taskContext = $('#gitTaskContext');
+  const task = modal ? state.requirements.find(q => q.id === requirement) : null;
+  taskContext.hidden = !task;
+  taskContext.textContent = task ? uiText("任务 · ") + task.name : '';
   window.WorkHubUI.resetGitView($('#gitContent'));
-  $('#gitDialog').show();
+  const dialog = $('#gitDialog');
+  dialog.toggleAttribute('data-task-git', modal);
+  if (modal) dialog.showModal(); else dialog.show();
   try {
     const overview = await api(`/api/projects/${id}/git`, {environment});
     if (revision !== gitViewRevision || environment !== activeEnvironment || !$('#gitDialog').open) return;
@@ -41,8 +65,22 @@ async function loadGit(id, path = '', requirement = '') {
     gitState = overview;
     gitSelectedPath = path || gitState.project.path;
     renderGit();
+    if (section === 'branches') window.WorkHubUI.scrollToGitSection($('#gitContent'), section);
   } catch (error) { if (revision !== gitViewRevision || environment !== activeEnvironment || !$('#gitDialog').open) return; window.WorkHubUI.resetGitView($('#gitContent'), ''); $('#gitError').textContent = error.message; $('#gitError').hidden = false; }
 }
+$('#gitDialog').addEventListener('close', () => {
+  if ($('#gitDialog').open || !taskGitReturn) return;
+  const saved = taskGitReturn;
+  taskGitReturn = null;
+  if (saved.environment !== activeEnvironment || state.view !== 'requirements' || state.selectedRequirement !== saved.requirement) return;
+  // A background status refresh may have replaced the originating project row.
+  const row = [...document.querySelectorAll('.task-project')].find(node => node.dataset.projectId === saved.project);
+  const replacement = saved.fromMenu ? taskGitMenuTrigger(row?.querySelector('.task-project-more')) :
+    [...(row?.querySelectorAll('[data-action]') || [])].find(node => node.dataset.action === saved.action && !node.closest('.task-project-more'));
+  const trigger = saved.trigger?.isConnected ? saved.trigger : replacement;
+  (trigger && !trigger.disabled ? trigger : $('#pageTitle')).focus({preventScroll:true});
+  $('#taskProjectsView').scrollTop = saved.scrollTop;
+});
 function defaultBranchSource(v) {
   return ['refs/heads/master', 'refs/heads/main', 'refs/remotes/origin/master', 'refs/remotes/origin/main'].find(ref => v.branches.some(b => b.ref === ref)) || 'HEAD';
 }
@@ -286,9 +324,9 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('[data-action^="git-"]');
   if (!button || button.disabled || state.busy || gitAILaunching) return;
   const action = button.dataset.action;
-  if (action === 'git-open') return openGit(button.dataset.id, button.dataset.path, button.dataset.requirement);
+  if (action === 'git-open') return openGit(button.dataset.id, button.dataset.path, button.dataset.requirement, button.dataset.gitSection, button);
   if (action.startsWith('git-task-')) {
-    await openGit(button.dataset.id, button.dataset.path, button.dataset.requirement);
+    await openGit(button.dataset.id, button.dataset.path, button.dataset.requirement, '', button);
     if (!gitState) return;
     if (action === 'git-task-pull') return gitOperation({ action: 'pull' }, uiText("正在快进拉取"));
     if (action === 'git-task-push') {

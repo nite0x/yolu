@@ -10,6 +10,7 @@
 .git-dialog > .dialog-header { flex-shrink: 0; margin: 0 !important; padding: 20px 24px 16px; border-bottom: 1px solid var(--border); }
 .git-dialog > .dialog-header > div > [data-slot="badge"] { display: none; }
 .git-dialog > .dialog-header h2 { font-size: 19px; }
+.git-task-context { margin: 0; padding: 10px 24px 0; color: var(--muted-foreground); font-size: 12px; overflow-wrap: anywhere; }
 .git-dialog > .dialog-footer { flex-shrink: 0; margin: 0; padding: 12px 24px; background: var(--background); }
 .git-dialog > #gitError, .git-dialog > #gitAuthHelp, .git-dialog > #gitProgress, .git-dialog > #gitResult { flex-shrink: 0; margin: 12px 24px 0 !important; max-height: 160px; overflow: auto; width: auto; }
 .git-dialog > #gitProgress { position: static; }
@@ -57,6 +58,7 @@
 .git-section-navigation{display:flex;gap:16px;padding:8px 24px;border-bottom:1px solid var(--border)}
 .git-section-navigation a{color:var(--primary);font-size:13px;text-decoration:none}
 .git-section-navigation a:hover{text-decoration:underline}
+.git-section-navigation a[aria-current="location"]{font-weight:600;text-decoration:underline;text-underline-offset:4px}
 .git-sections{min-height:0;overflow:auto;overscroll-behavior:contain}
 .git-operation-section{overflow:visible;scroll-margin-top:12px}
 body.project-tool-page main > :not(#gitDialog):not(#worktreeDialog){display:none!important}

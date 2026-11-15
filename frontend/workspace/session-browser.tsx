@@ -107,9 +107,10 @@ export function ConversationShortcuts({ tasks, directories, pinnedDirectories, s
 export function ConversationList({ sessions, rows, selected, showDirectory, showContext = true, loading, taskID, filtered, error, canCreate = true, parallel = false, parallelSessions = [], parallelFull = false, now = Date.now() }: { sessions: Session[]; rows?: ConversationTreeRow[]; selected?: string | null; showDirectory: boolean; showContext?: boolean; loading?: boolean; taskID?: string; filtered?: boolean; error?: boolean; canCreate?: boolean; parallel?: boolean; parallelSessions?: string[]; parallelFull?: boolean; now?: number }) {
   if (!sessions.length && !rows?.length) return <div className="session-browser-empty-list" role="status">
     {loading ? <RotateCw className="session-list-loading" aria-hidden="true" /> : error ? <CircleAlert aria-hidden="true" /> : filtered ? <Search aria-hidden="true" /> : <MessageSquare aria-hidden="true" />}
-    <strong>{loading ? uiText("正在读取对话…") : error ? uiText("暂时无法读取对话") : filtered ? uiText("没有匹配的对话") : uiText("还没有对话")}</strong>
+    <strong>{loading ? uiText("正在读取对话…") : error ? uiText("暂时无法读取对话") : filtered ? uiText("没有匹配的对话") : taskID ? uiText("还没有关联的对话") : uiText("还没有对话")}</strong>
     <p>{loading ? uiText("正在同步各执行环境的记录") : error ? uiText("检查执行环境连接后重试。") : filtered ? uiText("试试其他关键词，或清除筛选条件。") : canCreate ? uiText("新建对话，从当前工作现场开始。") : uiText("当前范围暂无对话，可切换范围查看。")}</p>
     {!loading && (error || filtered || canCreate) && <Button type="button" variant="outline" size="sm" data-conversation-action={error ? "refresh" : filtered ? "reset-list" : "new"}>{error ? uiText("重新加载") : filtered ? uiText("清除搜索与筛选") : uiText("新建对话")}</Button>}
+    {taskID && !loading && !error && !filtered && <Button type="button" variant="outline" size="sm" data-conversation-action="link-task">{uiText("关联已有对话")}</Button>}
   </div>
   const today = new Date(now)
   today.setHours(0, 0, 0, 0)

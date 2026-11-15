@@ -25,6 +25,26 @@ type CreateRequirement struct {
 	Members          []MemberSelection `json:"members"`
 }
 
+// Read the persisted task without waiting on the lock held by its Git work.
+func (a *Service) CreationProgressHandler(w http.ResponseWriter, r *http.Request) {
+	slug := r.URL.Query().Get("slug")
+	if !workspace.ValidSlug.MatchString(slug) {
+		httpx.WriteError(w, 400, "无效的任务目录标识")
+		return
+	}
+	q, err := a.Workspace.Store.RequirementBySlug(slug)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Validation and preflight run before the workspace is saved.
+		httpx.WriteJSON(w, 200, nil)
+		return
+	}
+	if err != nil {
+		httpx.DbError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, 200, q)
+}
+
 func (a *Service) CreateRequirementHandler(w http.ResponseWriter, r *http.Request) {
 	var in CreateRequirement
 	if !httpx.Decode(w, r, &in) {

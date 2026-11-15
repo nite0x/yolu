@@ -240,6 +240,8 @@ let leavingProjectPage = false;
 function syncProjectPage() {
   const route = location.hash.slice(1), path = route.split('?')[0];
   const match = path.match(/^\/projects\/([a-zA-Z0-9_-]+)\/(git|worktrees)$/);
+  const taskGit = $('#gitDialog[open][data-task-git]');
+  if (taskGit?.open && (state.view !== 'requirements' || state.selectedRequirement !== gitRequirementID || activeEnvironment !== taskGitReturn?.environment)) taskGit.close();
   const key = match ? JSON.stringify([activeEnvironment,route]) : '';
   document.body.classList.toggle('project-tool-page',!!match);
   const dialog = match ? $(match[2] === 'git' ? '#gitDialog' : '#worktreeDialog') : null;

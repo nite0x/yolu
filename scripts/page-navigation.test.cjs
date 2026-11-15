@@ -89,6 +89,25 @@ test('loading an additional pane keeps the existing conversation on screen', t =
   assert.equal(h.nav().parentElement.hidden,false);
 });
 
+test('shared navigation expands for its modal and restores pane input on close', t => {
+  const h = harness(t);
+  open(h, conversation('one'));
+  const reader = visible(h)[0], nav = h.nav();
+  const pages = h.w.document.querySelector('#workspacePages');
+  const resize = h.w.document.querySelector('.workspace-shared-list-resize');
+  h.send(reader, 'workhub:navigation-modal', {open:true});
+  assert.equal(pages.hasAttribute('inert'), false);
+  h.send(nav, 'workhub:navigation-modal', {open:true});
+  assert.equal(nav.parentElement.hasAttribute('data-modal'), true);
+  assert.equal(pages.hasAttribute('inert'), true);
+  assert.equal(resize.hidden, true);
+  h.send(nav, 'workhub:navigation-modal', {open:false});
+  assert.equal(nav.parentElement.hasAttribute('data-modal'), false);
+  assert.equal(pages.hasAttribute('inert'), false);
+  assert.equal(resize.hidden, false);
+  assert.deepEqual(visible(h), [reader]);
+});
+
 test('a retained creation form can finish restoring while its alternate is visible', t => {
   const h = harness(t);
   const draft = {route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},creating:true,pane:'detail'}};

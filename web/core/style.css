@@ -63,6 +63,7 @@ html[data-workspace-initial-route="sessions"] #sessionsPage{display:flex!importa
 html[data-workspace-initial-route="sessions"] #sessionPageMount:not(:has(#sessionBrowser:not([hidden])))::before{content:"正在读取对话…";display:grid;place-items:center;flex:1;color:var(--yolu-muted-ink,#71809a);font-size:12px}
 
 html[data-workspace-navigation] .sidebar-resize{display:none}
+html[data-workspace-page][data-workspace-navigation],html[data-workspace-page][data-workspace-navigation] body{background:transparent}
 html[data-workspace-navigation] body .shell{position:absolute;top:6px;bottom:8px;left:calc(var(--workspace-navigation-left,244px) + 8px);width:calc(var(--workspace-shared-list-width,280px) - 8px);margin:0;padding:0;border:1px solid var(--yolu-border,#dfe4ee);border-radius:8px;background:var(--yolu-surface,#fff);box-shadow:0 1px 3px #25324d05}
 html[data-workspace-navigation] main{padding:0;max-width:none}
 html[data-workspace-navigation] .session-browser{height:100%;border:0;border-radius:0}

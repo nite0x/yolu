@@ -165,6 +165,14 @@ func (s *Store) Projects() ([]model.Project, error) {
 // Requirements reads tasks and members with two bounded queries, including on
 // offline legacy databases. A read transaction keeps both halves consistent.
 func (s *Store) Requirements() ([]model.Requirement, error) { return s.requirements("") }
+func (s *Store) RequirementBySlug(slug string) (model.Requirement, error) {
+	var id string
+	if err := s.DB.QueryRow(`SELECT id FROM requirements WHERE slug=? COLLATE NOCASE`, slug).Scan(&id); err != nil {
+		return model.Requirement{}, err
+	}
+	return s.Requirement(id)
+}
+
 func (s *Store) Requirement(id string) (model.Requirement, error) {
 	if id == "" {
 		return model.Requirement{}, sql.ErrNoRows

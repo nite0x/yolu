@@ -280,6 +280,52 @@ $('#requirementForm').addEventListener('input', event => {
   updatePreview();
 });
 $('#requirementForm').addEventListener('change', updatePreview);
+
+function watchTaskCreation(body, environment) {
+  const dialog = $('#requirementDialog');
+  const inputs = $('#requirementInputs'), progress = $('#requirementProgress');
+  const summary = $('#requirementProgressSummary'), list = $('#requirementProgressProjects');
+  const projects = new Map((requirementEnvironmentData?.projects || []).map(project => [project.id, project.name]));
+  let timer, signature;
+  const controller = new AbortController();
+  const endpoint = '/api/requirements/creation-progress?' + new URLSearchParams({slug:body.slug});
+
+  function renderProgress(task) {
+    const members = new Map((task?.members || []).map(member => [member.project_id, member]));
+    const rows = body.project_ids.map(id => {
+      const member = members.get(id);
+      return [projects.get(id) || id, member?.state || 'pending', member?.error || ''];
+    });
+    const next = JSON.stringify([!!task, rows]);
+    if (signature === next) return;
+    signature = next;
+    const ready = rows.filter(([, status]) => status === 'ready').length;
+    summary.textContent = task ? uiText("已就绪 {0} / {1}", ready, rows.length) : uiText("正在检查参与项目…");
+    list.innerHTML = rows.map(([name, status, error]) => `<li><div><strong>${esc(name)}</strong>${badge(status)}</div>${error ? `<p>${esc(uiText(error))}</p>` : ''}</li>`).join('');
+  }
+
+  async function poll() {
+    try {
+      const task = await api(endpoint, {environment, signal:controller.signal});
+      if (!controller.signal.aborted && task?.slug === body.slug) renderProgress(task);
+    } catch { /* The create request owns errors. Keep the last confirmed progress. */ }
+    if (!controller.signal.aborted) timer = setTimeout(poll, 1000);
+  }
+
+  renderProgress(null);
+  inputs.hidden = true;
+  progress.hidden = false;
+  $('.task-dialog-scroll', dialog).scrollTop = 0;
+  $('#requirementProgressTitle').focus();
+  void poll();
+  return () => {
+    controller.abort();
+    clearTimeout(timer);
+    progress.hidden = true;
+    inputs.hidden = false;
+  };
+}
+
 $('#requirementForm').addEventListener('submit', async event => {
   if ($('#requirementSubmit').disabled) { event.preventDefault(); return; }
   event.preventDefault(); const data = new FormData(event.target);
@@ -288,13 +334,17 @@ $('#requirementForm').addEventListener('submit', async event => {
   const environment = $('#requirementEnvironment').value;
   let created;
   await mutation(uiText("正在创建任务并准备工作目录"), async () => {
-    const q = await api('/api/requirements', { environment, method: 'POST', body: JSON.stringify(body) });
+    const stopWatching = watchTaskCreation(body, environment);
+    let q;
+    try { q = await api('/api/requirements', { environment, method: 'POST', body: JSON.stringify(body) }); }
+    finally { stopWatching(); }
     created = q;
     if (environment === activeEnvironment) state.requirements = [q, ...state.requirements.filter(current => current.id !== q.id)];
     $('#search').value = ''; $('#requirementDialog').close();
     toast(q.state === 'ready' ? uiText("任务已创建，全部项目已就绪") : uiText("任务已保存，部分项目创建失败，可单独重试"), q.state !== 'ready');
   }, $('#requirementError'));
   if (created) await selectEnvironment(environment, '/requirements/' + created.id);
+  else if (!$('#requirementError').hidden) $('#requirementError').focus();
 });
 
 function openTaskEdit(id) {

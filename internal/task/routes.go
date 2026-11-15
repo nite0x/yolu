@@ -4,6 +4,7 @@ import "net/http"
 
 func (s *Service) RegisterRoutes(mux *http.ServeMux, invalidate func(http.HandlerFunc) http.HandlerFunc) {
 	mux.HandleFunc("POST /api/requirements", invalidate(s.CreateRequirementHandler))
+	mux.HandleFunc("GET /api/requirements/creation-progress", s.CreationProgressHandler)
 	mux.HandleFunc("PATCH /api/requirements/{id}", s.UpdateRequirementHandler)
 	mux.HandleFunc("DELETE /api/requirements/{id}", invalidate(s.DeleteRequirementHandler))
 	mux.HandleFunc("PUT /api/requirements/{id}/projects/{project}", invalidate(s.ReplaceRequirementProjectHandler))

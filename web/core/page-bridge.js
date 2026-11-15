@@ -206,7 +206,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       const path = projectCreate.dataset.path;
       const matches = q => q.members.some(m => m.project_id === projectID && m.path === path);
       const task = state.requirements.find(q => q.id === taskID && matches(q)) || state.requirements.find(matches);
-      post('workhub:page-open',{create:true,snapshot:{route:'/sessions',environment:activeEnvironment,title:uiText("新建对话"),terminal:{taskID:task?.id,projectID},conversation:{scope:task ? {kind:'task',id:task.id,environment:activeEnvironment} : {kind:'project',id:projectID,environment:activeEnvironment},directory:path ? conversationEnvironmentKey(activeEnvironment,conversationPathKey(path)) : '',creating:true,selected:null,pane:'detail'}}}); return;
+      post('workhub:page-open',{create:true,snapshot:{route:'/sessions',environment:activeEnvironment,title:uiText("新建对话"),terminal:{taskID:task?.id,projectID},conversation:{scope:task ? {kind:'task',id:task.id,environment:activeEnvironment} : {kind:'project',id:projectID,environment:activeEnvironment},creationDirectory:path ? conversationEnvironmentKey(activeEnvironment,conversationPathKey(path)) : '',creating:true,selected:null,pane:'detail'}}}); return;
     }
     const create = event.target.closest('[data-conversation-action="new"], [data-session-action="new"]');
     if (create && event.button === 0 && !create.disabled && !state.busy) {
@@ -251,6 +251,16 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   document.addEventListener('click', schedule);
   document.addEventListener('input', schedule);
   document.addEventListener('change', schedule);
+  // A modal's top layer is local to its iframe. Tell the host when the
+  // shared navigation needs the full window instead of the clipped sidebar.
+  let navigationModal = false;
+  const modalObserver = navigationOnly ? new MutationObserver(() => {
+    const open = !!document.querySelector('dialog[open]');
+    if (open === navigationModal) return;
+    navigationModal = open;
+    post('workhub:navigation-modal', {open});
+  }) : null;
+  modalObserver?.observe(document.body, {subtree:true, attributes:true, attributeFilter:['open']});
   const focus = event => { if (!disposed && (!restoring || event?.type === 'pointerdown')) post('workhub:page-focus'); };
   document.addEventListener('pointerdown', focus, true);
   document.addEventListener('focusin', focus);
@@ -316,7 +326,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (disposed) return;
     // Existing pagehide handlers persist drafts and dispose UI subscriptions.
     window.dispatchEvent(new Event('pagehide'));
-    disposed = true; clearTimeout(timer); observer.disconnect(); chromeObserver.disconnect(); chromeResize?.disconnect();
+    disposed = true; clearTimeout(timer); observer.disconnect(); chromeObserver.disconnect(); chromeResize?.disconnect(); modalObserver?.disconnect();
     window.removeEventListener('resize', publishChrome);
     document.removeEventListener('pointerdown', focus, true);
     document.removeEventListener('focusin', focus);

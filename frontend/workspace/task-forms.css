@@ -9,7 +9,15 @@ dialog:is(#requirementDialog, #requirementProjectsDialog, #taskDirectoryDialog) 
 .task-dialog-form > .dialog-header { flex: none; margin: 0 !important; padding: 22px 24px 16px; border-bottom: 1px solid var(--border); }
 .task-dialog-form > .dialog-header [data-slot="badge"] { margin-bottom: 8px !important; }
 .task-dialog-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 24px 22px; scrollbar-gutter: stable; }
-.task-dialog-scroll > .dialog-description { margin-top: 14px; margin-bottom: 20px; }
+.task-dialog-scroll > .dialog-description, .task-creation-inputs > .dialog-description { margin-top: 14px; margin-bottom: 20px; }
+.task-creation-progress { margin-top: 18px; }
+.task-creation-progress h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.task-creation-progress p { margin: 6px 0 12px; }
+.task-creation-progress ul { margin: 0; padding: 0; list-style: none; }
+.task-creation-progress li { padding: 10px 0; border-top: 1px solid var(--border); }
+.task-creation-progress li > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.task-creation-progress li strong { overflow-wrap: anywhere; }
+.task-creation-progress li p { margin-bottom: 0; color: var(--destructive); overflow-wrap: anywhere; }
 .task-dialog-form > .dialog-footer { flex: none; margin: 0; padding: 14px 24px; background: var(--background, white); }
 .task-dialog-form > .dialog-footer .footer-note { max-width: none; flex: 1; }
 .task-picker-search { display: grid; gap: 7px; margin: 10px 0; }

@@ -1,0 +1,135 @@
+/* Calm frame: app chrome sits on one tinted canvas and content floats above it
+   on raised surfaces. Separation comes from space and elevation, not borders.
+   Loaded last on every page so it refines the per-feature stylesheets. */
+:root {
+  --yolu-pane-radius: 14px;
+  --yolu-chip-radius: 9px;
+  --yolu-shadow-ink: var(--yolu-foreground, #182a2b);
+  --yolu-elevation-sm: 0 0 0 1px color-mix(in srgb, var(--yolu-shadow-ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--yolu-shadow-ink) 8%, transparent);
+  --yolu-elevation: 0 0 0 1px color-mix(in srgb, var(--yolu-shadow-ink) 5%, transparent), 0 1px 2px color-mix(in srgb, var(--yolu-shadow-ink) 4%, transparent), 0 10px 28px -14px color-mix(in srgb, var(--yolu-shadow-ink) 18%, transparent);
+  --yolu-elevation-float: 0 0 0 1px color-mix(in srgb, var(--yolu-shadow-ink) 6%, transparent), 0 12px 32px -10px color-mix(in srgb, var(--yolu-shadow-ink) 22%, transparent);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+:root[data-color-scheme="dark"] {
+  --yolu-elevation-sm: 0 0 0 1px #ffffff12, 0 1px 2px #0000004d;
+  --yolu-elevation: 0 0 0 1px #ffffff0f, 0 12px 32px -14px #000000b3;
+  --yolu-elevation-float: 0 0 0 1px #ffffff14, 0 16px 40px -12px #000000cc;
+}
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--yolu-shadow-ink) 16%, transparent) transparent; }
+
+/* Frame canvas: window header, sidebar, tab bar and the gaps between panes. */
+html[data-workhub-desktop], html[data-workhub-desktop] body,
+html[data-workhub-desktop] .workhub-window-drag,
+html[data-workhub-desktop] .workspace-page,
+html[data-workhub-desktop] .sidebar,
+.workspace-shared-navigation { background: var(--yolu-canvas, #eef2ef); }
+
+/* Raised panes. Borders stay 1px transparent so pane geometry is unchanged. */
+body[data-workspace-conversations] .workspace-page,
+html[data-workhub-desktop] body[data-workspace-conversations] .workspace-page,
+html[data-workspace-navigation] body .shell,
+html[data-workhub-desktop] .shell,
+.workspace-list-placeholder {
+  border-color: transparent;
+  border-radius: var(--yolu-pane-radius);
+  background: var(--yolu-surface, #fff);
+  box-shadow: var(--yolu-elevation);
+}
+html[data-workhub-desktop][data-workspace-conversation] body .shell { border-radius: 0; box-shadow: none; }
+body[data-workspace-conversations] .workspace-page[data-focused=true] {
+  border-color: transparent;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--yolu-primary, #1f5f5a) 38%, transparent), var(--yolu-elevation);
+}
+html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.chat-panel-header { background: var(--background); }
+
+/* Resize grips appear only when the pointer is on the gutter. */
+.workspace-pane-resize::after, .workspace-shared-list-resize::after { width: 3px; left: 50%; right: auto; height: 40px; transform: translate(-50%, -50%); border-radius: 3px; background: transparent; transition: background-color .15s; }
+.workspace-pane-resize:hover::after, .workspace-pane-resize:focus-visible::after, .workspace-pages[data-split-resizing] .workspace-pane-resize::after,
+.workspace-shared-list-resize:hover::after, .workspace-shared-list-resize:focus-visible::after, body[data-split-resizing] .workspace-shared-list-resize::after { background: color-mix(in srgb, var(--yolu-primary, #1f5f5a) 45%, transparent); }
+
+/* Tabs: quiet text until active, then a lifted chip. */
+html[data-workhub-desktop] .workspace-tab-item { border-color: transparent; border-radius: 8px; background: transparent; transition: background-color .15s, box-shadow .15s; }
+html[data-workhub-desktop] .workspace-tab-item:hover { background: var(--yolu-hover, #e4ebe6); }
+html[data-workhub-desktop] .workspace-tab-item[data-active=true] { border-color: transparent; background: var(--yolu-surface, #fff); box-shadow: var(--yolu-elevation-sm); }
+html[data-workhub-desktop] .workspace-tab-trigger[data-state=active] { color: var(--yolu-foreground, #182a2b); font-weight: 550; }
+html[data-workhub-desktop] .workspace-tab-item[data-active=true] .workspace-tab-type { color: var(--yolu-primary, #1f5f5a); }
+.workspace-tab-actions [data-slot] { border-radius: 7px; }
+.workspace-tab-actions [data-slot]:hover { background: var(--yolu-hover, #e4ebe6); color: var(--yolu-foreground, #182a2b); }
+
+/* Sidebar navigation: same lifted-chip language as the tabs. */
+html[data-workhub-desktop] .sidebar nav { gap: 2px; }
+html[data-workhub-desktop] .sidebar nav .nav-item { min-height: 34px; padding: 7px 10px; border-radius: var(--yolu-chip-radius); font-weight: 500; color: var(--yolu-secondary-ink, #435856); transition: background-color .15s, box-shadow .15s, color .15s; }
+html[data-workhub-desktop] .sidebar nav .nav-item:not(.active):hover { background: var(--yolu-hover, #e4ebe6); color: var(--yolu-foreground, #182a2b); }
+html[data-workhub-desktop] .sidebar nav .nav-item.active,
+html[data-workspace-navigation] .sidebar .nav-item[data-view="sessions"] { background: var(--yolu-surface, #fff); color: var(--yolu-foreground, #182a2b); box-shadow: var(--yolu-elevation-sm); }
+html[data-workhub-desktop] .sidebar nav .nav-item.active .nav-icon,
+html[data-workspace-navigation] .sidebar .nav-item[data-view="sessions"] .nav-icon { color: var(--yolu-primary, #1f5f5a); }
+html[data-workhub-desktop] .sidebar .nav-icon { color: var(--yolu-muted-ink, #667a76); }
+html[data-workhub-desktop] .sidebar .nav-icon svg { width: 18px; height: 18px; }
+html[data-workhub-desktop] .sidebar .nav-count { font-variant-numeric: tabular-nums; }
+
+.conversation-shortcuts { margin-top: 14px; border-top-color: transparent; }
+.conversation-shortcuts h2 { margin-inline: 10px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--yolu-faint-ink, #8a9a95); }
+.conversation-shortcut-row, .conversation-shortcut-open { border-radius: var(--yolu-chip-radius); }
+.conversation-shortcut-open:hover, .conversation-shortcut-row:focus-within { background: var(--yolu-hover, #e4ebe6); }
+.conversation-shortcut-open[aria-current="true"] { background: var(--yolu-surface, #fff); color: var(--yolu-foreground, #182a2b); box-shadow: var(--yolu-elevation-sm); }
+.conversation-shortcut-pin { background: transparent; }
+.shortcut-badge { border-radius: 9px; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 10%, transparent); }
+.sidebar-footer { border-top-color: transparent; }
+html[data-workhub-desktop] .sidebar-footer { border-top-color: transparent; }
+.codex-quota-trigger { border-radius: var(--yolu-chip-radius); }
+.codex-quota-trigger[data-tone=low] { box-shadow: inset 0 0 0 1px var(--yolu-warning-border, #f1dcb4); }
+
+/* Conversation list: borderless tools, filled search, soft selection. */
+.session-browser-list-tools { padding: 16px 12px 8px; gap: 10px; border-bottom-color: transparent; }
+.session-browser-list-heading strong { font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+/* Search fields are filled, not outlined. Utilities force a transparent
+   background colour, so the fill is painted as a background image instead. */
+input[type="search"][data-slot="input"] { --input: transparent; --tw-shadow-color: transparent; --radius: 12px; background-image: linear-gradient(var(--yolu-subtle, #f4f7f5), var(--yolu-subtle, #f4f7f5)); }
+input[type="search"][data-slot="input"]:focus-visible { background-image: none; }
+.session-filter-picker > summary { border-color: transparent; border-radius: 10px; background: var(--yolu-subtle, #f4f7f5); }
+.session-status-filters { padding: 3px; border-radius: 10px; background: var(--yolu-subtle, #f4f7f5); }
+.session-status-filters button { border-radius: 7px; }
+.session-status-filters button[aria-pressed="true"] { color: var(--yolu-foreground, #182a2b); box-shadow: var(--yolu-elevation-sm); }
+.session-browser-group-heading { padding: 16px 12px 6px; color: var(--yolu-faint-ink, #8a9a95); font-weight: 600; }
+.session-browser-item { padding: 10px 12px; border-radius: 10px; transition: background-color .12s; }
+.session-browser-item:hover { background: var(--yolu-subtle, #f4f7f5); }
+.session-browser-item[aria-pressed="true"] { background: var(--yolu-selected, #dbe9e2); box-shadow: none; }
+.session-browser-item[aria-pressed="true"] .session-browser-item-title { color: var(--yolu-primary-ink, #173f3d); }
+.parallel-list-add[data-slot] { border-radius: 7px; opacity: 0; transition: opacity .12s; }
+.parallel-list-item:is(:hover, :focus-within) .parallel-list-add[data-slot] { opacity: 1; }
+@media (hover: none) { .parallel-list-add[data-slot] { opacity: 1; } }
+
+/* Conversation surface: open header, chat bubbles, floating composer. */
+.conversation-surface-header.chat-panel-header { padding: 12px 18px 10px; border-bottom-color: color-mix(in srgb, var(--yolu-border, #e2e8e4) 70%, transparent); }
+.conversation-surface-header .chat-panel-toolbar .chat-panel-title { font-size: 15px; letter-spacing: -.01em; }
+.conversation-surface-header .chat-status { border-radius: 999px; }
+.conversation-icon-button { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; color: var(--yolu-secondary-ink, #435856); }
+.conversation-icon-button:hover { color: var(--yolu-foreground, #182a2b); }
+.assistant-chat-scope .aui-user-message-content { --muted: var(--yolu-selected, #dbe9e2); --composer-radius: 18px; }
+.assistant-chat-scope [data-slot="aui_composer-shell"] { --composer-radius: 20px; --composer-bg: var(--yolu-surface, #fff); --composer-padding: 10px; box-shadow: var(--yolu-elevation-float); transition: box-shadow .15s, border-color .15s; }
+.assistant-chat-scope [data-slot="aui_composer-shell"]:focus-within { box-shadow: 0 0 0 3px var(--yolu-ring-soft, #3f8a7a40), var(--yolu-elevation-float); }
+.chat-permission-trigger { background: var(--yolu-subtle, #f4f7f5); }
+.chat-change-summary { border-radius: 14px; }
+
+/* Legacy pages (tasks, projects): rounder controls and borderless cards. */
+.button { border-radius: 8px; }
+.button.primary { background: var(--yolu-primary, #1f5f5a); border-color: transparent; color: var(--yolu-surface, #fff); box-shadow: var(--yolu-elevation-sm); }
+.button.primary:hover { background: color-mix(in srgb, var(--yolu-primary, #1f5f5a) 88%, #000); }
+.task-list-scroll .list-row { border-bottom-color: transparent; border-radius: 10px; }
+.task-list-scroll .list-row:hover { background: var(--yolu-subtle, #f4f7f5); }
+.task-list-scroll .list-row[aria-current="true"],
+.project-list-item[aria-pressed="true"],
+.project-workspace[data-react-panels="wide"] .project-list-item[aria-pressed="true"] { background: var(--yolu-selected, #dcebe4) !important; box-shadow: none; }
+.task-list-scroll .list-row[aria-current="true"] .row-title { color: var(--yolu-primary-ink, #173f3d); }
+.task-list-filters > summary { border-color: transparent; border-radius: 10px; background: var(--yolu-subtle, #f4f7f5); }
+.project-card { border-color: transparent; border-radius: 12px; box-shadow: var(--yolu-elevation-sm); }
+.project-card:hover, .project-card.selected { border-color: transparent; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--yolu-primary, #1f5f5a) 35%, transparent); }
+.stat, .content-panel { border-color: transparent; border-radius: var(--yolu-pane-radius); box-shadow: var(--yolu-elevation-sm); }
+
+/* Floating layers share one elevation and radius. */
+.workspace-tab-menu, .window-brand-menu, .session-action-menu, .session-filter-menu, .codex-quota-popover { border-color: transparent; border-radius: 12px; box-shadow: var(--yolu-elevation-float); }
+dialog, .conversation-picker, .shortcut-icon-dialog { border-color: transparent; border-radius: 16px; box-shadow: var(--yolu-elevation-float); }
+.toast { border-radius: 12px; }

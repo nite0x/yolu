@@ -5,23 +5,23 @@
 :root[data-color-scheme="light"] { color-scheme: light; }
 
 :root[data-color-theme="mint"] {
-  --yolu-canvas: #f7f8f2;
-  --yolu-surface: #fdfef9;
-  --yolu-sidebar: #eef2e9;
-  --yolu-subtle: #f2f5ed;
-  --yolu-hover: #e8eee2;
-  --yolu-selected: #dceadd;
-  --yolu-primary: #2b6260;
-  --yolu-primary-ink: #203f42;
-  --yolu-primary-border: #b6cfc1;
-  --yolu-foreground: #203f42;
-  --yolu-secondary-ink: #48625b;
-  --yolu-muted-ink: #687a6b;
-  --yolu-faint-ink: #788976;
-  --yolu-border: #dce3d6;
-  --yolu-border-strong: #cbd8c7;
-  --yolu-ring: #4d8a78;
-  --yolu-ring-soft: #4d8a784d;
+  --yolu-canvas: #eef2ef;
+  --yolu-surface: #ffffff;
+  --yolu-sidebar: #eef2ef;
+  --yolu-subtle: #f4f7f5;
+  --yolu-hover: #e3eae5;
+  --yolu-selected: #dcebe4;
+  --yolu-primary: #1f5f5a;
+  --yolu-primary-ink: #173f3d;
+  --yolu-primary-border: #a9cbbf;
+  --yolu-foreground: #182a2b;
+  --yolu-secondary-ink: #435856;
+  --yolu-muted-ink: #667a76;
+  --yolu-faint-ink: #879793;
+  --yolu-border: #e2e8e4;
+  --yolu-border-strong: #d0dad4;
+  --yolu-ring: #3f8a7a;
+  --yolu-ring-soft: #3f8a7a40;
   --yolu-terminal-background: #203a37;
   --yolu-terminal-foreground: #d5e7d8;
   --yolu-terminal-cursor: #9dd8ca;
@@ -101,7 +101,7 @@
 
 .appearance-swatches { display:flex; align-items:center; gap:8px; margin:0 0 16px; }
 .appearance-swatches > span { width:24px; height:24px; border-radius:50%; border:1px solid var(--yolu-border-strong,#cbd8c7); }
-.appearance-swatch-paper { background:#f7f8f2; }
+.appearance-swatch-paper { background:#eef2ef; }
 .appearance-swatch-teal { background:#203f42; }
 .appearance-swatch-mint { background:#9dd8ca; }
 .appearance-swatch-cool { background:#f8f9fd; }

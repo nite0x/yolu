@@ -28,5 +28,11 @@ export function resetGitView(container: HTMLElement, message = uiText("正在读
 }
 
 export function scrollToGitSection(container: HTMLElement, section: string) {
-  container.querySelector<HTMLElement>(`#git-${section}`)?.scrollIntoView({block: "start"})
+  const target = container.querySelector<HTMLElement>(`#git-${section}`)
+  if (!target) return
+  container.querySelectorAll(".git-section-navigation a").forEach(link => {
+    if (link.getAttribute("href") === `#${target.id}`) link.setAttribute("aria-current", "location")
+    else link.removeAttribute("aria-current")
+  })
+  target.scrollIntoView({block: "start"})
 }

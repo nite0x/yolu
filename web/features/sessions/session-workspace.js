@@ -927,6 +927,7 @@ document.addEventListener('click', event => {
   if (!button || button.disabled || state.busy) return;
   switch (button.dataset.conversationAction) {
     case 'new': startBrowserConversation(); break;
+    case 'link-task': $('#linkTaskConversation').click(); break;
     case 'pin-directory': toggleDirectoryShortcutPin(selectedConversationDirectoryKey()); break;
     case 'refresh': refreshSessionWorkspace(true); break;
     case 'refresh-shortcuts': refreshConversationShortcuts(true); break;

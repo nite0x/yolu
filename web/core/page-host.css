@@ -49,6 +49,8 @@ html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages{p
    Keep hidden as a clipping fallback for older WebViews without clip support. */
 .workspace-shared-navigation{position:fixed;left:0;top:0;bottom:0;width:calc(var(--workspace-shared-sidebar-width,244px) + var(--workspace-conversation-list-width,280px));overflow:hidden;overflow:clip;z-index:15;background:var(--yolu-sidebar,#f1f4fc)}
 .workspace-navigation-frame{position:absolute;inset:0;width:max(1200px,100vw);height:100%;border:0}
+.workspace-shared-navigation[data-modal]{width:100%;background:transparent}
+.workspace-shared-navigation[data-modal] .workspace-navigation-frame{width:100%}
 html[data-workhub-desktop] .workspace-shared-navigation{top:var(--workspace-window-header-height,36px)}
 .workspace-shared-list-size{position:absolute;left:var(--workspace-shared-sidebar-width,244px);top:0;bottom:0;width:var(--workspace-conversation-list-width,280px);pointer-events:none}
 .workspace-list-placeholder{position:absolute;inset:6px 0 8px 8px;border:1px solid var(--yolu-border,#dfe4ee);border-radius:8px;background:var(--yolu-surface,#fff);padding:16px 12px;color:var(--yolu-muted-ink,#71809a);font-size:12px}

@@ -868,11 +868,16 @@ test("URL flow opens the system browser through the scoped API and awaits a sepa
 
 
 test("the shared panel opens a project directory without any task object", async () => {
- const h = mount(false,[],{task:undefined,target:{project_id:"p",cwd:"/workspace/project"}});
+ const h = mount(false,[],{
+  task:undefined,target:{project_id:"p",cwd:"/workspace/project"},
+  workspace:{tasks:[],projects:[{id:"p",name:"项目",path:"/repo/project",worktrees:[{path:"/workspace/project",branch:"feature/current"}]}]},
+ });
  try {
   await until(()=>h.input());
   assert.equal(h.w.document.querySelector("#assistantChatProject"),null);
   assert.match(h.w.document.querySelector(".chat-panel-header")?.textContent || "",/\/workspace\/project/);
+  const directoryHint = h.w.document.querySelector(".aui-thread-viewport-footer .chat-creation-directory");
+  assert.match(directoryHint?.textContent || "", /主工作目录.*\/workspace\/project.*feature\/current/);
   h.type("从项目页开始"); await tick();
   h.w.document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
   await until(()=>h.calls.some(call=>call.body));
@@ -880,6 +885,7 @@ test("the shared panel opens a project directory without any task object", async
   assert.equal(sent.path,"/api/sessions/new");
   assert.equal(sent.body.task_id,undefined);
   assert.equal(sent.body.cwd,"/workspace/project");
+  await until(()=>!h.w.document.querySelector(".chat-creation-directory"));
   assert.deepEqual(h.errors,[]);
  } finally {h.dispose();}
 });
