@@ -1,23 +1,23 @@
 import { createRoot, type Root } from "react-dom/client";
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactElement,
+  type ComponentProps,
 } from "react";
+import { MessageNotSentError } from "@assistant-ui/react";
 import {
-  AssistantRuntimeProvider,
-  MessageNotSentError,
-  useExternalStoreRuntime,
-} from "@assistant-ui/react";
-import {
-  Thread,
-  Composer,
-} from "@/components/assistant-ui/elements/thread.aui";
+  ConversationPanel,
+  ConversationFeedback,
+  ConversationRunIndicator,
+  useConversationRuntime,
+} from "./conversation-panel";
+import { useChatReading } from "./use-chat-reading";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, LoaderCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { ConversationList } from "../workspace/session-browser";
 import { WorkspaceSplitLayout, WorkspacePane } from "../workspace/page-surface";
 import { ListCreateButton } from "../workspace/list-controls";
@@ -47,21 +47,23 @@ const Welcome = () => (
   </div>
 );
 
-function AssistantThread({
+function GlobalConversation({
   controller,
+  header,
 }: {
   controller: GlobalAssistantController;
+  header: ReactElement<ComponentProps<typeof ConversationHeader>>;
 }) {
   const state = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
   );
-  const panel = useRef<HTMLDivElement>(null);
-  const runtime = useExternalStoreRuntime({
+  const panel = useRef<HTMLElement>(null);
+  const runtime = useConversationRuntime(controller, {
     messages: state.messages,
     convertMessage,
     isRunning: controller.busy || state.submitting,
-    isLoading: state.loading,
+    isLoading: state.loading && state.messages.length === 0,
     isSendDisabled:
       !state.restored ||
       state.loading ||
@@ -69,6 +71,7 @@ function AssistantThread({
       controller.busy ||
       controller.readOnly,
     onNew: async (message) => {
+      reading.latest();
       controller.setDraft(
         message.content
           .filter((part) => part.type === "text")
@@ -77,7 +80,6 @@ function AssistantThread({
       );
       if (!(await controller.send())) {
         const error = controller.getSnapshot().error;
-        // The shared composer restores a rejected submission into its draft.
         if (panel.current) controller.setDraft("");
         throw new MessageNotSentError(error);
       }
@@ -86,99 +88,40 @@ function AssistantThread({
     onLoadEarlier: () => controller.refresh(true),
     onCancel: () => controller.stop(),
   });
-  useEffect(() => {
-    void controller.connect();
-    return () => controller.disconnect();
-  }, [controller]);
-  useEffect(() => {
-    const composer = runtime.thread.composer;
-    const syncDraft = () => {
-      if (composer.getState().submission || controller.getSnapshot().submitting)
-        return;
-      const text = controller.getSnapshot().draft;
-      if (composer.getState().text !== text) composer.setText(text);
-    };
-    syncDraft();
-    const unsubscribeDraft = controller.subscribe(syncDraft);
-    const unsubscribeComposer = composer.subscribe(() => {
-      const state = composer.getState();
-      if (!state.submission && !controller.getSnapshot().submitting)
-        controller.setDraft(state.text);
-    });
-    return () => {
-      unsubscribeDraft();
-      unsubscribeComposer();
-    };
-  }, [controller, runtime]);
-  useLayoutEffect(() => {
-    if (!state.restored || state.loading) return;
-    const viewport = panel.current?.querySelector<HTMLElement>(
-      '[data-slot="aui_thread-viewport"]',
-    );
-    if (!viewport) return;
-    const reading = controller.getReading();
-    viewport.scrollTop = reading.bottom ? viewport.scrollHeight : reading.top;
-    const save = () => {
-      if (document.getElementById("globalAssistantPage")?.hidden) return;
-      controller.setReading(
-        viewport.scrollTop,
-        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 60,
-      );
-    };
-    viewport.addEventListener("scroll", save, { passive: true });
-    return () => viewport.removeEventListener("scroll", save);
-  }, [controller, state.restored, state.loading]);
-  useLayoutEffect(() => {
-    if (!controller.getReading().bottom) return;
-    const viewport = panel.current?.querySelector<HTMLElement>(
-      '[data-slot="aui_thread-viewport"]',
-    );
-    if (viewport) viewport.scrollTop = viewport.scrollHeight;
-  }, [controller, state.messages.at(-1)?.id]);
+  const reading = useChatReading(controller, runtime.thread);
   const error =
-    state.error || state.loadError || assistantRunError(state.run?.error_code);
+    state.error ||
+    state.historyError ||
+    state.loadError ||
+    assistantRunError(state.run?.error_code);
   return (
-    <div
-      ref={panel}
-      className="global-assistant-thread assistant-chat-scope shadcn-scope"
-    >
-      <AssistantRuntimeProvider runtime={runtime}>
-        <Thread
-          readOnly={controller.readOnly}
-          managedScroll
-          components={{ Welcome }}
-          composerStatus={
-            <>
-              {controller.busy && (
-                <div className="chat-run-indicator" role="status">
-                  <LoaderCircle
-                    className="animate-spin motion-reduce:animate-none"
-                    aria-hidden="true"
-                  />
-                  <span>{uiText("Codex 正在回复…")}</span>
-                </div>
-              )}
-              {error && (
-                <p role="alert" className="text-destructive">
-                  {error}
-                </p>
-              )}
-              {state.notice && <p role="status">{state.notice}</p>}
-            </>
-          }
-          composer={
-            <Composer
-              autoFocus={false}
-              input={{
-                "aria-label": uiText("助手消息"),
-                placeholder: uiText("描述你的开发目标…"),
-                maxLength: 64000,
-              }}
-            />
-          }
-        />
-      </AssistantRuntimeProvider>
-    </div>
+    <ConversationPanel
+      runtime={runtime}
+      panelRef={panel}
+      header={header}
+      reading={reading}
+      thread={{
+        readOnly: controller.readOnly,
+        autoFocus: false,
+        components: { Welcome },
+        composerStatus: controller.busy ? (
+          <ConversationRunIndicator
+            status="running"
+            label={uiText("Codex 正在回复…")}
+          />
+        ) : undefined,
+      }}
+      composerInput={{
+        "aria-label": uiText("助手消息"),
+        placeholder: uiText("描述你的开发目标…"),
+        maxLength: 64000,
+      }}
+      feedback={
+        (error || state.notice) && (
+          <ConversationFeedback messages={[state.notice]} error={error} />
+        )
+      }
+    />
   );
 }
 
@@ -334,44 +277,55 @@ function GlobalAssistant({ request }: { request: AssistantRequest }) {
         </nav>
       </WorkspacePane>
       <WorkspacePane className="global-assistant-conversation">
-        <ConversationHeader
-          title={
-            conversations.find((item) => item.id === selected)?.title ||
-            uiText("新建助手对话")
-          }
-          titleID="globalAssistantTitle"
-          actions={
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="global-assistant-mobile-back"
-                aria-label={uiText("对话列表")}
-                onClick={() => setPane("list")}
-              >
-                <ArrowLeft aria-hidden="true" />
-              </Button>
-              <ConversationStatusBadge>Codex CLI</ConversationStatusBadge>
-            </>
-          }
-        />
         {controller ? (
-          <AssistantThread key={selected} controller={controller} />
+          <GlobalConversation
+            key={selected}
+            controller={controller}
+            header={
+              <ConversationHeader
+                title={
+                  conversations.find((item) => item.id === selected)?.title ||
+                  uiText("新建助手对话")
+                }
+                titleID="globalAssistantTitle"
+                actions={
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="global-assistant-mobile-back"
+                      aria-label={uiText("对话列表")}
+                      onClick={() => setPane("list")}
+                    >
+                      <ArrowLeft aria-hidden="true" />
+                    </Button>
+                    <ConversationStatusBadge>Codex CLI</ConversationStatusBadge>
+                  </>
+                }
+              />
+            }
+          />
         ) : (
-          <div className="global-assistant-empty">
-            <p>{uiText("选择一个对话，或新建对话开始工作。")}</p>
-            {!readOnly && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={creating || loading}
-                onClick={() => void create()}
-              >
-                {uiText("新建助手对话")}
-              </Button>
-            )}
-          </div>
+          <>
+            <ConversationHeader
+              title={uiText("新建助手对话")}
+              titleID="globalAssistantTitle"
+            />
+            <div className="global-assistant-empty">
+              <p>{uiText("选择一个对话，或新建对话开始工作。")}</p>
+              {!readOnly && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={creating || loading}
+                  onClick={() => void create()}
+                >
+                  {uiText("新建助手对话")}
+                </Button>
+              )}
+            </div>
+          </>
         )}
       </WorkspacePane>
     </WorkspaceSplitLayout>

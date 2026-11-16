@@ -36,7 +36,7 @@ export class GlobalAssistantController {
   private generation = 0;
   private timer?: ReturnType<typeof setTimeout>;
   private pending?: { request_id: string; text: string };
-  private reading: DraftRecord["reading"] = {
+  reading: DraftRecord["reading"] = {
     top: 0,
     bottom: true,
     anchor: "",
@@ -51,9 +51,11 @@ export class GlobalAssistantController {
     submitting: false,
     error: "",
     loadError: "",
+    historyError: "",
     notice: "",
     restored: false,
   };
+  opening = true;
   private persistence;
   constructor(
     readonly id: string,
@@ -92,6 +94,17 @@ export class GlobalAssistantController {
     };
   };
   getSnapshot = () => this.state;
+  getReadingSnapshot = () => ({
+    entries: this.state.messages,
+    loading: this.state.loading,
+    historyError: this.state.historyError || this.state.loadError,
+    cursor: this.state.before,
+  });
+  latestMessage = () => {
+    const message = this.state.messages.at(-1);
+    return message ? `${message.id}:${message.text.length}` : "";
+  };
+  readingChanged = () => this.persistence.changed();
   private update(update: Partial<typeof this.state>) {
     this.state = { ...this.state, ...update };
     this.listeners.forEach((listener) => listener());
@@ -107,20 +120,18 @@ export class GlobalAssistantController {
     this.update({ draft });
     this.persistence.changed();
   };
-  setReading(top: number, bottom: boolean) {
-    this.reading = { ...this.reading, top, bottom };
-    this.persistence.changed();
-  }
-  getReading() {
-    return this.reading;
-  }
   flush = () => this.persistence.flush();
   async connect() {
     this.connected = true;
+    this.opening = true;
     await this.persistence.load();
     if (!this.connected) return;
     this.update({ restored: true });
-    void this.refresh();
+    await this.refresh();
+    if (this.connected) {
+      this.opening = false;
+      this.update({});
+    }
   }
   disconnect() {
     this.connected = false;
@@ -131,6 +142,7 @@ export class GlobalAssistantController {
   async refresh(earlier = false) {
     const generation = ++this.generation;
     clearTimeout(this.timer);
+    if (earlier) this.update({ loading: true });
     try {
       const page = await this.request<AssistantSnapshot>(
         this.base() + (earlier ? `?before=${this.state.before}` : ""),
@@ -149,6 +161,7 @@ export class GlobalAssistantController {
             : this.state.before,
         loading: false,
         loadError: "",
+        historyError: earlier ? "" : this.state.historyError,
       });
       if (this.pending && page.run?.id === this.pending.request_id) {
         if (this.state.draft.trim() === this.pending.text) this.setDraft("");
@@ -158,7 +171,11 @@ export class GlobalAssistantController {
       }
     } catch (error) {
       if (this.connected && generation === this.generation)
-        this.update({ loading: false, loadError: (error as Error).message });
+        this.update(
+          earlier
+            ? { loading: false, historyError: (error as Error).message }
+            : { loading: false, loadError: (error as Error).message },
+        );
     } finally {
       if (this.connected && generation === this.generation)
         this.timer = setTimeout(

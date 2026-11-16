@@ -19,6 +19,7 @@ Native title bars, window controls, application menus and operating-system dialo
 | Pane layout | `frontend/workspace/page-surface.tsx`, `page-surface.css` | Shared split layout and pane markup |
 | Lists | `frontend/workspace/list-controls.tsx`, `session-browser.tsx` | List headings, creation actions, search, rows, selection and date groups |
 | Conversation surface | `frontend/workspace/conversation-surface.tsx`, `conversation-surface.css` | Header, status, context and pane actions |
+| Conversation panel | `frontend/chat/conversation-panel.tsx`, `use-chat-reading.ts` | Shared panel, runtime lifecycle, draft synchronization, history anchors, run state and feedback |
 | Conversation content | `frontend/components/assistant-ui/elements/thread.aui.tsx` | Messages, Markdown, shared composer, send/stop and keyboard behavior |
 | Basic controls | `frontend/components/ui/` | Buttons, inputs, selects, dialogs, alerts, badges and tables |
 | State and persistence | `frontend/chat/`, `frontend/workspace/` controllers | Requests, drafts, history, environment identity and lifecycle |
@@ -85,7 +86,9 @@ Forms use the shared `Button`, `Input`, `Textarea`, `NativeSelect`, `Label`, `Di
 
 ## Conversation contract
 
-Both native coding conversations and the global assistant render the shared `Thread` and `Composer`. Their controllers preserve their respective identity, permissions, model communication and history ownership.
+Native coding conversations and the global assistant both render `ConversationPanel` from `frontend/chat/conversation-panel.tsx`. This component owns the runtime provider, labelled panel, header placement, message/composer area, return-to-latest control and feedback placement. It renders the shared `Thread` and `Composer`.
+
+Both adapters call `useConversationRuntime` for connection lifetime and bidirectional draft synchronization, and `useChatReading` for reading anchors, automatic history loading and scroll restoration. Controllers implement the small structural contracts consumed by these hooks. Their domain-specific identity, permissions, model communication and history ownership are supplied by the native and assistant adapters. Native attachments, questions, approvals, file access and runtime controls use the panel's explicit slots.
 
 The shared composer owns its input shell, resize behavior, send/stop controls, keyboard shortcuts and rejected-submission restoration. The controller supplies authoritative draft and run state. Coordinate draft restoration once so a failed send produces one restored copy. Pending request identities stay attached to their original payload across retries.
 

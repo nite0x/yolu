@@ -1,9 +1,18 @@
 import {useLayoutEffect, useRef, useState} from "react";
 import type {ThreadRuntime} from "@assistant-ui/react";
-import type {ChatController} from "./controller";
+import type {DraftRecord} from "./drafts";
+
+export interface ConversationReadingController {
+  reading: DraftRecord["reading"];
+  opening: boolean;
+  subscribe: (listener: () => void) => () => void;
+  latestMessage: () => string;
+  readingChanged: () => void;
+  getReadingSnapshot: () => {entries: readonly unknown[]; liveEntries?: readonly unknown[]; loading: boolean; historyError: string; cursor: unknown};
+}
 
 // Track a message anchor so reflow and prepending history preserve the text in view.
-export function useChatReading(controller: ChatController, thread: ThreadRuntime) {
+export function useChatReading(controller: ConversationReadingController, thread: ThreadRuntime) {
   const container = useRef<HTMLDivElement>(null);
   const [hasNew, setHasNew] = useState(false);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
@@ -16,10 +25,10 @@ export function useChatReading(controller: ChatController, thread: ThreadRuntime
     let restoring = false;
     let initialized = false;
     let disposed = false;
-    const visible = () => !disposed && viewport.isConnected && !!viewport.ownerDocument.documentElement && !viewport.ownerDocument.documentElement.hasAttribute('data-workspace-inactive') && !viewport.closest('[hidden]');
+    const visible = () => !disposed && viewport.isConnected && !!viewport.ownerDocument.documentElement && !viewport.ownerDocument.documentElement.hasAttribute('data-workspace-inactive') && !viewport.closest('[hidden]') && (typeof viewport.checkVisibility !== 'function' || viewport.checkVisibility());
     const messages = () => [...viewport.querySelectorAll<HTMLElement>('[data-chat-message-id]')];
     const loadEarlier = () => {
-      const state = controller.getSnapshot();
+      const state = controller.getReadingSnapshot();
       if (!initialized || restoring || !visible() || controller.opening || state.loading || state.historyError || !state.cursor) return;
       // Prefetch before the reader reaches the top, after restoring the anchor.
       // A short page can keep filling the viewport, but opening a long thread
@@ -38,6 +47,7 @@ export function useChatReading(controller: ChatController, thread: ThreadRuntime
       const top = viewport.getBoundingClientRect().top;
       const anchor = messages().find(node => node.getBoundingClientRect().bottom > top);
       controller.reading = {top: viewport.scrollTop, bottom, anchor: anchor?.dataset.chatMessageId || "", offset: anchor ? anchor.getBoundingClientRect().top - top : 0, latest: bottom ? controller.latestMessage() : controller.reading.latest};
+      controller.readingChanged();
       setAwayFromBottom(!bottom);
       if (bottom) setHasNew(false);
     };
@@ -80,11 +90,11 @@ export function useChatReading(controller: ChatController, thread: ThreadRuntime
     if (viewport.firstElementChild) resize?.observe(viewport.firstElementChild);
     viewport.addEventListener('scroll', onScroll, {passive: true});
     window.addEventListener('workhub:chat-layout', layout);
-    let previous = controller.getViewSnapshot();
+    let previous = controller.getReadingSnapshot();
     let opening = controller.opening;
     const unsubscribe = controller.subscribe(() => {
-      const next = controller.getViewSnapshot();
-      if (next.entries !== previous.entries || next.chat.entries !== previous.chat.entries || next.loading !== previous.loading || next.cursor !== previous.cursor || opening !== controller.opening) schedule();
+      const next = controller.getReadingSnapshot();
+      if (next.entries !== previous.entries || next.liveEntries !== previous.liveEntries || next.loading !== previous.loading || next.cursor !== previous.cursor || opening !== controller.opening) schedule();
       previous = next; opening = controller.opening;
     });
     schedule();
@@ -97,6 +107,7 @@ export function useChatReading(controller: ChatController, thread: ThreadRuntime
   const latest = () => {
     controller.reading.bottom = true;
     controller.reading.latest = controller.latestMessage();
+    controller.readingChanged();
     const viewport = container.current?.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
     // Override any browser/CSS smooth animation: intermediate scroll events
     // must never turn an explicit latest request back into an old-message anchor.

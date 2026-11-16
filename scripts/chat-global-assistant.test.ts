@@ -164,3 +164,40 @@ test("leaving before draft restoration finishes preserves the saved draft", asyn
   await loading;
   assert.equal(writes, 0);
 });
+
+test("assistant history errors remain visible until an explicit page retry succeeds", async (t) => {
+  let fail = true;
+  const request = (async (path: string) => {
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path.includes("before=3")) {
+      if (fail) throw new Error("Earlier history failed");
+      return {
+        messages: [{ id: 1, role: "user", text: "Earlier" }],
+        run: null,
+        before: 0,
+      };
+    }
+    return {
+      messages: [{ id: 3, role: "assistant", text: "Current" }],
+      run: null,
+      before: 3,
+    };
+  }) as AssistantRequest;
+  const controller = new GlobalAssistantController("history-error", request);
+  t.after(() => controller.disconnect());
+  await controller.connect();
+  await controller.refresh(true);
+  assert.equal(
+    controller.getReadingSnapshot().historyError,
+    "Earlier history failed",
+  );
+  await controller.refresh();
+  assert.equal(
+    controller.getReadingSnapshot().historyError,
+    "Earlier history failed",
+  );
+  fail = false;
+  await controller.refresh(true);
+  assert.equal(controller.getReadingSnapshot().historyError, "");
+  assert.equal(controller.getReadingSnapshot().cursor, 0);
+});

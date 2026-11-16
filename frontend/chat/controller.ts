@@ -97,6 +97,11 @@ export class ChatController {
     if (options.persistDraft && !options.readOnly) { const saved = readLocalDraft(conversationKey(options)); if (saved) this.draftPersistence.restore(saved); }
   }
   getSnapshot = () => this.snapshot;
+  getReadingSnapshot = () => {
+    const state = this.getViewSnapshot();
+    return {entries: state.entries, liveEntries: state.chat.entries, loading: state.loading, historyError: state.historyError, cursor: state.cursor};
+  };
+  readingChanged = () => this.draftChanged();
   // Composer text is mirrored and persisted separately from the rendered chat.
   getViewSnapshot = () => {
     if (!this.viewSnapshot) { const {draft, ...view} = this.snapshot; this.viewSnapshot = view; }

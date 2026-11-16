@@ -37,7 +37,7 @@ async function until(check: () => boolean) {
   assert.ok(check(), "assistant panel did not reach the expected state");
 }
 
-test("global assistant uses the shared list and composer while preserving failed submissions and drafts", async (t) => {
+function createAssistantWindow(t: { after: (callback: () => void) => void }) {
   const errors: unknown[] = [];
   const console = new VirtualConsole();
   console.on("jsdomError", (error) => errors.push(error));
@@ -86,6 +86,12 @@ test("global assistant uses the shared list and composer while preserving failed
     this.scrollTop = typeof options === "number" ? options : options.top || 0;
   };
   w.HTMLElement.prototype.scrollIntoView = function () {};
+  w.eval(bundle);
+  return { w, errors };
+}
+
+test("global assistant uses the shared list and composer while preserving failed submissions and drafts", async (t) => {
+  const { w, errors } = createAssistantWindow(t);
   const drafts = new Map();
   let messages: any[] = [];
   let run: any = null;
@@ -93,7 +99,6 @@ test("global assistant uses the shared list and composer while preserving failed
   let delayFailure = false;
   let rejectSend: (() => void) | undefined;
   const sends: any[] = [];
-  w.eval(bundle);
   (w as any).AssistantTest.openGlobalAssistant(
     async (path: string, options?: RequestInit) => {
       const body = options?.body ? JSON.parse(String(options.body)) : undefined;
@@ -129,6 +134,10 @@ test("global assistant uses the shared list and composer while preserving failed
     )!;
   await until(() => !!input() && !input().disabled);
   assert.ok(w.document.querySelector(".aui-composer-root"));
+  assert.equal(
+    w.document.querySelectorAll('[data-slot="conversation-panel"]').length,
+    1,
+  );
   assert.ok(w.document.querySelector(".workspace-split-layout"));
   assert.equal(w.document.querySelectorAll(".workspace-pane").length, 2);
   assert.equal(w.document.querySelector(".global-assistant-composer"), null);
@@ -202,5 +211,63 @@ test("global assistant uses the shared list and composer while preserving failed
   await until(
     () => input().value === "Preserve the draft when leaving during a send",
   );
+  assert.deepEqual(errors, []);
+});
+
+test("global conversation shares automatic history loading and persisted reading state", async (t) => {
+  const { w, errors } = createAssistantWindow(t);
+  Object.defineProperty(w.HTMLElement.prototype, "scrollHeight", {
+    configurable: true,
+    get() {
+      return 100;
+    },
+  });
+  Object.defineProperty(w.HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() {
+      return 500;
+    },
+  });
+  const requests: string[] = [];
+  let draft: any;
+  (w as any).AssistantTest.openGlobalAssistant(
+    async (path: string, options?: RequestInit) => {
+      if (path === "/api/assistant/conversations")
+        return [{ id: "history", title: "Plan history" }];
+      if (path.startsWith("/api/conversation-drafts")) {
+        if (options?.body) draft = JSON.parse(String(options.body));
+        return draft || null;
+      }
+      requests.push(path);
+      if (path.includes("before=3"))
+        return {
+          messages: [{ id: 1, role: "user", text: "Earlier request" }],
+          run: null,
+          before: 0,
+        };
+      return {
+        messages: [{ id: 3, role: "assistant", text: "Current response" }],
+        run: null,
+        before: 3,
+      };
+    },
+  );
+  await until(
+    () => w.document.body.textContent?.includes("Earlier request") === true,
+  );
+  assert.equal(requests.filter((path) => path.includes("before=3")).length, 1);
+  const viewport = w.document.querySelector<HTMLElement>(
+    '[data-slot="aui_thread-viewport"]',
+  )!;
+  Object.defineProperty(viewport, "scrollHeight", {
+    configurable: true,
+    get() {
+      return 1000;
+    },
+  });
+  viewport.scrollTop = 400;
+  viewport.dispatchEvent(new w.Event("scroll"));
+  await until(() => draft?.reading?.top === 400);
+  assert.equal(draft.reading.bottom, false);
   assert.deepEqual(errors, []);
 });

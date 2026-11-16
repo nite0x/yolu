@@ -2,9 +2,9 @@ import { uiText } from "../i18n";
 import {ConversationHeader, ConversationPaneButtons} from "../workspace/conversation-surface";
 import {useChatState} from "./use-chat-state";
 import {memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from "react";
-import {AssistantRuntimeProvider, ExportedMessageRepository, MessageNotSentError, useExternalStoreRuntime, type ThreadMessage} from "@assistant-ui/react";
-import {ArrowDownIcon, PlusIcon, RefreshCwIcon, SearchIcon, GitBranchIcon, FolderIcon, TerminalIcon, LoaderCircleIcon, HandIcon} from "lucide-react";
-import {Thread} from "@/components/assistant-ui/elements/thread.aui";
+import {ExportedMessageRepository, MessageNotSentError, type ThreadMessage} from "@assistant-ui/react";
+import {PlusIcon, RefreshCwIcon, SearchIcon, GitBranchIcon, FolderIcon, TerminalIcon} from "lucide-react";
+import {ConversationPanel, ConversationFeedback, ConversationRunIndicator, useConversationRuntime} from "./conversation-panel";
 import {TooltipIconButton} from "@/components/assistant-ui/elements/tooltip-icon-button";
 import {Alert, AlertDescription} from "@/components/ui/alert";
 import {Button} from "@/components/ui/button";
@@ -61,10 +61,7 @@ const ChatRunIndicator = memo(function ChatRunIndicator({controller}: {controlle
     : state.chat.status === "starting" ? "starting"
     : state.chat.busy ? "running" : "sending";
   const labels = {stopping: uiText("正在停止…"), waiting: uiText("等待你的确认"), starting: uiText("正在连接…"), running: state.chat.external ? uiText("Codex 正在运行…") : uiText("进行中…"), sending: uiText("正在发送…")};
-  return <div className="chat-run-indicator" role="status" aria-live="polite" data-state={status}>
-    {status === "waiting" ? <HandIcon aria-hidden="true" /> : <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-    <span>{labels[status]}</span>
-  </div>;
+  return <ConversationRunIndicator status={status} label={labels[status]} />;
 });
 
 function ApprovalCard({approval, controller}: {approval: Approval; controller: ChatController}) {
@@ -132,7 +129,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   // The server owns a linear history. Replacing a local echo must remove its
   // old repository entry rather than retain it as an alternate branch.
   const messageRepository = useMemo(() => ExportedMessageRepository.fromArray(messages), [messages]);
-  const runtime = useExternalStoreRuntime<ThreadMessage>({
+  const runtime = useConversationRuntime<ThreadMessage>(controller, {
     adapters: {attachments},
     messageRepository,
     isRunning: state.chat.busy || state.submitting,
@@ -155,18 +152,6 @@ export function ChatPanel({controller}: {controller: ChatController}) {
     onCancel: state.chat.external && state.chat.busy ? undefined : controller.stop,
   });
   const reading = useChatReading(controller, runtime.thread);
-  useEffect(() => { controller.connect(); return () => controller.disconnect(); }, [controller]);
-  useEffect(() => {
-    let previous: string | undefined;
-    const syncDraft = () => {
-      const draft = controller.getSnapshot().draft;
-      if (draft === previous) return;
-      previous = draft;
-      if (runtime.thread.composer.getState().text !== draft) runtime.thread.composer.setText(draft);
-    };
-    syncDraft();
-    return controller.subscribe(syncDraft);
-  }, [controller, runtime]);
   useEffect(() => {
     const composer = runtime.thread.composer;
     for (const attachment of controller.draftAttachments) {
@@ -176,7 +161,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
     }
     const unsubscribe = composer.subscribe(() => {
       const draft = composer.getState();
-      if (!draft.submission && !controller.getSnapshot().submitting) { controller.draftAttachments = draft.attachments; controller.setDraft(draft.text); controller.attachmentsChanged(); }
+      if (!draft.submission && !controller.getSnapshot().submitting) { controller.draftAttachments = draft.attachments; controller.attachmentsChanged(); }
     });
     const unsubscribeErrors = composer.unstable_on("attachmentAddError", event => controller.setError(event.message));
     return () => { unsubscribe(); unsubscribeErrors(); };
@@ -198,11 +183,9 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   const status = state.chat.blocked;
   const footer = state.draftNotice || status || state.chat.notice || state.chat.retrying || state.chat.can_handoff || state.error || state.chat.error;
   const terminal = state.terminal;
-  return <AssistantRuntimeProvider runtime={runtime}><ChatMediaProvider controller={controller} entries={entries}><ChatChangePathsProvider value={changePaths}>
-    <section ref={panel} className="shadcn-scope assistant-chat-scope flex h-full min-h-0 w-full flex-col bg-background text-foreground" aria-labelledby="assistantChatTitle" onKeyDownCapture={event=>{
-      if (state.chat.busy && event.key==="Enter" && (event.ctrlKey||event.metaKey) && !event.shiftKey && !event.nativeEvent.isComposing && event.target instanceof HTMLTextAreaElement && event.target.closest(".aui-composer-root")) {event.preventDefault();event.stopPropagation();runtime.thread.composer.send();}
-    }}>
-      <ConversationHeader title={state.session ? state.session.name || uiText("未命名对话") : uiText("新建对话")} titleID="assistantChatTitle" titleHint={state.session?.name}
+  return <ChatMediaProvider controller={controller} entries={entries}><ChatChangePathsProvider value={changePaths}>
+    <ConversationPanel runtime={runtime} panelRef={panel} reading={reading}
+      header={<ConversationHeader title={state.session ? state.session.name || uiText("未命名对话") : uiText("新建对话")} titleID="assistantChatTitle" titleHint={state.session?.name}
         tasks={controller.options.openWorkspace && context.tasks.length > 0 ? <nav className="chat-workspace-tasks" aria-label={uiText("关联任务详情")}><span>{uiText("任务")}</span>{context.tasks.map(t => <button key={t.id} type="button" className="chat-workspace-link" aria-label={uiText("打开任务详情：{0}", t.name)} title={uiText("打开任务详情：{0}", t.name)} onClick={() => controller.options.openWorkspace?.("task", t.id)}>{t.name}</button>)}</nav> : undefined}
         actions={<>
             {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
@@ -223,24 +206,29 @@ export function ChatPanel({controller}: {controller: ChatController}) {
         {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
         {state.session && <ChatSearch controller={controller} container={reading.container} open={searchOpen} onClose={closeSearch} />}
         {!state.session && task && <div className="mt-2 space-y-2"><Label htmlFor="assistantChatProject">{uiText("工作项目")}</Label><NativeSelect id="assistantChatProject" value={state.project} disabled={state.submitting} onChange={e => controller.setProject(e.target.value)}>{task.members.map(m => <NativeSelectOption key={m.project_id} value={m.project_id}>{m.project_name}{m.project_id === task.primary_project_id ? uiText("（主项目）") : ""}</NativeSelectOption>)}</NativeSelect></div>}
-      </ConversationHeader>
-      {state.historyError && <Alert variant="destructive" className="shrink-0 rounded-none"><AlertDescription>{state.historyError}</AlertDescription></Alert>}
-      <div ref={reading.container} className="relative min-h-0 flex-1" onChange={event => {
+      </ConversationHeader>}
+      onKeyDownCapture={event => {
+        if (state.chat.busy && event.key==="Enter" && (event.ctrlKey||event.metaKey) && !event.shiftKey && !event.nativeEvent.isComposing && event.target instanceof HTMLTextAreaElement && event.target.closest(".aui-composer-root")) {event.preventDefault();event.stopPropagation();runtime.thread.composer.send();}
+      }}
+      onChange={event => {
         if (event.target instanceof HTMLTextAreaElement && event.target.closest(".aui-composer-root")) controller.setDraft(event.target.value);
-      }}><Thread scrollToBottom={reading.awayFromBottom ? <Button type="button" size="sm" className="absolute -top-12 left-1/2 z-10 -translate-x-1/2 rounded-full shadow-sm" aria-label={uiText("回到对话底部")} onClick={reading.latest}><ArrowDownIcon aria-hidden="true" />{reading.hasNew ? uiText("有新消息 · 回到最新") : uiText("回到底部")}</Button> : null} composerStatus={<><ChatRunIndicator controller={controller} />{creationDirectory}</>} components={chatComponents} managedScroll autoFocus={!!controller.options.focusComposer && !readOnly && !state.session && !document.documentElement.hasAttribute("data-workspace-inactive")} readOnly={readOnly} composer={question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined} composerLeadingControls={<ChatPermissions controller={controller} portal={panel} />} composerControls={<ChatControls controller={controller} portal={panel} />} /></div>
+      }}
+      beforeThread={state.historyError && <Alert variant="destructive" className="shrink-0 rounded-none"><AlertDescription>{state.historyError}</AlertDescription></Alert>}
+      thread={{
+        composerStatus: <><ChatRunIndicator controller={controller} />{creationDirectory}</>, components: chatComponents,
+        autoFocus: !!controller.options.focusComposer && !readOnly && !state.session && !document.documentElement.hasAttribute("data-workspace-inactive"), readOnly,
+        composer: question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined,
+        composerLeadingControls: <ChatPermissions controller={controller} portal={panel} />, composerControls: <ChatControls controller={controller} portal={panel} />,
+      }}
+      afterThread={<>
       {readOnly && (terminal?.waiting || !!terminal?.confirmations?.length) && <Alert className="max-h-[40%] shrink-0 overflow-y-auto rounded-none" role="alert"><AlertDescription>
         <p>{uiText("终端有待确认事项，请在原终端处理。")}{!terminal.connected && uiText("连接已断开，以下提示尚未核实。")}</p>
         {terminal.confirmations?.map(item => <div key={item.id} className="space-y-2"><strong>{cleanText(item.title)}</strong>{item.details && <pre className="whitespace-pre-wrap wrap-anywhere">{cleanText(item.details)}</pre>}{item.questions?.map(q => <p key={q.id}>{cleanText(q.header)} · {cleanText(q.question)}{q.options?.map(o => <span key={o.label} className="block">{cleanText(o.label)} · {cleanText(o.description)}</span>)}</p>)}</div>)}
       </AlertDescription></Alert>}
       {approvals.length > 0 && <div className="max-h-[40%] shrink-0 space-y-2 overflow-y-auto border-t p-4" aria-live="polite">{approvals.map(a => <ApprovalCard key={a.id} approval={a} controller={controller} />)}</div>}
-      {footer && <footer className="shrink-0 space-y-2 border-t px-5 py-3 text-xs text-muted-foreground">
-        {status && <div role="status">{status}</div>}
-        {state.draftNotice && <p role="status">{state.draftNotice}</p>}
-        {state.chat.notice && <p className="m-0">{state.chat.notice}</p>}
-        {state.chat.retrying && <p role="status" className="m-0">{state.chat.retrying}</p>}
+</>}
+      feedback={footer && <ConversationFeedback messages={[status, state.draftNotice, state.chat.notice, state.chat.retrying]} error={state.error || state.chat.error}>
         {state.chat.can_handoff && !state.chat.busy && <Button type="button" size="sm" variant="outline" disabled={state.submitting} onClick={() => void controller.handoff()}>{uiText("在这里继续（等终端本轮结束）")}</Button>}
-        {(state.error || state.chat.error) && <Alert variant="destructive"><AlertDescription>{state.error || state.chat.error}</AlertDescription></Alert>}
-      </footer>}
-    </section>
-  </ChatChangePathsProvider></ChatMediaProvider></AssistantRuntimeProvider>;
+      </ConversationFeedback>} />
+  </ChatChangePathsProvider></ChatMediaProvider>;
 }
