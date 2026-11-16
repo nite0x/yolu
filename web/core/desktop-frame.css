@@ -46,13 +46,13 @@ html[data-workhub-desktop] .sidebar .codex-quota-mount { display: flex; justify-
 html[data-workhub-desktop] .sidebar .codex-quota-trigger { justify-content: center; min-height: 0; padding: 0; }
 html[data-workhub-desktop] .sidebar .codex-quota-trigger :is(.codex-quota-copy,.codex-quota-chevron) { display: none; }
 
-html[data-workhub-desktop] .shell { margin: var(--workspace-pane-inset) var(--workspace-pane-inset) var(--workspace-pane-inset) var(--workspace-navigation-left,52px); border: 1px solid var(--yolu-border,#e0e5ef); background: var(--yolu-surface,#fff); }
+html[data-workhub-desktop] .shell { margin: var(--workspace-pane-top-inset) var(--workspace-pane-inset) var(--workspace-pane-inset) var(--workspace-navigation-left,52px); border: 1px solid var(--yolu-border,#e0e5ef); background: var(--yolu-surface,#fff); }
 html[data-workhub-desktop] .shell main { background: var(--yolu-surface,#fff); }
 html[data-workhub-desktop] :is(.tasks-page,.projects-page,.sessions-page-open) main { padding: 0; }
 html[data-workhub-desktop] :is(#workContent,.session-browser) { border: 0; border-radius: 0; }
 html[data-workhub-desktop][data-workspace-conversation] body .shell { margin: 0; }
 html[data-workhub-desktop][data-workspace-navigation] body .shell {
-  top: var(--workspace-pane-inset);
+  top: var(--workspace-pane-top-inset);
   left: var(--workspace-navigation-left,52px);
   width: var(--workspace-shared-list-width,280px);
 }

@@ -1,3 +1,11 @@
+html[data-workhub-desktop] {
+  --workspace-window-header-height: 36px;
+}
+
+html[data-workhub-platform=windows] {
+  --workspace-window-header-height: 32px;
+}
+
 html[data-workhub-desktop] .workhub-window-drag {
   position: fixed;
   inset: 0 0 auto;
@@ -20,7 +28,7 @@ html[data-workhub-desktop] .workhub-window-controls button {
 html[data-workhub-desktop] .window-brand-trigger {
   position: absolute;
   left: 9px;
-  top: 4px;
+  top: calc((var(--workspace-window-header-height,36px) - 28px) / 2);
   height: 28px;
   display: flex;
   align-items: center;

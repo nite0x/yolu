@@ -162,7 +162,7 @@ fn show_app_menu(app: tauri::AppHandle, window: tauri::WebviewWindow, ready: boo
     if let Some(item) = menu.get("home").and_then(|item| item.as_menuitem().cloned()) {
         item.set_enabled(ready).map_err(|e| e.to_string())?;
     }
-    window.popup_menu_at(&menu, tauri::LogicalPosition::new(9.0, 36.0))
+    window.popup_menu_at(&menu, tauri::LogicalPosition::new(9.0, 32.0))
         .map_err(|e| e.to_string())
 }
 

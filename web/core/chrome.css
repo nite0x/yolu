@@ -19,12 +19,16 @@
 html[data-workhub-desktop] {
   --workspace-pane-gap: 8px;
   --workspace-pane-inset: 8px;
+  --workspace-pane-top-inset: var(--workspace-pane-inset);
   --workspace-list-heading-height: 34px;
   --workspace-list-tools-gap: 8px;
   --yolu-rail-canvas: #f5f5f5;
   --yolu-rail-selected: #eaeaea;
   --yolu-rail-muted: #737373;
   --yolu-rail-active: #171717;
+}
+html[data-workhub-desktop][data-workhub-platform=windows] {
+  --workspace-pane-top-inset: 0px;
 }
 html[data-workhub-desktop][data-color-scheme="dark"] {
   --yolu-rail-canvas: #212121;
