@@ -1,0 +1,140 @@
+html[data-workhub-desktop] .workhub-window-drag {
+  position: fixed;
+  inset: 0 0 auto;
+  height: var(--workspace-window-header-height,36px);
+  z-index: 18;
+  user-select: none;
+  background: var(--yolu-subtle,#f3f5fa);
+}
+
+html[data-workhub-desktop] .workhub-window-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+html[data-workhub-desktop] .workhub-window-controls button {
+  pointer-events: auto;
+}
+
+html[data-workhub-desktop] .window-brand-trigger {
+  position: absolute;
+  left: 9px;
+  top: 4px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--yolu-rail-muted);
+  font-weight: 600;
+}
+
+html[data-workhub-platform=macos] .window-brand-trigger {
+  left: 90px;
+}
+
+html[data-workhub-desktop] .window-brand-trigger:hover,html[data-workhub-desktop] .window-brand-trigger[data-state=open] {
+  background: var(--yolu-rail-selected);
+  color: var(--yolu-rail-active);
+}
+
+html[data-workhub-desktop] .window-brand-trigger img {
+  border-radius: 4px;
+}
+
+html[data-workhub-platform=windows] .workhub-window-controls {
+  right: 138px;
+}
+
+.workhub-window-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  display: flex;
+}
+
+.workhub-window-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--yolu-foreground,#334155);
+  cursor: default;
+}
+
+.workhub-window-action:hover {
+  background: var(--yolu-rail-selected,#e2e6ed);
+}
+
+.workhub-window-action:focus-visible,.window-brand-trigger:focus-visible {
+  outline: 2px solid var(--yolu-ring,#818cf8);
+  outline-offset: -2px;
+}
+
+.workhub-window-action[data-window-action=close]:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.workhub-window-action span {
+  position: relative;
+  display: block;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+}
+
+.workhub-window-action[data-window-action=minimize] span::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 5px;
+  border-top: 1px solid currentColor;
+}
+
+.workhub-window-action[data-window-action=maximize] span {
+  border: 1px solid currentColor;
+}
+
+.workhub-window-action[data-maximized=true] span {
+  width: 8px;
+  height: 8px;
+  margin: 2px 2px 0 0;
+}
+
+.workhub-window-action[data-maximized=true] span::before {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  top: -3px;
+  left: 1px;
+  border: 1px solid currentColor;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+.workhub-window-action[data-window-action=close] span::before,.workhub-window-action[data-window-action=close] span::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: -1px;
+  width: 12px;
+  border-top: 1px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.workhub-window-action[data-window-action=close] span::after {
+  transform: rotate(-45deg);
+}

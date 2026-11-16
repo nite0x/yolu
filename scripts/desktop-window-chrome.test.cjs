@@ -2,16 +2,17 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const {JSDOM} = require('jsdom');
-const source = overlay => `${readFileSync('src-tauri/src/window-chrome.js', 'utf8')}(${overlay});`;
+const source = platform => `${readFileSync('src-tauri/src/window-chrome.js', 'utf8')}(${JSON.stringify(platform)});`;
 
-function setup(overlay = true) {
+function setup(platform = 'macos', invoke = () => Promise.resolve()) {
   const dom = new JSDOM('<header class="page-heading"><span>空白</span><button><svg></svg></button><a>链接</a><input><span contenteditable="true">编辑</span></header>', {url:'http://127.0.0.1:12345/', runScripts:'outside-only'});
   const calls = [];
-  dom.window.__TAURI_INTERNALS__ = {invoke: command => {calls.push(command); return Promise.resolve();}};
-  dom.window.eval(source(overlay));
+  const requests = [];
+  dom.window.__TAURI_INTERNALS__ = {invoke: (command, args) => {calls.push(command); requests.push({command,args}); return invoke(command,args);}};
+  dom.window.eval(source(platform));
   dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
   const mouse = (target, type = 'mousedown', options = {}) => target.dispatchEvent(new dom.window.MouseEvent(type, {bubbles:true, button:0, detail:1, ...options}));
-  return {dom, calls, mouse, doc:dom.window.document};
+  return {dom, calls, requests, mouse, doc:dom.window.document};
 }
 
 test('blank title area starts native dragging while all controls retain their clicks', () => {
@@ -49,7 +50,7 @@ test('page iframe header drags through the host bridge without creating duplicat
     dom.window.document.body.append(frame);
     const child = frame.contentWindow;
     child.document.write('<body><div class="page-heading"><span>任务</span><button>新建</button></div></body>');
-    child.eval(source(true));
+    child.eval(source('macos'));
     child.document.dispatchEvent(new child.Event('DOMContentLoaded'));
     child.document.querySelector('span').dispatchEvent(new child.MouseEvent('mousedown', {bubbles:true, button:0, detail:1}));
     assert.deepEqual(calls, ['plugin:window|start_dragging']);
@@ -58,7 +59,7 @@ test('page iframe header drags through the host bridge without creating duplicat
 });
 
 test('desktop windows with a native title bar still mount the brand menu without custom dragging', () => {
-  const {dom, calls, mouse, doc} = setup(false);
+  const {dom, calls, mouse, doc} = setup('linux');
   try {
     assert(doc.documentElement.hasAttribute('data-workhub-desktop'));
     assert(!doc.documentElement.hasAttribute('data-workhub-window-overlay'));
@@ -78,5 +79,103 @@ test('sidebar blank space drags while brand menus and resize handles keep their 
     assert.deepEqual(calls,['plugin:window|start_dragging']);
     for (const target of sidebar.querySelectorAll('button,summary,[role]')) mouse(target);
     assert.equal(calls.length,1);
+  } finally {dom.window.close();}
+});
+
+test('Windows mounts right-side controls and a native menu on startup pages', async () => {
+  const {dom,calls,requests,mouse,doc} = setup('windows');
+  try {
+    await Promise.resolve();
+    assert.equal(doc.documentElement.dataset.workhubPlatform, 'windows');
+    assert(doc.documentElement.hasAttribute('data-workhub-window-overlay'));
+    const actions = [...doc.querySelectorAll('.workhub-window-actions button')];
+    assert.deepEqual(actions.map(button => button.dataset.windowAction), ['minimize','maximize','close']);
+    const brand = doc.querySelector('.window-brand-trigger');
+    mouse(brand);
+    assert.deepEqual(calls, ['plugin:window|is_maximized']);
+    brand.click();
+    assert.equal(requests.at(-1).command, 'show_app_menu');
+    assert.equal(requests.at(-1).args.ready, false);
+    dom.window.WorkHubDesktopWindow.showMenu(true);
+    assert.equal(requests.at(-1).args.ready, true);
+    brand.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}));
+    assert.equal(calls.at(-1), 'show_app_menu');
+    actions[0].click();
+    assert.equal(calls.at(-1), 'plugin:window|minimize');
+    actions[1].click();
+    assert.equal(calls.at(-1), 'plugin:window|internal_toggle_maximize');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.at(-1), 'plugin:window|is_maximized');
+    actions[2].click();
+    assert.equal(calls.at(-1), 'plugin:window|close');
+    mouse(doc.querySelector('.workhub-window-drag'));
+    assert.equal(calls.at(-1), 'plugin:window|start_dragging');
+  } finally {dom.window.close();}
+});
+
+test('the production React header replaces the Windows fallback and opens the native menu with readiness', () => {
+  const {dom,doc,requests} = setup('windows');
+  try {
+    dom.window.eval(readFileSync('web/ui/page-layout.js', 'utf8') + '\nwindow.WorkHubLayout = WorkHubLayout;');
+    const controls = doc.getElementById('workhubWindowControls');
+    const actions = doc.querySelector('.workhub-window-actions');
+    const render = ready => dom.window.WorkHubLayout.renderChrome(controls, {
+      ready, home() {}, appMenu:() => dom.window.WorkHubDesktopWindow.showMenu(ready),
+    });
+    render(false);
+    doc.querySelector('.window-brand-trigger').click();
+    assert.equal(requests.at(-1).args.ready, false);
+    render(true);
+    const trigger = doc.querySelector('.window-brand-trigger');
+    trigger.click();
+    assert.equal(requests.at(-1).args.ready, true);
+    assert.equal(trigger.getAttribute('aria-haspopup'), 'menu');
+    const before = requests.length;
+    trigger.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}));
+    assert.equal(requests.length, before + 1);
+    assert.equal(requests.at(-1).command, 'show_app_menu');
+    assert.equal(doc.querySelectorAll('.window-brand-trigger').length, 1);
+    assert.equal(doc.querySelector('.workhub-window-actions'), actions);
+    assert.equal(actions.children.length, 3);
+  } finally {dom.window.close();}
+});
+
+test('Windows updates maximize and restore labels after resize and focus, ignoring stale responses', async () => {
+  const pending = [];
+  const {dom,doc} = setup('windows', command => command === 'plugin:window|is_maximized'
+    ? new Promise(resolve => pending.push(resolve)) : Promise.resolve());
+  try {
+    const maximize = doc.querySelector('[data-window-action=maximize]');
+    dom.window.YoluI18n = {text: message => ({'还原':'Restore','最大化':'Maximize'})[message] || message};
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    pending[1](true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(maximize.dataset.maximized, 'true');
+    assert.equal(maximize.getAttribute('aria-label'), 'Restore');
+    pending[0](false);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(maximize.dataset.maximized, 'true');
+    dom.window.dispatchEvent(new dom.window.Event('focus'));
+    pending[2](false);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(maximize.dataset.maximized, 'false');
+    assert.equal(maximize.title, 'Maximize');
+  } finally {dom.window.close();}
+});
+
+test('Windows iframe dragging uses the host without mounting controls or a native menu bridge', () => {
+  const {dom,calls,doc} = setup('windows');
+  try {
+    const frame = doc.createElement('iframe');
+    frame.src = 'http://127.0.0.1:12345/';
+    doc.body.append(frame);
+    const child = frame.contentWindow;
+    child.document.write('<body><div class="page-heading">Workspace</div></body>');
+    child.eval(source('windows'));
+    child.document.dispatchEvent(new child.Event('DOMContentLoaded'));
+    child.document.querySelector('.page-heading').dispatchEvent(new child.MouseEvent('mousedown', {bubbles:true,button:0,detail:1}));
+    assert.equal(calls.at(-1), 'plugin:window|start_dragging');
+    assert.equal(child.document.querySelector('.workhub-window-actions'), null);
+    assert.equal(child.WorkHubDesktopWindow, undefined);
   } finally {dom.window.close();}
 });

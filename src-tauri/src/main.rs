@@ -28,6 +28,21 @@ struct Host {
     chinese: AtomicBool,
 }
 
+#[cfg(any(target_os = "macos", windows))]
+fn window_capability(identifier: impl Into<String>) -> tauri::ipc::CapabilityBuilder {
+    let capability = tauri::ipc::CapabilityBuilder::new(identifier)
+        .window("main")
+        .permission("core:window:allow-start-dragging")
+        .permission("core:window:allow-internal-toggle-maximize");
+    #[cfg(windows)]
+    let capability = capability
+        .permission("core:window:allow-minimize")
+        .permission("core:window:allow-is-maximized")
+        .permission("core:window:allow-close")
+        .permission("allow-show-app-menu");
+    capability
+}
+
 fn status_url(_app: &tauri::AppHandle, message: &str) -> tauri::Url {
     // Use the same bundled origin on Windows/Linux and macOS. There is no
     // general filesystem or process command on either page.
@@ -93,15 +108,11 @@ fn connect(app: tauri::AppHandle, stop: bool) {
                         host.working.store(false, Ordering::SeqCst);
                         return;
                     }
-                    // Only the verified local backend can move the main window.
-                    // No filesystem, shell or general window-management access.
-                    #[cfg(target_os = "macos")]
+                    // Only the verified local backend can control the main window.
+                    #[cfg(any(target_os = "macos", windows))]
                     if let Err(error) = app.add_capability(
-                        tauri::ipc::CapabilityBuilder::new(format!("window-drag-{}", service.pid))
-                            .window("main")
-                            .remote(format!("{}/*", url.origin().ascii_serialization()))
-                            .permission("core:window:allow-start-dragging")
-                            .permission("core:window:allow-internal-toggle-maximize"),
+                        window_capability(format!("window-controls-{}", service.pid))
+                            .remote(format!("{}/*", url.origin().ascii_serialization())),
                     ) {
                         show_error(&app, &error.to_string());
                         host.working.store(false, Ordering::SeqCst);
@@ -136,8 +147,23 @@ fn set_ui_language(app: tauri::AppHandle, window: tauri::WebviewWindow, language
     }
     let chinese = language == "zh-CN";
     app.set_menu(menu(&app, chinese).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    window.hide_menu().map_err(|e| e.to_string())?;
     app.state::<Host>().chinese.store(chinese, Ordering::SeqCst);
     Ok(())
+}
+
+#[tauri::command]
+fn show_app_menu(app: tauri::AppHandle, window: tauri::WebviewWindow, ready: bool) -> Result<(), String> {
+    if !cfg!(windows) || window.label() != "main" {
+        return Err("Application popup menu is only available in the main Windows window".into());
+    }
+    let menu = app.menu().ok_or("Application menu is unavailable")?;
+    if let Some(item) = menu.get("home").and_then(|item| item.as_menuitem().cloned()) {
+        item.set_enabled(ready).map_err(|e| e.to_string())?;
+    }
+    window.popup_menu_at(&menu, tauri::LogicalPosition::new(9.0, 36.0))
+        .map_err(|e| e.to_string())
 }
 
 fn menu(app: &tauri::AppHandle, chinese: bool) -> tauri::Result<Menu<tauri::Wry>> {
@@ -157,17 +183,6 @@ fn menu(app: &tauri::AppHandle, chinese: bool) -> tauri::Result<Menu<tauri::Wry>
         true,
         Some("CmdOrCtrl+Q"),
     )?;
-    let work = Submenu::with_items(
-        app,
-        "Yolu",
-        true,
-        &[
-            &reconnect,
-            &PredefinedMenuItem::separator(app)?,
-            &close,
-            &quit,
-        ],
-    )?;
     let edit = Submenu::with_items(
         app,
         label("编辑", "Edit"),
@@ -182,7 +197,31 @@ fn menu(app: &tauri::AppHandle, chinese: bool) -> tauri::Result<Menu<tauri::Wry>
             &PredefinedMenuItem::select_all(app, Some(label("全选", "Select all")))?,
         ],
     )?;
-    Menu::with_items(app, &[&work, &edit])
+    if cfg!(windows) {
+        let home = MenuItem::with_id(app, "home", label("工作区首页", "Workspace home"), false, None::<&str>)?;
+        Menu::with_items(app, &[
+            &home,
+            &PredefinedMenuItem::separator(app)?,
+            &reconnect,
+            &edit,
+            &PredefinedMenuItem::separator(app)?,
+            &close,
+            &quit,
+        ])
+    } else {
+        let work = Submenu::with_items(
+            app,
+            "Yolu",
+            true,
+            &[
+                &reconnect,
+                &PredefinedMenuItem::separator(app)?,
+                &close,
+                &quit,
+            ],
+        )?;
+        Menu::with_items(app, &[&work, &edit])
+    }
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -204,7 +243,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![set_ui_language])
+        .invoke_handler(tauri::generate_handler![set_ui_language, show_app_menu])
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             // Refuse to silently switch an existing window to another profile.
             let host = app.state::<Host>();
@@ -239,17 +278,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 service: Mutex::new(None), origin: Mutex::new(None), working: AtomicBool::new(false), chinese: AtomicBool::new(false) });
             app.add_capability(tauri::ipc::CapabilityBuilder::new("startup-ui-language")
                 .window("main").permission("allow-set-ui-language"))?;
+            #[cfg(any(target_os = "macos", windows))]
+            app.add_capability(window_capability("startup-window-controls"))?;
             app.set_menu(menu(app.handle(), false)?)?;
             let handle = app.handle().clone();
             let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title(app.config().product_name.as_deref().unwrap_or("Yolu")).inner_size(1380.0, 900.0).min_inner_size(900.0, 600.0).center()
-                .initialization_script_for_all_frames(format!("{}({});", include_str!("window-chrome.js"), cfg!(target_os = "macos")));
+                .initialization_script_for_all_frames(format!("{}({:?});", include_str!("window-chrome.js"), std::env::consts::OS));
+            #[cfg(windows)]
+            let builder = builder.decorations(false).visible(false);
             #[cfg(target_os = "macos")]
             let builder = {
-                app.add_capability(tauri::ipc::CapabilityBuilder::new("startup-window-drag")
-                    .window("main")
-                    .permission("core:window:allow-start-dragging")
-                    .permission("core:window:allow-internal-toggle-maximize"))?;
                 builder.title_bar_style(tauri::TitleBarStyle::Overlay)
                     .hidden_title(true)
                     .traffic_light_position(tauri::LogicalPosition::new(12.0, 20.0))
@@ -269,6 +308,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .on_new_window(|_, _| NewWindowResponse::Deny)
                 .build()?;
+            #[cfg(windows)]
+            {
+                // Hiding retains native menu accelerators and popup handling.
+                window.hide_menu()?;
+                window.show()?;
+            }
             #[cfg(target_os = "macos")]
             window_controls::align(&window);
             #[cfg(target_os = "macos")]
@@ -291,6 +336,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             "reconnect" => connect(app.clone(), false),
             "quit" => connect(app.clone(), true),
             "close" => { if let Some(window) = app.get_webview_window("main") { let _ = window.close(); } }
+            "home" => { if let Some(window) = app.get_webview_window("main") {
+                let _ = window.eval("window.dispatchEvent(new Event('workhub:desktop-home'))");
+            } }
             _ => (),
         })
         .run(context)?;

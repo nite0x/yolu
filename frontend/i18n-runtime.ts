@@ -27,6 +27,6 @@ window.YoluI18n = { language, locale, text, applyStatic };
 if (document.documentElement) document.documentElement.lang = locale;
 applyStatic();
 
-// Native menu localization is the only application command granted here.
+// Synchronize native menu labels with the active interface language.
 const native = (window.top as Window & { __TAURI_INTERNALS__?: {invoke(command: string, args: Record<string, unknown>): Promise<unknown>} })?.__TAURI_INTERNALS__;
 if (native) void native.invoke("set_ui_language", {language:locale}).catch(() => {});

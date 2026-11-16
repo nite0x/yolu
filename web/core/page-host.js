@@ -89,6 +89,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (controls) window.WorkHubLayout.renderChrome(controls,{
       ready:!!page?.ready,
       home:() => openPage({route:'/requirements',environment:page?.snapshot.environment}),
+      appMenu:window.WorkHubDesktopWindow ? () => window.WorkHubDesktopWindow.showMenu(!!page?.ready) : undefined,
     });
   }
   function renderPaneChrome() {
@@ -409,6 +410,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   });
   window.addEventListener('resize',renderLayout);
   window.addEventListener('workhub:desktop-chrome',renderLayout);
+  window.addEventListener('workhub:desktop-home', () => {
+    const page = conversationsPresented ? sharedLayout() ? navigation : group.pages[0] : workspace;
+    if (page?.ready) openPage({route:'/requirements',environment:page.snapshot.environment});
+  });
   function followURL() {
     if (appliedURL === location.href) return;
     appliedURL = location.href;

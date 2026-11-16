@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-show-app-menu"
+description = "Allow the main Windows window to open its native application dropdown menu."
+commands.allow = ["show_app_menu"]

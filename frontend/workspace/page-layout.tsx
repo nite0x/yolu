@@ -34,15 +34,23 @@ const roots = new WeakMap<HTMLElement, Root>()
 interface WindowChromeProps {
   ready: boolean
   home: () => void
+  appMenu?: () => void
 }
 function WindowChrome(props: WindowChromeProps) {
+  const appMenu = props.appMenu
+  const trigger = <button type="button" className="window-brand-trigger" aria-label={uiText("Yolu 菜单")} title={uiText("Yolu 菜单")} aria-haspopup="menu" onClick={appMenu} onKeyDown={appMenu ? event => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+    event.preventDefault()
+    appMenu()
+  } : undefined}>
+    <img src="/yolu.svg" width="16" height="16" alt="" />
+    <span>Yolu</span>
+    <ChevronDown size={12} aria-hidden="true" />
+  </button>
+  if (appMenu) return trigger
   return <DropdownMenu.Root>
     <DropdownMenu.Trigger asChild>
-      <button type="button" className="window-brand-trigger" aria-label={uiText("Yolu 菜单")} title={uiText("Yolu 菜单")}>
-        <img src="/yolu.svg" width="16" height="16" alt="" />
-        <span>Yolu</span>
-        <ChevronDown size={12} aria-hidden="true" />
-      </button>
+      {trigger}
     </DropdownMenu.Trigger>
     <DropdownMenu.Portal>
       <DropdownMenu.Content className="window-brand-menu shadcn-scope" side="bottom" align="start" sideOffset={6} collisionPadding={8}>

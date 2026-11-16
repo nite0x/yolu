@@ -59,6 +59,19 @@ test('desktop shares a 52px rail from the first paint and ignores expanded sideb
   assert.equal(h.w.document.body.style.getPropertyValue('--workspace-shared-sidebar-width'), '52px');
 });
 
+test('desktop native home menu preserves the active environment when leaving projects and conversations', t => {
+  const h = harness(t, '#/requirements', {desktop:true});
+  open(h,{route:'/projects/app',environment:'remote'});
+  h.w.dispatchEvent(new h.w.Event('workhub:desktop-home'));
+  assert.equal(h.w.location.hash, '#/requirements');
+  assert.equal(h.w.location.search, '?environment=remote');
+  open(h,{...conversation('one'),environment:'remote'});
+  h.w.dispatchEvent(new h.w.Event('workhub:desktop-home'));
+  assert.deepEqual(visible(h), [h.workspace]);
+  assert.equal(h.w.location.hash, '#/requirements');
+  assert.equal(h.w.location.search, '?environment=remote');
+});
+
 test('desktop conversation list leaves space for detail on resize and restores the saved width', t => {
   const h = harness(t, '#/requirements', {desktop:true, listWidth:520});
   open(h, conversation('one'));
