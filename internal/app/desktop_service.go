@@ -292,7 +292,10 @@ func stopDesktopService(dataDir string) error {
 func (a *App) stopServiceHandler(w http.ResponseWriter, r *http.Request) {
 	apps := []*App{a}
 	if a.environments != nil {
-		a.environments.mu.Lock()
+		if !a.environments.mu.TryLock() {
+			httpx.WriteError(w, 409, "有项目操作正在执行，请完成后重试")
+			return
+		}
 		defer a.environments.mu.Unlock()
 		for _, remote := range a.environments.apps {
 			apps = append(apps, remote)

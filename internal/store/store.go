@@ -51,6 +51,10 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := s.migrateAssistant(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	// A crash can interrupt filesystem work. Preserve the records and require explicit retry.
 	_, err = db.Exec(`UPDATE requirements SET state='partial' WHERE state='creating'; UPDATE members SET state='failed', error='上次创建被中断，请检查后重试' WHERE state IN ('creating','pending')`)
 	if err != nil {

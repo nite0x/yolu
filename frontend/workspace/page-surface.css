@@ -1,0 +1,10 @@
+.workspace-split-layout {
+  display: grid;
+  grid-template-columns: var(--workspace-list-width, 280px) minmax(0, 1fr);
+  gap: var(--workspace-pane-gap, 8px);
+  height: 100%;
+  min-height: 0;
+}
+@media (max-width: 760px) {
+  .workspace-split-layout { grid-template-columns: minmax(0, 1fr); }
+}

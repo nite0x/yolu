@@ -59,6 +59,7 @@
     <a class="brand" href="/" aria-label="Yolu 首页" data-i18n-aria-label="Yolu 首页"><img class="brand-mark" src="/yolu.svg" alt="" width="36" height="36"><span>Yolu<small data-i18n="让每一份工作，各就其位。">让每一份工作，各就其位。</small></span></a>
     <div class="nav-label" data-i18n="工作台">工作台</div>
     <nav aria-label="主导航" data-i18n-aria-label="主导航">
+      <button class="nav-item" data-view="assistant" aria-label="Yolu 助手" title="Yolu 助手" data-i18n-title="Yolu 助手" data-i18n-aria-label="Yolu 助手"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="Yolu 助手">Yolu 助手</span></button>
       <button class="nav-item active" data-view="requirements" aria-label="任务" title="任务" data-i18n-title="任务" data-i18n-aria-label="任务"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-text" data-i18n="任务">任务</span><span class="nav-count" id="reqCount">0</span></button>
       <button class="nav-item" data-view="projects" aria-label="项目" title="项目" data-i18n-title="项目" data-i18n-aria-label="项目"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-text" data-i18n="项目">项目</span><span class="nav-count" id="projectCount">0</span></button>
       <button class="nav-item" data-view="sessions" aria-label="对话" title="对话" data-i18n-title="对话" data-i18n-aria-label="对话"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="对话">对话</span><span id="sessionNavigationStatus" class="session-navigation-status" role="status"></span></button>
@@ -80,7 +81,7 @@
       <section id="stats" class="stats" aria-label="工作台统计" data-i18n-aria-label="工作台统计"></section>
       <section id="settingsPage" class="settings-page shadcn-scope" aria-label="设置" hidden data-i18n-aria-label="设置"></section>
       <section class="content-panel" id="workContent">
-        <aside id="taskBrowser" class="task-browser shadcn-scope" aria-label="任务列表" hidden data-i18n-aria-label="任务列表">
+        <aside id="taskBrowser" class="task-browser workspace-pane shadcn-scope" aria-label="任务列表" hidden data-i18n-aria-label="任务列表">
           <div class="task-browser-header">
             <div class="task-browser-heading"><h2 data-i18n="任务">任务</h2><span id="taskCreateSlot"></span></div>
             <div id="taskToolbarSlot"></div>
@@ -89,8 +90,9 @@
         </aside>
         <div class="panel-toolbar" id="panelToolbar"><div class="panel-title" id="panelTitle" tabindex="-1" data-i18n="全部任务">全部任务</div><div class="toolbar-actions"><div class="shadcn-scope" id="projectEnvironmentWrap" hidden></div><div id="searchField" class="shadcn-scope"></div><span id="projectAddButton" class="shadcn-scope" hidden></span></div></div>
         <div id="taskListResize" class="task-resize-handle" role="separator" tabindex="0" aria-label="调整任务列表宽度" aria-orientation="vertical" aria-controls="taskBrowser taskDetailPane" aria-valuemin="240" aria-valuemax="640" aria-valuenow="300" hidden data-i18n-aria-label="调整任务列表宽度"></div>
-        <section id="taskDetailPane" class="task-detail-pane"><div id="taskHeadingSlot"></div><section id="taskProjectsView" class="task-projects-view" aria-label="项目工作区" data-i18n-aria-label="项目工作区"><div id="content" aria-live="polite"><div class="loading" data-i18n="正在读取本地状态…">正在读取本地状态…</div></div></section></section>
+        <section id="taskDetailPane" class="task-detail-pane workspace-pane"><div id="taskHeadingSlot"></div><section id="taskProjectsView" class="task-projects-view" aria-label="项目工作区" data-i18n-aria-label="项目工作区"><div id="content" aria-live="polite"><div class="loading" data-i18n="正在读取本地状态…">正在读取本地状态…</div></div></section></section>
       </section>
+      <section id="globalAssistantPage" aria-label="Yolu 助手" hidden data-i18n-aria-label="Yolu 助手"><div id="globalAssistantRoot"></div></section>
       <section id="sessionsPage" class="sessions-page" aria-label="对话" hidden data-i18n-aria-label="对话"><div id="sessionPageMount"></div></section>
     </main>
   </div>

@@ -119,6 +119,8 @@ for (const readOnly of [true, false]) test(`the production UI mounts before cont
   const h = await harness(t, readOnly);
   assert.match(h.$('#content').textContent, /关联项目与工作目录/);
   assert(h.$('#content .task-project-list'));
+  assert(h.$('#taskBrowser').classList.contains('workspace-pane'));
+  assert(h.$('#taskDetailPane').classList.contains('workspace-pane'));
   assert(h.$('#projectForm [data-slot="input"]'));
   assert(h.$('#requirementForm [data-slot="native-select"]'));
   const ids = [...h.document.querySelectorAll('[id]')].map(node => node.id);
@@ -146,6 +148,9 @@ test('search, archive filtering and project selection retain their existing acti
 
 test('desktop project controls stay in the list through search, refresh and page changes', async t => {
   const h = await harness(t, true, {desktop:true, width:960, route:'/projects'});
+  assert.equal(h.$('#taskDetailPane').classList.contains('workspace-pane'), false);
+  assert(h.$('#projectListPane').classList.contains('workspace-pane'));
+  assert(h.$('#projectDetail').classList.contains('workspace-pane'));
   const toolbar = h.$('#projectListPane #panelToolbar');
   const search = h.$('#projectListPane #search');
   const projectList = h.$('#projectListPane');
@@ -4057,4 +4062,46 @@ test('clone errors stay in the dialog when its selected environment differs from
  assert.equal(h.$('#projectError').hidden,false);
  assert.match(h.$('#projectError').textContent,/Remote authentication failed/);
  assert.equal(h.$('#chooseProjectDirectory').disabled,true);
+});
+
+for (const desktop of [false, true]) test(`global assistant leads shared navigation and survives page transitions (desktop=${desktop})`, async t => {
+  const h = await harness(t, false, {desktop, width:1280, route:'/projects'});
+  const opens = [];
+  const assistantOptions = [];
+  h.window.WorkHubAssistant = {openGlobal(request, options) {opens.push(request); assistantOptions.push(options);}, open() {}, close() {}};
+  assert.equal(h.$('.sidebar nav [data-view]').dataset.view, 'assistant');
+  await h.navigate('/assistant');
+  assert.equal(h.$('#globalAssistantPage').hidden, false);
+  assert.equal(h.$('#sessionsPage').hidden, true);
+  assert.equal(h.$('#workContent').hidden, true);
+  assert.equal(h.$('[data-view="assistant"]').getAttribute('aria-current'), 'page');
+  assert(opens.length > 0);
+  await opens[0]('/api/assistant/conversations');
+  assert.equal(h.requests.at(-1).options.headers['X-Environment-ID'], 'local');
+  const root = h.$('#globalAssistantRoot');
+  for (const route of ['/projects', '/requirements', '/sessions', '/settings']) {
+    await h.navigate(route);
+    assert.equal(h.$('#globalAssistantPage').hidden, true);
+    await h.navigate('/assistant');
+    assert.equal(h.$('#globalAssistantRoot'), root);
+    assert.equal(h.$('#globalAssistantPage').hidden, false);
+  }
+  await h.navigate('/projects/app');
+  await h.navigate('/assistant');
+  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',project_id:'app'});
+  assert.match(assistantOptions.at(-1).contextLabel(), /App/);
+  await assistantOptions.at(-1).openResource({kind:'workspace',id:'task',environment_id:'local',name:'Billing'});
+  await settle();
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  await h.navigate('/assistant');
+  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',workspace_id:'task'});
+  await assistantOptions.at(-1).openResource({kind:'project',id:'backend',environment_id:'local',name:'Backend'});
+  await settle();
+  assert.equal(h.$('#projectDetail h2').textContent, 'Backend');
+  await h.navigate('/assistant');
+  await assistantOptions.at(-1).openResource({kind:'conversation',id:'session-1',environment_id:'local',name:'Billing review'});
+  await settle();
+  assert.equal(h.window.location.hash, '#/sessions');
+  assert.equal(h.currentSession()?.session, 'session-1');
+  await assert.rejects(assistantOptions.at(-1).openResource({kind:'project',id:'../../outside',environment_id:'local',name:'Invalid'}), /资源信息无效/);
 });

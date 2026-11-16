@@ -34,7 +34,16 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var draft struct {
-		Text   string `json:"text"`
+		Text             string `json:"text"`
+		AssistantRequest *struct {
+			ID      string `json:"request_id"`
+			Text    string `json:"text"`
+			Context *struct {
+				EnvironmentID string `json:"environment_id"`
+				WorkspaceID   string `json:"workspace_id,omitempty"`
+				ProjectID     string `json:"project_id,omitempty"`
+			} `json:"context,omitempty"`
+		} `json:"assistant_request,omitempty"`
 		Images []struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
@@ -68,6 +77,17 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 	if len(draft.Text) > 128000 || len(draft.Project) > 200 || len(draft.Reading.Anchor) > 1000 || len(draft.Reading.Latest) > 2000 || draft.Updated <= 0 {
 		httpx.WriteError(w, 400, "草稿内容无效")
 		return
+	}
+	if pending := draft.AssistantRequest; pending != nil && (len(pending.ID) == 0 || len(pending.ID) > 100 || len(pending.Text) > 64000) {
+		httpx.WriteError(w, 400, "草稿内容无效")
+		return
+	}
+	if pending := draft.AssistantRequest; pending != nil && pending.Context != nil {
+		context := pending.Context
+		if len(context.EnvironmentID) > 200 || len(context.WorkspaceID) > 200 || len(context.ProjectID) > 200 {
+			httpx.WriteError(w, 400, "草稿内容无效")
+			return
+		}
 	}
 	images := []string{}
 	for _, image := range draft.Images {

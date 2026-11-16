@@ -1482,3 +1482,14 @@ test("streaming message text does not rerender status, permission or model widge
   assert.deepEqual(h.errors,[]);
  } finally {h.dispose();}
 });
+
+
+test("native conversations render through the shared conversation panel", async () => {
+  const h = mount(true);
+  try {
+    await until(() => !!h.w.document.querySelector('[data-slot="conversation-panel"]'));
+    assert.equal(h.w.document.querySelectorAll('[data-slot="conversation-panel"]').length, 1);
+    assert(h.w.document.querySelector('[data-slot="conversation-panel"] #assistantChatTitle'));
+    assert(h.w.document.querySelector('[data-slot="conversation-panel"] .aui-composer-root'));
+  } finally {h.dispose();}
+});

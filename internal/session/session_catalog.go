@@ -18,6 +18,13 @@ type catalogEntry struct {
 	err     error
 }
 
+// RefreshConversationCatalog shares native discovery and index writes with the
+// sidebar without opening or resuming any coding conversation.
+func (a *Service) RefreshConversationCatalog(ctx context.Context) error {
+	_, err := a.sessionCatalog(ctx, sessionScope{}, false, false)
+	return err
+}
+
 // Share pagination and index writes across simultaneous sidebar/list requests.
 // Runtime state is decorated by each caller and never cached in this catalog.
 func (a *Service) sessionCatalog(ctx context.Context, scope sessionScope, archived, force bool) (map[string]codex.Session, error) {

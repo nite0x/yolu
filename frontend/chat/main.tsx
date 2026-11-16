@@ -40,3 +40,5 @@ export const bridge = {
   },
   updateSession(session: NonNullable<ChatOptions['session']>) { active?.updateSession(session); },
 };
+
+export {openGlobalAssistant, flushGlobalAssistantDraft} from "./global-assistant";

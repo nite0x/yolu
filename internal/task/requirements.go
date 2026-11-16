@@ -50,152 +50,9 @@ func (a *Service) CreateRequirementHandler(w http.ResponseWriter, r *http.Reques
 	if !httpx.Decode(w, r, &in) {
 		return
 	}
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
-	in.Name = strings.TrimSpace(in.Name)
-	in.Slug = strings.TrimSpace(in.Slug)
-	if in.Slug == "" {
-		in.Slug = "task-" + model.NewID()[:12]
-	}
-	in.Branch = strings.TrimSpace(in.Branch)
-	if in.Name == "" || len([]rune(in.Name)) > 100 || len(in.Description) > 20000 {
-		httpx.WriteError(w, 400, "请填写任务名称（最多 100 字），说明最多 20000 字节")
-		return
-	}
-	if !workspace.ValidSlug.MatchString(in.Slug) {
-		httpx.WriteError(w, 400, "目录标识应为 1–64 位英文字母、数字、短横线或下划线，以字母或数字开头")
-		return
-	}
-	if in.Branch == "" {
-		in.Branch = "codex/" + in.Slug
-	}
-	ps, err := a.Workspace.Store.ProjectMap()
+	q, err := a.CreateWorkspace(r.Context(), in)
 	if err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	if in.PrimaryProjectID != "" {
-		if _, ok := ps[in.PrimaryProjectID]; !ok {
-			httpx.WriteError(w, 400, "请选择已登记的主项目")
-			return
-		}
-	}
-	ids := []string{}
-	seen := map[string]bool{}
-	if in.PrimaryProjectID != "" {
-		ids = append(ids, in.PrimaryProjectID)
-		seen[in.PrimaryProjectID] = true
-	}
-	for _, id := range in.ProjectIDs {
-		if !seen[id] {
-			if _, ok := ps[id]; !ok {
-				httpx.WriteError(w, 400, "参与项目不存在，请刷新页面")
-				return
-			}
-			ids = append(ids, id)
-			seen[id] = true
-		}
-	}
-	selections, err := selectionsByProject(in.Members)
-	if err != nil {
-		httpx.WriteError(w, 400, err.Error())
-		return
-	}
-	for _, selection := range in.Members {
-		if _, ok := ps[selection.ProjectID]; !ok {
-			httpx.WriteError(w, 400, "参与项目不存在，请刷新页面")
-			return
-		}
-		if !seen[selection.ProjectID] {
-			ids = append(ids, selection.ProjectID)
-			seen[selection.ProjectID] = true
-		}
-	}
-	if len(ids) == 0 || len(ids) > 30 {
-		httpx.WriteError(w, 400, "请选择 1–30 个项目")
-		return
-	}
-	if in.PrimaryProjectID == "" {
-		in.PrimaryProjectID = ids[0]
-	}
-	var count int
-	if err := a.Workspace.Store.DB.QueryRow(`SELECT count(*) FROM requirements WHERE slug=? COLLATE NOCASE`, in.Slug).Scan(&count); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	if count > 0 {
-		httpx.WriteError(w, 409, "任务目录标识已使用，请换一个标识")
-		return
-	}
-	directory := platform.JoinWorkspacePath(a.Workspace.Root, in.Slug)
-	resolved, err := workspace.Eval(r.Context(), a.Workspace.Root)
-	if err != nil || resolved != a.Workspace.Root || !platform.Within(a.Workspace.Root, directory) {
-		httpx.WriteError(w, 422, "工作区根目录已移动或不可用，请检查服务配置")
-		return
-	}
-	if _, err := workspace.Stat(r.Context(), directory, false); !errors.Is(err, os.ErrNotExist) {
-		httpx.WriteError(w, 409, "工作区目录已存在或无法检查，不能覆盖："+directory)
-		return
-	}
-	q := model.Requirement{ID: model.NewID(), Name: in.Name, Slug: in.Slug, Description: in.Description, Branch: in.Branch, Path: directory, PrimaryProjectID: in.PrimaryProjectID, State: "creating", CreatedAt: model.Now(), Members: []model.Member{}}
-	problems := []string{}
-	for _, id := range ids {
-		p := ps[id]
-		m, err := selectedMember(r.Context(), p, directory, in.Branch, selections[id])
-		if err != nil {
-			problems = append(problems, p.Name+"："+err.Error())
-			continue
-		}
-		q.Members = append(q.Members, m)
-	}
-	if len(problems) > 0 {
-		httpx.WriteJSON(w, 422, map[string]any{"error": "创建前检查未通过，未创建任何 Worktree", "details": problems})
-		return
-	}
-	hasNew := false
-	for _, m := range q.Members {
-		hasNew = hasNew || createsWorktree(m.Mode)
-	}
-	q.HasWorkspace = hasNew
-	if !hasNew {
-		q.Branch = ""
-	}
-	if hasNew {
-		if err := workspace.Mkdir(r.Context(), directory, 0755, false); err != nil {
-			httpx.WriteError(w, 409, "无法创建工作区目录："+err.Error())
-			return
-		}
-	}
-	tx, err := a.Workspace.Store.DB.Begin()
-	if err != nil {
-		if hasNew {
-			_ = workspace.Remove(r.Context(), directory)
-		}
-		httpx.DbError(w, err)
-		return
-	}
-	defer tx.Rollback()
-	_, err = tx.Exec(`INSERT INTO requirements(id,name,slug,description,branch,path,primary_project_id,state,created_at,has_workspace) VALUES(?,?,?,?,?,?,?,?,?,?)`, q.ID, q.Name, q.Slug, q.Description, q.Branch, q.Path, q.PrimaryProjectID, q.State, q.CreatedAt, q.HasWorkspace)
-	if err == nil {
-		for _, m := range q.Members {
-			_, err = tx.Exec(`INSERT INTO members(requirement_id,project_id,path,base_commit,state,mode,base_ref,branch) VALUES(?,?,?,?,?,?,?,?)`, q.ID, m.ProjectID, m.Path, m.BaseCommit, m.State, m.Mode, m.BaseRef, m.Branch)
-			if err != nil {
-				break
-			}
-		}
-	}
-	if err == nil {
-		err = tx.Commit()
-	}
-	if err != nil {
-		if hasNew {
-			_ = workspace.Remove(r.Context(), directory)
-		}
-		httpx.DbError(w, err)
-		return
-	}
-	if err := a.Prepare(r.Context(), &q, ps); err != nil {
-		httpx.DbError(w, err)
+		writeOperationError(w, err)
 		return
 	}
 	httpx.WriteJSON(w, 201, q)
@@ -261,18 +118,31 @@ func (a *Service) PrepareMembers(ctx context.Context, q *model.Requirement, ps m
 		return err
 	}
 	briefErr := WriteBriefContext(ctx, *q)
+	if briefErr != nil {
+		q.ContextWarning = briefErr.Error()
+	}
 	for i := range q.Members {
 		m := &q.Members[i]
 		if m.State == "ready" || (selected != nil && !selected[m.ProjectID]) {
 			continue
 		}
+		initialExisting := m.Mode == "existing" && m.State == "pending"
 		restoreRemoved := m.State == "removed"
 		verify := func() error {
 			observed := *m
 			if restoreRemoved {
 				observed.State = "ready"
 			}
-			return VerifyMember(ctx, ps[m.ProjectID], observed, q.Branch)
+			if err := VerifyMember(ctx, ps[m.ProjectID], observed, q.Branch); err != nil {
+				return err
+			}
+			if initialExisting {
+				head, err := workspace.Git(ctx, m.Path, "rev-parse", "--verify", "HEAD^{commit}")
+				if err != nil || strings.TrimSpace(head) != m.BaseCommit {
+					return fmt.Errorf("已有分支提交已变化，请检查实际 Worktree 后重新确认")
+				}
+			}
+			return nil
 		}
 		m.State = "creating"
 		m.Error = ""
@@ -294,6 +164,12 @@ func (a *Service) PrepareMembers(ctx context.Context, q *model.Requirement, ps m
 			createErr = err
 		} else if m.Mode == "existing" || restoreRemoved {
 			createErr = availableLocalBranch(ctx, p, m.Branch)
+			if createErr == nil && initialExisting {
+				head, err := workspace.Git(ctx, p.Path, "rev-parse", "--verify", "refs/heads/"+m.Branch+"^{commit}")
+				if err != nil || strings.TrimSpace(head) != m.BaseCommit {
+					createErr = fmt.Errorf("已有分支提交已变化，请重新检查并确认")
+				}
+			}
 			if createErr == nil {
 				_, createErr = workspace.Git(ctx, p.Path, "worktree", "add", "--", m.Path, m.Branch)
 			}

@@ -11,6 +11,7 @@ Start with the [project README](../README.md) for an overview and installation e
 ## Developing and releasing
 
 - [Development guide](development.md): architecture, source builds, tests, native packages and signing.
+- [Shared UI guidelines](ui-guidelines.md) covers reusable layouts, components, tokens and cross-entry-point verification.
 - [Contribution guide](../CONTRIBUTING.md): scope, checks and pull requests.
 - [Release checklist](open-source-release.md): requirements for publishing a version.
 - [Session architecture](session-architecture.md): scope resolution, storage, API routing and runtime behavior.
