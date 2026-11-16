@@ -13,6 +13,39 @@ function Help({ children }: { children: ReactNode }) {
 }
 export function SettingsPage() {
   return <>
+    <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="browserAccessTitle">
+      <form id="browserAccessForm">
+        <Heading id="browserAccessTitle" title={uiText("浏览器访问")}>
+          {uiText("桌面端与浏览器共用后台、项目和工作区。开启后，可从局域网内的其他设备登录。")}
+        </Heading>
+        <fieldset id="browserAccessFields" disabled>
+          <Check id="browserAccessEnabled" label={uiText("启用局域网访问")} />
+          <Field id="browserAccessPort" label={uiText("访问端口")}>
+            <Input id="browserAccessPort" type="number" min={1024} max={65535} defaultValue={4318} required />
+          </Field>
+          <div id="browserAccessConnection" hidden>
+            <Field id="browserAccessCode" label={uiText("配对码")} help={uiText("在浏览器登录页输入此码。更换配对码会断开已有浏览器连接。")}>
+              <Input id="browserAccessCode" readOnly autoComplete="off" spellCheck={false} />
+            </Field>
+            <div className="detail-actions">
+              <Button type="button" id="copyBrowserAccessCode" variant="outline" size="sm">{uiText("复制配对码")}</Button>
+              <Button type="button" id="resetBrowserAccessCode" variant="outline" size="sm">{uiText("更换配对码")}</Button>
+            </div>
+            <p className="settings-help">{uiText("在其他设备上打开主机的局域网 IP 地址。")}</p>
+            <ul id="browserAccessAddresses" className="browser-access-addresses" />
+          </div>
+          <Help>{uiText("浏览器连接使用 HTTP，请在可信的局域网内使用。Git、终端和对话在主机的执行环境中运行。")}</Help>
+          <div className="settings-actions">
+            <Button type="submit" id="saveBrowserAccess">{uiText("保存浏览器访问设置")}</Button>
+          </div>
+        </fieldset>
+        <p id="browserAccessStatus" role="status" className="settings-help" />
+      </form>
+      <form id="browserAccessLogout" action="/browser-logout" method="post" target="_top" hidden>
+        <Help>{uiText("请在主机上的 Yolu 中配置浏览器访问")}</Help>
+        <Button type="submit" variant="outline" className="mt-3">{uiText("退出浏览器登录")}</Button>
+      </form>
+    </Card>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="appearanceTitle"><form id="appearanceForm">
       <Heading id="appearanceTitle" title={uiText("界面配色")}>{uiText("为工作台选择配色，立即应用到整个工作台，无需重新加载。")}</Heading>
       <Field id="colorThemeSelect" label={uiText("配色方案")}><NativeSelect id="colorThemeSelect" name="color_theme"><Option value="mint">{uiText("Yolu 薄荷")}</Option><Option value="classic">{uiText("经典蓝紫")}</Option><Option value="light">{uiText("浅色")}</Option><Option value="dark">{uiText("深色")}</Option><Option value="system">{uiText("跟随系统")}</Option></NativeSelect></Field>

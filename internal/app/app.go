@@ -28,6 +28,7 @@ type App struct {
 	pickDirectory       func(context.Context) (string, error)
 	directoryPickerBusy atomic.Bool
 	terminalWorktreeMu  sync.RWMutex
+	browser             *browserAccess
 }
 
 func openApp(dataDir, root string) (*App, error) { return openAppForWorkspace(dataDir, root, nil) }
@@ -43,6 +44,7 @@ func openAppForWorkspace(dataDir, root string, remote *workspace.Client) (*App, 
 	projects.TaskContextUpdated = task.WriteBriefContext
 	a := &App{Workspace: env, Tasks: tasks, Projects: projects, Sessions: sessions, Terminals: terminal.New(), token: model.NewID() + model.NewID(), pickDirectory: platform.PickDirectory}
 	if remote == nil {
+		a.browser = newBrowserAccess(a)
 		projects.CheckWorktreeIdle = a.checkTerminalWorktree
 		projects.ReserveWorktree = a.reserveWorktree
 	}
@@ -54,6 +56,9 @@ func openAppForWorkspace(dataDir, root string, remote *workspace.Client) (*App, 
 func (a *App) Close() error {
 	a.closeOnce.Do(func() {
 		a.Workspace.Closing.Store(true)
+		if a.browser != nil {
+			a.browser.close()
+		}
 		if a.Terminals != nil {
 			a.Terminals.Close()
 		}

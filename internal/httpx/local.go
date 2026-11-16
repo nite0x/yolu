@@ -9,15 +9,24 @@ import (
 )
 
 func LocalHandler(token string, readOnly func() bool, closing func() bool, next http.Handler) http.Handler {
+	return Handler(token, readOnly, closing, func(r *http.Request) bool { return IsLocalHost(r.Host) }, next)
+}
+
+func IsLocalHost(host string) bool {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return host == "localhost" || net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()
+}
+
+// Handler retains the API's CSRF and same-origin checks for each authenticated
+// transport. The transport determines which request hosts it accepts.
+func Handler(token string, readOnly func() bool, closing func() bool, allowHost func(*http.Request) bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
-		h := r.Host
-		if host, _, err := net.SplitHostPort(h); err == nil {
-			h = host
-		}
-		if h != "localhost" && (net.ParseIP(h) == nil || !net.ParseIP(h).IsLoopback()) {
+		if !allowHost(r) {
 			WriteError(w, 403, "仅允许本地访问")
 			return
 		}

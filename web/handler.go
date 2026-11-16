@@ -22,6 +22,24 @@ func ValidColorTheme(theme string) bool {
 	return false
 }
 
+func BrowserLogin(w http.ResponseWriter, language string, failed bool) {
+	if language != "en" && language != "zh-CN" {
+		language = "system"
+	}
+	b, _ := Assets.ReadFile("browser-login.html")
+	page := strings.ReplaceAll(string(b), "__UI_LANGUAGE__", language)
+	hidden := "hidden"
+	if failed {
+		hidden = ""
+	}
+	page = strings.ReplaceAll(page, "__LOGIN_ERROR_HIDDEN__", hidden)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if failed {
+		w.WriteHeader(http.StatusUnauthorized)
+	}
+	_, _ = w.Write([]byte(page))
+}
+
 func Handler(token string, readOnly bool, settings ...func() UISettings) http.Handler {
 	static := http.FileServer(http.FS(Assets))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

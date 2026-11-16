@@ -2,6 +2,12 @@ html[data-workhub-desktop] {
   --workspace-window-header-height: 36px;
 }
 
+/* Both entry points use the application layout. Native title bars are added
+   by the desktop host, which supplies data-workhub-platform separately. */
+html[data-workhub-desktop]:not([data-workhub-platform]) {
+  --workspace-window-header-height: 0px;
+}
+
 html[data-workhub-platform=windows] {
   --workspace-window-header-height: 32px;
 }

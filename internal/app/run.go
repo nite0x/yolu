@@ -162,6 +162,9 @@ func Run() {
 		log.Fatal(err)
 	}
 	defer os.Remove(filepath.Join(*data, "service.json"))
+	if err := a.browser.restore(); err != nil {
+		log.Printf("Browser access: %v", err)
+	}
 	log.Printf("Yolu: %s | SQLite: %s | worktrees: %s", address, *data, a.Workspace.Root)
 	go func() {
 		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {

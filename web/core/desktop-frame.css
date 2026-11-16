@@ -1,4 +1,5 @@
-/* Browser pages keep their expandable sidebar. */
+/* The retained desktop attribute selects the shared application layout.
+   Native window integration is supplied separately by the desktop host. */
 html[data-workhub-desktop], html[data-workhub-desktop] body { background: var(--yolu-subtle,#f3f5fa); }
 html[data-workhub-desktop] .sidebar {
   --yolu-rail-control-size: 36px;
@@ -14,6 +15,8 @@ html[data-workhub-desktop] .sidebar {
 }
 html[data-workhub-desktop]:not([data-workspace-conversation]) .sidebar { display: flex; }
 html[data-workhub-desktop] .sidebar :is(.brand,.nav-label,.nav-text,.nav-count,.sidebar-status-copy) { display: none; }
+html[data-workhub-desktop]:not([data-workhub-platform]) .sidebar .brand { display: flex; justify-content: center; padding: 0; margin-bottom: 12px; }
+html[data-workhub-desktop]:not([data-workhub-platform]) .sidebar .brand span { display: none; }
 html[data-workhub-desktop] .sidebar nav { grid-template-columns: 1fr; justify-items: center; margin: 0; gap: var(--yolu-rail-gap); }
 html[data-workhub-desktop] .sidebar nav .nav-item { position: relative; justify-content: center; gap: 0; }
 html[data-workhub-desktop] .sidebar .nav-icon { display: flex; flex: none; align-items: center; justify-content: center; }

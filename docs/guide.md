@@ -130,6 +130,18 @@ Settings manages execution environments, new-conversation model and permission d
 
 Codex installation diagnostics report resolved CLI paths and versions, authentication-configuration presence, session-list access and available backend information. You can inspect registered environments individually or copy a sanitized report. Diagnostics do not start a model conversation or prove that credentials are valid for a particular model. After installing or changing the CLI, quit and stop the backend, then reopen Yolu so it rediscovers the environment.
 
+## Browser access
+
+The installed desktop application and browser share one backend, project registry and set of workspaces. Git commands, embedded terminals and Codex conversations run in the host's selected execution environment.
+
+For a browser on the same computer, run `yolu --backend-info` and open the returned `url`. On Windows use the installed `yolu.exe`; on macOS use the executable inside `Yolu.app`. The desktop endpoint uses a dynamically selected local port.
+
+To connect from another device on your LAN, open **Settings → Browser access** in Yolu on the host. Enable **LAN access**, choose a free port (default `4318`) and save. Copy an address containing the host's LAN IP, such as `http://192.168.1.20:4318`, and open it on the other device. Enter the pairing code displayed in Settings. Allow inbound TCP traffic for the chosen port in the host firewall if needed.
+
+Connections use HTTP and are intended for a trusted LAN. A paired browser can read and modify the host's workspaces and use its development tools. Keep the pairing code private. Browser sessions last up to 24 hours. Use **Change pairing code** to disconnect existing browser sessions, or disable LAN access to close the listener and its terminal connections. **Sign out of browser** clears that browser's login cookie.
+
+The saved LAN setting is restored when the backend starts. Closing the desktop window leaves browser access running. **Quit and stop backend** stops both endpoints. If the chosen port is occupied during startup, open Settings locally to choose another port. The primary local endpoint remains available.
+
 ## Data, backups and shutdown
 
 | Item | Default location |
@@ -151,7 +163,7 @@ The Tauri window and Go backend have separate lifetimes. Closing the window leav
 
 On Windows use the installed `yolu.exe`; for a DEB installation use `yolu`. Stop each custom-data instance separately. Do not delete `service.json` or kill Git to bypass a shutdown conflict.
 
-After stopping the relevant backends, copy the entire application data directory for a backup. Back up repositories, worktrees, Codex history and authentication configuration separately. Application metadata export is not a complete filesystem backup. `service.json` contains instance discovery and authentication information and must not be shared.
+After stopping the relevant backends, copy the entire application data directory for a backup. Back up repositories, worktrees, Codex history and authentication configuration separately. Application metadata export is not a complete filesystem backup. `service.json` contains instance discovery and authentication information. `browser-access.json` contains the LAN access setting and pairing code. Keep both files private.
 
 ## Installation and upgrades
 

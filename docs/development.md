@@ -37,7 +37,17 @@ bash scripts/run.sh --headless --listen 127.0.0.1:4317 \
   --data /path/to/test-data --root /path/to/test-workspaces
 ```
 
-Open `http://127.0.0.1:4317`. The script builds both frontend bundles before building and running `bin/yolu`. An installed or separately built Go binary can use the same flags. Only loopback listen addresses are accepted.
+Open `http://127.0.0.1:4317`. The script builds both frontend bundles before building and running `bin/yolu`. An installed or separately built Go binary can use the same flags. The primary `--listen` address accepts loopback addresses. Enable the separate LAN listener through **Settings → Browser access**. It defaults to port `4318` and serves the same embedded UI, API and terminal streams after pairing.
+
+The desktop DEB and AppImage packages include browser access through their existing Go sidecar. The desktop handshake continues to discover the primary loopback endpoint. Browser access configuration is saved atomically to `browser-access.json` in the application data directory with owner-only file permissions, independently of environment metadata exports. Startup restores an enabled listener. A port conflict leaves the desktop endpoint available and appears in Settings for correction.
+
+The LAN listener binds IPv4 interfaces and accepts the host's assigned IPv4 addresses and loopback names on the configured port. Every application request, including terminal WebSockets, requires a signed browser-session cookie issued by pairing. API requests retain CSRF and same-origin checks. Browser sessions expire after 24 hours and are invalidated by backend restart, code rotation or listener configuration changes. Disabling the listener also closes hijacked WebSockets. Pairing settings, native directory dialogs and backend lifecycle controls are managed through the primary local endpoint.
+
+HTTP LAN pages load `core/browser-compat.js` before their application bundles. It supplies UUID generation using `crypto.getRandomValues` when the secure-context-only `crypto.randomUUID` API is unavailable.
+
+Browser and desktop entry points enable the same application layout in the HTML before styles and controllers load. The retained `data-workhub-desktop` attribute selects the shared navigation and pane layout. Native integration is initialized separately by Tauri through `data-workhub-platform` and its bridge. Browser pages reserve no native title-bar space.
+
+Shared UI changes apply to both entry points by default, including workspace, project, conversation and settings pages. Reuse the same components, styles, design tokens and interaction logic. Scope host-specific rendering to native integrations such as title bars, window controls, application menus and operating-system dialogs, using the corresponding host capability. Apply responsive behavior consistently across both entry points and verify affected pages and navigation at comparable viewport sizes. See [the repository instructions](../AGENTS.md#shared-desktop-and-browser-ui).
 
 Interactive Codex conversations are enabled by default. `--read-only-sessions` selects history-only mode for the Go entry point; `--interactive-sessions` is a retained compatibility flag. These Go flags are not desktop-host flags: the Tauri host accepts `--data`, `--root`, `--stop` and `--backend-info`.
 
