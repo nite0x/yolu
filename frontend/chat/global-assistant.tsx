@@ -9,12 +9,22 @@ import {
 } from "react";
 import {
   AssistantRuntimeProvider,
+  MessageNotSentError,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { Thread } from "@/components/assistant-ui/elements/thread.aui";
+import {
+  Thread,
+  Composer,
+} from "@/components/assistant-ui/elements/thread.aui";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { ConversationHeader } from "../workspace/conversation-surface";
+import { ArrowLeft, LoaderCircle } from "lucide-react";
+import { ConversationList } from "../workspace/session-browser";
+import { WorkspaceSplitLayout, WorkspacePane } from "../workspace/page-surface";
+import { ListCreateButton } from "../workspace/list-controls";
+import {
+  ConversationHeader,
+  ConversationStatusBadge,
+} from "../workspace/conversation-surface";
 import { uiText } from "../i18n";
 import {
   GlobalAssistantController,
@@ -30,11 +40,9 @@ const convertMessage = (message: AssistantMessage) => ({
   content: [{ type: "text" as const, text: message.text }],
 });
 const Welcome = () => (
-  <div className="global-assistant-welcome">
-    <p>
-      {uiText(
-        "讨论开发目标，规划跨项目工作。项目查询和工作区操作将在后续阶段接入。",
-      )}
+  <div className="aui-thread-welcome-root mb-6 flex flex-col px-2">
+    <p className="text-2xl font-medium tracking-tight">
+      {uiText("想推进哪项开发工作？")}
     </p>
   </div>
 );
@@ -52,8 +60,14 @@ function AssistantThread({
   const runtime = useExternalStoreRuntime({
     messages: state.messages,
     convertMessage,
-    isRunning: controller.busy,
+    isRunning: controller.busy || state.submitting,
     isLoading: state.loading,
+    isSendDisabled:
+      !state.restored ||
+      state.loading ||
+      state.submitting ||
+      controller.busy ||
+      controller.readOnly,
     onNew: async (message) => {
       controller.setDraft(
         message.content
@@ -61,7 +75,12 @@ function AssistantThread({
           .map((part) => part.text)
           .join("\n"),
       );
-      await controller.send();
+      if (!(await controller.send())) {
+        const error = controller.getSnapshot().error;
+        // The shared composer restores a rejected submission into its draft.
+        if (panel.current) controller.setDraft("");
+        throw new MessageNotSentError(error);
+      }
     },
     hasEarlier: !!state.before,
     onLoadEarlier: () => controller.refresh(true),
@@ -71,6 +90,26 @@ function AssistantThread({
     void controller.connect();
     return () => controller.disconnect();
   }, [controller]);
+  useEffect(() => {
+    const composer = runtime.thread.composer;
+    const syncDraft = () => {
+      if (composer.getState().submission || controller.getSnapshot().submitting)
+        return;
+      const text = controller.getSnapshot().draft;
+      if (composer.getState().text !== text) composer.setText(text);
+    };
+    syncDraft();
+    const unsubscribeDraft = controller.subscribe(syncDraft);
+    const unsubscribeComposer = composer.subscribe(() => {
+      const state = composer.getState();
+      if (!state.submission && !controller.getSnapshot().submitting)
+        controller.setDraft(state.text);
+    });
+    return () => {
+      unsubscribeDraft();
+      unsubscribeComposer();
+    };
+  }, [controller, runtime]);
   useLayoutEffect(() => {
     if (!state.restored || state.loading) return;
     const viewport = panel.current?.querySelector<HTMLElement>(
@@ -111,7 +150,13 @@ function AssistantThread({
           composerStatus={
             <>
               {controller.busy && (
-                <p role="status">{uiText("Codex 正在回复…")}</p>
+                <div className="chat-run-indicator" role="status">
+                  <LoaderCircle
+                    className="animate-spin motion-reduce:animate-none"
+                    aria-hidden="true"
+                  />
+                  <span>{uiText("Codex 正在回复…")}</span>
+                </div>
               )}
               {error && (
                 <p role="alert" className="text-destructive">
@@ -122,53 +167,14 @@ function AssistantThread({
             </>
           }
           composer={
-            <form
-              className="global-assistant-composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void controller.send();
+            <Composer
+              autoFocus={false}
+              input={{
+                "aria-label": uiText("助手消息"),
+                placeholder: uiText("描述你的开发目标…"),
+                maxLength: 64000,
               }}
-            >
-              <Textarea
-                aria-label={uiText("助手消息")}
-                placeholder={uiText("描述你的开发目标…")}
-                value={state.draft}
-                disabled={!state.restored || state.submitting}
-                onChange={(event) => controller.setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === "Enter" &&
-                    (event.ctrlKey || event.metaKey) &&
-                    !event.nativeEvent.isComposing
-                  ) {
-                    event.preventDefault();
-                    void controller.send();
-                  }
-                }}
-              />
-              <div className="global-assistant-composer-actions">
-                {controller.busy && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void controller.stop()}
-                  >
-                    {uiText("停止")}
-                  </Button>
-                )}
-                <Button
-                  type="submit"
-                  disabled={
-                    !state.restored ||
-                    !state.draft.trim() ||
-                    controller.busy ||
-                    state.submitting
-                  }
-                >
-                  {state.submitting ? uiText("正在发送…") : uiText("发送")}
-                </Button>
-              </div>
-            </form>
+            />
           }
         />
       </AssistantRuntimeProvider>
@@ -190,6 +196,7 @@ function GlobalAssistant({ request }: { request: AssistantRequest }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [pane, setPane] = useState("list");
   const pendingCreation = useRef<string | undefined>(undefined);
   const listGeneration = useRef(0);
   const controller = useMemo(() => {
@@ -216,6 +223,7 @@ function GlobalAssistant({ request }: { request: AssistantRequest }) {
       if (generation !== listGeneration.current) return;
       setConversations(items);
       if (initial) {
+        if (items.length) setPane("detail");
         let saved = "";
         try {
           saved = localStorage.getItem("yolu:assistant:selected") || "";
@@ -250,6 +258,7 @@ function GlobalAssistant({ request }: { request: AssistantRequest }) {
   const select = async (id: string) => {
     if (controller && !(await controller.flush())) return;
     setSelected(id);
+    setPane("detail");
     try {
       localStorage.setItem("yolu:assistant:selected", id);
     } catch {
@@ -274,56 +283,101 @@ function GlobalAssistant({ request }: { request: AssistantRequest }) {
       setCreating(false);
     }
   };
+  const sessions = conversations.map((item) => ({
+    id: item.id,
+    name: item.title || uiText("新建助手对话"),
+    cwd: "",
+    updated_at: item.updated_at ? item.updated_at / 1000 : undefined,
+  }));
   return (
-    <div className="global-assistant-layout shadcn-scope">
-      <aside
+    <WorkspaceSplitLayout
+      className="global-assistant-layout shadcn-scope"
+      data-pane={pane}
+    >
+      <WorkspacePane
+        as="aside"
         className="global-assistant-history"
         aria-label={uiText("助手历史")}
       >
-        <Button
-          type="button"
-          variant="outline"
-          disabled={readOnly || creating || loading}
-          onClick={() => void create()}
-        >
-          {uiText("新建助手对话")}
-        </Button>
-        {error && <p role="alert">{error}</p>}
-        {loading && <p role="status">{uiText("正在读取历史…")}</p>}
-        <nav aria-label={uiText("助手对话")}>
-          {conversations.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-current={selected === item.id ? "page" : undefined}
-              title={item.title || uiText("新建助手对话")}
-              onClick={() => void select(item.id)}
-            >
-              {item.title || uiText("新建助手对话")}
-            </button>
-          ))}
-        </nav>
-      </aside>
-      <section className="global-assistant-conversation">
-        <ConversationHeader
-          title={uiText("Yolu 助手")}
-          titleID="globalAssistantTitle"
-        >
-          <p className="global-assistant-provider">
-            {uiText("本机 · Codex CLI")}
+        <div className="session-browser-list-tools">
+          <div className="session-browser-list-heading">
+            <div className="session-browser-list-title">
+              <strong>{uiText("Yolu 助手")}</strong>
+            </div>
+            <div className="session-browser-heading-actions">
+              <ListCreateButton
+                label={uiText("新建助手对话")}
+                disabled={readOnly || creating || loading}
+                onClick={() => void create()}
+              />
+            </div>
+          </div>
+        </div>
+        {error && (
+          <p role="alert" className="global-assistant-error">
+            {error}
           </p>
-        </ConversationHeader>
+        )}
+        <nav
+          className="global-assistant-history-list"
+          aria-label={uiText("助手对话")}
+        >
+          <ConversationList
+            sessions={sessions}
+            selected={selected}
+            showDirectory={false}
+            showContext={false}
+            canCreate={false}
+            loading={loading}
+            onSelect={(id) => void select(id)}
+          />
+        </nav>
+      </WorkspacePane>
+      <WorkspacePane className="global-assistant-conversation">
+        <ConversationHeader
+          title={
+            conversations.find((item) => item.id === selected)?.title ||
+            uiText("新建助手对话")
+          }
+          titleID="globalAssistantTitle"
+          actions={
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="global-assistant-mobile-back"
+                aria-label={uiText("对话列表")}
+                onClick={() => setPane("list")}
+              >
+                <ArrowLeft aria-hidden="true" />
+              </Button>
+              <ConversationStatusBadge>Codex CLI</ConversationStatusBadge>
+            </>
+          }
+        />
         {controller ? (
           <AssistantThread key={selected} controller={controller} />
         ) : (
-          <p className="global-assistant-empty">
-            {uiText("新建助手对话，开始规划你的开发工作。")}
-          </p>
+          <div className="global-assistant-empty">
+            <p>{uiText("选择一个对话，或新建对话开始工作。")}</p>
+            {!readOnly && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={creating || loading}
+                onClick={() => void create()}
+              >
+                {uiText("新建助手对话")}
+              </Button>
+            )}
+          </div>
         )}
-      </section>
-    </div>
+      </WorkspacePane>
+    </WorkspaceSplitLayout>
   );
 }
+
 let root: Root | undefined;
 export function openGlobalAssistant(request: AssistantRequest) {
   if (root) return;

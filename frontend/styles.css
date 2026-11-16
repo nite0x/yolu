@@ -4,6 +4,7 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source(none) important;
 @import "./workspace/conversation-surface.css";
+@import "./workspace/page-surface.css";
 @source "./";
 /* dark: follows the saved Yolu palette, not prefers-color-scheme. */
 @custom-variant dark (&:where([data-color-scheme=dark], [data-color-scheme=dark] *));

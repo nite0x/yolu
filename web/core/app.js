@@ -30,6 +30,7 @@ function restoreTaskSelection() {
 function syncTaskPageLayout(tasks) {
   const heading = $('.page-heading');
   const pane = $('#taskDetailPane');
+  pane.classList.toggle('workspace-pane', tasks);
   const move = (node, parent) => { if (node.parentElement !== parent) parent.append(node); };
   $('#taskBrowser').hidden = !tasks;
   if (tasks) {

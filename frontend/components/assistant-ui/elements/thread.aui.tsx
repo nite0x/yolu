@@ -477,7 +477,12 @@ const ThreadSuggestionItem: FC = () => {
   );
 };
 
-const Composer: FC<{ autoFocus: boolean; controls?: ReactNode; leadingControls?: ReactNode }> = ({ autoFocus, controls, leadingControls }) => {
+export const Composer: FC<{
+  autoFocus: boolean;
+  controls?: ReactNode;
+  leadingControls?: ReactNode;
+  input?: {placeholder?: string; "aria-label"?: string; maxLength?: number};
+}> = ({ autoFocus, controls, leadingControls, input }) => {
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone asChild>
@@ -497,6 +502,7 @@ const Composer: FC<{ autoFocus: boolean; controls?: ReactNode; leadingControls?:
             autoFocus={autoFocus}
             enterKeyHint="send"
             aria-label={uiText("对话消息")}
+            {...input}
           />
           <ComposerAction controls={controls} leadingControls={leadingControls} />
         </div>

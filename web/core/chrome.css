@@ -51,7 +51,7 @@ body[data-workspace-conversations] .workspace-page,
 html[data-workhub-desktop] body[data-workspace-conversations] .workspace-page,
 html[data-workspace-navigation] body .shell,
 html[data-workhub-desktop] .shell,
-html[data-workhub-desktop] :is(.task-browser,.tasks-page .task-detail-pane,.project-browser,.project-detail),
+html[data-workhub-desktop] .workspace-pane,
 .workspace-list-placeholder {
   border-color: transparent;
   border-radius: var(--yolu-pane-radius);
@@ -60,7 +60,7 @@ html[data-workhub-desktop] :is(.task-browser,.tasks-page .task-detail-pane,.proj
 }
 html[data-workhub-desktop] :is(.tasks-page,.projects-page:not(.project-tool-page)) .shell,
 html[data-workhub-desktop] :is(.tasks-page,.projects-page) #workContent { background: transparent; box-shadow: none; }
-html[data-workhub-desktop] :is(.task-browser,.tasks-page .task-detail-pane,.project-browser,.project-detail) { border: 1px solid transparent; }
+html[data-workhub-desktop] .workspace-pane { border: 1px solid transparent; }
 html[data-workhub-desktop][data-workspace-conversation] body .shell { border-radius: 0; box-shadow: none; }
 body[data-workspace-conversations] .workspace-page[data-focused=true] {
   border-color: transparent;

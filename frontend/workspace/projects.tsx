@@ -60,7 +60,7 @@ export function Projects({ projects, selectedID, openTool = "vscode", filter = "
   const issues = p?.worktrees.filter(directoryHasIssue).length || 0
   const directories = p?.worktrees.filter(t => directoryFilter === "all" || directoryHasIssue(t)) || []
   return <div className="project-workspace shadcn-scope" data-pane={detailOpen && p ? "detail" : "list"}>
-    <aside id="projectListPane" className="project-browser" aria-label={uiText("项目列表")}>
+    <aside id="projectListPane" className="project-browser workspace-pane" aria-label={uiText("项目列表")}>
       <div className="project-filters" role="group" aria-label={uiText("筛选项目")} hidden={!!status}>{filters.map(f => <Action key={f.value} action="project-filter" data-filter={f.value} variant={filter === f.value ? "secondary" : "ghost"} aria-pressed={filter === f.value}>{f.label}<span>{f.count}</span></Action>)}</div>
       <div className="project-list-scroll">{visible.map(project => {
         const dirty = project.worktrees.filter(t => (t.dirty || 0) > 0).length
@@ -72,7 +72,7 @@ export function Projects({ projects, selectedID, openTool = "vscode", filter = "
       })}{status ? <div className="project-list-empty" role="status">{status === "loading" ? uiText("正在读取当前环境的项目…") : uiText("当前环境没有已登记的项目")}</div> : !visible.length ? <div className="project-list-empty">{uiText("没有匹配的项目")}{searching ? <Action action="clear-project-search" variant="link">{uiText("清除搜索")}</Action> : null}{filter !== "all" ? <Action action="project-filter" data-filter="all" variant="link">{uiText("查看全部项目")}</Action> : null}{!searching && filter === "all" ? <span>{uiText("试试其他名称或路径")}</span> : null}</div> : null}</div>
     </aside>
     <div className="project-resize-handle" role="separator" aria-label={uiText("调整项目列表宽度")} aria-orientation="vertical" aria-controls="projectListPane projectDetail" aria-valuemin={200} aria-valuemax={640} aria-valuenow={248} tabIndex={0} data-project-resize title={uiText("拖动调整两栏宽度，也可使用左右方向键")} />
-    <section id="projectDetail" className="project-detail" aria-label={p ? uiText("{0} 项目详情", p.name) : uiText("项目详情")}>
+    <section id="projectDetail" className="project-detail workspace-pane" aria-label={p ? uiText("{0} 项目详情", p.name) : uiText("项目详情")}>
       {p ? <>
         <div className="project-list-back"><Action action="project-list" variant="ghost" className="pl-0 text-muted-foreground"><ArrowLeft aria-hidden="true" />{uiText("返回项目列表")}</Action></div>
         <header className="project-detail-heading"><div><h2 tabIndex={-1}>{p.name}</h2><button type="button" className="project-directory-path" data-action="copy-path" data-path={p.path} title={uiText("{0}\n复制项目路径", p.path)} aria-label={uiText("复制项目路径 {0}", p.path)}>{compactWorkspacePath(p.path)}<Copy aria-hidden="true" /></button></div>

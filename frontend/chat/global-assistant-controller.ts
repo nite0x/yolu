@@ -23,6 +23,7 @@ export interface AssistantSnapshot {
   before: number;
 }
 export interface AssistantConversation {
+  updated_at?: number;
   id: string;
   title: string;
   environment_id: "local";
@@ -102,6 +103,7 @@ export class GlobalAssistantController {
     return `/api/assistant/conversations/${encodeURIComponent(this.id)}`;
   }
   setDraft = (draft: string) => {
+    if (draft === this.state.draft) return;
     this.update({ draft });
     this.persistence.changed();
   };
@@ -174,7 +176,7 @@ export class GlobalAssistantController {
       this.state.submitting ||
       !this.state.restored
     )
-      return;
+      return false;
     this.pending =
       this.pending?.text === text
         ? this.pending
@@ -194,8 +196,11 @@ export class GlobalAssistantController {
       this.update({ run });
       if (this.state.draft.trim() === text) this.setDraft("");
       await this.flush();
+      return true;
     } catch (error) {
       this.update({ error: (error as Error).message });
+      await this.refresh();
+      return !this.pending;
     } finally {
       this.update({ submitting: false });
       if (this.connected) void this.refresh();

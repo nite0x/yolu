@@ -233,6 +233,10 @@ The legacy installation directory remains `%LOCALAPPDATA%\Programs\WorktreeHub`;
 Follow the [brand reference](brand/yolu/README.md) and regenerate platform assets with `npm run brand:icons` after editing `web/yolu.svg`.
 
 
+## Shared UI implementation
+
+Follow [the shared UI guidelines](ui-guidelines.md) for the component inventory, token ownership, pane layout, conversation contract and verification workflow. `WorkspaceSplitLayout` and `WorkspacePane` provide reusable page surfaces, and static workspace/project markup uses the same `workspace-pane` class. Native and global-assistant conversations share `ConversationList`, `ConversationHeader`, `Thread` and `Composer`, with domain-specific state supplied through props and controllers.
+
 ## Localization
 
 Application text uses `uiText` from `frontend/i18n.ts`. The source message is the Simplified Chinese fallback; English translations live in `frontend/locales/en.json`. Interpolation uses numbered placeholders with values supplied separately, so user content is not translated or reordered accidentally.

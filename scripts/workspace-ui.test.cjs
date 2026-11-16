@@ -119,6 +119,8 @@ for (const readOnly of [true, false]) test(`the production UI mounts before cont
   const h = await harness(t, readOnly);
   assert.match(h.$('#content').textContent, /关联项目与工作目录/);
   assert(h.$('#content .task-project-list'));
+  assert(h.$('#taskBrowser').classList.contains('workspace-pane'));
+  assert(h.$('#taskDetailPane').classList.contains('workspace-pane'));
   assert(h.$('#projectForm [data-slot="input"]'));
   assert(h.$('#requirementForm [data-slot="native-select"]'));
   const ids = [...h.document.querySelectorAll('[id]')].map(node => node.id);
@@ -146,6 +148,9 @@ test('search, archive filtering and project selection retain their existing acti
 
 test('desktop project controls stay in the list through search, refresh and page changes', async t => {
   const h = await harness(t, true, {desktop:true, width:960, route:'/projects'});
+  assert.equal(h.$('#taskDetailPane').classList.contains('workspace-pane'), false);
+  assert(h.$('#projectListPane').classList.contains('workspace-pane'));
+  assert(h.$('#projectDetail').classList.contains('workspace-pane'));
   const toolbar = h.$('#projectListPane #panelToolbar');
   const search = h.$('#projectListPane #search');
   const projectList = h.$('#projectListPane');
