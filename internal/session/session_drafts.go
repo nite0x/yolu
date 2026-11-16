@@ -34,7 +34,11 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var draft struct {
-		Text   string `json:"text"`
+		Text             string `json:"text"`
+		AssistantRequest *struct {
+			ID   string `json:"request_id"`
+			Text string `json:"text"`
+		} `json:"assistant_request,omitempty"`
 		Images []struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
@@ -66,6 +70,10 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(draft.Text) > 128000 || len(draft.Project) > 200 || len(draft.Reading.Anchor) > 1000 || len(draft.Reading.Latest) > 2000 || draft.Updated <= 0 {
+		httpx.WriteError(w, 400, "草稿内容无效")
+		return
+	}
+	if pending := draft.AssistantRequest; pending != nil && (len(pending.ID) == 0 || len(pending.ID) > 100 || len(pending.Text) > 64000) {
 		httpx.WriteError(w, 400, "草稿内容无效")
 		return
 	}

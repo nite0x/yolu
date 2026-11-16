@@ -6,6 +6,7 @@ export interface DraftRecord {
  files?: {id:string;name:string;contentType:string;text:string}[];
  settings: TurnSettings; project: string;
  reading: {top:number;bottom:boolean;anchor:string;offset:number;latest?:string}; updated: number;
+ assistant_request?: {request_id: string; text: string};
  questions?: Record<string, Record<string, QuestionDraft>>;
 }
 export const draftStorageKey = (key: string) => "workhub:chat-draft:v1:" + key;

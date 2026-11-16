@@ -175,3 +175,27 @@
   .chat-change-title strong { font-size: 13px; }
   .chat-change-file { padding: 8px 12px; }
 }
+
+body.assistant-page-open main { padding: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+#globalAssistantPage { flex: 1; min-height: 0; }
+#globalAssistantRoot { height: 100%; min-height: 0; }
+.global-assistant-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: 100%; min-height: 0; color: var(--foreground); background: var(--background); }
+.global-assistant-history { padding: 16px; border-right: 1px solid var(--border); overflow: auto; }
+.global-assistant-history > button { width: 100%; }
+.global-assistant-history nav { display: grid; gap: 4px; margin-top: 16px; }
+.global-assistant-history nav button { display: block; text-align: left; padding: 10px; border: 0; background: transparent; border-radius: 6px; color: inherit; font: inherit; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.global-assistant-history nav button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.global-assistant-history nav button:hover, .global-assistant-history [aria-current="page"] { background: var(--accent); }
+.global-assistant-conversation { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.global-assistant-thread { flex: 1; min-height: 0; }
+.global-assistant-provider { margin: 0; color: var(--muted-foreground); font-size: 12px; }
+.global-assistant-empty, .global-assistant-welcome { padding: 24px; color: var(--muted-foreground); }
+.global-assistant-composer { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--background); }
+.global-assistant-composer textarea { min-height: 96px; padding: 8px; resize: vertical; }
+.global-assistant-composer-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 760px) {
+  .global-assistant-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .global-assistant-history { max-height: 160px; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px; }
+  .global-assistant-history nav { display: flex; margin-top: 8px; overflow: auto; }
+  .global-assistant-history nav button { flex: 0 0 180px; }
+}

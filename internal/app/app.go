@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"worktree-hub/internal/assistant"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/project"
@@ -15,6 +16,7 @@ import (
 )
 
 type App struct {
+	Assistant           *assistant.Service
 	Workspace           *workspace.Service
 	Projects            *project.Service
 	Tasks               *task.Service
@@ -45,6 +47,7 @@ func openAppForWorkspace(dataDir, root string, remote *workspace.Client) (*App, 
 	a := &App{Workspace: env, Tasks: tasks, Projects: projects, Sessions: sessions, Terminals: terminal.New(), token: model.NewID() + model.NewID(), pickDirectory: platform.PickDirectory}
 	if remote == nil {
 		a.browser = newBrowserAccess(a)
+		a.Assistant = assistant.New(env.Store, env.DataDir)
 		projects.CheckWorktreeIdle = a.checkTerminalWorktree
 		projects.ReserveWorktree = a.reserveWorktree
 	}
@@ -64,6 +67,9 @@ func (a *App) Close() error {
 		}
 		if a.Workspace.Remote != nil {
 			a.Workspace.Remote.Close()
+		}
+		if a.Assistant != nil {
+			a.Assistant.Close()
 		}
 		a.Sessions.Close()
 		a.Projects.Close()

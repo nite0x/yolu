@@ -39,6 +39,9 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/appearance", a.appearanceHandler)
 	mux.HandleFunc("GET /api/settings/browser-access", a.browserAccessHandler)
 	mux.HandleFunc("PUT /api/settings/browser-access", a.browserAccessHandler)
+	if a.Assistant != nil {
+		a.Assistant.RegisterRoutes(mux)
+	}
 	a.Projects.RegisterRoutes(mux)
 	a.Tasks.RegisterRoutes(mux, a.Projects.InvalidateStateAfter)
 	a.Sessions.RegisterRoutes(mux)

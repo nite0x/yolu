@@ -53,6 +53,16 @@ Interactive Codex conversations are enabled by default. `--read-only-sessions` s
 
 The browser-mode process runs in the foreground. Stop the test process and use its isolated data directory when changing modes. A desktop backend can be stopped through its host or the authenticated `--stop --data /path/to/data` entry point.
 
+### Global assistant foundation
+
+The first navigation item, **Yolu Assistant**, opens `#/assistant` through the shared browser/desktop page host. It uses the already installed and authenticated local Codex CLI. Run `codex login` in the same local user account when authentication needs setup. The assistant inherits the CLI's default model. Authentication remains managed by Codex.
+
+For an isolated browser trial, run the browser/backend command above with separate `--data` and `--root` directories. Open **Yolu Assistant**, select **New assistant conversation**, and send a message. Create a second conversation, type an unsent draft, visit Projects or Workspaces, and return. Stop and reopen the backend with the same data directory to restore both histories and drafts. The desktop source command uses the same UI and data contracts.
+
+Phase 1 supports development planning conversations. Resource queries and reviewed workspace operations are scheduled for later phases. Assistant history is application-owned SQLite data, separate from native Codex conversation history. The provider uses ephemeral tool-disabled read-only Codex threads with bounded transcript context. Local model/authentication/configuration failures show a recoverable error with the submitted message retained. `--read-only-sessions` also disables assistant creation and sends.
+
+Focused checks include `go test ./internal/assistant ./internal/store` and `node --import tsx --test scripts/chat-global-assistant.test.ts`. An opt-in real model request can be run with `YOLU_TEST_ASSISTANT_CODEX=1 go test ./internal/assistant -run TestInstalledCodexAssistantProvider -v`. See [the implementation plan](features/global-assistant/plan.md) for limits, decisions and verification evidence.
+
 ## Repository structure
 
 | Location | Responsibility |

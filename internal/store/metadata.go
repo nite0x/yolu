@@ -15,6 +15,9 @@ import (
 // Explicit columns make import independent of platform and future additive
 // schema migrations. No SQL identifiers supplied by a client are executed.
 var metadataTables = []struct{ Name, Columns string }{
+	{"assistant_conversations", "id,title,created_at,updated_at"},
+	{"assistant_runs", "id,conversation_id,input,status,error_code"},
+	{"assistant_messages", "id,conversation_id,run_id,role,text"},
 	{"projects", "id,name,path,common_dir,folder,created_at"},
 	{"settings", "key,value"},
 	{"requirements", "id,name,slug,description,branch,path,primary_project_id,state,created_at,has_workspace"},
@@ -137,7 +140,7 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, name := range []string{"projects", "requirements", "sessions"} {
+	for _, name := range []string{"projects", "requirements", "sessions", "assistant_conversations"} {
 		var count int
 		if err := tx.QueryRow("SELECT count(*) FROM " + name).Scan(&count); err != nil {
 			return err
@@ -176,6 +179,9 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 		}
 	}
 	if _, err := tx.Exec(`UPDATE requirements SET state='partial' WHERE state='creating'; UPDATE members SET state='failed',error='导入时操作尚未完成，请检查后重试' WHERE state IN ('creating','pending')`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE assistant_runs SET status='interrupted',error_code='interrupted' WHERE status='running'`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(repairTaskPrimary); err != nil {

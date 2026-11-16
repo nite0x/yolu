@@ -4058,3 +4058,26 @@ test('clone errors stay in the dialog when its selected environment differs from
  assert.match(h.$('#projectError').textContent,/Remote authentication failed/);
  assert.equal(h.$('#chooseProjectDirectory').disabled,true);
 });
+
+for (const desktop of [false, true]) test(`global assistant leads shared navigation and survives page transitions (desktop=${desktop})`, async t => {
+  const h = await harness(t, false, {desktop, width:1280, route:'/projects'});
+  const opens = [];
+  h.window.WorkHubAssistant = {openGlobal(request) {opens.push(request);}, close() {}};
+  assert.equal(h.$('.sidebar nav [data-view]').dataset.view, 'assistant');
+  await h.navigate('/assistant');
+  assert.equal(h.$('#globalAssistantPage').hidden, false);
+  assert.equal(h.$('#sessionsPage').hidden, true);
+  assert.equal(h.$('#workContent').hidden, true);
+  assert.equal(h.$('[data-view="assistant"]').getAttribute('aria-current'), 'page');
+  assert(opens.length > 0);
+  await opens[0]('/api/assistant/conversations');
+  assert.equal(h.requests.at(-1).options.headers['X-Environment-ID'], 'local');
+  const root = h.$('#globalAssistantRoot');
+  for (const route of ['/projects', '/requirements', '/sessions', '/settings']) {
+    await h.navigate(route);
+    assert.equal(h.$('#globalAssistantPage').hidden, true);
+    await h.navigate('/assistant');
+    assert.equal(h.$('#globalAssistantRoot'), root);
+    assert.equal(h.$('#globalAssistantPage').hidden, false);
+  }
+});

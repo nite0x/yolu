@@ -1,7 +1,7 @@
 import { uiText } from "../i18n";
 import { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { PanelLeftClose, PanelLeftOpen, ListTodo, FolderGit2, MessagesSquare } from "lucide-react"
+import { PanelLeftClose, PanelLeftOpen, ListTodo, FolderGit2, MessagesSquare, Sparkles } from "lucide-react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { setupSplitResize } from "./split-resize"
 import { setupShortcutIcons } from "./shortcut-icons"
@@ -93,7 +93,7 @@ export function mountWorkspaceSidebar() {
   const sidebar = document.querySelector<HTMLElement>(".sidebar")
   if (!sidebar) return
   sidebar.id = "workspaceSidebar"
-  for (const [view, Icon] of [["requirements", ListTodo], ["projects", FolderGit2], ["sessions", MessagesSquare]] as const) {
+  for (const [view, Icon] of [["requirements", ListTodo], ["projects", FolderGit2], ["sessions", MessagesSquare], ["assistant", Sparkles]] as const) {
     const icon = sidebar.querySelector(`[data-view="${view}"] .nav-icon`)
     if (icon) icon.innerHTML = renderToStaticMarkup(<Icon aria-hidden="true" size={18} />)
   }

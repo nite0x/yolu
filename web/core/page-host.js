@@ -60,7 +60,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   };
   function normalize(value) {
     const snapshot = value && typeof value === 'object' ? value : {};
-    const route = typeof snapshot.route === 'string' && /^\/(requirements(?:\/[\w-]+)?|projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/requirements';
+    const route = typeof snapshot.route === 'string' && /^\/(requirements(?:\/[\w-]+)?|projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|assistant)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/requirements';
     return {...snapshot, route, environment:typeof snapshot.environment === 'string' ? snapshot.environment : 'local', title:typeof snapshot.title === 'string' ? snapshot.title.slice(0,200) : uiText("任务"), kind:route.split('/')[1].split('?')[0]};
   }
   function send(page,type,detail = {}) {

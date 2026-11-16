@@ -43,7 +43,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const session = view ? conversationSelectedSession(view) : null;
     const project = state.projects.find(item => item.id === state.selectedProject);
     const task = state.requirements.find(item => item.id === state.selectedRequirement);
-    const title = view ? view.creating ? uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'projects' ? uiText("项目") : task?.name || uiText("任务");
+    const title = state.view === 'assistant' ? uiText("Yolu 助手") : view ? view.creating ? uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'projects' ? uiText("项目") : task?.name || uiText("任务");
     return {
       route, environment: activeEnvironment, title, kind: state.view,
       terminal:view?.creating ? creationHint : undefined,

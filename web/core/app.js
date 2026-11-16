@@ -186,7 +186,7 @@ function readRoute() {
   if (project) state.selectedProject = project[1];
   projectDetailOpen = !!project;
   const previousView = state.view;
-  state.view = route === '/settings' ? 'settings' : route === '/projects' || project ? 'projects' : route === '/sessions' ? 'sessions' : 'requirements';
+  state.view = route === '/assistant' ? 'assistant' : route === '/settings' ? 'settings' : route === '/projects' || project ? 'projects' : route === '/sessions' ? 'sessions' : 'requirements';
   if (state.view !== previousView) $('#taskListFilters').open = false;
   const match = route.match(/^\/requirements\/([a-zA-Z0-9_-]+)$/);
   state.selectedRequirement = match ? match[1] : null;
@@ -210,6 +210,7 @@ window.addEventListener('hashchange', () => {
 function render() {
   saveTaskListView();
   if (typeof saveTaskWorkspace === 'function') saveTaskWorkspace();
+  const assistantView = state.view === 'assistant';
   const settingsView = state.view === 'settings';
   const sessionsView = state.view === 'sessions';
   const reqView = state.view === 'requirements';
@@ -230,14 +231,17 @@ function render() {
     rememberTaskSelection(requirement);
     $('#taskPageActions').innerHTML = window.WorkHubUI.taskActions(requirement, environmentName());
   }
-  document.title = sessionsView ? uiText("对话 · Yolu") : settingsView ? uiText("设置 · Yolu") : requirement ? requirement.name + ' · Yolu' : 'Yolu';
+  document.title = assistantView ? uiText("Yolu 助手") : sessionsView ? uiText("对话 · Yolu") : settingsView ? uiText("设置 · Yolu") : requirement ? requirement.name + ' · Yolu' : 'Yolu';
   $('#backToRequirements').hidden = !detailView;
-  $('.page-heading').hidden = state.view === 'projects';
+  $('.page-heading').hidden = state.view === 'projects' || assistantView;
   $('#stats').hidden = true;
   $('#panelToolbar').hidden = false;
   $('#newButton').hidden = !reqView;
   $('#settingsPage').hidden = !settingsView;
-  $('#workContent').hidden = settingsView || sessionsView;
+  $('#workContent').hidden = settingsView || sessionsView || assistantView;
+  $('#globalAssistantPage').hidden = !assistantView;
+  document.body.classList.toggle('assistant-page-open', assistantView);
+  if (assistantView) window.WorkHubAssistant.openGlobal((path, options) => api(path, {...options, environment: 'local'}));
   $('#sessionsPage').hidden = !sessionsView;
   document.body.classList.toggle('sessions-page-open', sessionsView);
   $('#reqCount').textContent = taskInventory.loaded ? taskInventory.requirements.filter(q => q.state !== 'archived').length : '…';
@@ -273,7 +277,7 @@ function render() {
   syncProjectPage();
   renderSettings();
   if (typeof syncSessionWorkspace === 'function') syncSessionWorkspace();
-  if (settingsView || sessionsView) { if (typeof syncTaskWorkspace === 'function') syncTaskWorkspace(null); return; }
+  if (settingsView || sessionsView || assistantView) { if (typeof syncTaskWorkspace === 'function') syncTaskWorkspace(null); return; }
   $('#stats').innerHTML = '';
   const focusedRow = reqView && document.activeElement?.closest?.('#taskListContent [data-action="open-requirement"]');
   if (reqView) $('#taskListContent').innerHTML = renderRequirements();

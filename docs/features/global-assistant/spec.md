@@ -2,7 +2,7 @@
 
 ## Status and provenance
 
-Design handoff prepared on 2026-11-16. Implementation status is proposed. This document records the requested product outcome, the architecture discussed in ChatGPT, and adaptations from an initial repository review. Implementation progress is tracked in [plan.md](plan.md).
+Design handoff prepared on 2026-11-16. The phase 1 conversation foundation is implemented. Application capabilities and reviewed writes remain scheduled for later phases. This document records the requested product outcome, the architecture discussed in ChatGPT, and adaptations from an initial repository review. Implementation progress is tracked in [plan.md](plan.md).
 
 The user requested a global conversation for operating Yolu, including creating work and loading projects, followed by a design and implementation plan. The discussion recommended a Go tool-calling runtime, a capability registry, reviewable action plans, and reuse of application services and conversation UI. The cached conversation contains headings for four implementation stages and an interactive architecture selector, but its stage details and selector values are unavailable. The phases in the accompanying plan are an editorial proposal, and provider selection and exact persistence contracts remain open. [Source conversation](https://chatgpt.com/c/6afab987-1c04-83ee-a4a7-d50babf23b5a)
 
@@ -140,7 +140,7 @@ For a failed second worktree, retain the successfully created workspace and firs
 
 ## Acceptance criteria
 
-These criteria validate future implementation. They are pending in this documentation handoff.
+These criteria define the phased acceptance target. Phase 1 evidence for AC-01 and AC-14 is recorded in the implementation plan. Later capability criteria remain pending.
 
 | ID | Scenario | Observable result |
 | --- | --- | --- |
@@ -162,8 +162,20 @@ These criteria validate future implementation. They are pending in this document
 
 ## Decisions for implementation review
 
-1. Select the initial tool-calling provider and model configuration, credential storage, and behavior when configuration is unavailable.
-2. Settle assistant transcript persistence and unified browser/controller identity while preserving independent native session semantics.
+1. Phase 1 uses the user-selected authenticated local Codex CLI and its default model. Credentials stay in Codex configuration. Configuration/authentication/model/connection failures surface a localized recovery message and preserve the submitted input. Tool-calling application capabilities remain a later phase contract.
+2. Phase 1 stores assistant transcripts in additive local SQLite tables and uses explicit `yolu` conversation kind and local identity. Native Codex session indexing and workspace references retain their existing contracts.
 3. Define the capability schemas, plan revision format, approval lifetime, execution journal, event replay/snapshot behavior, and error codes.
 4. Review the proposed single-environment execution boundary and storage ownership for global assistant history.
 5. Confirm the initial navigation placement and core workflow, then schedule optional coding-agent launch and additional executors separately.
+
+## Phase 1 implementation contract
+
+The first navigation item opens **Yolu Assistant** at `#/assistant` in the shared browser/desktop page host. The user requested this placement during implementation. Conversation selection is independent of workspace/project/environment selection. Assistant conversations are stored in the primary local application database and always use the local CLI. A future resource capability must identify its target environment explicitly.
+
+`assistant_conversations`, `assistant_messages` and `assistant_runs` preserve titles, full transcript and durable per-conversation request receipts. The existing `conversation_drafts` table stores namespaced assistant text, reading position and an unconfirmed send identity. Metadata export/import includes these records. Opening a pre-feature database adds the tables without changing native session discovery or task pins. On startup/import unfinished runs become interrupted, with their submitted messages retained. A subsequent explicit message creates a fresh run.
+
+Each provider turn uses a fresh ephemeral Codex thread through the existing live protocol client. It inherits CLI model/authentication and uses a read-only sandbox with approvals disabled. Shared configuration disables shell, hooks, plugins, apps, multi-agent features, configured MCP servers and web search. Unexpected tools or approval requests end the turn. Saved transcript context is bounded to the most recent 100 messages and 128,000 text bytes, independently of full transcript retention. Each input and model output is limited to 64,000 bytes. There is one active run per conversation and at most four active assistant runs. A turn expires after two minutes. Cancellation interrupts the ephemeral turn and releases its subscription.
+
+The UI reloads authoritative persisted snapshots, polling a selected active run every 700 milliseconds and an idle conversation every four seconds. UI navigation preserves the mounted conversation and its draft. Client disconnects leave inference running. Explicit stop and application shutdown cancel it. Messages are published after provider completion. Snapshot/history reads page 50 stored messages at a time. Provider-specific diagnostic values remain outside client-visible errors and transcripts.
+
+Application capability calls, action plans and approvals are implemented in later phases. Phase 1 records only inference runs. The conversation explains its available planning behavior. Model communication has been checked against the installed Codex CLI separately from deterministic fixtures.

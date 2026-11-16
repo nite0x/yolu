@@ -297,3 +297,17 @@ test('a narrow single reader retains its own sidebar and history list', t => {
   assert.equal(h.w.document.body.hasAttribute('data-workspace-conversations'),false);
   assert.equal(messages.findLast(message => message.type === 'workhub:page-pane').shared,false);
 });
+
+test('assistant routing preserves native conversation panes while opening the global workspace page', t => {
+  const h = harness(t, '#/assistant', {desktop:true});
+  assert.equal(new URL(h.workspace.src).hash, '#/assistant');
+  open(h, conversation('native-thread'));
+  const retained = h.frames().find(frame => frame !== h.workspace && frame !== h.nav());
+  open(h, {route:'/assistant',environment:'local'});
+  assert.equal(h.workspace.hidden, false);
+  assert(h.frames().includes(retained));
+  assert.equal(retained.hidden, true);
+  assert.equal(h.messages.get(h.workspace).at(-1).snapshot?.route || h.w.location.hash.slice(1), '/assistant');
+  open(h, conversation('native-thread'));
+  assert.equal(retained.hidden, false);
+});
