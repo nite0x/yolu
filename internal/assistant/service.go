@@ -126,12 +126,18 @@ func (s *Service) snapshot(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
-	plans, err := s.store.AssistantPlans(r.PathValue("conversation"))
+	runs := make([]string, 0, len(messages))
+	for _, message := range messages {
+		if len(runs) == 0 || runs[len(runs)-1] != message.RunID {
+			runs = append(runs, message.RunID)
+		}
+	}
+	plans, err := s.store.AssistantPlans(r.PathValue("conversation"), runs...)
 	if err != nil {
 		httpx.DbError(w, err)
 		return
 	}
-	activities, err := s.store.AssistantActivities(r.PathValue("conversation"))
+	activities, err := s.store.AssistantActivities(r.PathValue("conversation"), runs...)
 	if err != nil {
 		httpx.DbError(w, err)
 		return

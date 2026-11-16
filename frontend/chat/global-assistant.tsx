@@ -8,7 +8,7 @@ import {
   type ReactElement,
   type ComponentProps,
 } from "react";
-import { MessageNotSentError } from "@assistant-ui/react";
+import { MessageNotSentError, type ThreadMessageLike } from "@assistant-ui/react";
 import {
   ConversationPanel,
   ConversationFeedback,
@@ -16,7 +16,12 @@ import {
   useConversationRuntime,
 } from "./conversation-panel";
 import { useChatReading } from "./use-chat-reading";
-import { AssistantActions } from "./assistant-actions";
+import {
+  AssistantActionGroup,
+  AssistantActionTool,
+  AssistantActionsProvider,
+} from "./assistant-actions";
+import { assistantMessages } from "./assistant-messages";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { ConversationList } from "../workspace/session-browser";
@@ -31,16 +36,11 @@ import {
   GlobalAssistantController,
   assistantRunError,
   type AssistantConversation,
-  type AssistantMessage,
   type AssistantRequest,
   type AssistantOptions,
 } from "./global-assistant-controller";
 
-const convertMessage = (message: AssistantMessage) => ({
-  id: String(message.id),
-  role: message.role,
-  content: [{ type: "text" as const, text: message.text }],
-});
+const convertMessage = (message: ThreadMessageLike) => message;
 const Welcome = () => (
   <div className="aui-thread-welcome-root mb-6 flex flex-col px-2">
     <p className="text-2xl font-medium tracking-tight">
@@ -48,6 +48,12 @@ const Welcome = () => (
     </p>
   </div>
 );
+
+const assistantComponents = {
+  Welcome,
+  ToolFallback: AssistantActionTool,
+  ToolGroup: AssistantActionGroup,
+};
 
 function GlobalConversation({
   controller,
@@ -61,8 +67,12 @@ function GlobalConversation({
     controller.getSnapshot,
   );
   const panel = useRef<HTMLElement>(null);
+  const messages = useMemo(
+    () => assistantMessages(state),
+    [state.messages, state.activities, state.plans, state.run],
+  );
   const runtime = useConversationRuntime(controller, {
-    messages: state.messages,
+    messages,
     convertMessage,
     isRunning: controller.busy || state.submitting,
     isLoading: state.loading && state.messages.length === 0,
@@ -97,34 +107,35 @@ function GlobalConversation({
     state.loadError ||
     assistantRunError(state.run?.error_code);
   return (
-    <ConversationPanel
-      runtime={runtime}
-      panelRef={panel}
-      header={header}
-      reading={reading}
-      thread={{
-        readOnly: controller.readOnly,
-        autoFocus: false,
-        components: { Welcome },
-        composerStatus: controller.busy ? (
-          <ConversationRunIndicator
-            status="running"
-            label={uiText("Codex 正在回复…")}
-          />
-        ) : undefined,
-      }}
-      composerInput={{
-        "aria-label": uiText("助手消息"),
-        placeholder: uiText("描述你的开发目标…"),
-        maxLength: 64000,
-      }}
-      afterThread={<AssistantActions controller={controller} />}
-      feedback={
-        (error || state.notice) && (
-          <ConversationFeedback messages={[state.notice]} error={error} />
-        )
-      }
-    />
+    <AssistantActionsProvider value={controller}>
+      <ConversationPanel
+        runtime={runtime}
+        panelRef={panel}
+        header={header}
+        reading={reading}
+        thread={{
+          readOnly: controller.readOnly,
+          autoFocus: false,
+          components: assistantComponents,
+          composerStatus: controller.busy ? (
+            <ConversationRunIndicator
+              status="running"
+              label={uiText("Codex 正在回复…")}
+            />
+          ) : undefined,
+        }}
+        composerInput={{
+          "aria-label": uiText("助手消息"),
+          placeholder: uiText("描述你的开发目标…"),
+          maxLength: 64000,
+        }}
+        feedback={
+          (error || state.notice) && (
+            <ConversationFeedback messages={[state.notice]} error={error} />
+          )
+        }
+      />
+    </AssistantActionsProvider>
   );
 }
 

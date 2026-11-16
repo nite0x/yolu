@@ -5,8 +5,84 @@ import {
   type AssistantRequest,
   type AssistantSnapshot,
 } from "../frontend/chat/global-assistant-controller";
+import { assistantMessages } from "../frontend/chat/assistant-messages";
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+test("assistant actions keep their turn identity before and after the model reply", () => {
+  const snapshot: AssistantSnapshot = {
+    messages: [{id: 1, run_id: "run", role: "user", text: "Prepare a workspace"}],
+    run: {id: "run", status: "running", error_code: ""}, before: 0,
+    plans: [actionPlan()],
+  };
+  snapshot.plans![0].run_id = "run";
+  const pending = assistantMessages(snapshot);
+  assert.equal(pending.length, 2);
+  assert.equal(pending[1].id, "assistant:run");
+  assert.equal(pending[1].status?.type, "running");
+  assert.equal(pending[1].content[0].type, "tool-call");
+  const complete = assistantMessages({
+    ...snapshot,
+    messages: [...snapshot.messages, {id: 2, run_id: "run", role: "assistant", text: "Review the plan"}],
+    run: {...snapshot.run!, status: "completed"},
+  });
+  assert.equal(complete[1].id, pending[1].id);
+  assert.equal(complete[1].status?.type, "complete");
+  assert.equal(complete[1].content.length, 2);
+  assert.equal(complete[1].content.filter((part: any) => part.type === "tool-call").length, 1);
+});
+
+test("assistant cards follow loaded history turns and retain text-only messages", () => {
+  const oldPlan = {...actionPlan(), id: "old-plan", run_id: "old"};
+  const newPlan = {...actionPlan(), id: "new-plan", run_id: "new"};
+  const snapshot: AssistantSnapshot = {
+    messages: [{id: 3, run_id: "new", role: "user", text: "Latest request"}],
+    plans: [newPlan, oldPlan], run: null, before: 3,
+  };
+  const latest = assistantMessages(snapshot);
+  assert.deepEqual(latest.map((message) => message.id), ["3", "assistant:new"]);
+  const history = assistantMessages({...snapshot, before: 0, messages: [
+    {id: 1, run_id: "old", role: "user", text: "Earlier request"},
+    {id: 2, run_id: "old", role: "assistant", text: "Earlier response"},
+    ...snapshot.messages,
+  ]});
+  assert.deepEqual(history.map((message) => message.id), ["1", "assistant:old", "3", "assistant:new"]);
+  const cards = history.flatMap((message) => typeof message.content === "string" ? [] : message.content).filter((part) => part.type === "tool-call");
+  assert.deepEqual(cards.map((part) => part.result.plans.map((plan: any) => plan.id)), [["old-plan"], ["new-plan"]]);
+  const legacy = assistantMessages({messages: [
+    {id: 5, run_id: "", role: "user", text: "Old request"},
+    {id: 6, run_id: "", role: "assistant", text: "Old response"},
+  ], run: null, before: 0});
+  assert.deepEqual(legacy.map((message) => message.id), ["5", "6"]);
+});
+
+test("polling preserves paged action cards and restores previous numeric reading anchors", async (t) => {
+  const oldPlan = {...actionPlan(), id: "old-plan", run_id: "old"};
+  let plan = {...actionPlan(), id: "new-plan", run_id: "new"};
+  const activity = (id: number, run_id: string) => ({id, run_id, capability: "project_list", status: "completed", result: {}, created_at: id});
+  const controller = new GlobalAssistantController("paged-actions", (async (path: string) => {
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path.includes("before=3")) return {
+      messages: [{id: 1, run_id: "old", role: "user", text: "Earlier request"}, {id: 2, run_id: "old", role: "assistant", text: "Earlier reply"}],
+      plans: [oldPlan], activities: [activity(1, "old")], run: null, before: 0,
+    };
+    return {
+      messages: [{id: 3, run_id: "new", role: "user", text: "Latest request"}],
+      plans: [plan], activities: [activity(2, "new")], run: null, before: 3,
+    };
+  }) as AssistantRequest);
+  t.after(() => controller.disconnect());
+  controller.reading.anchor = "2";
+  await controller.connect();
+  await controller.refresh(true);
+  plan = {...plan, status: "succeeded"};
+  await controller.refresh();
+  assert.equal(controller.reading.anchor, "assistant:old");
+  assert.deepEqual(controller.getSnapshot().activities.map((item) => item.id).sort(), [1, 2]);
+  assert.equal(controller.getSnapshot().plans.length, 2);
+  assert.equal(controller.getSnapshot().plans.find((item) => item.id === plan.id)?.status, "succeeded");
+  assert.deepEqual(assistantMessages(controller.getSnapshot()).map((message) => message.id), ["1", "assistant:old", "3", "assistant:new"]);
+});
 async function until(check: () => boolean) {
   const deadline = Date.now() + 3000;
   while (!check() && Date.now() < deadline) await pause();

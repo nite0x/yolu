@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -160,10 +161,27 @@ func (s *Store) AssistantPlan(conversation, id string) (AssistantPlan, error) {
 	return p, err
 }
 
-// The UI receives a bounded recent activity window independently of transcript pages.
-func (s *Store) AssistantPlans(conversation string) ([]AssistantPlan, error) {
-	query := `SELECT payload FROM assistant_action_plans WHERE conversation_id=? ORDER BY created_at DESC,id DESC LIMIT 100`
+// Include the recent window for live updates, plus actions belonging to the
+// requested transcript page so older turns retain their cards when paginated.
+func assistantActionHistory(table, conversation, order string, runs []string) (string, []any) {
 	args := []any{conversation}
+	if len(runs) == 0 {
+		return `conversation_id=? ORDER BY ` + order + ` LIMIT 100`, args
+	}
+	args = append(args, conversation)
+	for _, run := range runs {
+		args = append(args, run)
+	}
+	where := `conversation_id=? AND (
+ id IN (SELECT id FROM ` + table + ` WHERE conversation_id=? ORDER BY ` + order + ` LIMIT 100)
+ OR run_id IN (?` + strings.Repeat(",?", len(runs)-1) + `)
+) ORDER BY ` + order
+	return where, args
+}
+
+func (s *Store) AssistantPlans(conversation string, runs ...string) ([]AssistantPlan, error) {
+	where, args := assistantActionHistory("assistant_action_plans", conversation, "created_at DESC,id DESC", runs)
+	query := `SELECT payload FROM assistant_action_plans WHERE ` + where
 	if conversation == "" {
 		query = `SELECT payload FROM assistant_action_plans WHERE status IN ('running','cancelling','unknown')`
 		args = nil
@@ -267,8 +285,9 @@ func (s *Store) AddAssistantActivity(conversation, run, capability, status strin
 	return err
 }
 
-func (s *Store) AssistantActivities(conversation string) ([]AssistantActivity, error) {
-	rows, err := s.DB.Query(`SELECT id,run_id,capability,status,result,created_at FROM assistant_tool_calls WHERE conversation_id=? ORDER BY id DESC LIMIT 100`, conversation)
+func (s *Store) AssistantActivities(conversation string, runs ...string) ([]AssistantActivity, error) {
+	where, args := assistantActionHistory("assistant_tool_calls", conversation, "id DESC", runs)
+	rows, err := s.DB.Query(`SELECT id,run_id,capability,status,result,created_at FROM assistant_tool_calls WHERE `+where, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -1715,5 +1715,6 @@
   "请在应用中审核计划并确认后执行。": "Review and approve the plan in the application to execute it.",
   "对话发现暂时失败，当前结果使用已保存的索引，请检查记录的同步时间。": "Conversation discovery is temporarily unavailable. Results use the saved index. Check the recorded synchronization time.",
   "等待计划确认": "Awaiting approval",
-  "目标分支": "Target branch"
+  "目标分支": "Target branch",
+  "查询详情": "Query details"
 }

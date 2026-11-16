@@ -109,12 +109,14 @@ lucide-react/dist/esm/icons/file-cog.mjs:
 lucide-react/dist/esm/icons/file-image.mjs:
 lucide-react/dist/esm/icons/file-text.mjs:
 lucide-react/dist/esm/icons/file.mjs:
+lucide-react/dist/esm/icons/folder-git-2.mjs:
 lucide-react/dist/esm/icons/folder.mjs:
 lucide-react/dist/esm/icons/git-branch.mjs:
 lucide-react/dist/esm/icons/git-fork.mjs:
 lucide-react/dist/esm/icons/hand.mjs:
 lucide-react/dist/esm/icons/image-off.mjs:
 lucide-react/dist/esm/icons/image.mjs:
+lucide-react/dist/esm/icons/layers.mjs:
 lucide-react/dist/esm/icons/loader-circle.mjs:
 lucide-react/dist/esm/icons/loader.mjs:
 lucide-react/dist/esm/icons/maximize-2.mjs:
@@ -132,6 +134,7 @@ lucide-react/dist/esm/icons/plus.mjs:
 lucide-react/dist/esm/icons/refresh-cw.mjs:
 lucide-react/dist/esm/icons/rotate-cw.mjs:
 lucide-react/dist/esm/icons/search.mjs:
+lucide-react/dist/esm/icons/server.mjs:
 lucide-react/dist/esm/icons/shield-alert.mjs:
 lucide-react/dist/esm/icons/shield-check.mjs:
 lucide-react/dist/esm/icons/square.mjs:

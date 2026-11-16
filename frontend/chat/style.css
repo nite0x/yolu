@@ -1,5 +1,6 @@
 @import "../styles.css";
 @import "../workspace/conversation-surface.css";
+@import "./assistant-actions.css";
 @import "@assistant-ui/react-markdown/styles/dot.css";
 @import "tw-animate-css";
 @import "tw-shimmer";

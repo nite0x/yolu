@@ -282,6 +282,11 @@ function reviewedPlan() {
   };
 }
 
+const reviewMessages = [
+  {id: 1, run_id: "run", role: "user", text: "Prepare the payment workspace"},
+  {id: 2, run_id: "run", role: "assistant", text: "Review the proposed workspace"},
+];
+
 test("assistant renders reviewed operations and verified resource navigation in the shared panel", async (t) => {
   const {w, errors} = createAssistantWindow(t);
   let plan = reviewedPlan();
@@ -302,10 +307,22 @@ test("assistant renders reviewed operations and verified resource navigation in 
       plan = {...plan, status: "succeeded"};
       return {...plan, resources: [resource]};
     }
-    return {messages: [], run: null, before: 0, activities, plans: [plan]};
+    return {messages: reviewMessages, run: null, before: 0, activities, plans: [plan]};
   }, {openResource: (value: any) => {opened.push(value);}});
   await until(() => !!w.document.querySelector('[data-assistant-plan="review-plan"]'));
   const panel = w.document.querySelector('[data-slot="conversation-panel"]')!;
+  const card = panel.querySelector('[data-assistant-plan="review-plan"]')!;
+  assert.ok(card.closest('[data-slot="aui_thread-viewport"]'));
+  assert.equal(card.closest('[data-chat-message-id]')?.getAttribute("data-chat-message-id"), "assistant:run");
+  assert.equal(card.hasAttribute("open"), true);
+  assert.equal(card.querySelector(".assistant-plan-header strong")?.textContent, "Payment module");
+  assert.equal(card.querySelectorAll(".assistant-plan-members > li").length, 2);
+  assert.equal(card.querySelector(".assistant-plan-steps"), null, "pending plans keep the review focused on the proposed changes");
+  const technical = card.querySelector("details.assistant-action-details")!;
+  assert.equal(technical.hasAttribute("open"), false);
+  assert.match(technical.textContent || "", /reviewed-commit/);
+  assert.equal(card.querySelector(".assistant-plan-member-facts")?.textContent?.includes("reviewed-commit"), false);
+  assert.equal(panel.querySelectorAll('[data-assistant-actions="run"]').length, 1);
   assert.match(panel.textContent || "", /新分支工作目录/);
   assert.match(panel.textContent || "", /复用项目目录/);
   assert.match(panel.textContent || "", /reviewed-commit/);
@@ -332,7 +349,7 @@ test("partial assistant operations expose member failures and context notices", 
   (w as any).AssistantTest.openGlobalAssistant(async (path: string) => {
     if (path === "/api/assistant/conversations") return [{id: "review", title: "Partial preparation"}];
     if (path.startsWith("/api/conversation-drafts")) return null;
-    return {messages: [], run: null, before: 0, plans: [plan]};
+    return {messages: reviewMessages, run: null, before: 0, plans: [plan]};
   });
   await until(() => !!w.document.querySelector('[data-assistant-plan="review-plan"]'));
   const card = w.document.querySelector('[data-assistant-plan="review-plan"]')!;
@@ -350,7 +367,7 @@ test("read-only assistant review controls stay disabled", async (t) => {
     if (options?.method === "POST") mutations.push(path);
     if (path === "/api/assistant/conversations") return [{id: "review", title: "Payment planning"}];
     if (path.startsWith("/api/conversation-drafts")) return null;
-    return {messages: [], run: null, before: 0, plans: [reviewedPlan()]};
+    return {messages: reviewMessages, run: null, before: 0, plans: [reviewedPlan()]};
   });
   await until(() => !!w.document.querySelector('[data-assistant-plan="review-plan"]'));
   for (const label of ["确认并执行", "取消计划"]) {
@@ -359,5 +376,72 @@ test("read-only assistant review controls stay disabled", async (t) => {
     button.click();
   }
   assert.deepEqual(mutations, []);
+  assert.deepEqual(errors, []);
+});
+
+test("inline plans stay attached to their turn while replies and decisions update", async (t) => {
+  const {w, errors} = createAssistantWindow(t);
+  let plan = reviewedPlan();
+  const olderPlan = {...reviewedPlan(), id: "older-plan", run_id: "earlier", status: "succeeded"};
+  let messages = [
+    {id: 1, run_id: "earlier", role: "user", text: "An earlier request"},
+    {id: 2, run_id: "earlier", role: "assistant", text: "Earlier operation complete"},
+    {id: 3, run_id: "run", role: "user", text: "Prepare another workspace"},
+  ];
+  let rejectFirst = true;
+  const decisions: any[] = [];
+  let finishDecision: (() => void) | undefined;
+  let reads = 0;
+  (w as any).AssistantTest.openGlobalAssistant(async (path: string, options?: RequestInit) => {
+    if (path === "/api/assistant/conversations") return [{id: "review", title: "Inline planning"}];
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path.endsWith("/decision")) {
+      const decision = JSON.parse(String(options?.body));
+      decisions.push(decision);
+      if (rejectFirst) {
+        rejectFirst = false;
+        throw new Error("Decision connection failed");
+      }
+      await new Promise<void>((resolve) => { finishDecision = resolve; });
+      plan = {...plan, status: decision.decision === "approve" ? "running" : "cancelled"};
+      return plan;
+    }
+    reads++;
+    return {messages, run: {id: "run", status: "running"}, before: 0, plans: [plan, olderPlan]};
+  });
+  const card = () => w.document.querySelector<HTMLElement>('[data-assistant-plan="review-plan"]')!;
+  const button = (text: string) => [...card().querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent === text)!;
+  await until(() => !!card());
+  const original = card();
+  const replies = [...w.document.querySelectorAll('[data-role="assistant"]')];
+  assert.equal(replies.length, 2);
+  assert.equal(replies[0].querySelector('[data-assistant-plan="review-plan"]'), null);
+  assert.ok(replies[0].querySelector('[data-assistant-plan="older-plan"]'));
+  assert.equal(original.closest('[data-chat-message-id]')?.getAttribute("data-chat-message-id"), "assistant:run");
+  assert.ok(original.closest('[data-slot="aui_thread-viewport"]'));
+
+  messages = [...messages, {id: 4, run_id: "run", role: "assistant", text: "The new plan is ready for review"}];
+  await until(() => w.document.body.textContent?.includes("The new plan is ready for review") === true);
+  assert.equal(card(), original, "arrival of reply text must preserve the interactive card");
+  button("确认并执行").click();
+  await until(() => card().textContent?.includes("Decision connection failed") === true);
+  assert.equal(button("确认并执行").disabled, false);
+  button("确认并执行").click();
+  await until(() => !!finishDecision);
+  assert.equal(button("正在提交…").disabled, true);
+  button("正在提交…").click();
+  assert.equal(decisions.length, 2);
+  finishDecision!();
+  await until(() => !!button("停止执行"));
+  assert.equal(card(), original);
+  assert.deepEqual(decisions[0], decisions[1]);
+  finishDecision = undefined;
+  button("停止执行").click();
+  await until(() => !!finishDecision);
+  finishDecision!();
+  await until(() => card().textContent?.includes("已取消") === true);
+  assert.equal(card().hasAttribute("open"), false);
+  assert.equal(w.document.querySelectorAll('[data-assistant-plan="review-plan"]').length, 1);
+  assert.ok(reads > 1);
   assert.deepEqual(errors, []);
 });

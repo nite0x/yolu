@@ -164,3 +164,48 @@ func TestAssistantInputByteLimitAcceptsEscapedJSON(t *testing.T) {
 		request(t, handler, "POST", "/api/assistant/conversations/limit/runs", string(body), expected)
 	}
 }
+
+func TestSnapshotIncludesActionsFromOlderTranscriptPages(t *testing.T) {
+	s, handler := testService(t, nil)
+	request(t, handler, "POST", "/api/assistant/conversations", `{"id":"history"}`, 201)
+	for i := 0; i < 105; i++ {
+		run := fmt.Sprintf("run-%03d", i)
+		if _, _, err := s.store.BeginAssistantRun("history", run, "Request"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.store.FinishAssistantRun("history", run, "completed", "", "Reply"); err != nil {
+			t.Fatal(err)
+		}
+		plan := store.AssistantPlan{ID: run, ConversationID: "history", RunID: run, Status: "succeeded", CreatedAt: int64(i + 1)}
+		if err := s.store.CreateAssistantPlan(plan); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.store.AddAssistantActivity("history", run, "project_list", "completed", map[string]any{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var snapshot struct {
+		Messages   []store.AssistantMessage  `json:"messages"`
+		Plans      []store.AssistantPlan     `json:"plans"`
+		Activities []store.AssistantActivity `json:"activities"`
+	}
+	base := "/api/assistant/conversations/history"
+	if err := json.Unmarshal(request(t, handler, "GET", base, "", 200), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Plans) != 100 || len(snapshot.Activities) != 100 {
+		t.Fatalf("recent snapshot sizes %d %d", len(snapshot.Plans), len(snapshot.Activities))
+	}
+	if err := json.Unmarshal(request(t, handler, "GET", base+"?before=3", "", 200), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Messages) != 2 || snapshot.Messages[0].RunID != "run-000" {
+		t.Fatalf("incorrect transcript page %+v", snapshot.Messages)
+	}
+	if len(snapshot.Plans) != 101 || snapshot.Plans[100].RunID != "run-000" {
+		t.Fatalf("older plan missing from transcript page %+v", snapshot.Plans)
+	}
+	if len(snapshot.Activities) != 101 || snapshot.Activities[100].RunID != "run-000" {
+		t.Fatalf("older query missing from transcript page %+v", snapshot.Activities)
+	}
+}

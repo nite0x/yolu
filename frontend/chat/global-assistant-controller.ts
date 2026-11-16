@@ -1,6 +1,7 @@
 import { uiText } from "../i18n";
 import { createDraftPersistence } from "./draft-persistence";
 import { readLocalDraft, type DraftRecord } from "./drafts";
+import { assistantReplyID } from "./assistant-messages";
 
 export type AssistantRequest = <T>(
   path: string,
@@ -213,10 +214,17 @@ export class GlobalAssistantController {
         this.state.messages.map((message) => [message.id, message]),
       );
       page.messages.forEach((message) => messages.set(message.id, message));
+      const anchor = messages.get(Number(this.reading.anchor));
+      if (anchor?.role === "assistant" && anchor.run_id)
+        this.reading.anchor = assistantReplyID(anchor.run_id);
+      const activities = new Map(this.state.activities.map((activity) => [activity.id, activity]));
+      page.activities?.forEach((activity) => activities.set(activity.id, activity));
+      const plans = new Map(this.state.plans.map((plan) => [plan.id, plan]));
+      page.plans?.forEach((plan) => plans.set(plan.id, plan));
       this.update({
         ...page,
-        activities: page.activities ?? this.state.activities,
-        plans: page.plans ?? this.state.plans,
+        activities: [...activities.values()],
+        plans: [...plans.values()],
         messages: [...messages.values()].sort((a, b) => a.id - b.id),
         before:
           earlier || !this.state.messages.length
