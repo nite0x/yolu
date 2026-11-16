@@ -3,6 +3,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 
 
 let settingsEnvironment = null;
+let browserAccessState = null;
+let browserAccessLoading = false;
 let titleSettingsEnvironment = null;
 let titleSettingsLoading = false;
 let titleSettingsRevision = 0;
@@ -200,6 +202,7 @@ $('#conversationDefaultsForm').addEventListener('submit', event => {
 });
 
 function renderSettings() {
+  if (state.view === 'settings' && !browserAccessState && !browserAccessLoading) void loadBrowserAccess();
   renderCodexDiagnostics();
   if (state.view === 'settings' && !codexDiagnosticsBatch && !codexDiagnostics.has(activeEnvironment)) void checkCodexEnvironment(activeEnvironment);
   const environment = environmentInventory.find(e => e.id === activeEnvironment);
@@ -258,6 +261,67 @@ $('#appearanceForm').addEventListener('submit', async event => {
     button.disabled = false;
   }
 });
+
+function renderBrowserAccess(result) {
+  browserAccessState = result;
+  $('#browserAccessFields').hidden = !result.can_manage;
+  $('#browserAccessFields').disabled = !result.can_manage;
+  $('#browserAccessLogout').hidden = result.can_manage;
+  $('#browserAccessEnabled').checked = result.enabled;
+  $('#browserAccessPort').value = result.port;
+  $('#browserAccessCode').value = result.code;
+  $('#browserAccessConnection').hidden = !result.running;
+  $('#browserAccessStatus').textContent = result.error ? uiText(result.error) : result.running ? uiText('浏览器访问已开启') : uiText('浏览器访问已关闭');
+  const addresses = $('#browserAccessAddresses');
+  addresses.replaceChildren();
+  if (!result.can_manage) return;
+  for (const address of result.addresses) {
+    const row = document.createElement('li');
+    const label = document.createElement('code');
+    label.textContent = address;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = uiText('复制地址');
+    button.setAttribute('aria-label', uiText('复制地址 {0}', address));
+    button.addEventListener('click', () => copy(address));
+    row.append(label, button);
+    addresses.append(row);
+  }
+}
+
+async function loadBrowserAccess() {
+  browserAccessLoading = true;
+  try {
+    renderBrowserAccess(await api('/api/settings/browser-access', {environment:'local'}));
+  } catch (error) {
+    $('#browserAccessStatus').textContent = error.message;
+  } finally {
+    browserAccessLoading = false;
+  }
+}
+
+async function saveBrowserAccess(regenerate = false) {
+  if (browserAccessLoading || !browserAccessState?.can_manage) return;
+  browserAccessLoading = true;
+  $('#browserAccessFields').disabled = true;
+  try {
+    const enabled = regenerate ? browserAccessState.enabled : $('#browserAccessEnabled').checked;
+    const port = regenerate ? browserAccessState.port : Number($('#browserAccessPort').value);
+    renderBrowserAccess(await api('/api/settings/browser-access', {method:'PUT', environment:'local', body:JSON.stringify({enabled, port, regenerate_code:regenerate})}));
+  } catch (error) {
+    $('#browserAccessStatus').textContent = error.message;
+  } finally {
+    browserAccessLoading = false;
+    $('#browserAccessFields').disabled = !browserAccessState?.can_manage;
+  }
+}
+
+$('#browserAccessForm').addEventListener('submit', event => {
+  event.preventDefault();
+  void saveBrowserAccess();
+});
+$('#copyBrowserAccessCode').addEventListener('click', () => copy($('#browserAccessCode').value));
+$('#resetBrowserAccessCode').addEventListener('click', () => { void saveBrowserAccess(true); });
 window.addEventListener('yolu:appearance', () => { $('#colorThemeSelect').value = window.YoluTheme.current(); showThemePreview(); });
 
 $('#languageSelect').value = window.YoluI18n?.language || 'system';

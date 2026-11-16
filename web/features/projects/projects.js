@@ -168,6 +168,11 @@ function renderDesktopProjects(markup) {
   const template = document.createElement('template');
   template.innerHTML = markup;
   current.dataset.pane = template.content.querySelector('.project-workspace').dataset.pane;
+  // Other views move the shared toolbar out of the project pane. Restore it
+  // before refreshing its filters, retaining the search field and focus.
+  const listPane = current.querySelector('#projectListPane');
+  const toolbar = $('#panelToolbar');
+  if (toolbar.parentElement !== listPane) listPane.prepend(toolbar);
   for (const selector of ['.project-filters', '.project-list-scroll', '#projectDetail']) {
     const target = current.querySelector(selector);
     const next = template.content.querySelector(selector);

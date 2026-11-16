@@ -60,6 +60,7 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
     else if (url.startsWith('/api/task-inventory')) result = { requirements: data.requirements.map(q => ({ ...q, environment_id: 'local', environment_name: '本机', connected: true })), environments: [{ id: 'local', name: '本机', connected: true }], project_count: data.projects.length };
     else if (url === '/api/environments') result = options.method === 'POST' ? { id: 'wsl-test' } : environments;
     else if (url === '/api/settings/terminal' && options.method === 'PUT') result = data.terminal = { ...data.terminal, settings: body, launcher: body.path || '/usr/bin/terminal', message: '终端已就绪' };
+    else if (url === '/api/settings/browser-access') result = {enabled:false,port:4318,code:'',running:false,error:'',can_manage:true,addresses:[]};
     else if (url === '/api/settings/codex') result = {platform:'linux',user:'tester',codex_home:'/home/tester/.codex',cli_path:'/usr/bin/codex',candidates:['/usr/bin/codex'],version:'codex-cli test',checked_at:'2026-11-04T12:00:00Z',status:'ok',checks:[{id:'cli',name:'CLI 安装与版本',status:'ok',message:'codex-cli test'}]};
     else if (url === '/api/settings/conversation-defaults') {
       if (options.method === 'PUT') data.conversation_defaults = body;
@@ -677,6 +678,58 @@ test('task and Git text is rendered inertly, including repository names and path
   await h.window.openGit('app');
   assert.equal(h.$('#gitContent').querySelector('img'), null);
   assert(h.$('#gitTitle').textContent.includes(malicious));
+});
+
+test('browser access settings save on the host, retain drafts and rotate the saved pairing code', async t => {
+  let saved = {enabled:false,port:4318,code:'',running:false,error:'',can_manage:true,addresses:[]};
+  const h = await harness(t, true, {intercept:(url, options, body) => {
+    if (url !== '/api/settings/browser-access') return;
+    if (options.method === 'PUT') saved = {...saved, enabled:body.enabled, port:body.port, running:body.enabled, code:body.regenerate_code ? 'replacement-code' : 'pairing-code', addresses:['http://192.168.1.20:' + body.port]};
+    return {ok:true,json:async()=>saved};
+  }});
+  await h.navigate('/settings');
+  assert.equal(h.$('#browserAccessFields').disabled, false);
+  h.click('#browserAccessEnabled');
+  h.input('#browserAccessPort', '54321');
+  await h.window.refresh();
+  assert.equal(h.$('#browserAccessPort').value, '54321');
+  await h.submit('#browserAccessForm');
+  const save = h.requests.findLast(r => r.url === '/api/settings/browser-access' && r.options.method === 'PUT');
+  assert.deepEqual(save.body, {enabled:true,port:54321,regenerate_code:false});
+  assert.equal(save.options.headers['X-Environment-ID'], 'local');
+  assert.equal(h.$('#browserAccessCode').value, 'pairing-code');
+  assert.equal(h.$('#browserAccessConnection').hidden, false);
+  assert.equal(h.$('#browserAccessAddresses code').textContent, 'http://192.168.1.20:54321');
+  h.input('#browserAccessPort', '54322');
+  h.click('#resetBrowserAccessCode');
+  await settle();
+  assert.deepEqual(h.requests.findLast(r => r.url === '/api/settings/browser-access' && r.options.method === 'PUT').body, {enabled:true,port:54321,regenerate_code:true});
+  assert.equal(h.$('#browserAccessCode').value, 'replacement-code');
+});
+
+test('remote browser settings hide host controls and provide sign-out', async t => {
+  const h = await harness(t, true, {origin:'http://192.168.1.20:4318',route:'/settings',intercept:url => {
+    if (url === '/api/settings/browser-access') return {ok:true,json:async()=>({enabled:true,port:4318,code:'',running:true,error:'',can_manage:false,addresses:[]})};
+  }});
+  assert.equal(h.$('#browserAccessFields').hidden, true);
+  assert.equal(h.$('#browserAccessFields').disabled, true);
+  assert.equal(h.$('#browserAccessLogout').hidden, false);
+  assert.equal(h.$('#browserAccessCode').value, '');
+  assert.equal(h.$('#browserAccessLogout').getAttribute('target'), '_top');
+  assert.equal(h.$('#browserAccessLogout').getAttribute('method'), 'post');
+});
+
+test('failed browser access saves preserve editable settings and the active pairing code', async t => {
+  const h = await harness(t, true, {route:'/settings',intercept:(url, options) => {
+    if (url !== '/api/settings/browser-access') return;
+    return options.method === 'PUT' ? {ok:false,json:async()=>({error:'Port already in use'})} : {ok:true,json:async()=>({enabled:true,port:4318,code:'current-code',running:true,error:'',can_manage:true,addresses:[]})};
+  }});
+  h.input('#browserAccessPort', '54321');
+  await h.submit('#browserAccessForm');
+  assert.equal(h.$('#browserAccessPort').value, '54321');
+  assert.equal(h.$('#browserAccessCode').value, 'current-code');
+  assert.equal(h.$('#browserAccessFields').disabled, false);
+  assert.match(h.$('#browserAccessStatus').textContent, /Port already in use/);
 });
 
 test('settings preserve unsaved edits during polling and keep the terminal request format', async t => {
@@ -1392,44 +1445,43 @@ test('conversation list omits shared context and retains active counts and refre
   assert.match(h.$('[data-conversation-session="session-1"]').textContent, /Codex generated title/);
 });
 
-test('sidebar preferences follow shared storage and synchronize before a retained page is shown', async t => {
-  const h = await harness(t, true, {width:1440});
-  const collapsedKey = 'workhub:sidebar-collapsed:v1', widthKey = 'workhub:sidebar-width:v1';
-  const body = h.document.body;
-  const storage = key => h.window.dispatchEvent(new h.window.StorageEvent('storage', {key}));
+test('shared project navigation restores the same toolbar after conversations and settings', async t => {
+  const h = await harness(t, true, {route:'/projects'});
+  const toolbar = h.$('#panelToolbar');
+  const search = h.$('#search');
+  const errors = [];
+  h.window.addEventListener('error', event => errors.push(event.error));
+  for (const route of ['/sessions', '/settings', '/requirements']) {
+    await h.navigate(route);
+    await h.navigate('/projects');
+    assert.equal(h.$('#projectListPane #panelToolbar'), toolbar);
+    assert.equal(h.$('#projectListPane #search'), search);
+    assert(h.$('#projectListPane .project-filters'));
+  }
+  assert.deepEqual(errors, []);
+});
+
+test('browser navigation uses the shared rail and ignores old expandable sidebar preferences', async t => {
+  const h = await harness(t, true, {width:1440, storage:{'workhub:sidebar-collapsed:v1':'false','workhub:sidebar-width:v1':'360'}});
   const route = h.window.location.hash;
-  h.window.localStorage.setItem(collapsedKey, 'true');
-  storage(collapsedKey); await settle();
-  assert(body.classList.contains('sidebar-collapsed'));
-  assert.equal(h.$('.sidebar-toggle').getAttribute('aria-expanded'), 'false');
-  assert.equal(h.$('.sidebar-toggle').getAttribute('aria-label'), '展开侧栏');
-  h.window.localStorage.setItem(widthKey, '320');
-  storage(widthKey);
-  assert.equal(body.style.getPropertyValue('--sidebar-width'), '320px');
-  h.window.localStorage.setItem(collapsedKey, 'false');
-  storage('unrelated'); await settle();
-  assert(body.classList.contains('sidebar-collapsed'));
-  h.window.localStorage.setItem(widthKey, '360');
+  assert(h.document.documentElement.hasAttribute('data-workhub-desktop'));
+  assert(!h.document.documentElement.hasAttribute('data-workhub-platform'));
+  assert.equal(h.$('.sidebar-toggle, .sidebar-resize'), null);
+  assert.equal(h.document.body.classList.contains('sidebar-collapsed'), false);
+  h.window.localStorage.setItem('workhub:sidebar-collapsed:v1', 'true');
+  h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:sidebar-collapsed:v1'}));
   h.window.dispatchEvent(new h.window.Event('workhub:sidebar-sync'));
-  assert(!body.classList.contains('sidebar-collapsed'), 'layout updates synchronously before showing the page');
-  assert.equal(body.style.getPropertyValue('--sidebar-width'), '360px');
   await settle();
-  assert.equal(h.$('.sidebar-toggle').getAttribute('aria-expanded'), 'true');
-  h.window.localStorage.removeItem(widthKey); storage(widthKey);
-  assert.equal(body.style.getPropertyValue('--sidebar-width'), '');
-  h.window.localStorage.setItem(widthKey, '999'); storage(widthKey);
-  assert.equal(body.style.getPropertyValue('--sidebar-width'), '');
-  h.window.localStorage.setItem(collapsedKey, 'true'); storage(collapsedKey); await settle();
-  h.window.localStorage.clear(); storage(null); await settle();
-  assert(!body.classList.contains('sidebar-collapsed'));
+  assert.equal(h.$('.sidebar-toggle, .sidebar-resize'), null);
+  assert.equal(h.document.body.style.getPropertyValue('--sidebar-width'), '');
   assert.equal(h.window.location.hash, route);
 });
 
-test('collapsed sidebar keeps individual task and directory shortcuts visible with direct navigation', async t => {
+test('browser rail keeps individual task and directory shortcuts visible with direct navigation', async t => {
   const h = await harness(t, true, {width:1024, pins:{local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}}});
   const panel = h.$('#conversationShortcuts');
-  assert.equal(h.$('.sidebar-shortcut-rail'), null);
-  assert(h.document.body.classList.contains('sidebar-collapsed'));
+  assert(h.$('.sidebar-shortcut-rail'));
+  assert.equal(h.document.body.classList.contains('sidebar-collapsed'), false);
   assert(!panel.hasAttribute('popover'));
   assert(h.$('[data-task-shortcut="task"] .shortcut-badge'));
   assert(h.$('[data-directory-shortcut="/workspace/task/app"] .shortcut-badge'));
@@ -1439,8 +1491,8 @@ test('collapsed sidebar keeps individual task and directory shortcuts visible wi
   assert.equal(h.$('[data-task-shortcut="task"]').getAttribute('aria-current'), 'true');
   h.click('[data-directory-shortcut="/workspace/task/app"]'); await settle();
   assert.equal(h.$('[data-directory-shortcut="/workspace/task/app"]').getAttribute('aria-current'), 'true');
-  assert(h.document.body.classList.contains('sidebar-collapsed'));
-  h.click('.sidebar-toggle'); await settle();
+  assert.equal(h.document.body.classList.contains('sidebar-collapsed'), false);
+  h.click('#taskShortcutPicker summary'); await settle();
   assert.equal(h.$('[data-task-shortcut="task"]').dataset.shortcutIcon, identity);
   assert(h.$('[data-directory-shortcut="/workspace/task/app"]'));
 });
@@ -1968,7 +2020,7 @@ test('a shared directory recovery only changes the task selected beside its erro
 });
 
 test('returning from a task through browser history restores list filters, scroll and the original task focus', async t => {
-  const h = await harness(t);
+  const h = await harness(t, true, {width:740});
   h.data.projects[0].worktrees[1].dirty = 2;
   await h.navigate('/requirements');
   h.input('#search', 'Billing');
@@ -2032,13 +2084,13 @@ test('sidebar refresh status stays compact and retains its detailed explanation'
 });
 
 test('project panes resize with pointer and keyboard, retain their width and respect narrow layouts', async t => {
-  const h = await harness(t);
+  const h = await harness(t, true, {width:1440});
   h.data.projects[0].worktrees[1].dirty = 3;
   await h.navigate('/projects');
   const originalBounds = h.window.HTMLElement.prototype.getBoundingClientRect;
   h.window.HTMLElement.prototype.getBoundingClientRect = function () {
     if (this.classList.contains('project-workspace')) return { width: 1000 };
-    if (this.id === 'projectListPane') return { width: parseFloat(h.$('#content').style.getPropertyValue('--project-list-width')) || 248 };
+    if (this.id === 'projectListPane') return { width: parseFloat(h.document.documentElement.style.getPropertyValue('--workspace-list-width')) || 248 };
     return originalBounds.call(this);
   };
   assert.equal(h.$('.project-list-item .lucide-chevron-right'), null);
@@ -2049,31 +2101,31 @@ test('project panes resize with pointer and keyboard, retain their width and res
     Object.defineProperty(event, 'pointerId', { value: 7 });
     target.dispatchEvent(event);
   };
-  pointer(h.$('[data-project-resize]'), 'pointerdown', 248);
+  pointer(h.$('[data-project-resize]'), 'pointerdown', 280);
   pointer(h.document, 'pointermove', 350);
-  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '350px');
+  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '350px');
   h.window.render(); // A real data change can replace the markup while dragging.
   pointer(h.document, 'pointermove', 390);
   pointer(h.document, 'pointerup', 390);
-  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '390px');
-  assert.equal(h.window.localStorage.getItem('workhub:project-list-width:v1'), '390');
+  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '390px');
+  assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'), '390');
   assert.equal(h.$('.project-workspace').hasAttribute('data-resizing'), false);
   const key = (key, shiftKey = false) => h.$('[data-project-resize]').dispatchEvent(new h.window.KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true }));
   key('ArrowRight');
   assert.equal(h.$('[data-project-resize]').getAttribute('aria-valuenow'), '400');
   key('ArrowLeft', true);
-  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '360px');
+  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '360px');
   key('Home');
-  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '200px');
+  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '240px');
   key('End');
-  assert.equal(h.$('#content').style.getPropertyValue('--project-list-width'), '632px');
+  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '520px');
   await h.navigate('/requirements');
   await h.navigate('/projects');
-  assert.equal(h.$('[data-project-resize]').getAttribute('aria-valuenow'), '632');
-  Object.defineProperty(h.window, 'innerWidth', { value: 800, configurable: true });
+  assert.equal(h.$('[data-project-resize]').getAttribute('aria-valuenow'), '520');
+  Object.defineProperty(h.window, 'innerWidth', { value: 700, configurable: true });
   h.window.dispatchEvent(new h.window.Event('resize'));
   key('Home');
-  assert.equal(h.window.localStorage.getItem('workhub:project-list-width:v1'), '632');
+  assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'), '520');
   assert.equal(h.requests.filter(r => r.url.endsWith('/open')).length, 0);
 });
 
@@ -2841,7 +2893,7 @@ test('wide task workspace restores selection, keeps filters beside details and r
   assert.equal(h.$('.task-project-details').open, true);
   h.input('#search', 'Billing');
   await h.navigate('/projects');
-  assert(h.$('#workContent > #panelToolbar #search'));
+  assert(h.$('#projectListPane #panelToolbar #search'));
   await h.navigate('/requirements');
   assert.equal(h.$('#search').value, 'Billing');
   assert.equal(h.window.location.hash, '#/requirements/task');
@@ -2865,7 +2917,7 @@ test('wide startup restores a saved task and falls back when the saved task is a
 });
 
 test('narrow tasks enter details explicitly, return with filters and expand to a split workspace', async t => {
-  const h = await harness(t, true, {width:800, route:'/requirements'});
+  const h = await harness(t, true, {width:700, route:'/requirements'});
   assert.equal(h.window.location.hash, '#/requirements');
   assert.equal(h.document.body.classList.contains('task-selection-open'), false);
   h.input('#search', 'Billing');
@@ -2933,31 +2985,31 @@ test('task divider resizes across refreshes, supports keyboard limits and restor
     Object.defineProperty(event,'pointerId',{value:id});
     target.dispatchEvent(event);
   };
-  pointer(handle,'pointerdown',300);
+  pointer(handle,'pointerdown',280);
   pointer(h.document,'pointermove',390);
-  assert.equal(workspace.style.getPropertyValue('--task-list-width'),'390px');
+  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'),'390px');
   await h.window.refresh(true);
   pointer(h.document,'pointermove',430);
   pointer(h.document,'pointerup',430);
-  assert.equal(workspace.style.getPropertyValue('--task-list-width'),'430px');
-  assert.equal(h.window.localStorage.getItem('workhub:task-list-width:v1'),'430');
+  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'),'430px');
+  assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'),'430');
   assert.equal(workspace.hasAttribute('data-task-resizing'),false);
   assert.equal(h.document.activeElement,handle);
   const key = (key,shiftKey=false) => handle.dispatchEvent(new h.window.KeyboardEvent('keydown',{key,shiftKey,bubbles:true,cancelable:true}));
   key('ArrowRight'); key('ArrowLeft',true);
   assert.equal(handle.getAttribute('aria-valuenow'),'400');
-  key('Home'); assert.equal(workspace.style.getPropertyValue('--task-list-width'),'240px');
-  key('End'); assert.equal(workspace.style.getPropertyValue('--task-list-width'),'572px');
+  key('Home'); assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'),'240px');
+  key('End'); assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'),'520px');
   await h.navigate('/projects'); assert.equal(handle.hidden,true);
   await h.navigate('/requirements'); assert.equal(handle.hidden,false);
-  assert.equal(handle.getAttribute('aria-valuenow'),'572');
-  h.window.innerWidth=800; h.window.dispatchEvent(new h.window.Event('resize'));
-  key('Home'); assert.equal(h.window.localStorage.getItem('workhub:task-list-width:v1'),'572');
+  assert.equal(handle.getAttribute('aria-valuenow'),'520');
+  h.window.innerWidth=700; h.window.dispatchEvent(new h.window.Event('resize'));
+  key('Home'); assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'),'520');
   assert.equal(handle.hidden,true);
   await h.navigate('/requirements');
   assert.equal(h.document.body.classList.contains('task-selection-open'),false);
-  const restored = await harness(t, true, {width:1440,storage:{'workhub:task-list-width:v1':'430'}});
-  assert.equal(restored.$('#workContent').style.getPropertyValue('--task-list-width'),'430px');
+  const restored = await harness(t, true, {width:1440,storage:{'workhub:desktop-list-width:v1':'430'}});
+  assert.equal(restored.document.documentElement.style.getPropertyValue('--workspace-list-width'),'430px');
 });
 
 test('file browser lazily expands directories, renders unchanged source and disposes previews on close', async t => {
@@ -3354,8 +3406,9 @@ test('page bridge exposes sidebar navigation without page-tab controls or keyboa
   const event = new h.window.KeyboardEvent('keydown',{key:'t',ctrlKey:true,bubbles:true,cancelable:true});
   h.document.body.dispatchEvent(event);
   assert.equal(event.defaultPrevented,false);
-  h.click('.sidebar-toggle');await settle();
-  assert(h.document.body.classList.contains('sidebar-collapsed'));
+  assert.equal(h.$('.sidebar-toggle, .sidebar-resize'), null);
+  assert(h.document.documentElement.hasAttribute('data-workhub-desktop'));
+  assert.equal(h.window.__TAURI_INTERNALS__, undefined);
 });
 
 test('page bridge delegates sidebar conversation navigation before changing the project document', async t => {

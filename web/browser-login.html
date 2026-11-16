@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="ui-language" content="__UI_LANGUAGE__">
+  <title>Yolu</title>
+  <link rel="icon" href="/yolu.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/core/browser-login.css">
+  <script src="/ui/i18n.js" defer></script>
+</head>
+<body>
+  <main>
+    <img src="/yolu.svg" width="52" height="52" alt="Yolu">
+    <h1 data-i18n="浏览器登录">浏览器登录</h1>
+    <p data-i18n="在主机的 Yolu 设置中查看配对码，登录后继续使用同一份工作区。">在主机的 Yolu 设置中查看配对码，登录后继续使用同一份工作区。</p>
+    <form action="/browser-login" method="post">
+      <label for="code" data-i18n="配对码">配对码</label>
+      <input id="code" name="code" type="password" required maxlength="128" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" autofocus>
+      <p class="error" role="alert" __LOGIN_ERROR_HIDDEN__ data-i18n="配对码无效，请从主机的 Yolu 设置中重新复制。">配对码无效，请从主机的 Yolu 设置中重新复制。</p>
+      <button type="submit" data-i18n="登录工作区">登录工作区</button>
+    </form>
+  </main>
+</body>
+</html>
