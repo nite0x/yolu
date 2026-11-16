@@ -2,7 +2,7 @@
 
 ## Status and use
 
-Prepared on 2026-11-16 against `main` at `6e5403a67c46b67448c2eb9d449f01c5b4f63abb`. The original proposal is preserved below with the phase 1 implementation review and verification evidence. Phase 1 is implemented. Phases 2–4 remain pending. The original conversation's four-stage details and interactive selections were unavailable in the retrieved text, so the phases below were reconstructed for review. The [specification](spec.md) defines the intended behavior and acceptance criteria.
+Prepared on 2026-11-16 against `main` at `6e5403a67c46b67448c2eb9d449f01c5b4f63abb`. The original proposal is preserved below with the phase 1 implementation review and verification evidence. Phases 1–3 are implemented and verified. Phase 4 remains pending. The original conversation's four-stage details and interactive selections were unavailable in the retrieved text, so the phases below were reconstructed for review. The [specification](spec.md) defines the intended behavior and acceptance criteria.
 
 The design handoff delivered two documents. Phase 1 implementation rechecked [AGENTS.md](../../../AGENTS.md), [CONTRIBUTING.md](../../../CONTRIBUTING.md), and the specification, and updated this plan with the actual branch state and verified implementation decisions.
 
@@ -70,11 +70,11 @@ Provider and credential choices are resolved for phase 1. Global history lives i
 
 Depends on phase 1 conversation identity, provider adapter, and registry contracts.
 
-- [ ] Implement registry discovery, JSON Schema validation, structured results, and backend-enforced capability permissions.
-- [ ] Expose context, project/workspace queries, Git/worktree summaries, conversation discovery, and validated navigation.
-- [ ] Bound and page query results, expose timestamps, and retain successful environment results when another environment is unavailable.
-- [ ] Add application-owned resource cards and choice controls using the current UI bridge, routing, localization, and keyboard conventions.
-- [ ] Reject model-supplied target identities that fail resource/environment validation. Keep external text as data throughout the tool loop.
+- [x] Implement registry discovery, JSON Schema validation, structured results, and backend-enforced capability permissions.
+- [x] Expose context, project/workspace queries, Git/worktree summaries, conversation discovery, and validated navigation.
+- [x] Bound and page query results, expose timestamps, and retain successful environment results when another environment is unavailable.
+- [x] Add application-owned resource cards and choice controls using the current UI bridge, routing, localization, and keyboard conventions.
+- [x] Reject model-supplied target identities that fail resource/environment validation. Keep external text as data throughout the tool loop.
 
 Exit evidence includes finding workspaces/projects, disambiguating repeated names, opening an existing conversation in its owning environment, and showing partial query failures. Trace acceptance to AC-02, AC-03, AC-12, and AC-13.
 
@@ -82,13 +82,13 @@ Exit evidence includes finding workspaces/projects, disambiguating repeated name
 
 Depends on phases 1–2 and durable approval, idempotency, and journal contracts. Ship approval and recovery alongside the write capabilities.
 
-- [ ] Implement immutable plan revisions, canonical parameter binding, approval/cancellation, and precondition revalidation before writes.
-- [ ] Extract shared project registration and workspace creation/member-addition operations where handlers currently contain the business logic. Preserve manual UI and legacy API behavior.
-- [ ] Implement `project.register`, `workspace.create`, and `workspace.attachProject` with all four member modes, current validation limits, and result-state inspection.
-- [ ] Bind durable mutation request identities to payload digests and reuse confirmed results across retries and concurrent callers.
-- [ ] Journal execution intent and actual side effects, publish step progress, and reconcile uncertain outcomes before replay. Preserve the existing domain lock and cleanup coordination.
-- [ ] Handle partial preparation, context-generation warnings, cancellation during active work, UI reconnection, and backend restart.
-- [ ] Provide structured plan, progress, resource, and recovery views with useful domain errors and correctly routed links.
+- [x] Implement immutable plan revisions, canonical parameter binding, approval/cancellation, and precondition revalidation before writes.
+- [x] Extract shared project registration and workspace creation/member-addition operations where handlers currently contain the business logic. Preserve manual UI and legacy API behavior.
+- [x] Implement `project.register`, `workspace.create`, and `workspace.attachProject` with all four member modes, current validation limits, and result-state inspection.
+- [x] Bind durable mutation request identities to payload digests and reuse confirmed results across retries and concurrent callers.
+- [x] Journal execution intent and actual side effects, publish step progress, and reconcile uncertain outcomes before replay. Preserve the existing domain lock and cleanup coordination.
+- [x] Handle partial preparation, context-generation warnings, cancellation during active work, UI reconnection, and backend restart.
+- [x] Provide structured plan, progress, resource, and recovery views with useful domain errors and correctly routed links.
 
 Exit evidence includes one approved request creating a workspace across two projects, a cancelled plan, a stale-plan conflict, all four directory modes, a failed second worktree, repeated request delivery, and restart reconciliation. Trace acceptance to AC-04 through AC-14.
 
@@ -105,6 +105,26 @@ Depends on the accepted phase 3 workflow and a usable prepared directory.
 - [ ] Consider workspace metadata updates and standalone worktree creation as small follow-up increments using the same registry and policy mechanisms.
 
 Exit evidence includes the explicit “prepare both projects and start Codex” scenario and a retried or interrupted session creation. Trace acceptance to AC-15 and the relevant recovery cases. Additional execution-agent adapters and an external MCP surface can be planned after this handoff has been verified.
+
+## Phases 2–3 implementation review on 2026-11-16
+
+The implementation continues from the committed phase 1 branch. Three delegated subtasks cover shared domain services, Codex application-tool interoperability and shared conversation action UI. The parent task owns the capability registry, application composition, durable plans, integration and verification.
+
+| Area | Implementation decision |
+| --- | --- |
+| Model transport | Keep the authenticated Codex CLI. Advertise app-server `dynamicTools` using the installed protocol schema. Application function names use underscores. Shell, web, external MCP and native execution tools retain their disabled configuration. |
+| Registry | Reuse the existing JSON Schema dependency for strict object validation. Read callbacks compose existing stores, Git inspection and environment services. Mutation callbacks create resolved review records. The model receives no approval tool. |
+| Selection | Persist the explicitly supplied environment/workspace/project hint with each run and bind it to send receipts. The model reads it through `app_get_context`. Selection changes retain conversation identity. |
+| Queries | Return bounded resource pages, stable typed identities, freshness, ambiguous-name choices and per-environment failures. All-environment queries retain successful results and identify disconnected environments. Fresh navigation validation resolves the exact environment/resource again before using the existing page bridge. |
+| Shared domain writes | Manual HTTP handlers and assistant execution call the same registration, workspace creation and project-attachment services. JSON-serializable reviews record canonical repository identity, normalized inputs, resolved member paths/modes/refs/commits and stable proposed resource IDs. |
+| Plans | Each immutable plan covers one domain operation in one execution environment. Workspace creation can prepare all selected projects under that plan. A material change creates another plan ID. Approval binds the conversation, plan ID, revision, digest and canonical review. |
+| Journal and retries | Add `assistant_action_plans`, `assistant_decisions`, `assistant_tool_calls` and `assistant_run_contexts` through the existing SQLite infrastructure and metadata export/import. Persist reviewed intent before dispatch, serialize decision receipts and reuse confirmed outcomes. |
+| Preconditions and locks | Revalidate review data under the domain write lock. Workspace creation and attachment share sorted repository locks with native Git operations. Existing-branch preparation checks the reviewed commit before and after checkout. Stale prerequisites return conflict for a fresh review. |
+| Progress and recovery | Journal operation/member states from authoritative domain records while worktree preparation runs. Reconcile stable resource IDs after interrupted calls. Startup/import mark unfinished execution unknown. Reconciliation reads existing evidence and preserves partial resources. Uncertain operations are not automatically replayed. Existing workspace recovery controls handle failed members. |
+| Limits | Retain four concurrent model runs and two-minute turns. Bound each run to 24 application calls, 64,000-byte tool arguments/results and 30 seconds per call. A shared four-worker limit bounds delayed tool handlers. Reviewed execution has four concurrent plans and a five-minute deadline. |
+| UI | Keep the complete shared `ConversationPanel`. Its action slot renders app-owned resource/choice cards, resolved plan details, immutable approval, cancellation, member progress, partial failures and result reconciliation. Native conversations keep their existing controls. |
+
+The core walkthrough uses two registered repositories and one approved workspace-creation request. Additional checks cover local registration, project attachment, all four member modes, cancelled/stale plans, duplicate/concurrent decisions, uncertain outcomes, import/restart recovery, read-only enforcement, environment failures and existing native workflows. Final evidence is recorded below after verification.
 
 ## Verification strategy
 
@@ -185,3 +205,22 @@ Regression coverage checks both entry points against the shared panel, global hi
 Consolidation validation passed all 128 chat tests, 23 workspace tests and 261 script checks, including native attachments, approvals, questions, file access and streaming render isolation. Both frontend type checks and bundles passed, followed by backend compilation and `go test ./internal/app ./web`. Actual browser inspection confirmed the same `data-slot="conversation-panel"` in the native and global adapters, labelled by their respective conversation titles. At 1280×720 and 390×844, navigation between both pages retained the assistant draft. Narrow list/detail transitions restored the selected conversation and draft. The viewport override was reset after verification. Native-window visual interaction remains the documented manual check.
 
 The final consolidation checks also passed `go test ./...`, `go vet ./...`, all seven desktop packaging checks and `desktop-workflow-smoke.mjs` against the rebuilt backend. The workflow covered two projects, workspace preparation, Git operations, saved session history, archive/restore and cleanup recovery.
+
+
+## Phases 2–3 verification evidence on 2026-11-16
+
+| Check | Evidence |
+| --- | --- |
+| Frontend | Both type checks and embedded bundles passed. The final suite passed 137 chat tests, 23 workspace tests and 261 script checks, including browser/desktop navigation, immutable approval clicks, read-only controls, structured errors and context-preserving send retries. |
+| Backend and race checks | `go test ./...`, `go vet ./...` and race coverage across assistant, store, task, project, session, terminal, workspace and app passed. Focused regressions cover all four member modes, stale/deleted source refs, canonical repository identity, duplicate/concurrent decisions, interrupted import/restart, member progress, remote lifecycle leases and delayed tool callbacks. |
+| Provider | The installed authenticated Codex CLI performed a real dynamic application-tool call and returned a nonce supplied solely by that tool. The final interoperability check completed in 7.75 seconds. |
+| Real application flow | In isolated temporary data, a real assistant conversation queried registered frontend/backend repositories, proposed one workspace plan and created both worktrees after confirmation. The result opened the actual workspace. Project registration and adding a third project using `project` mode also completed through recorded plans. Git and stored metadata confirmed all three ready member states and their actual branches/paths. |
+| Cancellation | A real pending plan was cancelled in the 390×844 English dark-theme UI. SQLite retained its cancelled receipt. The proposed workspace metadata, directory and branch were absent. |
+| Navigation, drafts and restart | Revisited the assistant after opening the created workspace, retained its independent conversation, restored completed plans after backend restart, and restored an unsent draft through narrow list/detail transitions. Checked 1280×720 and 390×844 shared layouts. Restored the isolated preview's original language/appearance and reset the viewport after verification. |
+| Recovery and integration fixes | Actual UI verification exposed rejection of the pending-send context by the shared draft API. Its additive schema and roundtrip regression now preserve the original request selection. Additional checks fixed activity JSON scanning, approval response slice races, capacity-bound receipt retries, atomic malformed-journal import rollback and reconciliation of individual member steps. |
+| Desktop and existing workflow | Seven desktop packaging checks, both Rust launcher tests, native host compilation, `desktop-smoke.mjs` against the actual Rust host/prepared sidecar and the existing two-project desktop workflow smoke passed. Shared-navigation tests exercise browser and desktop layout variants. Native-window visual interaction remains a manual check because native computer control is unavailable. |
+| Dependency scan | `govulncheck` reported zero reachable vulnerabilities. It reported 13 imported-package and 10 required-module findings without reachable calls. |
+
+AC-02 through AC-13 are covered by the application flow and focused domain/runtime/UI regressions. AC-01 and AC-14 remain covered by restored conversation/draft behavior, legacy metadata migration, native session discovery and the unchanged existing-workflow smoke. Real WSL-host execution was unavailable on this Linux host. Environment identity, partial queries, concurrent remote progress, reconnection and shutdown were verified with deterministic environment fixtures.
+
+To try these phases, run `npm run desktop:dev -- --data /tmp/yolu-assistant-demo --root /tmp/yolu-assistant-workspaces` from this branch, or use the headless command documented above. Register two existing repositories through Projects, open the first assistant entry, and ask it to create a workspace using those projects. Review the concrete environment, directory modes, paths, source commits and branches, then choose **Confirm and execute**. Open the returned workspace resource to continue. Registration and adding projects use the same reviewed flow. The authenticated local Codex CLI remains the model source.

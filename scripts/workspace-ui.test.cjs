@@ -4067,7 +4067,8 @@ test('clone errors stay in the dialog when its selected environment differs from
 for (const desktop of [false, true]) test(`global assistant leads shared navigation and survives page transitions (desktop=${desktop})`, async t => {
   const h = await harness(t, false, {desktop, width:1280, route:'/projects'});
   const opens = [];
-  h.window.WorkHubAssistant = {openGlobal(request) {opens.push(request);}, close() {}};
+  const assistantOptions = [];
+  h.window.WorkHubAssistant = {openGlobal(request, options) {opens.push(request); assistantOptions.push(options);}, open() {}, close() {}};
   assert.equal(h.$('.sidebar nav [data-view]').dataset.view, 'assistant');
   await h.navigate('/assistant');
   assert.equal(h.$('#globalAssistantPage').hidden, false);
@@ -4085,4 +4086,22 @@ for (const desktop of [false, true]) test(`global assistant leads shared navigat
     assert.equal(h.$('#globalAssistantRoot'), root);
     assert.equal(h.$('#globalAssistantPage').hidden, false);
   }
+  await h.navigate('/projects/app');
+  await h.navigate('/assistant');
+  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',project_id:'app'});
+  assert.match(assistantOptions.at(-1).contextLabel(), /App/);
+  await assistantOptions.at(-1).openResource({kind:'workspace',id:'task',environment_id:'local',name:'Billing'});
+  await settle();
+  assert.equal(h.window.location.hash, '#/requirements/task');
+  await h.navigate('/assistant');
+  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',workspace_id:'task'});
+  await assistantOptions.at(-1).openResource({kind:'project',id:'backend',environment_id:'local',name:'Backend'});
+  await settle();
+  assert.equal(h.$('#projectDetail h2').textContent, 'Backend');
+  await h.navigate('/assistant');
+  await assistantOptions.at(-1).openResource({kind:'conversation',id:'session-1',environment_id:'local',name:'Billing review'});
+  await settle();
+  assert.equal(h.window.location.hash, '#/sessions');
+  assert.equal(h.currentSession()?.session, 'session-1');
+  await assert.rejects(assistantOptions.at(-1).openResource({kind:'project',id:'../../outside',environment_id:'local',name:'Invalid'}), /资源信息无效/);
 });

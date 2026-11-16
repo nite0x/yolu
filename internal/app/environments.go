@@ -60,16 +60,31 @@ func environmentID(distro, user string) string {
 	return "wsl-" + hex.EncodeToString(sum[:8])
 }
 func (h *environmentHub) Close() {
+	h.local.Workspace.Closing.Store(true)
+	if h.local.Assistant != nil {
+		h.local.Assistant.Close()
+	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	for _, a := range h.apps {
-		_ = a.Close()
+	apps := make([]*App, 0, len(h.apps))
+	for _, app := range h.apps {
+		app.Workspace.Closing.Store(true)
+		apps = append(apps, app)
+	}
+	h.mu.Unlock()
+	// Closing waits for capability leases. Their callbacks may still need the
+	// hub to publish progress or resolve environment identities while exiting.
+	for _, app := range apps {
+		_ = app.Close()
 	}
 }
+
 func (h *environmentHub) get(id string) (*App, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if a := h.apps[id]; a != nil {
+		if a.Workspace.Closing.Load() {
+			return nil, fmt.Errorf("执行环境正在退出，请稍后重新连接")
+		}
 		select {
 		case <-a.Workspace.Remote.Done():
 			return nil, fmt.Errorf("WSL 连接已断开，请在执行环境设置中重新连接")
@@ -220,26 +235,62 @@ func (h *environmentHub) addHandler(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, 201, e)
 }
 func (h *environmentHub) reconnectHandler(w http.ResponseWriter, r *http.Request) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	id := r.PathValue("environment")
-	for _, e := range h.entries {
-		if e.ID != id {
-			continue
-		}
-		if old := h.apps[id]; old != nil {
-			old.Workspace.Closing.Store(true)
-			old.Workspace.Remote.Close()
-			_ = old.Close()
-			delete(h.apps, id)
-		}
-		a, err := h.connectLocked(e)
-		if err != nil {
-			httpx.WriteError(w, 503, err.Error())
-			return
-		}
-		httpx.WriteJSON(w, 200, map[string]string{"id": id, "root": a.Workspace.Root})
+	if !h.mu.TryLock() {
+		httpx.WriteError(w, 409, "有项目操作正在执行，请完成后重试")
 		return
 	}
-	httpx.WriteError(w, 404, "执行环境不存在")
+	id := r.PathValue("environment")
+	var entry *Environment
+	for i := range h.entries {
+		if h.entries[i].ID == id {
+			copy := h.entries[i]
+			entry = &copy
+			break
+		}
+	}
+	if entry == nil {
+		h.mu.Unlock()
+		httpx.WriteError(w, 404, "执行环境不存在")
+		return
+	}
+	if h.local.Workspace.Closing.Load() {
+		h.mu.Unlock()
+		httpx.WriteError(w, 503, "后台正在退出")
+		return
+	}
+	if old := h.apps[id]; old != nil {
+		if !old.assistantUse.TryLock() {
+			h.mu.Unlock()
+			httpx.WriteError(w, 409, "有项目操作正在执行，请完成后重试")
+			return
+		}
+		if old.Workspace.Closing.Load() {
+			old.assistantUse.Unlock()
+			h.mu.Unlock()
+			httpx.WriteError(w, 409, "有项目操作正在执行，请完成后重试")
+			return
+		}
+		old.Workspace.Closing.Store(true)
+		old.assistantUse.Unlock()
+		// Retain the closing entry until disposal completes so concurrent
+		// lookups cannot start a replacement app against its still-open store.
+		h.mu.Unlock()
+		_ = old.Close()
+		h.mu.Lock()
+		if h.apps[id] == old {
+			delete(h.apps, id)
+		}
+		if h.local.Workspace.Closing.Load() {
+			h.mu.Unlock()
+			httpx.WriteError(w, 503, "后台正在退出")
+			return
+		}
+	}
+	app, err := h.connectLocked(*entry)
+	h.mu.Unlock()
+	if err != nil {
+		httpx.WriteError(w, 503, err.Error())
+		return
+	}
+	httpx.WriteJSON(w, 200, map[string]string{"id": id, "root": app.Workspace.Root})
 }

@@ -5,6 +5,7 @@ package assistant
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -29,10 +30,13 @@ type Service struct {
 	active   map[string]activeRun
 	closing  bool
 	workers  sync.WaitGroup
+	registry *Registry
+	readOnly func() bool
+	plans    map[string]context.CancelFunc
 }
 
 func New(db *store.Store, cwd string) *Service {
-	return &Service{store: db, provider: codexProvider(cwd, codex.OpenLive), active: map[string]activeRun{}}
+	return &Service{store: db, provider: codexProvider(cwd, codex.OpenLive), active: map[string]activeRun{}, plans: map[string]context.CancelFunc{}}
 }
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/assistant/conversations", s.list)
@@ -40,12 +44,19 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/assistant/conversations/{conversation}", s.snapshot)
 	mux.HandleFunc("POST /api/assistant/conversations/{conversation}/runs", s.send)
 	mux.HandleFunc("POST /api/assistant/conversations/{conversation}/stop", s.stop)
+	mux.HandleFunc("GET /api/assistant/capabilities", s.capabilities)
+	mux.HandleFunc("GET /api/assistant/resources/{kind}/{resource}", s.resource)
+	mux.HandleFunc("POST /api/assistant/conversations/{conversation}/plans/{plan}/decision", s.decision)
+	mux.HandleFunc("POST /api/assistant/conversations/{conversation}/plans/{plan}/reconcile", s.reconcile)
 }
 func (s *Service) Close() {
 	s.mu.Lock()
 	s.closing = true
 	for _, run := range s.active {
 		run.cancel()
+	}
+	for _, cancel := range s.plans {
+		cancel()
 	}
 	s.mu.Unlock()
 	s.workers.Wait()
@@ -115,12 +126,23 @@ func (s *Service) snapshot(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]any{"messages": messages, "run": run, "before": cursor})
+	plans, err := s.store.AssistantPlans(r.PathValue("conversation"))
+	if err != nil {
+		httpx.DbError(w, err)
+		return
+	}
+	activities, err := s.store.AssistantActivities(r.PathValue("conversation"))
+	if err != nil {
+		httpx.DbError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"messages": messages, "run": run, "before": cursor, "plans": plans, "activities": activities})
 }
 func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		ID   string `json:"request_id"`
-		Text string `json:"text"`
+		ID      string    `json:"request_id"`
+		Text    string    `json:"text"`
+		Context Selection `json:"context"`
 	}
 	if !httpx.DecodeLimit(w, r, &input, 400000) {
 		return
@@ -131,6 +153,7 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conversation := r.PathValue("conversation")
+	selection, _ := json.Marshal(input.Context)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closing {
@@ -140,7 +163,12 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 	// Confirm durable retries even when the global concurrency limit is reached.
 	old, err := s.store.AssistantRun(conversation, input.ID)
 	if err == nil {
-		if old.Input != input.Text {
+		previous, contextErr := s.store.AssistantRunContext(conversation, input.ID)
+		if contextErr != nil {
+			httpx.DbError(w, contextErr)
+			return
+		}
+		if old.Input != input.Text || string(previous) != string(selection) {
 			httpx.WriteError(w, 409, "助手发送标识已用于另一条消息")
 			return
 		}
@@ -150,6 +178,24 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 	if !errors.Is(err, sql.ErrNoRows) {
 		httpx.DbError(w, err)
 		return
+	}
+	if s.registry != nil && (input.Context.EnvironmentID != "" || input.Context.ProjectID != "" || input.Context.WorkspaceID != "") {
+		// Resource validation can consult a remote environment. Release the run
+		// mutex while it does, then let BeginAssistantRun arbitrate racing sends.
+		s.mu.Unlock()
+		c, raw, validationErr := s.registry.Validate("app_get_context", selection)
+		if validationErr == nil {
+			_, validationErr = c.Read(r.Context(), raw)
+		}
+		s.mu.Lock()
+		if validationErr != nil {
+			httpx.WriteError(w, 400, domainError(validationErr).Message)
+			return
+		}
+		if s.closing {
+			httpx.WriteError(w, 503, "后台正在退出，请稍后重新打开应用")
+			return
+		}
 	}
 	if len(s.active) >= 4 {
 		httpx.WriteError(w, 429, "助手正在处理多个会话，请稍后重试")
@@ -162,7 +208,7 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
-	run, created, err := s.store.BeginAssistantRun(conversation, input.ID, input.Text)
+	run, created, err := s.store.BeginAssistantRun(conversation, input.ID, input.Text, selection)
 	if errors.Is(err, store.ErrAssistantConflict) {
 		httpx.WriteError(w, 409, "助手会话正在运行，请等待完成或停止后再发送")
 		return
@@ -184,6 +230,24 @@ func (s *Service) drive(ctx context.Context, cancel context.CancelFunc, run stor
 	defer cancel()
 	messages, err := s.store.AssistantMessages(run.ConversationID, 0, 100)
 	output := ""
+	if err == nil {
+		if s.registry != nil {
+			raw, contextErr := s.store.AssistantRunContext(run.ConversationID, run.ID)
+			if contextErr != nil {
+				err = contextErr
+			} else {
+				var selection Selection
+				if err = json.Unmarshal(raw, &selection); err == nil {
+					ctx = context.WithValue(ctx, selectionContextKey{}, selection)
+					ctx = context.WithValue(ctx, runContextKey{}, run)
+					ctx = WithTools(ctx, s.registry.Tools(s.isReadOnly()), func(toolCtx context.Context, name string, args json.RawMessage) (any, error) {
+						result, err := s.invoke(toolCtx, run, name, args)
+						return compactToolResult(result), err
+					})
+				}
+			}
+		}
+	}
 	if err == nil {
 		output, err = s.provider(ctx, messages)
 	}

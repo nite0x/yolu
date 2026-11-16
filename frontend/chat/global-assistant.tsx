@@ -16,6 +16,7 @@ import {
   useConversationRuntime,
 } from "./conversation-panel";
 import { useChatReading } from "./use-chat-reading";
+import { AssistantActions } from "./assistant-actions";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { ConversationList } from "../workspace/session-browser";
@@ -32,6 +33,7 @@ import {
   type AssistantConversation,
   type AssistantMessage,
   type AssistantRequest,
+  type AssistantOptions,
 } from "./global-assistant-controller";
 
 const convertMessage = (message: AssistantMessage) => ({
@@ -116,6 +118,7 @@ function GlobalConversation({
         placeholder: uiText("描述你的开发目标…"),
         maxLength: 64000,
       }}
+      afterThread={<AssistantActions controller={controller} />}
       feedback={
         (error || state.notice) && (
           <ConversationFeedback messages={[state.notice]} error={error} />
@@ -127,7 +130,7 @@ function GlobalConversation({
 
 let active: GlobalAssistantController | undefined;
 const controllers = new Map<string, GlobalAssistantController>();
-function GlobalAssistant({ request }: { request: AssistantRequest }) {
+function GlobalAssistant({ request, options }: { request: AssistantRequest; options: AssistantOptions }) {
   const readOnly =
     document
       .querySelector('meta[name="session-mode"]')
@@ -146,11 +149,12 @@ function GlobalAssistant({ request }: { request: AssistantRequest }) {
     if (!selected) return undefined;
     let value = controllers.get(selected);
     if (!value) {
-      value = new GlobalAssistantController(selected, request, readOnly);
+      value = new GlobalAssistantController(selected, request, readOnly, options);
       controllers.set(selected, value);
     }
+    value.options = options;
     return value;
-  }, [selected, request, readOnly]);
+  }, [selected, request, readOnly, options]);
   useEffect(() => {
     active = controller;
     return () => {
@@ -303,7 +307,9 @@ function GlobalAssistant({ request }: { request: AssistantRequest }) {
                     <ConversationStatusBadge>Codex CLI</ConversationStatusBadge>
                   </>
                 }
-              />
+              >
+                {options.contextLabel?.() && <p className="text-xs text-muted-foreground">{options.contextLabel()}</p>}
+              </ConversationHeader>
             }
           />
         ) : (
@@ -333,10 +339,10 @@ function GlobalAssistant({ request }: { request: AssistantRequest }) {
 }
 
 let root: Root | undefined;
-export function openGlobalAssistant(request: AssistantRequest) {
+export function openGlobalAssistant(request: AssistantRequest, options: AssistantOptions = {}) {
   if (root) return;
   root = createRoot(document.getElementById("globalAssistantRoot")!);
-  root.render(<GlobalAssistant request={request} />);
+  root.render(<GlobalAssistant request={request} options={options} />);
 }
 export const flushGlobalAssistantDraft = () =>
   active?.flush() ?? Promise.resolve(true);

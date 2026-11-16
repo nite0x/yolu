@@ -201,3 +201,145 @@ test("assistant history errors remain visible until an explicit page retry succe
   assert.equal(controller.getReadingSnapshot().historyError, "");
   assert.equal(controller.getReadingSnapshot().cursor, 0);
 });
+
+function actionPlan(status = "pending") {
+  return {
+    id: "plan-one", conversation_id: "review", run_id: "run-one", revision: 1,
+    digest: "reviewed-digest", environment_id: "local", capability: "workspace_create",
+    arguments: {name: "Payments"}, review: {input: {name: "Payments"}}, status,
+    steps: [], resources: [], created_at: 1, updated_at: 1,
+  };
+}
+
+test("plan decisions bind the reviewed revision and suppress duplicate delivery", async (t) => {
+  let plan = actionPlan();
+  let finishDecision: (value: typeof plan) => void = () => {};
+  const bodies: any[] = [];
+  const request = (async (path: string, options?: RequestInit) => {
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path.endsWith("/decision")) {
+      bodies.push(JSON.parse(String(options?.body)));
+      return new Promise((resolve) => {finishDecision = resolve;});
+    }
+    return {messages: [], run: null, before: 0, plans: [plan], activities: []};
+  }) as AssistantRequest;
+  const controller = new GlobalAssistantController("review", request);
+  t.after(() => controller.disconnect());
+  await controller.connect();
+  const pending = controller.decide(plan.id, "approve");
+  assert.equal(await controller.decide(plan.id, "approve"), false);
+  assert.equal(bodies.length, 1);
+  assert.deepEqual(bodies[0], {decision: "approve", revision: 1, digest: "reviewed-digest", request_id: "decision-plan-one-1-approve"});
+  plan = {...plan, status: "running"};
+  finishDecision(plan);
+  assert.equal(await pending, true);
+  await until(() => controller.getSnapshot().plans[0]?.status === "running");
+  assert.equal(await controller.decide(plan.id, "approve"), false);
+});
+
+test("failed plan decisions retain the receipt while refreshing authoritative conflicts", async (t) => {
+  let plan = actionPlan();
+  const bodies: any[] = [];
+  const request = (async (path: string, options?: RequestInit) => {
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path.endsWith("/decision")) {
+      bodies.push(JSON.parse(String(options?.body)));
+      if (bodies.length === 2) plan = {...plan, status: "conflict"};
+      throw new Error("Reviewed branch changed");
+    }
+    return {messages: [], run: null, before: 0, plans: [plan]};
+  }) as AssistantRequest;
+  const controller = new GlobalAssistantController("review", request);
+  t.after(() => controller.disconnect());
+  await controller.connect();
+  assert.equal(await controller.decide(plan.id, "approve"), false);
+  await until(() => !controller.getSnapshot().deciding[plan.id]);
+  assert.equal(await controller.decide(plan.id, "approve"), false);
+  await until(() => controller.getSnapshot().plans[0]?.status === "conflict");
+  assert.deepEqual(bodies[0], bodies[1]);
+  assert.equal(controller.getSnapshot().decisionErrors[plan.id], "Reviewed branch changed");
+  assert.equal(await controller.decide(plan.id, "approve"), false);
+  assert.equal(bodies.length, 2);
+});
+
+test("read-only assistant plans block decisions and reconciliation", async (t) => {
+  const calls: string[] = [];
+  const request = (async (path: string) => {
+    calls.push(path);
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    return {messages: [], run: null, before: 0, plans: [actionPlan("unknown")]};
+  }) as AssistantRequest;
+  const controller = new GlobalAssistantController("review", request, true);
+  t.after(() => controller.disconnect());
+  await controller.connect();
+  assert.equal(await controller.decide("plan-one", "cancel"), false);
+  assert.equal(await controller.reconcile("plan-one"), false);
+  assert.equal(calls.some((path) => path.endsWith("/decision") || path.endsWith("/reconcile")), false);
+});
+
+test("resource navigation revalidates identity before opening and preserves drafts", async (t) => {
+  const resource = {kind: "workspace" as const, id: "payments", environment_id: "remote-one", name: "Payments"};
+  const opened: unknown[] = [];
+  let mismatch = true;
+  const writes: unknown[] = [];
+  const request = (async (path: string, options?: RequestInit) => {
+    if (path.startsWith("/api/conversation-drafts")) {
+      if (options?.body) writes.push(JSON.parse(String(options.body)));
+      return null;
+    }
+    if (path.startsWith("/api/assistant/resources/")) return {...resource, id: mismatch ? "another-resource" : resource.id};
+    return {messages: [], run: null, before: 0};
+  }) as AssistantRequest;
+  const controller = new GlobalAssistantController("navigation", request, false, {openResource: (value) => {opened.push(value);}});
+  t.after(() => controller.disconnect());
+  await controller.connect();
+  controller.setDraft("Keep planning");
+  await controller.openResource(resource);
+  assert.equal(opened.length, 0);
+  assert.equal(controller.getSnapshot().draft, "Keep planning");
+  mismatch = false;
+  await controller.openResource(resource);
+  assert.deepEqual(opened, [resource]);
+  assert.equal((writes.at(-1) as any).text, "Keep planning");
+});
+
+test("uncertain assistant send retains its original selection context across retries", async (t) => {
+  let context = {environment_id: "local", project_id: "frontend"};
+  const bodies: any[] = [];
+  const request = (async (path: string, options?: RequestInit) => {
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path.endsWith("/runs")) {
+      bodies.push(JSON.parse(String(options?.body)));
+      throw new Error("uncertain delivery");
+    }
+    return {messages: [], run: null, before: 0};
+  }) as AssistantRequest;
+  const controller = new GlobalAssistantController("context", request, false, {getContext: () => context});
+  t.after(() => controller.disconnect());
+  await controller.connect();
+  controller.setDraft("Plan payments");
+  await controller.send();
+  context = {environment_id: "local", project_id: "backend"};
+  await controller.send();
+  assert.deepEqual(bodies[0], bodies[1]);
+  assert.equal(bodies[1].context.project_id, "frontend");
+});
+
+test("a stale rendered review cannot approve a newer plan revision", async (t) => {
+  const reviewed = actionPlan();
+  let plan = reviewed;
+  let decisions = 0;
+  const request = (async (path: string) => {
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path.endsWith("/decision")) decisions++;
+    return {messages: [], run: null, before: 0, plans: [plan]};
+  }) as AssistantRequest;
+  const controller = new GlobalAssistantController("review", request);
+  t.after(() => controller.disconnect());
+  await controller.connect();
+  plan = {...reviewed, revision: 2, digest: "changed-review"};
+  await controller.refresh();
+  assert.equal(await controller.decide(reviewed.id, "approve", reviewed), false);
+  assert.equal(decisions, 0);
+  assert.match(controller.getSnapshot().decisionErrors[reviewed.id], /计划已更新/);
+});

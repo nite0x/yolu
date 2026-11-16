@@ -30,6 +30,7 @@ type App struct {
 	pickDirectory       func(context.Context) (string, error)
 	directoryPickerBusy atomic.Bool
 	terminalWorktreeMu  sync.RWMutex
+	assistantUse        sync.RWMutex // capability callbacks lease execution resources through teardown
 	browser             *browserAccess
 }
 
@@ -42,12 +43,18 @@ func openAppForWorkspace(dataDir, root string, remote *workspace.Client) (*App, 
 	tasks := task.New(env)
 	sessions := session.New(env, tasks)
 	projects := project.New(env)
+	tasks.LockRepositories = projects.LockRepositories
+	tasks.StateChanged = projects.InvalidateState
 	projects.ReserveWorktree = sessions.ReserveWorktree
 	projects.TaskContextUpdated = task.WriteBriefContext
 	a := &App{Workspace: env, Tasks: tasks, Projects: projects, Sessions: sessions, Terminals: terminal.New(), token: model.NewID() + model.NewID(), pickDirectory: platform.PickDirectory}
 	if remote == nil {
 		a.browser = newBrowserAccess(a)
 		a.Assistant = assistant.New(env.Store, env.DataDir)
+		if err := a.configureAssistant(); err != nil {
+			_ = a.Close()
+			return nil, err
+		}
 		projects.CheckWorktreeIdle = a.checkTerminalWorktree
 		projects.ReserveWorktree = a.reserveWorktree
 	}
@@ -59,6 +66,11 @@ func openAppForWorkspace(dataDir, root string, remote *workspace.Client) (*App, 
 func (a *App) Close() error {
 	a.closeOnce.Do(func() {
 		a.Workspace.Closing.Store(true)
+		if a.Assistant != nil {
+			a.Assistant.Close()
+		}
+		a.assistantUse.Lock()
+		defer a.assistantUse.Unlock()
 		if a.browser != nil {
 			a.browser.close()
 		}
@@ -67,9 +79,6 @@ func (a *App) Close() error {
 		}
 		if a.Workspace.Remote != nil {
 			a.Workspace.Remote.Close()
-		}
-		if a.Assistant != nil {
-			a.Assistant.Close()
 		}
 		a.Sessions.Close()
 		a.Projects.Close()

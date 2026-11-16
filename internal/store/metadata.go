@@ -18,6 +18,10 @@ var metadataTables = []struct{ Name, Columns string }{
 	{"assistant_conversations", "id,title,created_at,updated_at"},
 	{"assistant_runs", "id,conversation_id,input,status,error_code"},
 	{"assistant_messages", "id,conversation_id,run_id,role,text"},
+	{"assistant_action_plans", "id,conversation_id,run_id,status,payload,created_at,updated_at"},
+	{"assistant_decisions", "conversation_id,request_id,plan_id,fingerprint"},
+	{"assistant_tool_calls", "id,conversation_id,run_id,capability,status,result,created_at"},
+	{"assistant_run_contexts", "conversation_id,run_id,context"},
 	{"projects", "id,name,path,common_dir,folder,created_at"},
 	{"settings", "key,value"},
 	{"requirements", "id,name,slug,description,branch,path,primary_project_id,state,created_at,has_workspace"},
@@ -182,6 +186,9 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE assistant_runs SET status='interrupted',error_code='interrupted' WHERE status='running'`); err != nil {
+		return err
+	}
+	if err := interruptAssistantPlans(tx); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(repairTaskPrimary); err != nil {

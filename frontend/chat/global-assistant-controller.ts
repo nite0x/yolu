@@ -21,6 +21,61 @@ export interface AssistantSnapshot {
   messages: AssistantMessage[];
   run: AssistantRun | null;
   before: number;
+  activities?: AssistantActivity[];
+  plans?: AssistantPlan[];
+}
+export interface AssistantResource {
+  kind: "project" | "workspace" | "conversation";
+  id: string;
+  environment_id: string;
+  name: string;
+  path?: string;
+}
+export interface AssistantContext {
+  environment_id: string;
+  workspace_id?: string;
+  project_id?: string;
+}
+export interface AssistantOptions {
+  getContext?: () => AssistantContext;
+  contextLabel?: () => string;
+  openResource?: (resource: AssistantResource) => void | Promise<void>;
+}
+export interface AssistantActivity {
+  id: number;
+  run_id: string;
+  capability: string;
+  status: string;
+  result: {
+    resources?: AssistantResource[];
+    choices?: AssistantResource[];
+    data?: unknown;
+    errors?: {environment_id?: string; error?: string; message?: string}[];
+    refreshed_at?: string | number;
+    next_cursor?: string | number;
+    message?: string;
+    error?: string | {code?: string; message: string; details?: string[]};
+  };
+  error_code?: string;
+  created_at: number;
+}
+export interface AssistantPlan {
+  id: string;
+  conversation_id: string;
+  run_id: string;
+  revision: number;
+  digest: string;
+  environment_id: string;
+  capability: string;
+  arguments: Record<string, unknown>;
+  review: Record<string, unknown>;
+  status: string;
+  steps: {id: string; label: string; status: string; result?: unknown; error?: string}[];
+  resources: AssistantResource[];
+  error_code?: string;
+  error?: string;
+  created_at: number;
+  updated_at: number;
 }
 export interface AssistantConversation {
   updated_at?: number;
@@ -35,7 +90,7 @@ export class GlobalAssistantController {
   private connected = false;
   private generation = 0;
   private timer?: ReturnType<typeof setTimeout>;
-  private pending?: { request_id: string; text: string };
+  private pending?: { request_id: string; text: string; context?: AssistantContext };
   reading: DraftRecord["reading"] = {
     top: 0,
     bottom: true,
@@ -54,6 +109,11 @@ export class GlobalAssistantController {
     historyError: "",
     notice: "",
     restored: false,
+    activities: [] as AssistantActivity[],
+    plans: [] as AssistantPlan[],
+    deciding: {} as Record<string, boolean>,
+    decisionErrors: {} as Record<string, string>,
+    navigating: "",
   };
   opening = true;
   private persistence;
@@ -61,6 +121,7 @@ export class GlobalAssistantController {
     readonly id: string,
     readonly request: AssistantRequest,
     readonly readOnly = false,
+    public options: AssistantOptions = {},
   ) {
     const key = JSON.stringify(["local", "yolu", id]);
     this.persistence = createDraftPersistence({
@@ -154,6 +215,8 @@ export class GlobalAssistantController {
       page.messages.forEach((message) => messages.set(message.id, message));
       this.update({
         ...page,
+        activities: page.activities ?? this.state.activities,
+        plans: page.plans ?? this.state.plans,
         messages: [...messages.values()].sort((a, b) => a.id - b.id),
         before:
           earlier || !this.state.messages.length
@@ -180,7 +243,7 @@ export class GlobalAssistantController {
       if (this.connected && generation === this.generation)
         this.timer = setTimeout(
           () => void this.refresh(),
-          this.busy ? 700 : 4000,
+          this.busy || this.state.plans.some((plan) => ["running", "cancelling"].includes(plan.status)) ? 700 : 4000,
         );
     }
   }
@@ -197,7 +260,7 @@ export class GlobalAssistantController {
     this.pending =
       this.pending?.text === text
         ? this.pending
-        : { request_id: crypto.randomUUID(), text };
+        : { request_id: crypto.randomUUID(), text, context: this.options.getContext?.() };
     this.update({ submitting: true, error: "" });
     // Invalidate older history requests before accepting a new run snapshot.
     this.generation++;
@@ -234,6 +297,70 @@ export class GlobalAssistantController {
       this.update({ error: (error as Error).message });
     }
     if (this.connected) void this.refresh();
+  }
+  async decide(planID: string, decision: "approve" | "cancel", reviewed?: Pick<AssistantPlan, "revision" | "digest">) {
+    const plan = this.state.plans.find((item) => item.id === planID);
+    if (this.readOnly || !plan || this.state.deciding[planID]) return false;
+    if (reviewed && (reviewed.revision !== plan.revision || reviewed.digest !== plan.digest)) {
+      this.update({decisionErrors: {...this.state.decisionErrors, [planID]: uiText("计划已更新，请重新查看后确认。")}});
+      return false;
+    }
+    if (decision === "approve" && plan.status !== "pending") return false;
+    if (decision === "cancel" && !["pending", "running"].includes(plan.status)) return false;
+    return this.planRequest(plan, "/decision", {
+      decision,
+      revision: plan.revision,
+      digest: plan.digest,
+      request_id: `decision-${plan.id}-${plan.revision}-${decision}`,
+    });
+  }
+  async reconcile(planID: string) {
+    const plan = this.state.plans.find((item) => item.id === planID);
+    if (this.readOnly || !plan || this.state.deciding[planID]) return false;
+    return this.planRequest(plan, "/reconcile", {});
+  }
+  private async planRequest(plan: AssistantPlan, path: string, body: object) {
+    this.generation++;
+    clearTimeout(this.timer);
+    this.update({
+      deciding: {...this.state.deciding, [plan.id]: true},
+      decisionErrors: {...this.state.decisionErrors, [plan.id]: ""},
+    });
+    try {
+      const updated = await this.request<AssistantPlan>(
+        this.base() + "/plans/" + encodeURIComponent(plan.id) + path,
+        {method: "POST", body: JSON.stringify(body)},
+      );
+      this.update({plans: this.state.plans.map((item) => item.id === updated.id ? updated : item)});
+      return true;
+    } catch (error) {
+      this.update({decisionErrors: {...this.state.decisionErrors, [plan.id]: (error as Error).message}});
+      return false;
+    } finally {
+      this.update({deciding: {...this.state.deciding, [plan.id]: false}});
+      if (this.connected) void this.refresh();
+    }
+  }
+  async openResource(resource: AssistantResource) {
+    if (this.state.navigating || !this.options.openResource) return;
+    this.update({navigating: resource.kind + ":" + resource.id, error: ""});
+    try {
+      const current = await this.request<AssistantResource>(
+        `/api/assistant/resources/${encodeURIComponent(resource.kind)}/${encodeURIComponent(resource.id)}?environment_id=${encodeURIComponent(resource.environment_id)}`,
+      );
+      if (current.kind !== resource.kind || current.id !== resource.id || current.environment_id !== resource.environment_id)
+        throw new Error(uiText("资源信息已变化，请重新查询后打开。"));
+      if (!(await this.flush())) return;
+      await this.options.openResource(current);
+    } catch (error) {
+      this.update({error: (error as Error).message});
+    } finally {
+      this.update({navigating: ""});
+    }
+  }
+  chooseResource(resource: AssistantResource) {
+    if (this.readOnly || this.busy || this.state.submitting) return;
+    this.setDraft([this.state.draft, uiText("选择 {0}（环境 {1}，标识 {2}）", resource.name, resource.environment_id, resource.id)].filter(Boolean).join("\n"));
   }
 }
 

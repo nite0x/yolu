@@ -2,9 +2,9 @@
 
 ## Status and provenance
 
-Design handoff prepared on 2026-11-16. The phase 1 conversation foundation is implemented. Application capabilities and reviewed writes remain scheduled for later phases. This document records the requested product outcome, the architecture discussed in ChatGPT, and adaptations from an initial repository review. Implementation progress is tracked in [plan.md](plan.md).
+Design handoff prepared on 2026-11-16. The conversation foundation, application read capabilities and reviewed workspace-management writes are implemented across phases 1–3. Coding-session creation remains phase 4. This document records the requested product outcome, the architecture discussed in ChatGPT, and adaptations from the repository review. Implementation and verification evidence are tracked in [plan.md](plan.md).
 
-The user requested a global conversation for operating Yolu, including creating work and loading projects, followed by a design and implementation plan. The discussion recommended a Go tool-calling runtime, a capability registry, reviewable action plans, and reuse of application services and conversation UI. The cached conversation contains headings for four implementation stages and an interactive architecture selector, but its stage details and selector values are unavailable. The phases in the accompanying plan are an editorial proposal, and provider selection and exact persistence contracts remain open. [Source conversation](https://chatgpt.com/c/6afab987-1c04-83ee-a4a7-d50babf23b5a)
+The user requested a global conversation for operating Yolu, including creating work and loading projects, followed by a design and implementation plan. The discussion recommended a Go tool-calling runtime, a capability registry, reviewable action plans, and reuse of application services and conversation UI. The cached conversation contains headings for four implementation stages and an interactive architecture selector, but its stage details and selector values are unavailable. The phases in the accompanying plan are an editorial proposal. The user selected the authenticated local Codex CLI during implementation, and the implementation decisions below record the persistence contracts. [Source conversation](https://chatgpt.com/c/6afab987-1c04-83ee-a4a7-d50babf23b5a)
 
 Repository observations below refer to `main` at `6e5403a67c46b67448c2eb9d449f01c5b4f63abb`. Recheck them against the implementation branch before making code changes. Repository documentation is written in English under [AGENTS.md](../../../AGENTS.md).
 
@@ -140,7 +140,7 @@ For a failed second worktree, retain the successfully created workspace and firs
 
 ## Acceptance criteria
 
-These criteria define the phased acceptance target. Phase 1 evidence for AC-01 and AC-14 is recorded in the implementation plan. Later capability criteria remain pending.
+These criteria define the phased acceptance target. Evidence for phases 1–3 is recorded in the implementation plan. AC-15 belongs to phase 4.
 
 | ID | Scenario | Observable result |
 | --- | --- | --- |
@@ -160,13 +160,13 @@ These criteria define the phased acceptance target. Phase 1 evidence for AC-01 a
 | AC-14 | Load data created before the feature and use existing native conversation flows | Preserve session discovery, task pins, drafts, creation receipts, archive behavior, worktree cleanup coordination, and saved workspace paths |
 | AC-15 | Explicitly request Codex launch after workspace preparation, in the follow-up phase | Create or recover one native session in a validated directory, retain environment identity, and open the actual resulting conversation |
 
-## Decisions for implementation review
+## Implementation decisions
 
 1. Phase 1 uses the user-selected authenticated local Codex CLI and its default model. Credentials stay in Codex configuration. Configuration/authentication/model/connection failures surface a localized recovery message and preserve the submitted input. Tool-calling application capabilities remain a later phase contract.
 2. Phase 1 stores assistant transcripts in additive local SQLite tables and uses explicit `yolu` conversation kind and local identity. Native Codex session indexing and workspace references retain their existing contracts.
-3. Define the capability schemas, plan revision format, approval lifetime, execution journal, event replay/snapshot behavior, and error codes.
-4. Review the proposed single-environment execution boundary and storage ownership for global assistant history.
-5. Confirm the initial navigation placement and core workflow, then schedule optional coding-agent launch and additional executors separately.
+3. Phases 2–3 use the schemas, immutable plan revisions, approval binding, execution journal, authoritative snapshots and stable error codes described below.
+4. Each reviewed plan targets one execution environment. Global history remains in the primary local database, while domain resources retain environment ownership.
+5. The assistant is the first navigation item. Coding-session creation remains phase 4.
 
 ## Phase 1 implementation contract
 
@@ -178,4 +178,18 @@ Each provider turn uses a fresh ephemeral Codex thread through the existing live
 
 The UI reloads authoritative persisted snapshots, polling a selected active run every 700 milliseconds and an idle conversation every four seconds. UI navigation preserves the mounted conversation and its draft. Client disconnects leave inference running. Explicit stop and application shutdown cancel it. Messages are published after provider completion. Snapshot/history reads page 50 stored messages at a time. Provider-specific diagnostic values remain outside client-visible errors and transcripts.
 
-Application capability calls, action plans and approvals are implemented in later phases. Phase 1 records only inference runs. The conversation explains its available planning behavior. Model communication has been checked against the installed Codex CLI separately from deterministic fixtures.
+The phase 1 baseline recorded inference runs and planning conversations. Phases 2–3 add the capability and approval contracts below. Model communication has been checked against the installed Codex CLI separately from deterministic fixtures.
+
+## Phases 2–3 implementation contract
+
+The Go registry advertises validated application functions through Codex app-server dynamic tools. The existing read-only worker configuration keeps native execution tools disabled. `app_get_context` reads saved selection hints. Project/workspace queries, fresh Git/worktree summaries, native conversation discovery and typed navigation use existing application stores and services. The native conversation catalog is shared with the sidebar. Discovery failures preserve saved index records with their synchronization timestamps. Resource pages include environment identities, freshness, ambiguous choices and independent environment failures.
+
+`project_register`, `workspace_create` and `workspace_attach_project` produce immutable plans. Each plan covers one domain operation in one environment. A workspace operation can prepare all selected project members, including `new`, `existing`, `project` and `worktree` modes. Manual HTTP callers and approved assistant calls share the same domain validation, persistence, repository locks and preparation logic.
+
+The application displays resolved paths, modes, source refs/commits, branches, target identities and proposed effects. Approval binds the conversation, plan ID, revision, payload digest and durable request identity. Changes to a reviewed target require a new plan. The approval endpoint revalidates the stored digest and the domain service rechecks prerequisites under its write lock. Conflicting resources return a conflict state for renewed review. A cancelled pending plan executes no domain operation.
+
+The existing SQLite database stores tool results, reviewed plans, decision receipts, execution/member progress and run selection context. Complete reviews stay in storage while the model receives bounded proposal summaries. Identical approval retries reuse the current result. Domain operations use stable proposed resource identities to reconcile after interruption. Restart/import retain unknown execution outcomes for inspection, and partial workspace results retain successful members. The result card opens the existing workspace recovery controls. `assistant_plan_status` reads recorded outcomes for follow-up model turns.
+
+Each model run allows up to 24 application calls with 64,000-byte argument/result limits and a 30-second call deadline. A four-worker semaphore bounds callbacks that finish after cancellation. Late cancelled reviews cannot publish plans. Approved domain execution allows four simultaneous plans and a five-minute deadline, with operation/member progress reloaded through authoritative snapshots. Per-environment lifecycle leases permit remote progress queries during execution and protect stores during shutdown. Reconnection reports busy while an active capability holds its environment.
+
+Resource buttons validate the typed environment/kind/ID again before using the shared navigation bridge. The UI preserves the original send context across uncertain retries, including through the shared draft API. Resource/choice cards and reviewed action controls render inside the complete shared `ConversationPanel`. Application labels use the existing localization catalog, and model/user content retains its authored language.

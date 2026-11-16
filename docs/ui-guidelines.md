@@ -94,6 +94,8 @@ The shared composer owns its input shell, resize behavior, send/stop controls, k
 
 Use the shared Markdown/message rendering, history-loading controls and run indicator. Display tools and attachments according to the runtime's actual capabilities. Empty-state text should help the user start the current task. Keep release planning and implementation progress in documentation.
 
+Application operations use `frontend/chat/assistant-actions.tsx` through the shared panel's action slot. Resource cards carry validated environment/kind/ID targets and use the shared navigation bridge. Plan cards show resolved targets and preconditions, bind clicks to the displayed revision/digest, and expose confirmation, cancellation, member progress and recovery. Render structured domain errors as text with localized application messages. Preserve user-authored names, paths and content. Completed plans keep their result links and detailed domain outcomes available.
+
 ## Accessibility and localization
 
 Use semantic buttons, headings, lists, forms and labelled regions. Icon-only actions need accessible names and tooltips. Keep keyboard focus visible with the shared ring, expose selection and pending states, and respect reduced-motion preferences. Long titles and paths need safe truncation with the full value available where relevant. Error feedback uses an alert and loading/progress feedback uses a status region.

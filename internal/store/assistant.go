@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -43,7 +44,10 @@ CREATE TABLE IF NOT EXISTS assistant_messages (
  run_id TEXT NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS assistant_message_page ON assistant_messages(conversation_id,id);
 UPDATE assistant_runs SET status='interrupted',error_code='interrupted' WHERE status='running';`)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.migrateAssistantActions()
 }
 func (s *Store) CreateAssistant(id string) error {
 	now := time.Now().UnixMilli()
@@ -106,11 +110,20 @@ func (s *Store) LatestAssistantRun(conversation string) (*AssistantRun, error) {
 
 // BeginAssistantRun commits intent before contacting the model. The partial
 // unique index also protects callers that bypass the service's runtime lock.
-func (s *Store) BeginAssistantRun(conversation, id, text string) (AssistantRun, bool, error) {
+func (s *Store) BeginAssistantRun(conversation, id, text string, selection ...json.RawMessage) (AssistantRun, bool, error) {
 	v, err := s.AssistantRun(conversation, id)
 	if err == nil {
 		if v.Input != text {
 			return v, false, ErrAssistantConflict
+		}
+		if len(selection) > 0 {
+			previous, err := s.AssistantRunContext(conversation, id)
+			if err != nil {
+				return v, false, err
+			}
+			if string(previous) != string(selection[0]) {
+				return v, false, ErrAssistantConflict
+			}
 		}
 		return v, false, nil
 	}
@@ -132,6 +145,11 @@ func (s *Store) BeginAssistantRun(conversation, id, text string) (AssistantRun, 
 	v = AssistantRun{ID: id, ConversationID: conversation, Input: text, Status: "running"}
 	if _, err := tx.Exec(`INSERT INTO assistant_runs(id,conversation_id,input,status) VALUES(?,?,?,'running')`, id, conversation, text); err != nil {
 		return v, false, err
+	}
+	if len(selection) > 0 {
+		if _, err := tx.Exec(`INSERT INTO assistant_run_contexts(conversation_id,run_id,context) VALUES(?,?,?)`, conversation, id, string(selection[0])); err != nil {
+			return v, false, err
+		}
 	}
 	if _, err := tx.Exec(`INSERT INTO assistant_messages(conversation_id,run_id,role,text) VALUES(?,?,'user',?)`, conversation, id, text); err != nil {
 		return v, false, err

@@ -9,6 +9,7 @@ const taskListMemory = { search: '', archived: false, status: 'all', scrollTop: 
 let taskListMounted = false;
 const taskSelectionStorageKey = 'workhub:selected-task:v1';
 let lastTaskSelection = null;
+let assistantContext = null;
 try { lastTaskSelection = JSON.parse(localStorage.getItem(taskSelectionStorageKey) || 'null'); } catch {}
 const desktopWorkspace = document.documentElement.hasAttribute('data-workhub-desktop');
 function wideTaskLayout() { return window.innerWidth > (desktopWorkspace ? 760 : 1100); }
@@ -183,6 +184,11 @@ function updateCheckTimes() {
 function readRoute() {
   suspendTaskListView();
   const route = location.hash.slice(1).split('?')[0];
+  if (route === '/assistant' && state.view !== 'assistant') {
+    const task = state.view === 'requirements' && state.requirements.find(item => item.id === state.selectedRequirement);
+    const project = state.view === 'projects' && projectDetailOpen && state.projects.find(item => item.id === state.selectedProject);
+    assistantContext = {environment_id:activeEnvironment, ...(task ? {workspace_id:task.id} : project ? {project_id:project.id} : {}), label:task?.name || project?.name || ''};
+  }
   const project = route.match(/^\/projects\/([a-zA-Z0-9_-]+)(?:\/(git|worktrees))?$/);
   if (project) state.selectedProject = project[1];
   projectDetailOpen = !!project;
@@ -242,7 +248,26 @@ function render() {
   $('#workContent').hidden = settingsView || sessionsView || assistantView;
   $('#globalAssistantPage').hidden = !assistantView;
   document.body.classList.toggle('assistant-page-open', assistantView);
-  if (assistantView) window.WorkHubAssistant.openGlobal((path, options) => api(path, {...options, environment: 'local'}));
+  if (assistantView) window.WorkHubAssistant.openGlobal((path, options) => api(path, {...options, environment: 'local'}), {
+    getContext: () => {
+      const {label, ...context} = assistantContext || {environment_id:activeEnvironment};
+      return context;
+    },
+    contextLabel: () => [environmentName(assistantContext?.environment_id || activeEnvironment), assistantContext?.label].filter(Boolean).join(' · '),
+    openResource: async resource => {
+      if (!resource || !['workspace', 'project', 'conversation'].includes(resource.kind) || !/^[a-zA-Z0-9_-]+$/.test(resource.id) || typeof resource.environment_id !== 'string') throw new Error(uiText("资源信息无效，请重新查询。"));
+      const environment = resource.environment_id;
+      if (window.WorkHubPage && window.parent !== window) {
+        const snapshot = resource.kind === 'conversation'
+          ? {route:'/sessions',environment,title:resource.name,conversation:{scope:{kind:'all',environment},selected:conversationEnvironmentKey(environment,resource.id),pane:'detail'}}
+          : {route:(resource.kind === 'workspace' ? '/requirements/' : '/projects/') + resource.id,environment,title:resource.name};
+        window.parent.postMessage({type:'workhub:page-open',snapshot},location.origin);
+      } else if (resource.kind === 'conversation') {
+        await selectEnvironment(environment, '/sessions');
+        if (activeEnvironment === environment) openConversationWorkspace({kind:'all',environment}, resource.id);
+      } else await openConversationWorkspaceDetail(resource.kind === 'workspace' ? 'task' : 'project', resource.id, environment);
+    },
+  });
   $('#sessionsPage').hidden = !sessionsView;
   document.body.classList.toggle('sessions-page-open', sessionsView);
   $('#reqCount').textContent = taskInventory.loaded ? taskInventory.requirements.filter(q => q.state !== 'archived').length : '…';

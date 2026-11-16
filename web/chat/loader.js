@@ -3,11 +3,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 (() => {
   let loading, mounted, currentWorkspace, globalModule, version = 0;
   window.WorkHubAssistant = {
-    async openGlobal(request) {
+    async openGlobal(request, options) {
       try {
         loading ||= import('/chat/assistant.js');
         globalModule = await loading;
-        globalModule.openGlobalAssistant(request);
+        globalModule.openGlobalAssistant(request, options);
       } catch {
         loading = null;
         document.getElementById('globalAssistantRoot').textContent = uiText("聊天界面加载失败，请重新打开对话。");

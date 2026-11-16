@@ -37,12 +37,12 @@ async function until(check: () => boolean) {
   assert.ok(check(), "assistant panel did not reach the expected state");
 }
 
-function createAssistantWindow(t: { after: (callback: () => void) => void }) {
+function createAssistantWindow(t: { after: (callback: () => void) => void }, readOnly = false) {
   const errors: unknown[] = [];
   const console = new VirtualConsole();
   console.on("jsdomError", (error) => errors.push(error));
   const dom = new JSDOM(
-    '<meta name="session-mode" content="interactive"><section id="globalAssistantPage"><div id="globalAssistantRoot"></div></section>',
+    `<meta name="session-mode" content="${readOnly ? "read-only" : "interactive"}"><section id="globalAssistantPage"><div id="globalAssistantRoot"></div></section>`,
     {
       url: "http://localhost",
       runScripts: "dangerously",
@@ -269,5 +269,95 @@ test("global conversation shares automatic history loading and persisted reading
   viewport.dispatchEvent(new w.Event("scroll"));
   await until(() => draft?.reading?.top === 400);
   assert.equal(draft.reading.bottom, false);
+  assert.deepEqual(errors, []);
+});
+
+function reviewedPlan() {
+  return {
+    id: "review-plan", conversation_id: "review", run_id: "run", revision: 3,
+    digest: "immutable-review", environment_id: "local", capability: "workspace_create", status: "pending",
+    arguments: {name: "Payment module"},
+    review: {environment_id: "local", operation: {input: {name: "Payment module"}, requirement: {path: "/tmp/workspaces/payments", members: [{project_name: "Frontend", mode: "new", branch: "codex/payments", base_ref: "main", base_commit: "reviewed-commit"}, {project_name: "Backend", mode: "project", path: "/tmp/backend"}]}}},
+    steps: [{id: "create", label: "Prepare payment workspace", status: "pending"}], resources: [], created_at: 1, updated_at: 1,
+  };
+}
+
+test("assistant renders reviewed operations and verified resource navigation in the shared panel", async (t) => {
+  const {w, errors} = createAssistantWindow(t);
+  let plan = reviewedPlan();
+  const decisions: any[] = [];
+  const opened: any[] = [];
+  const resource = {kind: "workspace", id: "payments", environment_id: "local", name: "Payment workspace", path: "/tmp/workspaces/payments"};
+  const choice = {kind: "project", id: "backend", environment_id: "local", name: "Backend <img src=x>", path: "/tmp/backend"};
+  const activities = [
+    {id: 1, run_id: "run", capability: "project_list", status: "completed", result: {resources: [resource], choices: [choice], errors: [{environment_id: "offline", message: "Environment unavailable"}], refreshed_at: 1700000000000}, created_at: 1},
+    {id: 2, run_id: "run", capability: "workspace_get", status: "failed", result: {error: {code: "resource_missing", message: "Workspace no longer exists"}}, created_at: 2},
+  ];
+  (w as any).AssistantTest.openGlobalAssistant(async (path: string, options?: RequestInit) => {
+    if (path === "/api/assistant/conversations") return [{id: "review", title: "Payment planning"}];
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path.startsWith("/api/assistant/resources/")) return resource;
+    if (path.endsWith("/decision")) {
+      decisions.push(JSON.parse(String(options?.body)));
+      plan = {...plan, status: "succeeded"};
+      return {...plan, resources: [resource]};
+    }
+    return {messages: [], run: null, before: 0, activities, plans: [plan]};
+  }, {openResource: (value: any) => {opened.push(value);}});
+  await until(() => !!w.document.querySelector('[data-assistant-plan="review-plan"]'));
+  const panel = w.document.querySelector('[data-slot="conversation-panel"]')!;
+  assert.match(panel.textContent || "", /新分支工作目录/);
+  assert.match(panel.textContent || "", /复用项目目录/);
+  assert.match(panel.textContent || "", /reviewed-commit/);
+  assert.match(panel.textContent || "", /codex\/payments/);
+  assert.match(panel.textContent || "", /Workspace no longer exists/);
+  assert.equal(w.document.querySelector("img[src=x]"), null);
+  const buttons = () => [...panel.querySelectorAll<HTMLButtonElement>("button")];
+  buttons().find((button) => button.textContent === "选择")!.click();
+  await until(() => w.document.querySelector<HTMLTextAreaElement>("textarea")?.value.includes("backend") === true);
+  buttons().find((button) => button.getAttribute("aria-label") === "打开工作区：Payment workspace")!.click();
+  await until(() => opened.length === 1);
+  assert.deepEqual(opened[0], resource);
+  buttons().find((button) => button.textContent === "确认并执行")!.click();
+  await until(() => decisions.length === 1 && !buttons().some((button) => button.textContent === "确认并执行"));
+  assert.equal(decisions[0].revision, 3);
+  assert.equal(decisions[0].digest, "immutable-review");
+  assert.equal(decisions[0].decision, "approve");
+  assert.deepEqual(errors, []);
+});
+
+test("partial assistant operations expose member failures and context notices", async (t) => {
+  const {w, errors} = createAssistantWindow(t);
+  const plan = {...reviewedPlan(), status: "partial", steps: [{id: "prepare", label: "workspace_create", status: "partial", result: {context_warning: "Workspace notes need attention", members: [{project_id: "backend", project_name: "Backend", state: "failed", error: "Branch is occupied"}]}}]};
+  (w as any).AssistantTest.openGlobalAssistant(async (path: string) => {
+    if (path === "/api/assistant/conversations") return [{id: "review", title: "Partial preparation"}];
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    return {messages: [], run: null, before: 0, plans: [plan]};
+  });
+  await until(() => !!w.document.querySelector('[data-assistant-plan="review-plan"]'));
+  const card = w.document.querySelector('[data-assistant-plan="review-plan"]')!;
+  assert.match(card.textContent || "", /Backend · Branch is occupied/);
+  assert.match(card.textContent || "", /Workspace notes need attention/);
+  assert.match(card.textContent || "", /创建工作区 · 部分完成/);
+  assert.equal([...card.querySelectorAll("button")].some((button) => button.textContent === "确认并执行"), false);
+  assert.deepEqual(errors, []);
+});
+
+test("read-only assistant review controls stay disabled", async (t) => {
+  const {w, errors} = createAssistantWindow(t, true);
+  const mutations: string[] = [];
+  (w as any).AssistantTest.openGlobalAssistant(async (path: string, options?: RequestInit) => {
+    if (options?.method === "POST") mutations.push(path);
+    if (path === "/api/assistant/conversations") return [{id: "review", title: "Payment planning"}];
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    return {messages: [], run: null, before: 0, plans: [reviewedPlan()]};
+  });
+  await until(() => !!w.document.querySelector('[data-assistant-plan="review-plan"]'));
+  for (const label of ["确认并执行", "取消计划"]) {
+    const button = [...w.document.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent === label)!;
+    assert.equal(button.disabled, true);
+    button.click();
+  }
+  assert.deepEqual(mutations, []);
   assert.deepEqual(errors, []);
 });
