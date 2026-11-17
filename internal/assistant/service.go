@@ -132,7 +132,12 @@ func (s *Service) snapshot(w http.ResponseWriter, r *http.Request) {
 			runs = append(runs, message.RunID)
 		}
 	}
-	plans, err := s.store.AssistantPlans(r.PathValue("conversation"), runs...)
+	planIDs := r.URL.Query()["plan_id"]
+	if len(planIDs) > 100 {
+		httpx.WriteError(w, 400, "请求的计划过多")
+		return
+	}
+	plans, err := s.store.AssistantPlansForSnapshot(r.PathValue("conversation"), runs, planIDs)
 	if err != nil {
 		httpx.DbError(w, err)
 		return
@@ -185,24 +190,8 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
-	if s.registry != nil && (input.Context.EnvironmentID != "" || input.Context.ProjectID != "" || input.Context.WorkspaceID != "") {
-		// Resource validation can consult a remote environment. Release the run
-		// mutex while it does, then let BeginAssistantRun arbitrate racing sends.
-		s.mu.Unlock()
-		c, raw, validationErr := s.registry.Validate("app_get_context", selection)
-		if validationErr == nil {
-			_, validationErr = c.Read(r.Context(), raw)
-		}
-		s.mu.Lock()
-		if validationErr != nil {
-			httpx.WriteError(w, 400, domainError(validationErr).Message)
-			return
-		}
-		if s.closing {
-			httpx.WriteError(w, 503, "后台正在退出，请稍后重新打开应用")
-			return
-		}
-	}
+	// Selection is a hint. Resource and environment checks belong to tool calls,
+	// so a stale selection cannot prevent unrelated application queries.
 	if len(s.active) >= 4 {
 		httpx.WriteError(w, 429, "助手正在处理多个会话，请稍后重试")
 		return

@@ -139,6 +139,22 @@ function GlobalConversation({
   );
 }
 
+function AssistantSelection({ controller }: { controller: GlobalAssistantController }) {
+  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const label = controller.options.contextLabel?.();
+  if (!label) return null;
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <span>{label}</span>
+      {controller.options.clearContext && (
+        <Button type="button" variant="ghost" size="sm" disabled={controller.readOnly || state.submitting} onClick={controller.clearContext}>
+          {uiText("清除上下文")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 let active: GlobalAssistantController | undefined;
 const controllers = new Map<string, GlobalAssistantController>();
 function GlobalAssistant({ request, options }: { request: AssistantRequest; options: AssistantOptions }) {
@@ -319,7 +335,7 @@ function GlobalAssistant({ request, options }: { request: AssistantRequest; opti
                   </>
                 }
               >
-                {options.contextLabel?.() && <p className="text-xs text-muted-foreground">{options.contextLabel()}</p>}
+                <AssistantSelection controller={controller} />
               </ConversationHeader>
             }
           />

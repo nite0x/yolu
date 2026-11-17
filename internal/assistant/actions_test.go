@@ -430,3 +430,93 @@ func TestAssistantTimedOutReviewCannotPersistALatePlan(t *testing.T) {
 		t.Fatalf("late review saved an unwanted activity %+v %v", activities, err)
 	}
 }
+
+func TestAssistantStaleSelectionDoesNotBlockSend(t *testing.T) {
+	for _, code := range []string{"resource_not_found", "environment_unavailable"} {
+		t.Run(code, func(t *testing.T) {
+			s, h := actionService(t, Capability{}, nil)
+			var reads atomic.Int32
+			capability := s.registry.capabilities["app_get_context"]
+			capability.Read = func(context.Context, json.RawMessage) (any, error) {
+				reads.Add(1)
+				return nil, &CapabilityError{Code: code, Message: "Selection is unavailable"}
+			}
+			s.registry.capabilities["app_get_context"] = capability
+			s.provider = func(ctx context.Context, _ []store.AssistantMessage) (string, error) {
+				result, err := s.invoke(ctx, store.AssistantRun{ID: "stale", ConversationID: "yolu-one"}, "app_get_context", json.RawMessage(`{}`))
+				if err != nil {
+					return "", err
+				}
+				if result.(map[string]any)["error"].(*CapabilityError).Code != code {
+					return "", errors.New("missing tool context error")
+				}
+				return "Local workspace queries remain available", nil
+			}
+			request(t, h, "POST", "/api/assistant/conversations/yolu-one/runs", `{"request_id":"stale","text":"List local workspaces","context":{"environment_id":"removed-environment","workspace_id":"deleted"}}`, 202)
+			waitRun(t, s, "stale", "completed")
+			if reads.Load() != 1 {
+				t.Fatalf("context must only be read by the tool, got %d reads", reads.Load())
+			}
+		})
+	}
+}
+
+func TestAssistantReconcileDoesNotBlockSendsOrOverwriteChangedPlan(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	s, h := actionService(t, Capability{Reconcile: func(ctx context.Context, _ json.RawMessage) (ExecutionResult, bool, error) {
+		close(started)
+		select {
+		case <-release:
+			return ExecutionResult{Status: "succeeded"}, true, nil
+		case <-ctx.Done():
+			return ExecutionResult{}, false, ctx.Err()
+		}
+	}}, nil)
+	plan := proposeAction(t, s, "Feature")
+	plan.Status = "unknown"
+	if err := s.store.UpdateAssistantPlan(plan); err != nil {
+		t.Fatal(err)
+	}
+	reconciled := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("POST", strings.TrimSuffix(decisionPath(plan), "decision")+"reconcile", strings.NewReader(`{}`)))
+		reconciled <- w
+	}()
+	<-started
+	request(t, h, "POST", "/api/assistant/conversations", `{"id":"yolu-two"}`, 201)
+	sent := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("POST", "/api/assistant/conversations/yolu-two/runs", strings.NewReader(`{"request_id":"other","text":"List workspaces"}`)))
+		sent <- w
+	}()
+	select {
+	case w := <-sent:
+		if w.Code != 202 {
+			t.Fatalf("send failed %d %s", w.Code, w.Body.String())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("another conversation waited for environment reconciliation")
+	}
+	// A concurrent reconciliation or journal update wins over the stale lookup.
+	s.mu.Lock()
+	plan.Status, plan.Error = "partial", "A member still needs attention"
+	err := s.store.UpdateAssistantPlan(plan)
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseOnce.Do(func() { close(release) })
+	w := <-reconciled
+	var current store.AssistantPlan
+	if err := json.Unmarshal(w.Body.Bytes(), &current); err != nil || w.Code != 200 || current.Status != "partial" {
+		t.Fatalf("stale reconciliation overwrote the plan %d %s %v", w.Code, w.Body.String(), err)
+	}
+	stored, err := s.store.AssistantPlan(plan.ConversationID, plan.ID)
+	if err != nil || stored.Status != "partial" || stored.Error != plan.Error {
+		t.Fatalf("lost newer journal state %+v %v", stored, err)
+	}
+}

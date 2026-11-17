@@ -253,6 +253,7 @@ function render() {
       const {label, ...context} = assistantContext || {environment_id:activeEnvironment};
       return context;
     },
+    clearContext: () => { assistantContext = {environment_id: 'local'}; },
     contextLabel: () => [environmentName(assistantContext?.environment_id || activeEnvironment), assistantContext?.label].filter(Boolean).join(' · '),
     openResource: async resource => {
       if (!resource || !['workspace', 'project', 'conversation'].includes(resource.kind) || !/^[a-zA-Z0-9_-]+$/.test(resource.id) || typeof resource.environment_id !== 'string') throw new Error(uiText("资源信息无效，请重新查询。"));

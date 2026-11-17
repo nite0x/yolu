@@ -445,3 +445,38 @@ test("inline plans stay attached to their turn while replies and decisions updat
   assert.ok(reads > 1);
   assert.deepEqual(errors, []);
 });
+
+test("assistant header clears unavailable context while preserving composer text", async (t) => {
+  const {w, errors} = createAssistantWindow(t);
+  let context = {environment_id: "offline", workspace_id: "deleted"};
+  const bodies: any[] = [];
+  const request = async (path: string, options?: RequestInit) => {
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path === "/api/assistant/conversations") return [{id: "clear-selection", title: "Workspace planning"}];
+    if (path.endsWith("/runs")) {
+      const body = JSON.parse(String(options?.body));
+      bodies.push(body);
+      return {id: body.request_id, status: "completed", error_code: ""};
+    }
+    return {messages: [], run: null, before: 0};
+  };
+  w.AssistantTest.openGlobalAssistant(request, {
+    getContext: () => context,
+    contextLabel: () => context.workspace_id ? "Offline · Deleted workspace" : "Local",
+    clearContext: () => { context = {environment_id: "local", workspace_id: ""}; },
+  });
+  await until(() => !!w.document.querySelector('textarea[aria-label="助手消息"]'));
+  const input = w.document.querySelector('textarea[aria-label="助手消息"]') as HTMLTextAreaElement;
+  const setValue = Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, "value")!.set!;
+  setValue.call(input, "List local workspaces");
+  input.dispatchEvent(new w.Event("input", {bubbles: true}));
+  const clear = [...w.document.querySelectorAll("button")].find((button) => button.textContent === "清除上下文")!;
+  clear.click();
+  await until(() => !!w.document.body.textContent?.includes("Local"));
+  assert.equal(input.value, "List local workspaces");
+  assert.equal(w.document.body.textContent?.includes("Deleted workspace"), false);
+  input.dispatchEvent(new w.KeyboardEvent("keydown", {key: "Enter", code: "Enter", ctrlKey: true, bubbles: true}));
+  await until(() => bodies.length === 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(bodies[0].context)), {environment_id: "local", workspace_id: ""});
+  assert.deepEqual(errors, []);
+});

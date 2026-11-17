@@ -208,4 +208,23 @@ func TestSnapshotIncludesActionsFromOlderTranscriptPages(t *testing.T) {
 	if len(snapshot.Activities) != 101 || snapshot.Activities[100].RunID != "run-000" {
 		t.Fatalf("older query missing from transcript page %+v", snapshot.Activities)
 	}
+	old, err := s.store.AssistantPlan("history", "run-000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.Status = "succeeded"
+	if err := s.store.UpdateAssistantPlan(old); err != nil {
+		t.Fatal(err)
+	}
+	// Even after leaving the recent update window, a client tracking this ID
+	// must receive its terminal state through the ordinary snapshot endpoint.
+	if _, err := s.store.DB.Exec(`UPDATE assistant_action_plans SET updated_at=0 WHERE id=?`, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(request(t, handler, "GET", base+"?plan_id=run-000", "", 200), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Plans) != 101 || snapshot.Plans[100].ID != old.ID || snapshot.Plans[100].Status != "succeeded" {
+		t.Fatalf("tracked terminal plan missing %+v", snapshot.Plans)
+	}
 }

@@ -4064,8 +4064,8 @@ test('clone errors stay in the dialog when its selected environment differs from
  assert.equal(h.$('#chooseProjectDirectory').disabled,true);
 });
 
-for (const desktop of [false, true]) test(`global assistant leads shared navigation and survives page transitions (desktop=${desktop})`, async t => {
-  const h = await harness(t, false, {desktop, width:1280, route:'/projects'});
+for (const desktop of [false, true]) for (const width of [640, 1280]) test(`global assistant leads shared navigation and survives page transitions (desktop=${desktop}, width=${width})`, async t => {
+  const h = await harness(t, false, {desktop, width, route:'/projects'});
   const opens = [];
   const assistantOptions = [];
   h.window.WorkHubAssistant = {openGlobal(request, options) {opens.push(request); assistantOptions.push(options);}, open() {}, close() {}};
@@ -4095,6 +4095,9 @@ for (const desktop of [false, true]) test(`global assistant leads shared navigat
   assert.equal(h.window.location.hash, '#/requirements/task');
   await h.navigate('/assistant');
   assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',workspace_id:'task'});
+  assistantOptions.at(-1).clearContext();
+  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local'});
+  assert.doesNotMatch(assistantOptions.at(-1).contextLabel(), /Billing/);
   await assistantOptions.at(-1).openResource({kind:'project',id:'backend',environment_id:'local',name:'Backend'});
   await settle();
   assert.equal(h.$('#projectDetail h2').textContent, 'Backend');

@@ -161,26 +161,36 @@ func (s *Store) AssistantPlan(conversation, id string) (AssistantPlan, error) {
 	return p, err
 }
 
-// Include the recent window for live updates, plus actions belonging to the
-// requested transcript page so older turns retain their cards when paginated.
-func assistantActionHistory(table, conversation, order string, runs []string) (string, []any) {
+// Include the recent window, the requested transcript page and explicitly
+// tracked plans so completion remains observable after an old plan is approved.
+func assistantActionHistory(table, conversation, order string, runs, ids []string) (string, []any) {
 	args := []any{conversation}
-	if len(runs) == 0 {
+	if len(runs) == 0 && len(ids) == 0 {
 		return `conversation_id=? ORDER BY ` + order + ` LIMIT 100`, args
 	}
 	args = append(args, conversation)
-	for _, run := range runs {
-		args = append(args, run)
+	clauses := []string{`id IN (SELECT id FROM ` + table + ` WHERE conversation_id=? ORDER BY ` + order + ` LIMIT 100)`}
+	if len(runs) > 0 {
+		clauses = append(clauses, `run_id IN (?`+strings.Repeat(",?", len(runs)-1)+`)`)
+		for _, run := range runs {
+			args = append(args, run)
+		}
 	}
-	where := `conversation_id=? AND (
- id IN (SELECT id FROM ` + table + ` WHERE conversation_id=? ORDER BY ` + order + ` LIMIT 100)
- OR run_id IN (?` + strings.Repeat(",?", len(runs)-1) + `)
-) ORDER BY ` + order
-	return where, args
+	if len(ids) > 0 {
+		clauses = append(clauses, `id IN (?`+strings.Repeat(",?", len(ids)-1)+`)`)
+		for _, id := range ids {
+			args = append(args, id)
+		}
+	}
+	return `conversation_id=? AND (` + strings.Join(clauses, " OR ") + `) ORDER BY ` + order, args
 }
 
 func (s *Store) AssistantPlans(conversation string, runs ...string) ([]AssistantPlan, error) {
-	where, args := assistantActionHistory("assistant_action_plans", conversation, "created_at DESC,id DESC", runs)
+	return s.AssistantPlansForSnapshot(conversation, runs, nil)
+}
+
+func (s *Store) AssistantPlansForSnapshot(conversation string, runs, ids []string) ([]AssistantPlan, error) {
+	where, args := assistantActionHistory("assistant_action_plans", conversation, "updated_at DESC,created_at DESC,id DESC", runs, ids)
 	query := `SELECT payload FROM assistant_action_plans WHERE ` + where
 	if conversation == "" {
 		query = `SELECT payload FROM assistant_action_plans WHERE status IN ('running','cancelling','unknown')`
@@ -286,7 +296,7 @@ func (s *Store) AddAssistantActivity(conversation, run, capability, status strin
 }
 
 func (s *Store) AssistantActivities(conversation string, runs ...string) ([]AssistantActivity, error) {
-	where, args := assistantActionHistory("assistant_tool_calls", conversation, "id DESC", runs)
+	where, args := assistantActionHistory("assistant_tool_calls", conversation, "id DESC", runs, nil)
 	rows, err := s.DB.Query(`SELECT id,run_id,capability,status,result,created_at FROM assistant_tool_calls WHERE `+where, args...)
 	if err != nil {
 		return nil, err

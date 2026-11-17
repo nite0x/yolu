@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func actionTestPlan(id, status string) AssistantPlan {
@@ -195,5 +197,51 @@ func TestAssistantMalformedPlanImportRollsBack(t *testing.T) {
 		if err := db.DB.QueryRow("SELECT count(*) FROM " + table).Scan(&count); err != nil || count != 0 {
 			t.Fatalf("failed import committed %s rows=%d err=%v", table, count, err)
 		}
+	}
+}
+
+func TestAssistantPlanPollingTracksOldOutcomes(t *testing.T) {
+	db := newActionStore(t)
+	old := actionTestPlan("old", "pending")
+	if err := db.CreateAssistantPlan(old); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 105; i++ {
+		p := actionTestPlan(fmt.Sprintf("recent-%03d", i), "succeeded")
+		p.CreatedAt, p.UpdatedAt = int64(100+i), int64(100+i)
+		if err := db.CreateAssistantPlan(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	approved, _, err := db.DecideAssistantPlan("conversation", old.ID, "approve-old", "fingerprint", "approve", old.Digest, old.Revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, err := db.AssistantPlans("conversation")
+	if err != nil || len(plans) != 100 || plans[0].ID != old.ID || plans[0].Status != "running" {
+		t.Fatalf("old approval absent from recent updates %+v %v", plans, err)
+	}
+	approved.Status = "succeeded"
+	if err := db.UpdateAssistantPlan(approved); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate enough later updates to move the completed plan out of the window.
+	for i := 0; i < 105; i++ {
+		p := actionTestPlan(fmt.Sprintf("recent-%03d", i), "succeeded")
+		p.UpdatedAt = time.Now().Add(time.Hour).UnixMilli() + int64(i)
+		if _, err := db.DB.Exec(`UPDATE assistant_action_plans SET updated_at=? WHERE id=?`, p.UpdatedAt, p.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plans, err = db.AssistantPlansForSnapshot("conversation", []string{"latest-run"}, []string{old.ID})
+	if err != nil || len(plans) != 101 || plans[100].ID != old.ID || plans[100].Status != "succeeded" {
+		t.Fatalf("tracked completion missing %+v %v", plans, err)
+	}
+	if err := db.CreateAssistant("other"); err != nil {
+		t.Fatal(err)
+	}
+	plans, err = db.AssistantPlansForSnapshot("other", nil, []string{old.ID})
+	if err != nil || len(plans) != 0 {
+		t.Fatalf("tracked ID leaked another conversation's plan %+v %v", plans, err)
 	}
 }

@@ -40,6 +40,7 @@ export interface AssistantContext {
 export interface AssistantOptions {
   getContext?: () => AssistantContext;
   contextLabel?: () => string;
+  clearContext?: () => void;
   openResource?: (resource: AssistantResource) => void | Promise<void>;
 }
 export interface AssistantActivity {
@@ -206,8 +207,13 @@ export class GlobalAssistantController {
     clearTimeout(this.timer);
     if (earlier) this.update({ loading: true });
     try {
+      const query = new URLSearchParams();
+      if (earlier) query.set("before", String(this.state.before));
+      for (const plan of this.state.plans) {
+        if (["running", "cancelling"].includes(plan.status)) query.append("plan_id", plan.id);
+      }
       const page = await this.request<AssistantSnapshot>(
-        this.base() + (earlier ? `?before=${this.state.before}` : ""),
+        this.base() + (query.size ? `?${query}` : ""),
       );
       if (!this.connected || generation !== this.generation) return;
       const messages = new Map(
@@ -255,6 +261,14 @@ export class GlobalAssistantController {
         );
     }
   }
+  clearContext = () => {
+    if (this.readOnly || this.state.submitting || !this.options.clearContext) return;
+    this.options.clearContext();
+    // Clearing is an explicit payload change. Ordinary retries keep their receipt.
+    this.pending = undefined;
+    this.update({ error: "" });
+    this.persistence.changed();
+  };
   async send() {
     const text = this.state.draft.trim();
     if (

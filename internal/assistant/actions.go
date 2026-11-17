@@ -428,11 +428,24 @@ func (s *Service) reconcile(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 409, "请打开实际工作区核对执行结果")
 		return
 	}
+	// Environment reconciliation may perform remote I/O. Only journal access
+	// and the final state check need the service mutex.
+	s.mu.Unlock()
 	ctx, end := context.WithTimeout(r.Context(), 15*time.Second)
 	defer end()
-	result, found, err := c.Reconcile(ctx, p.Review)
+	result, found, reconcileErr := c.Reconcile(ctx, p.Review)
+	s.mu.Lock()
+	current, err := s.store.AssistantPlan(p.ConversationID, p.ID)
 	if err != nil {
-		httpx.WriteError(w, 409, domainError(err).Message)
+		httpx.DbError(w, err)
+		return
+	}
+	if current.Status != "unknown" || current.Revision != p.Revision || current.Digest != p.Digest || current.UpdatedAt != p.UpdatedAt {
+		httpx.WriteJSON(w, 200, current)
+		return
+	}
+	if reconcileErr != nil {
+		httpx.WriteError(w, 409, domainError(reconcileErr).Message)
 		return
 	}
 	if found {

@@ -419,3 +419,50 @@ test("a stale rendered review cannot approve a newer plan revision", async (t) =
   assert.equal(decisions, 0);
   assert.match(controller.getSnapshot().decisionErrors[reviewed.id], /计划已更新/);
 });
+
+test("clearing selection sends the same draft with a new receipt and local context", async (t) => {
+  let context = {environment_id: "missing", workspace_id: "deleted"};
+  const bodies: any[] = [];
+  const request = (async (path: string, options?: RequestInit) => {
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    if (path.endsWith("/runs")) {
+      bodies.push(JSON.parse(String(options?.body)));
+      throw new Error("Rejected selection");
+    }
+    return {messages: [], run: null, before: 0};
+  }) as AssistantRequest;
+  const controller = new GlobalAssistantController("clear-context", request, false, {
+    getContext: () => context,
+    clearContext: () => { context = {environment_id: "local", workspace_id: ""}; },
+  });
+  t.after(() => controller.disconnect());
+  await controller.connect();
+  controller.setDraft("List local workspaces");
+  await controller.send();
+  controller.clearContext();
+  assert.equal(controller.getSnapshot().draft, "List local workspaces");
+  await controller.send();
+  assert.notEqual(bodies[0].request_id, bodies[1].request_id);
+  assert.equal(bodies[1].text, bodies[0].text);
+  assert.deepEqual(bodies[1].context, {environment_id: "local", workspace_id: ""});
+});
+
+test("polling tracks an old running plan until its terminal state is returned", async (t) => {
+  let plan = {...actionPlan(), id: "old-plan", status: "running"};
+  const paths: string[] = [];
+  const request = (async (path: string) => {
+    if (path.startsWith("/api/conversation-drafts")) return null;
+    paths.push(path);
+    const tracked = new URL(path, "http://localhost").searchParams.getAll("plan_id");
+    return {messages: [], run: null, before: 0, plans: paths.length === 1 || tracked.includes(plan.id) ? [plan] : []};
+  }) as AssistantRequest;
+  const controller = new GlobalAssistantController("old-plan", request);
+  t.after(() => controller.disconnect());
+  await controller.connect();
+  plan = {...plan, status: "succeeded"};
+  await controller.refresh();
+  assert.equal(new URL(paths.at(-1)!, "http://localhost").searchParams.get("plan_id"), plan.id);
+  assert.equal(controller.getSnapshot().plans[0].status, "succeeded");
+  await controller.refresh();
+  assert.equal(paths.at(-1)!.includes("plan_id"), false);
+});

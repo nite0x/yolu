@@ -1599,6 +1599,7 @@
   "查询时间 {0}": "Queried at {0}",
   "查询项目": "Find projects",
   "标识": "ID",
+  "清除上下文": "Clear context",
   "核实执行结果": "Reconcile outcome",
   "正在核实…": "Reconciling…",
   "添加参与项目": "Attach projects",
