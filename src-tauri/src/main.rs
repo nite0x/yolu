@@ -1,8 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
-#[cfg(target_os = "macos")]
-mod window_controls;
 
 use backend::{Options, Service};
 use std::{
@@ -289,9 +287,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let builder = builder.decorations(false).visible(false);
             #[cfg(target_os = "macos")]
             let builder = {
+                // Overlay the web header while AppKit lays out the native buttons.
                 builder.title_bar_style(tauri::TitleBarStyle::Overlay)
                     .hidden_title(true)
-                    .traffic_light_position(tauri::LogicalPosition::new(12.0, 20.0))
             };
             let window = builder
                 .on_permission_request(|view, kind| {
@@ -304,12 +302,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         PermissionResponse::Default
                     }
-                })
-                .on_page_load(|window, _| {
-                    #[cfg(target_os = "macos")]
-                    window_controls::align(&window);
-                    #[cfg(not(target_os = "macos"))]
-                    let _ = window;
                 })
                 .on_navigation(move |url| {
                     let bundled = url.scheme() == "tauri" && url.host_str() == Some("localhost")
@@ -325,16 +317,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 window.hide_menu()?;
                 window.show()?;
             }
-            #[cfg(target_os = "macos")]
-            window_controls::align(&window);
-            #[cfg(target_os = "macos")]
-            let controls_window = window.clone();
             let handle = app.handle().clone();
             window.on_window_event(move |event| {
-                #[cfg(target_os = "macos")]
-                if matches!(event, tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. } | tauri::WindowEvent::Focused(true)) {
-                    window_controls::align(&controls_window);
-                }
                 if matches!(event, tauri::WindowEvent::Destroyed) {
                     // Tauri exits; the detached Go backend intentionally outlives it.
                     handle.exit(0);
