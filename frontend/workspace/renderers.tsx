@@ -7,6 +7,7 @@ import { TaskActions, TaskDetail, TaskList } from "./tasks"
 import { ProjectPicker, projectChoiceReady, projectChoiceSummary } from "./project-picker"
 import { mountGitView, resetGitView, scrollToGitSection } from "./git-interactive"
 import { notifyWorkspace } from "./interactions"
+import { ProjectScanResults } from "./project-scan"
 import { Projects, type DirectoryFilter, type ProjectFilter } from "./projects"
 import { GitView } from "./git"
 import { SessionList, SessionPicker, NewSession, type Session, type SessionsData } from "./sessions"
@@ -48,6 +49,7 @@ export const workspaceUI = {
   createOperations, createConversationFiles,
   createTaskReviewController,
   taskMatches,
+  projectScanResults: (scan: Parameters<typeof ProjectScanResults>[0]) => renderToStaticMarkup(<ProjectScanResults {...scan} />),
   codexDiagnostics: (results: Parameters<typeof CodexDiagnosticsResults>[0]["results"]) => renderToStaticMarkup(<CodexDiagnosticsResults results={results} />),
   taskReview: (items: Parameters<typeof TaskReviewItems>[0]["items"]) => renderToStaticMarkup(<TaskReviewItems items={items} />),
   conversationContext,

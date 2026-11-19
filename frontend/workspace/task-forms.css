@@ -1,6 +1,6 @@
-/* One scroll surface keeps task names and submit controls visible while a
-   project configuration is expanded. The existing dialog lifecycle is retained. */
-dialog:is(#requirementDialog, #requirementProjectsDialog, #taskDirectoryDialog) {
+/* One scroll surface keeps dialog headings and submit controls visible while
+   repository results or project configuration are expanded. The existing dialog lifecycle is retained. */
+dialog:is(#projectDialog, #requirementDialog, #requirementProjectsDialog, #taskDirectoryDialog) {
   padding: 0;
   overflow: hidden;
   max-height: min(90dvh, 960px);

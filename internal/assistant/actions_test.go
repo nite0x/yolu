@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"worktree-hub/internal/model"
 	"worktree-hub/internal/store"
 )
 
@@ -76,6 +77,44 @@ func decisionBody(t *testing.T, plan store.AssistantPlan, decision, id string) s
 func decisionPath(plan store.AssistantPlan) string {
 	return "/api/assistant/conversations/" + plan.ConversationID + "/plans/" + plan.ID + "/decision"
 }
+
+func TestAssistantQueryOnlyTurnCannotProposeChanges(t *testing.T) {
+	s, h := actionService(t, Capability{}, nil)
+	s.provider = func(ctx context.Context, _ []store.AssistantMessage) (string, error) {
+		settings := settingsFromContext(ctx)
+		if settings.Permission != model.AssistantQueryOnly || settings.Model != "fixture-model" {
+			t.Errorf("provider received %+v", settings)
+		}
+		tools, _ := ctx.Value(providerToolsKey{}).(providerTools)
+		queryAvailable := false
+		for _, tool := range tools.definitions {
+			if tool.Name == "test_write" {
+				t.Error("query-only turn exposed a change tool")
+			}
+			queryAvailable = queryAvailable || tool.Name == "app_get_context"
+		}
+		if !queryAvailable {
+			t.Error("query-only turn lost query tools")
+		}
+		result, err := tools.handler(ctx, "test_write", json.RawMessage(`{"environment_id":"local","name":"Work"}`))
+		body, _ := result.(map[string]any)
+		denied, _ := body["error"].(*CapabilityError)
+		if err != nil || denied == nil || denied.Code != "permission_denied" {
+			t.Errorf("direct write request yielded %+v, %v", result, err)
+		}
+		return "Ready", nil
+	}
+	path := "/api/assistant/conversations/yolu-one/runs"
+	body := `{"request_id":"query-run","text":"Look up work","settings":{"model":"fixture-model","permission":"query"}}`
+	request(t, h, "POST", path, body, 202)
+	waitRun(t, s, "query-run", "completed")
+	request(t, h, "POST", path, body, 200)
+	request(t, h, "POST", path, `{"request_id":"query-run","text":"Look up work","settings":{"model":"new-model","permission":"query"}}`, 409)
+	request(t, h, "POST", path, `{"request_id":"invalid","text":"Look up work","settings":{"permission":"full"}}`, 400)
+	if plans, err := s.store.AssistantPlans("yolu-one"); err != nil || len(plans) != 0 {
+		t.Fatalf("query-only turn changed plans: %+v, %v", plans, err)
+	}
+}
 func waitPlan(t *testing.T, s *Service, id, status string) store.AssistantPlan {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -106,6 +145,11 @@ func TestAssistantPlanApprovalBindsReviewAndReusesReceipt(t *testing.T) {
 	plan := proposeAction(t, s, "Feature")
 	if plan.Status != "pending" || plan.Revision != 1 || plan.Digest != planDigest(plan) || calls.Load() != 0 {
 		t.Fatalf("proposal executed or invalid %+v", plan)
+	}
+	var conversations []store.AssistantConversation
+	json.Unmarshal(request(t, h, "GET", "/api/assistant/conversations", "", 200), &conversations)
+	if len(conversations) != 1 || conversations[0].Activity != "waiting" {
+		t.Fatalf("pending conversations %+v", conversations)
 	}
 	wrong := plan
 	wrong.Digest = strings.Repeat("b", 64)

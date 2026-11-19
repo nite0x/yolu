@@ -152,7 +152,7 @@ function closeSessionChat(current) {
 }
 $('#sessionChatInput').addEventListener('input', () => { if (sessionHistoryState) renderChatControls(sessionHistoryState); });
 $('#sessionChatInput').addEventListener('keydown', event => {
-  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) { event.preventDefault(); if (!$('#sendSessionChat').disabled) $('#sessionChatForm').requestSubmit(); }
+  if (event.key === 'Enter' && ((window.YoluChatInput?.current() ?? 'enter') === 'enter' || event.ctrlKey || event.metaKey) && !event.shiftKey && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); if (!$('#sendSessionChat').disabled) $('#sessionChatForm').requestSubmit(); }
 });
 $('#sessionChatForm').addEventListener('submit', async event => {
   event.preventDefault();

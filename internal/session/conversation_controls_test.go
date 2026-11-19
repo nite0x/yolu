@@ -307,7 +307,7 @@ func TestInstalledCodexConversationCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	models, err := listChatModels(c.Call)
+	models, err := codex.ListModels(c.Call)
 	if err != nil || len(models) == 0 {
 		t.Fatalf("catalog: %d models, %v", len(models), err)
 	}

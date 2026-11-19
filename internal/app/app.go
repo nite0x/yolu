@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	"worktree-hub/internal/assistant"
+	"worktree-hub/internal/codex"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/project"
@@ -32,6 +33,7 @@ type App struct {
 	terminalWorktreeMu  sync.RWMutex
 	assistantUse        sync.RWMutex // capability callbacks lease execution resources through teardown
 	browser             *browserAccess
+	voice               *codex.VoiceService
 }
 
 func openApp(dataDir, root string) (*App, error) { return openAppForWorkspace(dataDir, root, nil) }
@@ -49,6 +51,7 @@ func openAppForWorkspace(dataDir, root string, remote *workspace.Client) (*App, 
 	projects.TaskContextUpdated = task.WriteBriefContext
 	a := &App{Workspace: env, Tasks: tasks, Projects: projects, Sessions: sessions, Terminals: terminal.New(), token: model.NewID() + model.NewID(), pickDirectory: platform.PickDirectory}
 	if remote == nil {
+		a.voice = codex.NewVoiceService(env.DataDir, codex.OpenLive)
 		a.browser = newBrowserAccess(a)
 		a.Assistant = assistant.New(env.Store, env.DataDir)
 		if err := a.configureAssistant(); err != nil {
@@ -66,6 +69,9 @@ func openAppForWorkspace(dataDir, root string, remote *workspace.Client) (*App, 
 func (a *App) Close() error {
 	a.closeOnce.Do(func() {
 		a.Workspace.Closing.Store(true)
+		if a.voice != nil {
+			a.voice.Close()
+		}
 		if a.Assistant != nil {
 			a.Assistant.Close()
 		}

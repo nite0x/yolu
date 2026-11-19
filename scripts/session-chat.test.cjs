@@ -20,6 +20,23 @@ function harness() {
 }
 const idle = () => ({ status: 'idle', busy: false, entries: [], approvals: [] });
 
+test('fallback composer defaults to Enter and respects saved shortcuts, newlines and composition', () => {
+  const h = harness();
+  let submits = 0;
+  h.$('#sessionChatForm').requestSubmit = () => submits++;
+  const keydown = h.$('#sessionChatInput').handlers.keydown;
+  const press = modifiers => keydown({key:'Enter', preventDefault() {}, ...modifiers});
+  for (const modifiers of [{shiftKey:true}, {isComposing:true}, {keyCode:229}]) press(modifiers);
+  assert.equal(submits, 0);
+  press({});
+  assert.equal(submits, 1);
+  h.context.window.YoluChatInput = {current:() => 'ctrlEnter'};
+  press({});
+  assert.equal(submits, 1);
+  press({ctrlKey:true});
+  assert.equal(submits, 2);
+});
+
 test('streaming output updates the dialog without rebuilding unchanged command rows', () => {
   const h = harness();
   const container = h.$('#sessionChatLiveEntries');

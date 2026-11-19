@@ -5,7 +5,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 // Independent conversation readers retain their controllers and drafts.
 // Page navigation is owned by the workspace document.
 (() => {
-  if (!window.parent || window.parent === window) return;
+  if (!window.parent || window.parent === window || document.documentElement.hasAttribute('data-workspace-assistant')) return;
   const host = window.parent;
   let active = false, restoring = true, timer, disposed = false, parallelPane = false, navigationOnly = new URLSearchParams(location.search).has('workspace-navigation');
   let restoreRevision = 0;
@@ -54,6 +54,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         return (context?.tasks.map(task => task.name).join('、') || conversationScopeName(view.scope)) + ' · ' + environmentName(environment);
       })() : '',
       status:session?.chat_status || '',
+      sessionEnvironment:session?.environment_id,
       conversation: view ? {scope:view.scope, creating:!!view.creating, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(session.environment_id || activeEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
     };
   }
@@ -187,6 +188,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   const open = saved => post('workhub:page-open', {snapshot:saved});
   document.addEventListener('click', event => {
+    const assistantLauncher = event.target.closest('#openYoluAssistant');
+    if (assistantLauncher) {
+      assistantLauncher.focus({preventScroll:true});
+      post('workhub:assistant-toggle');
+      return;
+    }
     const terminalButton = event.target.closest('[data-conversation-terminal]');
     if (terminalButton && !terminalButton.disabled && event.button === 0 && !(event.metaKey || event.ctrlKey)) {
       const saved = destination(event.target);
@@ -333,7 +340,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     document.removeEventListener('pointerdown', focus, true);
     document.removeEventListener('focusin', focus);
   }
-  window.WorkHubPage = {snapshot,canClose,dispose,get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
+  const readAssistantActivity = () => assistantRequest('/api/assistant/conversations').then(conversations =>
+    conversations.some(conversation => conversation.activity === 'waiting') ? 'waiting'
+      : conversations.some(conversation => conversation.activity === 'running') ? 'running' : '');
+  window.WorkHubPage = {snapshot,canClose,dispose,environmentName,readAssistantActivity,get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
   visibility(false);
   window.addEventListener('workhub:workspace-ready', () => post('workhub:page-ready'), {once:true});
 })();

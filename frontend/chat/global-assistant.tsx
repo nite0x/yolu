@@ -22,14 +22,13 @@ import {
   AssistantActionsProvider,
 } from "./assistant-actions";
 import { assistantMessages } from "./assistant-messages";
+import { AssistantModelPicker, AssistantPermissions } from "./assistant-controls";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, History, Plus, X } from "lucide-react";
 import { ConversationList } from "../workspace/session-browser";
-import { WorkspaceSplitLayout, WorkspacePane } from "../workspace/page-surface";
-import { ListCreateButton } from "../workspace/list-controls";
 import {
   ConversationHeader,
-  ConversationStatusBadge,
+  ConversationIconButton,
 } from "../workspace/conversation-surface";
 import { uiText } from "../i18n";
 import {
@@ -44,7 +43,7 @@ const convertMessage = (message: ThreadMessageLike) => message;
 const Welcome = () => (
   <div className="aui-thread-welcome-root mb-6 flex flex-col px-2">
     <p className="text-2xl font-medium tracking-tight">
-      {uiText("想推进哪项开发工作？")}
+      {uiText("想在 Yolu 里做什么？")}
     </p>
   </div>
 );
@@ -117,6 +116,8 @@ function GlobalConversation({
           readOnly: controller.readOnly,
           autoFocus: false,
           components: assistantComponents,
+          composerLeadingControls: <AssistantPermissions controller={controller} portal={panel} />,
+          composerControls: <AssistantModelPicker controller={controller} portal={panel} />,
           composerStatus: controller.busy ? (
             <ConversationRunIndicator
               status="running"
@@ -126,7 +127,7 @@ function GlobalConversation({
         }}
         composerInput={{
           "aria-label": uiText("助手消息"),
-          placeholder: uiText("描述你的开发目标…"),
+          placeholder: uiText("查找工作区、添加项目，或准备新的工作区…"),
           maxLength: 64000,
         }}
         feedback={
@@ -144,8 +145,8 @@ function AssistantSelection({ controller }: { controller: GlobalAssistantControl
   const label = controller.options.contextLabel?.();
   if (!label) return null;
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span>{label}</span>
+    <div className="global-assistant-context">
+      <span title={label}>{uiText("当前上下文 · {0}", label)}</span>
       {controller.options.clearContext && (
         <Button type="button" variant="ghost" size="sm" disabled={controller.readOnly || state.submitting} onClick={controller.clearContext}>
           {uiText("清除上下文")}
@@ -169,9 +170,11 @@ function GlobalAssistant({ request, options }: { request: AssistantRequest; opti
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [pane, setPane] = useState("list");
+  const [showHistory, setShowHistory] = useState(false);
+  const focusHeading = useRef(false);
   const pendingCreation = useRef<string | undefined>(undefined);
   const listGeneration = useRef(0);
+  const listReady = useRef(false);
   const controller = useMemo(() => {
     if (!selected) return undefined;
     let value = controllers.get(selected);
@@ -188,7 +191,7 @@ function GlobalAssistant({ request, options }: { request: AssistantRequest; opti
       if (active === controller) active = undefined;
     };
   }, [controller]);
-  const reload = async (initial = false) => {
+  const reload = async () => {
     const generation = ++listGeneration.current;
     try {
       const items = await request<AssistantConversation[]>(
@@ -196,8 +199,8 @@ function GlobalAssistant({ request, options }: { request: AssistantRequest; opti
       );
       if (generation !== listGeneration.current) return;
       setConversations(items);
-      if (initial) {
-        if (items.length) setPane("detail");
+      if (!listReady.current) {
+        listReady.current = true;
         let saved = "";
         try {
           saved = localStorage.getItem("yolu:assistant:selected") || "";
@@ -217,7 +220,7 @@ function GlobalAssistant({ request, options }: { request: AssistantRequest; opti
     }
   };
   useEffect(() => {
-    void reload(true);
+    void reload();
     const timer = setInterval(() => void reload(), 5000);
     const flush = () => {
       void active?.flush();
@@ -229,10 +232,25 @@ function GlobalAssistant({ request, options }: { request: AssistantRequest; opti
       window.removeEventListener("pagehide", flush);
     };
   }, [request]);
+  const activity = conversations.some((item) => item.activity === "waiting") ? "waiting"
+    : conversations.some((item) => item.activity === "running") ? "running" : "";
+  useEffect(() => options.onActivity?.(activity), [activity, options.onActivity]);
+  useEffect(() => {
+    if (!focusHeading.current) return;
+    focusHeading.current = false;
+    document.getElementById(showHistory ? "globalAssistantHistoryTitle" : "globalAssistantTitle")?.focus({preventScroll: true});
+    window.dispatchEvent(new CustomEvent("workhub:chat-layout", {detail: {visible: true}}));
+  }, [showHistory]);
+  const switchPane = (history: boolean) => {
+    if (showHistory === history) return;
+    if (history) window.dispatchEvent(new CustomEvent("workhub:chat-layout", {detail: {phase: "before"}}));
+    focusHeading.current = true;
+    setShowHistory(history);
+  };
   const select = async (id: string) => {
     if (controller && !(await controller.flush())) return;
     setSelected(id);
-    setPane("detail");
+    switchPane(false);
     try {
       localStorage.setItem("yolu:assistant:selected", id);
     } catch {
@@ -261,41 +279,80 @@ function GlobalAssistant({ request, options }: { request: AssistantRequest; opti
     id: item.id,
     name: item.title || uiText("新建助手对话"),
     cwd: "",
+    chat_status: item.activity,
     updated_at: item.updated_at ? item.updated_at / 1000 : undefined,
   }));
-  return (
-    <WorkspaceSplitLayout
-      className="global-assistant-layout shadcn-scope"
-      data-pane={pane}
+  const currentTitle = conversations.find((item) => item.id === selected)?.title;
+  const canCreate = !readOnly && !creating && !loading;
+  const close = options.close && (
+    <ConversationIconButton label={uiText("关闭助手")} onClick={options.close}>
+      <X aria-hidden="true" />
+    </ConversationIconButton>
+  );
+  const newConversation = !readOnly && (
+    <ConversationIconButton label={uiText("新建助手对话")} disabled={!canCreate} onClick={() => void create()}>
+      <Plus aria-hidden="true" />
+    </ConversationIconButton>
+  );
+  const header = (
+    <ConversationHeader
+      title={uiText("Yolu 助手")}
+      titleID="globalAssistantTitle"
+      actions={
+        <>
+          {controller && newConversation}
+          <ConversationIconButton label={uiText("助手历史")} onClick={() => switchPane(true)}>
+            <History aria-hidden="true" />
+          </ConversationIconButton>
+          {close}
+        </>
+      }
     >
-      <WorkspacePane
-        as="aside"
-        className="global-assistant-history"
-        aria-label={uiText("助手历史")}
-      >
-        <div className="session-browser-list-tools">
-          <div className="session-browser-list-heading">
-            <div className="session-browser-list-title">
-              <strong>{uiText("Yolu 助手")}</strong>
+      {currentTitle && <p className="global-assistant-current-title" title={currentTitle}>{currentTitle}</p>}
+      {controller && <AssistantSelection controller={controller} />}
+    </ConversationHeader>
+  );
+  return (
+    <div className="global-assistant-layout shadcn-scope">
+      <section className="global-assistant-conversation" hidden={showHistory}>
+        {controller ? (
+          <GlobalConversation key={selected} controller={controller} header={header} />
+        ) : (
+          <>
+            {header}
+            <div className="global-assistant-empty">
+              {loading ? (
+                <p role="status">{uiText("正在读取对话…")}</p>
+              ) : (
+                <>
+                  <p>{uiText("查找工作区、添加项目，或准备新的工作区。")}</p>
+                  {!readOnly && (
+                    <Button type="button" variant="outline" disabled={!canCreate || !!error} onClick={() => void create()}>
+                      {uiText("新建助手对话")}
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
-            <div className="session-browser-heading-actions">
-              <ListCreateButton
-                label={uiText("新建助手对话")}
-                disabled={readOnly || creating || loading}
-                onClick={() => void create()}
-              />
-            </div>
-          </div>
-        </div>
-        {error && (
-          <p role="alert" className="global-assistant-error">
-            {error}
-          </p>
+          </>
         )}
-        <nav
-          className="global-assistant-history-list"
-          aria-label={uiText("助手对话")}
-        >
+      </section>
+      <section className="global-assistant-history" aria-labelledby="globalAssistantHistoryTitle" hidden={!showHistory}>
+        <ConversationHeader
+          title={uiText("助手历史")}
+          titleID="globalAssistantHistoryTitle"
+          actions={
+            <>
+              <ConversationIconButton label={uiText("返回助手对话")} onClick={() => switchPane(false)}>
+                <ArrowLeft aria-hidden="true" />
+              </ConversationIconButton>
+              {newConversation}
+              {close}
+            </>
+          }
+        />
+        <div className="global-assistant-history-list">
+          {(sessions.length > 0 || !error) &&
           <ConversationList
             sessions={sessions}
             selected={selected}
@@ -304,71 +361,26 @@ function GlobalAssistant({ request, options }: { request: AssistantRequest; opti
             canCreate={false}
             loading={loading}
             onSelect={(id) => void select(id)}
-          />
-        </nav>
-      </WorkspacePane>
-      <WorkspacePane className="global-assistant-conversation">
-        {controller ? (
-          <GlobalConversation
-            key={selected}
-            controller={controller}
-            header={
-              <ConversationHeader
-                title={
-                  conversations.find((item) => item.id === selected)?.title ||
-                  uiText("新建助手对话")
-                }
-                titleID="globalAssistantTitle"
-                actions={
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="global-assistant-mobile-back"
-                      aria-label={uiText("对话列表")}
-                      onClick={() => setPane("list")}
-                    >
-                      <ArrowLeft aria-hidden="true" />
-                    </Button>
-                    <ConversationStatusBadge>Codex CLI</ConversationStatusBadge>
-                  </>
-                }
-              >
-                <AssistantSelection controller={controller} />
-              </ConversationHeader>
-            }
-          />
-        ) : (
-          <>
-            <ConversationHeader
-              title={uiText("新建助手对话")}
-              titleID="globalAssistantTitle"
-            />
-            <div className="global-assistant-empty">
-              <p>{uiText("选择一个对话，或新建对话开始工作。")}</p>
-              {!readOnly && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={creating || loading}
-                  onClick={() => void create()}
-                >
-                  {uiText("新建助手对话")}
-                </Button>
-              )}
-            </div>
-          </>
-        )}
-      </WorkspacePane>
-    </WorkspaceSplitLayout>
+          />}
+        </div>
+      </section>
+      {error && (
+        <div className="global-assistant-error">
+          <p role="alert">{error}</p>
+          <Button type="button" variant="ghost" size="sm" onClick={() => void reload()}>{uiText("重新加载")}</Button>
+        </div>
+      )}
+    </div>
   );
 }
 
 let root: Root | undefined;
 export function openGlobalAssistant(request: AssistantRequest, options: AssistantOptions = {}) {
-  if (root) return;
-  root = createRoot(document.getElementById("globalAssistantRoot")!);
+  const target = document.getElementById("globalAssistantRoot")!;
+  if (!root) {
+    target.replaceChildren();
+    root = createRoot(target);
+  }
   root.render(<GlobalAssistant request={request} options={options} />);
 }
 export const flushGlobalAssistantDraft = () =>

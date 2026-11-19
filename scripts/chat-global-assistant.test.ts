@@ -393,12 +393,19 @@ test("uncertain assistant send retains its original selection context across ret
   const controller = new GlobalAssistantController("context", request, false, {getContext: () => context});
   t.after(() => controller.disconnect());
   await controller.connect();
+  controller.setTurnSettings({model: "fixture-model", permission: "query"});
   controller.setDraft("Plan payments");
   await controller.send();
   context = {environment_id: "local", project_id: "backend"};
   await controller.send();
   assert.deepEqual(bodies[0], bodies[1]);
   assert.equal(bodies[1].context.project_id, "frontend");
+  assert.deepEqual(bodies[1].settings, {model: "fixture-model", permission: "query"});
+  controller.setTurnSettings({model: "another-model"});
+  assert.equal(controller.getSnapshot().draft, "Plan payments");
+  await controller.send();
+  assert.notEqual(bodies[2].request_id, bodies[1].request_id);
+  assert.deepEqual(bodies[2].settings, {model: "another-model"});
 });
 
 test("a stale rendered review cannot approve a newer plan revision", async (t) => {

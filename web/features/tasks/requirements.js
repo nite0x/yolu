@@ -214,7 +214,7 @@ function openRequirement() {
 function renderRequirementProjectOptions(selectID = null) {
   const projects = requirementEnvironmentData?.projects || [];
   const selected = new Set([...$('#projectPicker').querySelectorAll('input[name="project_ids"]:checked')].map(input => input.value));
-  if (selectID) selected.add(selectID);
+  for (const id of Array.isArray(selectID) ? selectID : selectID ? [selectID] : []) selected.add(id);
   renderTaskProjectPicker('#projectPicker', projects, selected, $('#requirementEnvironment').value, 'codex/' + requirementDraftSlug);
   updatePreview();
 }

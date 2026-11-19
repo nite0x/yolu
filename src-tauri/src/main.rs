@@ -14,7 +14,7 @@ use std::{
 };
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
-    webview::NewWindowResponse,
+    webview::{NewWindowResponse, PermissionKind, PermissionResponse},
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
@@ -294,6 +294,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     .traffic_light_position(tauri::LogicalPosition::new(12.0, 20.0))
             };
             let window = builder
+                .on_permission_request(|view, kind| {
+                    let trusted = view.url().ok().is_some_and(|url| {
+                        view.state::<Host>().origin.lock().unwrap().as_ref()
+                            .is_some_and(|origin| *origin == url.origin().ascii_serialization())
+                    });
+                    if trusted && matches!(kind, PermissionKind::Microphone) {
+                        PermissionResponse::Allow
+                    } else {
+                        PermissionResponse::Default
+                    }
+                })
                 .on_page_load(|window, _| {
                     #[cfg(target_os = "macos")]
                     window_controls::align(&window);

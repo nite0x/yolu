@@ -21,7 +21,7 @@ function mount(existing = false, entries: Entry[] = [], extra: Partial<ChatOptio
   const errors: unknown[] = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on("jsdomError",error=>errors.push(error));
-  const dom = new JSDOM('<div class="session-history-panel" data-assistant-ui><div id="assistantChatRoot"></div></div>',{url:"http://localhost",runScripts:"dangerously",pretendToBeVisual:true,virtualConsole});
+  const dom = new JSDOM('<meta name="ui-send-shortcut" content="ctrlEnter"><div class="session-history-panel" data-assistant-ui><div id="assistantChatRoot"></div></div>',{url:"http://localhost",runScripts:"dangerously",pretendToBeVisual:true,virtualConsole});
   const w = dom.window;
   if (withFileToggle) {
     const slot=w.document.createElement("span");slot.id="sessionHistoryFilesSlot";
@@ -35,6 +35,7 @@ function mount(existing = false, entries: Entry[] = [], extra: Partial<ChatOptio
   w.HTMLElement.prototype.scrollIntoView = function() {};
   w.URL.createObjectURL = () => "blob:http://localhost/test-image";
   w.URL.revokeObjectURL = () => {};
+  w.eval(readFileSync("web/core/chat-input.js", "utf8"));
   w.eval(bundle);
   const calls: {path:string;body:any}[] = [];
   let sendFailures = 0;
@@ -409,6 +410,40 @@ test("official composer keeps drafts across reopening and sends through the exis
     await until(()=>h.calls.some(call=>call.path.endsWith("/sessions/new")));
     assert.equal(h.calls.find(call=>call.path.endsWith("/sessions/new"))?.body.text,"继续完成任务");
     assert.deepEqual(h.errors,[]);
+  } finally {h.dispose();}
+});
+
+for (const busy of [false, true]) test(`Enter-to-send applies live and preserves newlines and IME while ${busy ? "running" : "idle"}`, async () => {
+  const h = mount(busy);
+  const original = h.options.request;
+  if (busy) {
+    h.options.request = async (path, init) => {
+      if (path.endsWith('/chat/steer')) {
+        const body = JSON.parse(String(init?.body));
+        h.calls.push({path, body});
+        return {accepted:body.request_id, chat:{...idleChat(), id:'active', turn_id:'turn', status:'running', busy:true}} as any;
+      }
+      return original(path, init);
+    };
+    h.setChat({...idleChat(), id:'active', turn_id:'turn', status:'running', busy:true});
+    h.bridge.open(h.options);
+  }
+  try {
+    await until(() => h.input());
+    h.type('继续完成任务');
+    await tick();
+    (h.w as any).YoluChatInput.apply('enter');
+    await until(() => h.input().title.includes('Shift+Enter'));
+    for (const modifiers of [{shiftKey:true}, {isComposing:true}, {keyCode:229}]) {
+      h.input().dispatchEvent(new h.w.KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true, ...modifiers}));
+      await tick();
+      assert(!h.calls.some(call => call.body));
+      assert.equal(h.input().value, '继续完成任务');
+    }
+    h.input().dispatchEvent(new h.w.KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
+    await until(() => h.calls.some(call => call.path.endsWith(busy ? '/chat/steer' : '/sessions/new')));
+    assert.equal(h.calls.find(call => call.body)?.body.text, '继续完成任务');
+    assert.deepEqual(h.errors, []);
   } finally {h.dispose();}
 });
 
@@ -1491,5 +1526,57 @@ test("native conversations render through the shared conversation panel", async 
     assert.equal(h.w.document.querySelectorAll('[data-slot="conversation-panel"]').length, 1);
     assert(h.w.document.querySelector('[data-slot="conversation-panel"] #assistantChatTitle'));
     assert(h.w.document.querySelector('[data-slot="conversation-panel"] .aui-composer-root'));
+  } finally {h.dispose();}
+});
+
+test("voice dictation appends to the native draft, stops when hidden and preserves legacy over-limit text", async () => {
+  const h = mount();
+  let channel: any;
+  let stopped = 0;
+  const w = h.w as any;
+  const track = {enabled: true, stop() {stopped++;}, addEventListener() {}};
+  Object.defineProperty(w.navigator, "mediaDevices", {value: {getUserMedia: async () => ({getTracks: () => [track]})}});
+  w.RTCPeerConnection = class {
+    iceGatheringState = "complete";
+    localDescription = {sdp: "v=0\r\nm=audio"};
+    addTrack() {}
+    createDataChannel() {return channel = {readyState: "open", close() {}, send() {}};}
+    async createOffer() {return this.localDescription;}
+    async setLocalDescription() {}
+    async setRemoteDescription() {}
+    close() {}
+  };
+  w.fetch = async (_path: string, options: RequestInit) => options.method === "DELETE"
+    ? new Response(null, {status: 204})
+    : new Response(JSON.stringify({id: "voice", sdp: "answer"}), {status: 201});
+  const start = () => w.document.querySelector('button[aria-label="语音输入（Codex）"]').click();
+  const event = (value: unknown) => channel.onmessage({data: JSON.stringify(value)});
+  try {
+    await until(() => h.input());
+    h.type("原有草稿");
+    start();
+    await until(() => channel);
+    event({type: "session.started"});
+    event({type: "input_transcript.added", item: {id: "one", text: " 新的语音"}});
+    await until(() => h.input().value === "原有草稿 新的语音");
+    assert.equal(h.input().disabled, true);
+    assert.equal(w.document.querySelector('.aui-composer-send').disabled, true);
+    w.document.documentElement.setAttribute('data-workspace-inactive', '');
+    await until(() => stopped > 0 && !h.input().disabled);
+    assert.equal(h.calls.filter(call => call.path.endsWith('/sessions/new') || call.body?.text).length, 0);
+    w.document.documentElement.removeAttribute('data-workspace-inactive');
+    h.bridge.open(h.options);
+    await until(() => h.input()?.value === "原有草稿 新的语音");
+    const legacyDraft = "长".repeat(32001);
+    h.type(legacyDraft);
+    channel = undefined;
+    start();
+    await until(() => channel);
+    event({type: "session.started"});
+    event({type: "input_transcript.added", item: {id: "two", text: "更多"}});
+    await until(() => w.document.querySelector('.aui-composer-root [role=alert]'));
+    assert.equal(h.input().value, legacyDraft);
+    event({type: "session.closed"});
+    assert.equal(h.errors.length, 0);
   } finally {h.dispose();}
 });

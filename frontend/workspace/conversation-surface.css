@@ -26,6 +26,7 @@
 .conversation-surface-header .chat-workspace-project,.conversation-surface-header .chat-workspace-branch{display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .conversation-surface-header .chat-workspace-project{font-weight:500;color:var(--foreground)}
 .conversation-surface-header .chat-workspace-project>span{overflow:hidden;text-overflow:ellipsis}
+.conversation-surface-header .chat-workspace-path{flex:1 1 90px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono)}
 .conversation-surface-header .chat-workspace-project svg,.conversation-surface-header .chat-workspace-branch svg{width:14px;height:14px;flex-shrink:0}
 .conversation-surface-header .chat-status{display:inline-flex;align-items:center;flex-shrink:0;white-space:nowrap;justify-content:center;border:1px solid transparent;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;gap:4px;padding:2px 8px;background:var(--secondary);color:var(--secondary-foreground)}
 .conversation-surface-header .chat-status[data-state=running],.conversation-surface-header .chat-status[data-state=starting],.conversation-surface-header .chat-status[data-state=waiting]{background:var(--secondary);color:var(--primary)}

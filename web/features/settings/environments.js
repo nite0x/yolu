@@ -88,5 +88,6 @@ $('#reconnectEnvironment').addEventListener('click', async () => {
   });
 });
 window.addEventListener('DOMContentLoaded', () => {
+  if (document.documentElement.hasAttribute('data-workspace-assistant')) return;
   loadEnvironments().catch(error => { $('#environmentStatus').textContent = error.message; });
 });

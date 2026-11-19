@@ -11,6 +11,7 @@
     if (inset === 0 || inset === 48) root.style.setProperty('--workspace-sidebar-inset',inset + 'px');
   }
   root.setAttribute('data-workspace-page','');
+  root.toggleAttribute('data-workspace-assistant',params.get('workspace-page') === 'assistant');
   root.toggleAttribute('data-workspace-navigation',params.has('workspace-navigation'));
   root.toggleAttribute('data-workspace-conversation',params.has('workspace-conversation'));
   root.toggleAttribute('data-workspace-pane',params.has('workspace-pane'));

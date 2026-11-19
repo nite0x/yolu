@@ -3,6 +3,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 
 
 let projectAddedCallback = null;
+let projectScan = null;
 let projectOpenTool;
 let projectFilter = 'all';
 let projectDetailOpen = false;
@@ -185,6 +186,9 @@ function renderDesktopProjects(markup) {
 function openProject(onAdded = null, environment = activeEnvironment) {
   if (state.busy) return;
   projectAddedCallback = onAdded;
+  projectScan = null;
+  $('#projectScanResults').replaceChildren();
+  $('#projectScanResults').hidden = true;
   $('#projectForm').reset(); $('#projectError').hidden = true; $('#projectDialog').showModal();
   $('#projectEnvironmentSelect').innerHTML = environmentOptions();
   $('#projectEnvironmentSelect').value = environment;
@@ -195,15 +199,107 @@ function openProject(onAdded = null, environment = activeEnvironment) {
 
 let suggestedCloneDirectory = '';
 function updateProjectSource() {
-  const clone = $('#projectSource').value === 'clone';
+  const source = $('#projectSource').value;
+  const clone = source === 'clone';
+  const scan = source === 'scan';
   $('#projectCloneFields').hidden = !clone;
   for (const id of ['projectCloneURL', 'projectCloneDirectory']) { $("#" + id).disabled = !clone; $("#" + id).required = clone; }
-  $('#projectPath-label').textContent = clone ? uiText("存放目录 *") : uiText("仓库目录 *");
-  $('#projectPath-help').textContent = clone ? uiText("选择已存在的父目录，仓库将克隆到其下的新文件夹中。") : uiText("选择本机 Git 仓库主目录，或填写项目所在环境中的绝对路径。");
-  $('#projectPath').placeholder = clone ? uiText("填写存放目录的绝对路径") : uiText("填写仓库主目录的绝对路径");
-  $('#projectSubmit').textContent = clone ? uiText("克隆并添加") : uiText("添加并扫描");
+  $('#projectNameField').hidden = scan;
+  $('#projectName').disabled = scan;
+  const fields = {
+    local: {
+      label: uiText("仓库目录 *"),
+      help: uiText("选择本机 Git 仓库主目录，或填写项目所在环境中的绝对路径。"),
+      placeholder: uiText("填写仓库主目录的绝对路径"),
+    },
+    clone: {
+      label: uiText("存放目录 *"),
+      help: uiText("选择已存在的父目录，仓库将克隆到其下的新文件夹中。"),
+      placeholder: uiText("填写存放目录的绝对路径"),
+    },
+    scan: {
+      label: uiText("扫描目录 *"),
+      help: uiText("递归扫描所选环境中的全部仓库，跳过目录符号链接和 Git 元数据。"),
+      placeholder: uiText("例如 ~/project"),
+    },
+  }[source];
+  $('#projectPath-label').textContent = fields.label;
+  $('#projectPath-help').textContent = fields.help;
+  $('#projectPath').placeholder = fields.placeholder;
+  updateProjectScanControls();
 }
-$('#projectSource').addEventListener('change', updateProjectSource);
+function resetProjectScan() {
+  projectScan = null;
+  $('#projectScanResults').replaceChildren();
+  $('#projectScanResults').hidden = true;
+  $('#projectError').hidden = true;
+  updateProjectScanControls();
+}
+function updateProjectScanControls() {
+  const scan = $('#projectSource').value === 'scan';
+  const selected = projectScan?.repositories.filter(repository => repository.selected && !repository.project_id) || [];
+  $('#projectRescan').hidden = !scan || !projectScan;
+  const labels = {
+    local: uiText("添加并扫描"),
+    clone: uiText("克隆并添加"),
+    scan: projectScan ? uiText("登记所选仓库（{0}）", selected.length) : uiText("扫描目录"),
+  };
+  $('#projectSubmit').textContent = labels[$('#projectSource').value];
+  $('#projectSubmit').disabled = scan && !!projectScan && !selected.length;
+  const selectAll = $('#projectScanSelectAll');
+  if (selectAll && projectScan) {
+    const available = projectScan.repositories.filter(repository => !repository.project_id);
+    selectAll.checked = !!available.length && selected.length === available.length;
+    selectAll.indeterminate = !!selected.length && selected.length < available.length;
+  }
+}
+function renderProjectScan() {
+  $('#projectScanResults').innerHTML = window.WorkHubUI.projectScanResults(projectScan);
+  $('#projectScanResults').hidden = false;
+  updateProjectScanControls();
+}
+async function scanProjectDirectory() {
+  if ($('#projectDialog').dataset.mutation || !$('#projectForm').reportValidity()) return;
+  const environment = $('#projectEnvironmentSelect').value;
+  const path = $('#projectPath').value.trim();
+  resetProjectScan();
+  $('#projectScanResults').hidden = false;
+  $('#projectScanResults').textContent = uiText("正在扫描目录…");
+  $('#projectScanResults').setAttribute('aria-busy', 'true');
+  await mutation(uiText("正在扫描目录…"), async () => {
+    const result = await api('/api/projects/scan', { environment, method: 'POST', body: JSON.stringify({path}) });
+    projectScan = {...result, repositories: result.repositories.map(repository => ({...repository, selected: !repository.project_id}))};
+  }, $('#projectError'), {
+    environment,
+    isCurrent: () => $('#projectDialog').open && $('#projectEnvironmentSelect').value === environment,
+  });
+  $('#projectScanResults').removeAttribute('aria-busy');
+  if (projectScan) renderProjectScan();
+  else $('#projectScanResults').hidden = true;
+  updateProjectScanControls();
+}
+$('#projectSource').addEventListener('change', () => { resetProjectScan(); updateProjectSource(); });
+$('#projectPath').addEventListener('input', resetProjectScan);
+$('#projectEnvironmentSelect').addEventListener('change', resetProjectScan);
+$('#projectRescan').addEventListener('click', scanProjectDirectory);
+$('#projectScanResults').addEventListener('input', event => {
+  if (!projectScan || !event.target.hasAttribute('data-scan-name')) return;
+  projectScan.repositories[Number(event.target.dataset.scanName)].name = event.target.value;
+});
+$('#projectScanResults').addEventListener('change', event => {
+  if (!projectScan) return;
+  if (event.target.id === 'projectScanSelectAll') {
+    projectScan.repositories.forEach(repository => {
+      repository.selected = !repository.project_id && event.target.checked;
+    });
+    $('#projectScanResults').querySelectorAll('[data-scan-select]').forEach(input => {
+      input.checked = projectScan.repositories[Number(input.dataset.scanSelect)].selected;
+    });
+  } else if (event.target.hasAttribute('data-scan-select')) {
+    projectScan.repositories[Number(event.target.dataset.scanSelect)].selected = event.target.checked;
+  }
+  updateProjectScanControls();
+});
 $('#projectCloneURL').addEventListener('input', () => {
   const field = $('#projectCloneDirectory');
   const source = $('#projectCloneURL').value.trim().split(/[?#]/)[0].replace(/\/+$/, '');
@@ -228,7 +324,12 @@ $('#chooseProjectDirectory').addEventListener('click', async () => {
   button.disabled = true;
   button.textContent = uiText("正在选择…");
   try {
-    await mutation($('#projectSource').value === 'clone' ? uiText("请在系统窗口中选择存放目录") : uiText("请在系统窗口中选择仓库文件夹"), async () => {
+    const title = {
+      local: uiText("请在系统窗口中选择仓库文件夹"),
+      clone: uiText("请在系统窗口中选择存放目录"),
+      scan: uiText("请在系统窗口中选择扫描目录"),
+    }[$('#projectSource').value];
+    await mutation(title, async () => {
       const result = await api('/api/dialogs/directory', { environment: 'local', method: 'POST', body: '{}' });
       if (result.path && environment.value === 'local') {
         $('#projectPath').value = result.path;
@@ -243,8 +344,61 @@ $('#chooseProjectDirectory').addEventListener('click', async () => {
   }
 });
 
+async function importScannedProjects() {
+  const selected = projectScan.repositories.filter(repository => repository.selected && !repository.project_id);
+  if (!selected.length) return;
+  const environment = $('#projectEnvironmentSelect').value;
+  const onAdded = projectAddedCallback;
+  let results;
+  await mutation(uiText("正在批量登记仓库…"), async () => {
+    const repositories = selected.map(({name, path, common_dir}) => ({name, path, common_dir}));
+    const response = await api('/api/projects/import', {
+      environment,
+      method: 'POST',
+      body: JSON.stringify({repositories}),
+    });
+    results = response.results;
+  }, $('#projectError'), {
+    environment,
+    isCurrent: () => $('#projectDialog').open && $('#projectEnvironmentSelect').value === environment,
+  });
+  if (!results) return;
+  const ids = [];
+  for (const result of results) {
+    const repository = selected.find(repository => repository.path === result.path);
+    if (!repository) continue;
+    repository.error = result.error;
+    if (result.id) {
+      repository.project_id = result.id;
+      repository.selected = false;
+      ids.push(result.id);
+    }
+  }
+  renderProjectScan();
+  const failures = results.filter(result => result.status === 'error').length;
+  if (failures) {
+    $('#projectError').textContent = uiText("{0} 个仓库登记成功，{1} 个失败。可修改项目名称后重试。", ids.length, failures);
+    $('#projectError').hidden = false;
+  } else {
+    $('#projectDialog').close();
+    toast(uiText("已登记 {0} 个仓库，正在扫描 Worktree", ids.length));
+  }
+  if (ids.length && onAdded) await onAdded(ids);
+  else if (ids.length && !failures) {
+    await selectEnvironment(environment, '/projects');
+    state.selectedProject = ids[0]; $('#search').value = ''; render();
+  }
+}
+
 $('#projectForm').addEventListener('submit', async event => {
-  event.preventDefault(); const data = new FormData(event.target);
+  event.preventDefault();
+  if ($('#projectDialog').dataset.mutation) return;
+  if ($('#projectSource').value === 'scan') {
+    if (projectScan) await importScannedProjects();
+    else await scanProjectDirectory();
+    return;
+  }
+  const data = new FormData(event.target);
   const onAdded = projectAddedCallback;
   const environment = $('#projectEnvironmentSelect').value;
   let added;
@@ -253,7 +407,10 @@ $('#projectForm').addEventListener('submit', async event => {
   await mutation(clone ? uiText("正在克隆并登记仓库…") : uiText("正在登记并扫描仓库"), async () => {
     added = await api(clone ? '/api/projects/clone' : '/api/projects', { environment, method: 'POST', body: JSON.stringify(payload) });
     $('#projectDialog').close(); toast(clone ? uiText("仓库已克隆并登记，正在扫描 Worktree") : uiText("项目已登记，正在扫描 Worktree"));
-  }, $('#projectError'), {environment, isCurrent:() => $('#projectDialog').open && $('#projectEnvironmentSelect').value === environment});
+  }, $('#projectError'), {
+    environment,
+    isCurrent: () => $('#projectDialog').open && $('#projectEnvironmentSelect').value === environment,
+  });
   if (added && onAdded) await onAdded(added.id);
   else if (added) {
     await selectEnvironment(environment, '/projects');

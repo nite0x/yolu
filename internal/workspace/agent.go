@@ -143,6 +143,8 @@ func executeWorkspaceRequestWithSessions(ctx context.Context, r Request, openSes
 			return nil, fmt.Errorf("文件路径无效")
 		}
 		return BrowseWorkspace(ctx, r.Path, r.Args[0], r.Op == "browse-file")
+	case "scan-repositories":
+		return ScanRepositories(ctx, r.Path)
 	case "git-preview":
 		return RunGitPreview(ctx, r.Path, r.Args...)
 	case "write-generated":

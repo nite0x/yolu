@@ -1,4 +1,6 @@
 import { uiText } from "../../../i18n";
+import {useSendShortcut} from "../../../chat/input-preference";
+import {useVoiceInput} from "../../../chat/use-voice-input";
 "use client";
 
 import {
@@ -56,6 +58,7 @@ import {
   CopyIcon,
   DownloadIcon,
   MicIcon,
+  LoaderCircleIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PhoneIcon,
@@ -483,8 +486,11 @@ export const Composer: FC<{
   leadingControls?: ReactNode;
   input?: {placeholder?: string; "aria-label"?: string; maxLength?: number};
 }> = ({ autoFocus, controls, leadingControls, input }) => {
+  const shortcut = useSendShortcut();
+  const root = useRef<HTMLFormElement>(null);
+  const voice = useVoiceInput(root, input?.maxLength ?? 32000);
   return (
-    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
+    <ComposerPrimitive.Root ref={root} className="aui-composer-root relative flex w-full flex-col" onSubmitCapture={event => {if (voice.active) event.preventDefault();}}>
       <ComposerPrimitive.AttachmentDropzone asChild>
         <div
           data-slot="aui_composer-shell"
@@ -493,8 +499,8 @@ export const Composer: FC<{
           <ComposerAttachments />
           <ComposerPrimitive.Input
             placeholder={uiText("补充说明、询问进展，或交代下一步…")}
-            submitMode="ctrlEnter"
-            title={uiText("Ctrl+Enter 或 ⌘+Enter 发送；Enter 换行")}
+            submitMode={shortcut}
+            title={shortcut === "enter" ? uiText("Enter 发送；Shift+Enter 换行") : uiText("Ctrl+Enter 或 ⌘+Enter 发送；Enter 换行")}
             maxLength={32000}
             addAttachmentOnPaste
             className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
@@ -503,17 +509,21 @@ export const Composer: FC<{
             enterKeyHint="send"
             aria-label={uiText("对话消息")}
             {...input}
+            disabled={voice.active || undefined}
           />
-          <ComposerAction controls={controls} leadingControls={leadingControls} />
+          {voice.active && <p role="status" className="px-2.5 text-xs text-muted-foreground">{voice.state === "connecting" ? uiText("正在连接 Codex 语音…") : voice.state === "finishing" ? uiText("正在完成转写…") : uiText("正在听写，点击停止后可编辑并发送。")}</p>}
+          {voice.error && <p role="alert" className="px-2.5 text-xs text-destructive">{voice.error}</p>}
+          <ComposerAction controls={controls} leadingControls={leadingControls} voice={voice} />
         </div>
       </ComposerPrimitive.AttachmentDropzone>
     </ComposerPrimitive.Root>
   );
 };
 
-const ComposerAction: FC<{ controls?: ReactNode; leadingControls?: ReactNode }> = ({ controls, leadingControls }) => {
+const ComposerAction: FC<{ controls?: ReactNode; leadingControls?: ReactNode; voice: ReturnType<typeof useVoiceInput> }> = ({ controls, leadingControls, voice }) => {
   const aui=useAui();
   const canSend=useAuiState(s=>s.composer.canSend);
+  const inputDisabled = useAuiState(s => s.thread.isDisabled || s.composer.submission !== undefined);
   // The stop control only cancels the send while no run it could stop is going.
   const isSending = useAuiState(
     (s) =>
@@ -531,38 +541,17 @@ const ComposerAction: FC<{ controls?: ReactNode; leadingControls?: ReactNode }> 
       </div>
       <div className="chat-composer-trailing flex min-w-0 items-center gap-1.5">
         {controls}
-        <AuiIf condition={(s) => s.thread.capabilities.dictation}>
-          <AuiIf condition={(s) => s.composer.dictation == null}>
-            <ComposerPrimitive.Dictate asChild>
-              <TooltipIconButton
-                tooltip="Voice input"
-                side="bottom"
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="aui-composer-dictate text-muted-foreground hover:text-foreground size-7 rounded-full"
-                aria-label="Start voice input"
-              >
-                <MicIcon className="aui-composer-dictate-icon size-4" />
-              </TooltipIconButton>
-            </ComposerPrimitive.Dictate>
-          </AuiIf>
-          <AuiIf condition={(s) => s.composer.dictation != null}>
-            <ComposerPrimitive.StopDictation asChild>
-              <TooltipIconButton
-                tooltip="Stop dictation"
-                side="bottom"
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="aui-composer-stop-dictation text-destructive size-7 rounded-full"
-                aria-label="Stop voice input"
-              >
-                <SquareIcon className="aui-composer-stop-dictation-icon size-3.5 animate-pulse fill-current" />
-              </TooltipIconButton>
-            </ComposerPrimitive.StopDictation>
-          </AuiIf>
-        </AuiIf>
+        <TooltipIconButton
+          tooltip={voice.active ? uiText("停止听写") : uiText("语音输入（Codex）")}
+          aria-label={voice.active ? uiText("停止听写") : uiText("语音输入（Codex）")}
+          aria-pressed={voice.active}
+          type="button" side="bottom" size="icon" variant="ghost"
+          className={cn("aui-composer-dictate size-7 rounded-full", voice.active ? "text-destructive" : "text-muted-foreground hover:text-foreground")}
+          disabled={voice.state === "finishing" || !voice.active && inputDisabled}
+          onClick={voice.active ? voice.stop : voice.start}
+        >
+          {voice.state === "connecting" || voice.state === "finishing" ? <LoaderCircleIcon className="size-4 animate-spin motion-reduce:animate-none" /> : voice.active ? <SquareIcon className="size-3.5 fill-current" /> : <MicIcon className="size-4" />}
+        </TooltipIconButton>
         <AuiIf
           condition={(s) =>
             !s.thread.isRunning && (!s.composer.canCancel || !s.composer.isEmpty ||
@@ -580,13 +569,14 @@ const ComposerAction: FC<{ controls?: ReactNode; leadingControls?: ReactNode }> 
               size="icon"
               className="aui-composer-send size-7 rounded-full"
               aria-label={uiText("发送消息")}
+              disabled={voice.active}
             >
               <ArrowUpIcon className="aui-composer-send-icon size-4" />
             </TooltipIconButton>
           </ComposerPrimitive.Send>
         </AuiIf>
         <AuiIf condition={s=>s.thread.isRunning && !s.composer.isEmpty}>
-          <TooltipIconButton type="button" tooltip={uiText("补充到本轮")} aria-label={uiText("发送消息")} className="aui-composer-send size-7 rounded-full" disabled={!canSend} onClick={()=>aui.composer.send()}><ArrowUpIcon className="size-4" /></TooltipIconButton>
+          <TooltipIconButton type="button" tooltip={uiText("补充到本轮")} aria-label={uiText("发送消息")} className="aui-composer-send size-7 rounded-full" disabled={!canSend || voice.active} onClick={()=>aui.composer.send()}><ArrowUpIcon className="size-4" /></TooltipIconButton>
         </AuiIf>
         <AuiIf condition={shouldShowComposerResume}>
           <ComposerPrimitive.Resume asChild>

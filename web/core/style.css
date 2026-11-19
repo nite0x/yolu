@@ -30,7 +30,7 @@
 .sidebar-footer .version::before { content: "·"; margin-right: 8px; }
 .sidebar-footer-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .sidebar-footer #refreshControl { display: flex; }
-.sidebar .sidebar-footer-actions .sidebar-settings { width: 32px; height: 32px; padding: 7px; color: var(--yolu-muted-ink,#64748b); }
+.sidebar .sidebar-footer-actions :is(.sidebar-settings,#openYoluAssistant) { width: 32px; height: 32px; padding: 7px; color: var(--yolu-muted-ink,#64748b); }
 @media (max-width: 760px) {
   .sidebar .sidebar-footer { grid-column: 1 / -1; padding: 8px 0 0; }
   .sidebar-status-copy { display: flex; align-items: center; gap: 12px; }

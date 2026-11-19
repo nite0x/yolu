@@ -10,8 +10,8 @@ function PickerSearch({ id, label = uiText("搜索项目名称或路径") }: { i
 }
 
 export function ProjectForm() {
-  return <form id="projectForm"><ModalHeader id="projectDialogTitle" title={uiText("添加项目")} /><p className="dialog-description">{uiText("登记本地 Git 仓库，或从 Git 克隆后自动登记。")}</p>
-    <Field id="projectSource" label={uiText("添加方式")}><NativeSelect id="projectSource" defaultValue="local"><Option value="local">{uiText("登记本地仓库")}</Option><Option value="clone">{uiText("从 Git 克隆")}</Option></NativeSelect></Field>
+  return <form id="projectForm" className="task-dialog-form"><ModalHeader id="projectDialogTitle" title={uiText("添加项目")} /><div className="task-dialog-scroll"><p className="dialog-description">{uiText("登记已有 Git 仓库、批量扫描目录，或从 Git 克隆。")}</p>
+    <Field id="projectSource" label={uiText("添加方式")}><NativeSelect id="projectSource" defaultValue="local"><Option value="local">{uiText("登记本地仓库")}</Option><Option value="clone">{uiText("从 Git 克隆")}</Option><Option value="scan">{uiText("扫描目录并批量添加")}</Option></NativeSelect></Field>
     <Field id="projectEnvironmentSelect" label={uiText("项目所在环境")} help={uiText("仓库路径和 Git 操作均在此环境中执行。")}><NativeSelect id="projectEnvironmentSelect" required /></Field>
     <div id="projectCloneFields" hidden>
       <Field id="projectCloneURL" label={uiText("Git 仓库地址")} required help={uiText("支持 HTTPS 和 SSH，使用所选环境已有的 Git 凭证或 SSH 密钥。")}><Input id="projectCloneURL" disabled autoComplete="off" placeholder="https://github.com/owner/repo.git" /></Field>
@@ -19,9 +19,10 @@ export function ProjectForm() {
       <p className="dialog-description">{uiText("克隆失败时会保留剩余文件。若克隆完成但登记失败，可切换到登记本地仓库后重试。")}</p>
     </div>
     <Field id="projectPath" label={uiText("仓库目录")} required help={uiText("选择本机 Git 仓库主目录，或填写项目所在环境中的绝对路径。")}><div className="flex flex-wrap gap-2"><Input className="min-w-0 flex-1 basis-60" id="projectPath" name="path" required autoComplete="off" placeholder={uiText("填写仓库主目录的绝对路径")} /><Button type="button" variant="outline" id="chooseProjectDirectory">{uiText("选择文件夹…")}</Button></div><small id="projectDirectoryHint" className="text-xs text-muted-foreground" hidden>{uiText("WSL 项目请手动填写 Linux 绝对路径，例如 /home/用户名/projects/app。")}</small></Field>
-    <Field id="projectName" label={uiText("项目名称")} help={uiText("名称会用于任务中的项目目录，建议使用简短、可辨识的名称。")}><Input id="projectName" name="name" maxLength={80} placeholder={uiText("留空则使用仓库目录名")} /></Field>
-    <Feedback id="projectError" variant="destructive" hidden />
-    <ModalFooter><Button type="submit" id="projectSubmit">{uiText("添加并扫描")}</Button></ModalFooter>
+    <div id="projectNameField"><Field id="projectName" label={uiText("项目名称")} help={uiText("名称会用于任务中的项目目录，建议使用简短、可辨识的名称。")}><Input id="projectName" name="name" maxLength={80} placeholder={uiText("留空则使用仓库目录名")} /></Field></div>
+    <section id="projectScanResults" aria-live="polite" aria-label={uiText("发现的仓库")} hidden />
+    <Feedback id="projectError" variant="destructive" hidden /></div>
+    <ModalFooter><Button type="button" variant="outline" id="projectRescan" hidden>{uiText("重新扫描")}</Button><Button type="submit" id="projectSubmit">{uiText("添加并扫描")}</Button></ModalFooter>
   </form>
 }
 

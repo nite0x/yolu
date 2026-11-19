@@ -1,6 +1,7 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+import {readFileSync} from "node:fs";
 import { JSDOM, VirtualConsole } from "jsdom";
 
 let bundle = "";
@@ -86,6 +87,7 @@ function createAssistantWindow(t: { after: (callback: () => void) => void }, rea
     this.scrollTop = typeof options === "number" ? options : options.top || 0;
   };
   w.HTMLElement.prototype.scrollIntoView = function () {};
+  w.eval(readFileSync("web/core/chat-input.js", "utf8"));
   w.eval(bundle);
   return { w, errors };
 }
@@ -138,8 +140,9 @@ test("global assistant uses the shared list and composer while preserving failed
     w.document.querySelectorAll('[data-slot="conversation-panel"]').length,
     1,
   );
-  assert.ok(w.document.querySelector(".workspace-split-layout"));
-  assert.equal(w.document.querySelectorAll(".workspace-pane").length, 2);
+  assert.equal(w.document.querySelector("#globalAssistantTitle")?.textContent, "Yolu 助手");
+  const history = w.document.querySelector<HTMLElement>(".global-assistant-history")!;
+  assert.equal(history.hidden, true);
   assert.equal(w.document.querySelector(".global-assistant-composer"), null);
   assert.equal(input().maxLength, 64000);
   assert.equal(w.document.querySelectorAll(".session-browser-item").length, 2);
@@ -172,20 +175,28 @@ test("global assistant uses the shared list and composer while preserving failed
   );
   assert.match(w.document.body.textContent || "", /Send failed/);
   fail = false;
-  send();
+  (w as any).YoluChatInput.apply('enter');
+  await until(() => input().title.includes('Shift+Enter'));
+  input().dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
   await until(() => sends.length === 2 && input().value === "");
   assert.equal(sends[0].request_id, sends[1].request_id);
   assert.match(w.document.body.textContent || "", /Ready/);
   type("Keep another draft");
+  const openHistory = async () => {
+    w.document.querySelector<HTMLButtonElement>('button[aria-label="助手历史"]')!.click();
+    await until(() => !history.hidden);
+  };
+  await openHistory();
   w.document
     .querySelectorAll<HTMLButtonElement>(".session-browser-item")[1]
     .click();
   await until(
     () =>
-      w.document
+      history.hidden && w.document
         .querySelector('button[aria-pressed="true"]')
         ?.textContent?.includes("Second plan") === true && input().value === "",
   );
+  await openHistory();
   w.document
     .querySelectorAll<HTMLButtonElement>(".session-browser-item")[0]
     .click();
@@ -194,17 +205,19 @@ test("global assistant uses the shared list and composer while preserving failed
   type("Preserve the draft when leaving during a send");
   send();
   await until(() => sends.length === 3 && !!rejectSend);
+  await openHistory();
   w.document
     .querySelectorAll<HTMLButtonElement>(".session-browser-item")[1]
     .click();
   await until(
     () =>
-      w.document
+      history.hidden && w.document
         .querySelector('button[aria-pressed="true"]')
         ?.textContent?.includes("Second plan") === true,
   );
   rejectSend!();
   await new Promise((resolve) => setTimeout(resolve, 450));
+  await openHistory();
   w.document
     .querySelectorAll<HTMLButtonElement>(".session-browser-item")[0]
     .click();

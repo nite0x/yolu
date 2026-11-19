@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"worktree-hub/internal/codex"
 	"worktree-hub/internal/httpx"
 )
 
@@ -41,7 +42,7 @@ func (a *Service) SessionTitleSettingsHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 		defer c.Close()
-		models, err := listChatModels(c.Call)
+		models, err := codex.ListModels(c.Call)
 		if err != nil {
 			httpx.WriteError(w, 503, "无法读取标题模型："+err.Error())
 			return
@@ -65,7 +66,7 @@ func (a *Service) SessionTitleSettingsHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 		defer c.Close()
-		models, err := listChatModels(c.Call)
+		models, err := codex.ListModels(c.Call)
 		if err != nil {
 			httpx.WriteError(w, 503, "无法核对标题模型："+err.Error())
 			return

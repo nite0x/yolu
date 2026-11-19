@@ -23,6 +23,7 @@ import {ChatAttachmentAdapter} from "./attachments";
 import {conversationContext} from "../workspace/conversation-context";
 import {ChatToolFallback, ChatChangeSummary, ChatChangePathsProvider} from "./file-changes";
 import {QuestionComposer} from "./questions";
+import {sendShortcut} from "./input-preference";
 
 function ParallelPaneControls() {
   const read = () => ({split:document.documentElement.hasAttribute("data-workspace-pane"),zoomed:document.documentElement.hasAttribute("data-workspace-zoomed"),canZoom:document.documentElement.hasAttribute("data-workspace-can-zoom")})
@@ -199,7 +200,11 @@ export function ChatPanel({controller}: {controller: ChatController}) {
             <ParallelPaneControls />
         </>}>
         <details className="chat-workspace-context">
-          <summary>{context.projectID && controller.options.openWorkspace ? <button type="button" className="chat-workspace-project chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} title={uiText("打开项目详情：{0}", context.project)} onClick={event => {event.preventDefault(); event.stopPropagation(); controller.options.openWorkspace?.("project", context.projectID!);}}><FolderIcon aria-hidden="true" /><span>{context.project}</span></button> : <span className="chat-workspace-project"><FolderIcon aria-hidden="true" />{context.project || uiText("工作目录")}</span>}{context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><GitBranchIcon aria-hidden="true" />{context.branch}</span>}</summary>
+          <summary>
+            {context.projectID && controller.options.openWorkspace ? <button type="button" className="chat-workspace-project chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} title={uiText("打开项目详情：{0}", context.project)} onClick={event => {event.preventDefault(); event.stopPropagation(); controller.options.openWorkspace?.("project", context.projectID!);}}><FolderIcon aria-hidden="true" /><span>{context.project}</span></button> : <span className="chat-workspace-project"><FolderIcon aria-hidden="true" />{context.project || uiText("工作目录")}</span>}
+            {context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><GitBranchIcon aria-hidden="true" />{context.branch}</span>}
+            {state.session && path && <code className="chat-workspace-path" title={path}>{path}</code>}
+          </summary>
           <dl className="chat-context-facts grid gap-2 text-xs"><dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd><dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd>{path || uiText("请选择工作目录")}</dd><dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd><dt>{uiText("关联任务")}</dt><dd>{context.tasks.length ? context.tasks.map(t => t.name).join("、") : uiText("未关联任务")}</dd>{additionalDirectories.length > 0 && <><dt>{uiText("额外工作目录")}</dt><dd>{additionalDirectories.join("、")}</dd></>}</dl>
           {!readOnly && state.session && <Button type="button" size="sm" variant="outline" className="chat-workspace-resume" disabled={!state.session.available} onClick={() => void controller.resume()}><TerminalIcon aria-hidden="true" />{uiText("在终端继续")}</Button>}
         </details>
@@ -208,7 +213,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
         {!state.session && task && <div className="mt-2 space-y-2"><Label htmlFor="assistantChatProject">{uiText("工作项目")}</Label><NativeSelect id="assistantChatProject" value={state.project} disabled={state.submitting} onChange={e => controller.setProject(e.target.value)}>{task.members.map(m => <NativeSelectOption key={m.project_id} value={m.project_id}>{m.project_name}{m.project_id === task.primary_project_id ? uiText("（主项目）") : ""}</NativeSelectOption>)}</NativeSelect></div>}
       </ConversationHeader>}
       onKeyDownCapture={event => {
-        if (state.chat.busy && event.key==="Enter" && (event.ctrlKey||event.metaKey) && !event.shiftKey && !event.nativeEvent.isComposing && event.target instanceof HTMLTextAreaElement && event.target.closest(".aui-composer-root")) {event.preventDefault();event.stopPropagation();runtime.thread.composer.send();}
+        if (state.chat.busy && event.key==="Enter" && (sendShortcut() === "enter" || event.ctrlKey || event.metaKey) && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229 && event.target instanceof HTMLTextAreaElement && event.target.closest(".aui-composer-root")) {event.preventDefault();event.stopPropagation();runtime.thread.composer.send();}
       }}
       onChange={event => {
         if (event.target instanceof HTMLTextAreaElement && event.target.closest(".aui-composer-root")) controller.setDraft(event.target.value);

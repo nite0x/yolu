@@ -66,6 +66,12 @@ The global list can combine registered execution environments. Search and filter
 
 Create a conversation in a specific available project or task directory. An aggregate scope requires choosing a concrete directory first. Linking or unlinking an existing session changes the task reference; it does not move the session, erase history or stop execution.
 
+### Voice dictation
+
+Select the microphone button in a workspace conversation or Yolu Assistant to dictate into the current draft. Allow microphone access when prompted. Select **Stop dictation**, review or edit the text, then send it. Existing draft text is retained. Closing the pane stops recording.
+
+Dictation uses the locally installed Codex daemon's V3 WebRTC support and its existing ChatGPT login. Sign in with `codex login` in the user account running Yolu. Codex handles authentication and speech recognition. Audio travels directly from your browser or desktop webview to the Codex voice service. On Linux desktops without WebRTC, Codex's packaged native voice component captures the host microphone and sends the audio. Microphone access in browsers requires localhost or a secure context such as HTTPS. If the installed Codex version or account cannot start voice, the composer displays the error and keeps the draft. Abandoned signaling sessions expire after ten minutes.
+
 ### Messages, permissions and questions
 
 New conversations inherit the selected environment’s Codex model, reasoning effort and permission configuration by default. Yolu does not force a particular model or full access. In Settings, use **New conversation defaults** to choose a model and permissions for future conversations in that environment, or restore **Use Codex default** for either field. These preferences are saved separately for each execution environment and do not edit the Codex configuration file.

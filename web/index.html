@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="ui-color-theme" content="__UI_COLOR_THEME__">
+  <meta name="ui-send-shortcut" content="__UI_SEND_SHORTCUT__">
+  <script src="/core/chat-input.js"></script>
   <script src="/core/browser-compat.js"></script>
   <script src="/core/appearance.js"></script>
   <meta name="ui-language" content="__UI_LANGUAGE__">
@@ -59,7 +61,6 @@
     <a class="brand" href="/" aria-label="Yolu 首页" data-i18n-aria-label="Yolu 首页"><img class="brand-mark" src="/yolu.svg" alt="" width="36" height="36"><span>Yolu<small data-i18n="让每一份工作，各就其位。">让每一份工作，各就其位。</small></span></a>
     <div class="nav-label" data-i18n="工作台">工作台</div>
     <nav aria-label="主导航" data-i18n-aria-label="主导航">
-      <button class="nav-item" data-view="assistant" aria-label="Yolu 助手" title="Yolu 助手" data-i18n-title="Yolu 助手" data-i18n-aria-label="Yolu 助手"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="Yolu 助手">Yolu 助手</span></button>
       <button class="nav-item active" data-view="requirements" aria-label="任务" title="任务" data-i18n-title="任务" data-i18n-aria-label="任务"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-text" data-i18n="任务">任务</span><span class="nav-count" id="reqCount">0</span></button>
       <button class="nav-item" data-view="projects" aria-label="项目" title="项目" data-i18n-title="项目" data-i18n-aria-label="项目"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-text" data-i18n="项目">项目</span><span class="nav-count" id="projectCount">0</span></button>
       <button class="nav-item" data-view="sessions" aria-label="对话" title="对话" data-i18n-title="对话" data-i18n-aria-label="对话"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="对话">对话</span><span id="sessionNavigationStatus" class="session-navigation-status" role="status"></span></button>
@@ -70,7 +71,14 @@
         <div class="sidebar-status-line"><span class="live-dot updating" id="syncDot" aria-hidden="true"></span><span id="syncText" role="status" data-i18n="更新中…">更新中…</span></div>
         <div class="sidebar-bottom"><span id="platformLabel" data-i18n="本机工作台">本机工作台</span><span class="version">v0.2</span></div>
       </div>
-      <div class="sidebar-footer-actions"><span id="refreshControl" class="shadcn-scope"></span><button type="button" class="sidebar-settings nav-item" data-view="settings" title="设置" aria-label="设置" data-i18n-title="设置" data-i18n-aria-label="设置"><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9.7 4.3.6-2.3h3.4l.6 2.3 1.9 1.1 2.3-.6 1.7 3-1.7 1.7v2.2l1.7 1.7-1.7 3-2.3-.6-1.9 1.1-.6 2.3h-3.4l-.6-2.3-1.9-1.1-2.3.6-1.7-3 1.7-1.7V9.5L3.8 7.8l1.7-3 2.3.6Z" transform="translate(0 1)"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+      <div class="sidebar-footer-actions">
+        <button type="button" id="openYoluAssistant" class="nav-item" aria-label="Yolu 助手" aria-haspopup="dialog" aria-expanded="false" aria-keyshortcuts="Alt+Shift+Y" title="Yolu 助手 (Alt+Shift+Y)" data-i18n-title="Yolu 助手 (Alt+Shift+Y)" data-i18n-aria-label="Yolu 助手">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 3 1.9 6.1L17 11l-6.1 1.9L9 19l-1.9-6.1L1 11l6.1-1.9L9 3ZM19 2v6m-3-3h6m-3 10v4m-2-2h4"/></svg>
+          <span class="assistant-launcher-status" aria-hidden="true"></span>
+        </button>
+        <span id="refreshControl" class="shadcn-scope"></span>
+        <button type="button" class="sidebar-settings nav-item" data-view="settings" title="设置" aria-label="设置" data-i18n-title="设置" data-i18n-aria-label="设置"><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9.7 4.3.6-2.3h3.4l.6 2.3 1.9 1.1 2.3-.6 1.7 3-1.7 1.7v2.2l1.7 1.7-1.7 3-2.3-.6-1.9 1.1-.6 2.3h-3.4l-.6-2.3-1.9-1.1-2.3.6-1.7-3 1.7-1.7V9.5L3.8 7.8l1.7-3 2.3.6Z" transform="translate(0 1)"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
     </footer>
   </aside>
   <div class="shell">
@@ -92,7 +100,7 @@
         <div id="taskListResize" class="task-resize-handle" role="separator" tabindex="0" aria-label="调整任务列表宽度" aria-orientation="vertical" aria-controls="taskBrowser taskDetailPane" aria-valuemin="240" aria-valuemax="640" aria-valuenow="300" hidden data-i18n-aria-label="调整任务列表宽度"></div>
         <section id="taskDetailPane" class="task-detail-pane workspace-pane"><div id="taskHeadingSlot"></div><section id="taskProjectsView" class="task-projects-view" aria-label="项目工作区" data-i18n-aria-label="项目工作区"><div id="content" aria-live="polite"><div class="loading" data-i18n="正在读取本地状态…">正在读取本地状态…</div></div></section></section>
       </section>
-      <section id="globalAssistantPage" aria-label="Yolu 助手" hidden data-i18n-aria-label="Yolu 助手"><div id="globalAssistantRoot"></div></section>
+      <section id="globalAssistantPage" aria-label="Yolu 助手" tabindex="-1" hidden data-i18n-aria-label="Yolu 助手"><div id="globalAssistantRoot"></div></section>
       <section id="sessionsPage" class="sessions-page" aria-label="对话" hidden data-i18n-aria-label="对话"><div id="sessionPageMount"></div></section>
     </main>
   </div>

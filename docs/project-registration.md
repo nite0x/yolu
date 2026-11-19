@@ -10,6 +10,36 @@ its existing Git repository directory. Local environments support the system
 folder picker; WSL paths are entered as Linux absolute paths. Registration
 scans the repository and discovers its existing worktrees.
 
+## Scan a directory for repositories
+
+Choose **Scan directory and add in bulk**, select the execution environment and
+enter a parent directory, such as `~/project`. Local environments also support
+the system folder picker. Paths refer to the selected execution environment,
+including when using Yolu through a browser.
+
+Choose **Scan directory** to discover repositories recursively, including a
+repository at the selected root and nested repositories. Checkouts sharing a
+Git common directory appear once. Already registered repositories are marked
+and excluded from selection. New repositories are selected by default. Use the
+select-all checkbox or individual checkboxes, edit project names if needed, then
+choose **Register selected repositories**. Name suggestions distinguish
+repositories with identical directory names.
+
+Registration reuses the existing project and worktree discovery workflow. When
+opened from a workspace's project picker, all successfully registered projects
+are selected in that picker. Each repository has an independent result. A
+failed item retains its name and selection for retry, and successful items stay
+registered. Retrying a batch recognizes repositories that were already added.
+
+The scan includes repositories in hidden and dependency directories. It skips
+directory symlinks and `.git` metadata below the chosen root. Bare repositories are outside the existing working-directory
+registration workflow. Scans stop after 50,000 directories or 1,000 repositories
+and have a 60-second deadline. Results indicate when a count limit was reached
+and list up to 100 read failures. Choose a smaller directory when needed.
+
+Directory scans are initiated manually. Startup discovery and saved scan roots
+are future additions.
+
 ## Clone from Git
 
 Choose **Clone from Git** and supply:

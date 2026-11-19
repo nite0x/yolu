@@ -8,8 +8,9 @@ import (
 )
 
 type UISettings struct {
-	Language   string
-	ColorTheme string
+	Language     string
+	ColorTheme   string
+	SendShortcut string
 }
 
 // ValidColorTheme reports whether a saved appearance choice may be written into
@@ -76,6 +77,7 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 		page := strings.ReplaceAll(string(b), "__CSRF_TOKEN__", token)
 		choice := "system"
 		theme := "mint"
+		sendShortcut := "enter"
 		if len(settings) > 0 {
 			preferences := settings[0]()
 			if preferences.Language == "en" || preferences.Language == "zh-CN" {
@@ -84,9 +86,13 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 			if ValidColorTheme(preferences.ColorTheme) {
 				theme = preferences.ColorTheme
 			}
+			if preferences.SendShortcut == "ctrlEnter" {
+				sendShortcut = preferences.SendShortcut
+			}
 		}
 		page = strings.ReplaceAll(page, "__UI_LANGUAGE__", choice)
 		page = strings.ReplaceAll(page, "__UI_COLOR_THEME__", theme)
+		page = strings.ReplaceAll(page, "__UI_SEND_SHORTCUT__", sendShortcut)
 		page = strings.ReplaceAll(page, "__STYLE_NONCE__", styleNonce)
 		mode := "interactive"
 		if readOnly {

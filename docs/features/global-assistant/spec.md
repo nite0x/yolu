@@ -12,7 +12,7 @@ Repository observations below refer to `main` at `6e5403a67c46b67448c2eb9d449f01
 
 Users can describe a development goal, find the participating projects, review the intended changes, create a workspace with appropriate working directories, and open the result from one global assistant conversation. This supports Yolu's workspace-centered cross-project development workflow.
 
-The assistant has a persistent main-navigation entry named **Yolu Assistant**, with access to recent assistant conversations. Users can create and restore multiple conversations independently of workspace and project selection. A conversation can use the current selection as temporary context. Switching selection preserves the conversation's identity and history.
+The assistant opens in a panel from **Yolu Assistant** in the navigation rail footer or **Alt+Shift+Y**. Its header provides access to assistant history. Users can create and restore multiple conversations independently of workspace and project selection. A conversation can use the selection at launch as temporary context. Switching selection preserves the conversation's identity and history.
 
 The original discussion uses both task and workspace terminology. Repository guidance defines the user-facing workspace as the requirement container and retains `task`, `Requirement`, and `requirements` internally. In this design, “create a task” resolves to the existing workspace creation flow. A request to create work and its workspace produces one requirement record with project members. A separate task entity would require a later product decision. [Repository direction](../../../AGENTS.md)
 
@@ -59,6 +59,8 @@ Some domain operations currently live inside HTTP handlers. Extract the smallest
 - Keep assistant history available while opening a target page, and preserve drafts and reading position through the shared conversation lifecycle.
 
 ### Review and execution
+
+The composer saves the selected local Codex model and assistant permission per conversation and applies them to the next turn. The backend binds both values to the run receipt. Query-only turns expose read capabilities. The default permission also enables the creation of reviewable change plans.
 
 Read capabilities can run immediately within the application's authorized scope. Changes are collected into one action plan. The review shows the workspace goal, environment, selected project IDs and names, working-directory modes, resolved paths, source refs and commits, proposed branches, and any coding-agent launch settings.
 

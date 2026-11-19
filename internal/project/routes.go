@@ -3,6 +3,8 @@ package project
 import "net/http"
 
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/projects/scan", s.ScanProjectsHandler)
+	mux.HandleFunc("POST /api/projects/import", s.InvalidateStateAfter(s.ImportProjectsHandler))
 	mux.HandleFunc("POST /api/projects/clone", s.InvalidateStateAfter(s.CloneProjectHandler))
 	mux.HandleFunc("POST /api/projects", s.InvalidateStateAfter(s.AddProjectHandler))
 	mux.HandleFunc("GET /api/projects/{id}/removal", s.ProjectRemovalHandler)

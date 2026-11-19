@@ -186,6 +186,8 @@ export function ConversationPanel({
                 <Composer
                   autoFocus={!!thread.autoFocus}
                   input={composerInput}
+                  controls={thread.composerControls}
+                  leadingControls={thread.composerLeadingControls}
                 />
               ) : undefined)
             }

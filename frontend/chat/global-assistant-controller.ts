@@ -2,6 +2,7 @@ import { uiText } from "../i18n";
 import { createDraftPersistence } from "./draft-persistence";
 import { readLocalDraft, type DraftRecord } from "./drafts";
 import { assistantReplyID } from "./assistant-messages";
+import type { AssistantTurnSettings } from "./settings";
 
 export type AssistantRequest = <T>(
   path: string,
@@ -42,6 +43,8 @@ export interface AssistantOptions {
   contextLabel?: () => string;
   clearContext?: () => void;
   openResource?: (resource: AssistantResource) => void | Promise<void>;
+  close?: () => void;
+  onActivity?: (activity: "" | "running" | "waiting") => void;
 }
 export interface AssistantActivity {
   id: number;
@@ -85,6 +88,7 @@ export interface AssistantConversation {
   title: string;
   environment_id: "local";
   kind: "yolu";
+  activity?: "running" | "waiting";
 }
 
 export class GlobalAssistantController {
@@ -92,7 +96,7 @@ export class GlobalAssistantController {
   private connected = false;
   private generation = 0;
   private timer?: ReturnType<typeof setTimeout>;
-  private pending?: { request_id: string; text: string; context?: AssistantContext };
+  private pending?: DraftRecord["assistant_request"];
   reading: DraftRecord["reading"] = {
     top: 0,
     bottom: true,
@@ -116,6 +120,7 @@ export class GlobalAssistantController {
     deciding: {} as Record<string, boolean>,
     decisionErrors: {} as Record<string, string>,
     navigating: "",
+    settings: {} as AssistantTurnSettings,
   };
   opening = true;
   private persistence;
@@ -134,6 +139,7 @@ export class GlobalAssistantController {
       submitting: () => this.state.submitting,
       capture: () => ({
         assistant_request: this.pending,
+        assistant_settings: this.state.settings,
         text: this.state.draft,
         images: [],
         settings: {},
@@ -143,7 +149,7 @@ export class GlobalAssistantController {
       restore: (record) => {
         this.pending = record.assistant_request;
         this.reading = record.reading;
-        this.update({ draft: record.text });
+        this.update({ draft: record.text, settings: record.assistant_settings || {} });
       },
       notice: (notice) => this.update({ notice }),
     });
@@ -181,6 +187,14 @@ export class GlobalAssistantController {
   setDraft = (draft: string) => {
     if (draft === this.state.draft) return;
     this.update({ draft });
+    this.persistence.changed();
+  };
+  setTurnSettings = (settings: AssistantTurnSettings) => {
+    const current = this.state.settings;
+    if (this.readOnly || this.state.submitting || !this.state.restored ||
+        (current.model === settings.model && current.permission === settings.permission)) return;
+    this.pending = undefined;
+    this.update({ settings, error: "" });
     this.persistence.changed();
   };
   flush = () => this.persistence.flush();
@@ -282,7 +296,10 @@ export class GlobalAssistantController {
     this.pending =
       this.pending?.text === text
         ? this.pending
-        : { request_id: crypto.randomUUID(), text, context: this.options.getContext?.() };
+        : {
+            request_id: crypto.randomUUID(), text, context: this.options.getContext?.(),
+            settings: this.state.settings.model || this.state.settings.permission ? this.state.settings : undefined,
+          };
     this.update({ submitting: true, error: "" });
     // Invalidate older history requests before accepting a new run snapshot.
     this.generation++;
@@ -388,6 +405,8 @@ export class GlobalAssistantController {
 
 export function assistantRunError(code?: string) {
   switch (code) {
+    case "model_unavailable":
+      return uiText("所选助手模型已不可用，请更换模型或使用 Codex 默认模型。");
     case "codex_unavailable":
       return uiText(
         "无法完成 Codex 请求。请在本机终端运行 codex login，检查 Codex 模型配置及网络，然后重新发送消息。",

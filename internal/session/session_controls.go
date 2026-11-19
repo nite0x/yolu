@@ -25,40 +25,8 @@ type ChatContext struct {
 	Sandbox               any      `json:"sandbox,omitempty"`
 	AdditionalDirectories []string `json:"additional_directories"`
 }
-type chatModel struct {
-	ID            string `json:"id"`
-	Model         string `json:"model"`
-	Name          string `json:"displayName"`
-	Default       bool   `json:"isDefault"`
-	DefaultEffort string `json:"defaultReasoningEffort"`
-	Efforts       []struct {
-		Effort string `json:"reasoningEffort"`
-	} `json:"supportedReasoningEfforts"`
-}
+type chatModel = codex.ChatModel
 
-func listChatModels(call func(string, any, any) error) ([]chatModel, error) {
-	models := []chatModel{}
-	params := map[string]any{}
-	seen := map[string]bool{}
-	for {
-		var page struct {
-			Data []chatModel `json:"data"`
-			Next *string     `json:"nextCursor"`
-		}
-		if err := call("model/list", params, &page); err != nil {
-			return nil, err
-		}
-		models = append(models, page.Data...)
-		if page.Next == nil {
-			return models, nil
-		}
-		if seen[*page.Next] {
-			return nil, fmt.Errorf("模型分页未前进")
-		}
-		seen[*page.Next] = true
-		params["cursor"] = *page.Next
-	}
-}
 func (a *Service) ChatOptionsHandler(w http.ResponseWriter, r *http.Request) {
 	defaults, err := a.conversationPreferences(r.Context())
 	if err != nil {
@@ -71,7 +39,7 @@ func (a *Service) ChatOptionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.Close()
-	models, err := listChatModels(c.Call)
+	models, err := codex.ListModels(c.Call)
 	if err != nil {
 		httpx.WriteError(w, 503, "无法读取可用模型："+err.Error())
 		return
@@ -129,7 +97,7 @@ func (a *Service) applyTurnSettings(ctx context.Context, c codex.LiveClient, par
 		defer end()
 		return c.Call(ctx, method, p, out)
 	}
-	models, err := listChatModels(call)
+	models, err := codex.ListModels(call)
 	if err != nil {
 		return fmt.Errorf("无法核对模型设置：%w", err)
 	}

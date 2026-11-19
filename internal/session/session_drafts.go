@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 )
 
 // Drafts belong to the execution environment and target/session, not the random
@@ -36,15 +37,17 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 	var draft struct {
 		Text             string `json:"text"`
 		AssistantRequest *struct {
-			ID      string `json:"request_id"`
-			Text    string `json:"text"`
-			Context *struct {
+			ID       string                   `json:"request_id"`
+			Text     string                   `json:"text"`
+			Settings *model.AssistantSettings `json:"settings,omitempty"`
+			Context  *struct {
 				EnvironmentID string `json:"environment_id"`
 				WorkspaceID   string `json:"workspace_id,omitempty"`
 				ProjectID     string `json:"project_id,omitempty"`
 			} `json:"context,omitempty"`
 		} `json:"assistant_request,omitempty"`
-		Images []struct {
+		AssistantSettings *model.AssistantSettings `json:"assistant_settings,omitempty"`
+		Images            []struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
 			Type string `json:"contentType"`
@@ -81,6 +84,18 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 	if pending := draft.AssistantRequest; pending != nil && (len(pending.ID) == 0 || len(pending.ID) > 100 || len(pending.Text) > 64000) {
 		httpx.WriteError(w, 400, "草稿内容无效")
 		return
+	}
+	if draft.AssistantSettings != nil {
+		if err := draft.AssistantSettings.Validate(); err != nil {
+			httpx.WriteError(w, 400, err.Error())
+			return
+		}
+	}
+	if pending := draft.AssistantRequest; pending != nil && pending.Settings != nil {
+		if err := pending.Settings.Validate(); err != nil {
+			httpx.WriteError(w, 400, err.Error())
+			return
+		}
 	}
 	if pending := draft.AssistantRequest; pending != nil && pending.Context != nil {
 		context := pending.Context

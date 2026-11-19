@@ -90,6 +90,13 @@ export function SettingsPage() {
         <div className="settings-actions"><Button type="submit">{uiText("保存终端设置")}</Button></div>
       </fieldset>
     </form></Card>
+    <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="chatInputHeading"><form id="chatInputForm">
+      <Heading id="chatInputHeading" title={uiText("对话输入")}>{uiText("选择发送消息的快捷键，保存后立即应用到所有对话。")}</Heading>
+      <Field id="sendShortcutSelect" label={uiText("发送快捷键")}><NativeSelect id="sendShortcutSelect" name="send_shortcut"><Option value="enter">{uiText("Enter 发送")}</Option><Option value="ctrlEnter">{uiText("Ctrl + Enter / ⌘ + Enter 发送")}</Option></NativeSelect></Field>
+      <Help>{uiText("Enter 发送时，使用 Shift + Enter 换行。Ctrl + Enter 发送时，使用 Enter 换行。")}</Help>
+      <div className="settings-actions"><Button type="submit" id="saveChatInput">{uiText("保存对话输入设置")}</Button></div>
+      <p id="chatInputStatus" role="status" className="settings-help" />
+    </form></Card>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="conversationDefaultsHeading"><form id="conversationDefaultsForm">
       <Heading id="conversationDefaultsHeading" title={uiText("新对话默认设置")}>{uiText("默认沿用当前环境的 Codex 配置。可为新对话指定模型与权限，单次对话可覆盖。")}</Heading>
       <fieldset id="conversationDefaultsFields" disabled>

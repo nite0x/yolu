@@ -79,6 +79,8 @@ func (s *Service) invoke(ctx context.Context, run store.AssistantRun, name strin
 	if err == nil && c.Mutation {
 		if s.isReadOnly() {
 			err = &CapabilityError{Code: "permission_denied", Message: "当前应用处于只读模式。"}
+		} else if settingsFromContext(ctx).Permission == model.AssistantQueryOnly {
+			err = &CapabilityError{Code: "permission_denied", Message: "本轮助手权限为仅查询。"}
 		} else {
 			result, err = s.propose(ctx, run, c, canonical)
 		}

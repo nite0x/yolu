@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/model"
 	"worktree-hub/internal/store"
 )
 
@@ -21,6 +22,8 @@ const toolInstructions = `You are Yolu Assistant, helping users organize cross-p
 const maxToolCalls = 24
 const maxToolBytes = 64000
 const toolTimeout = 30 * time.Second
+
+var errAssistantModelUnavailable = errors.New("selected assistant model is unavailable")
 
 // ToolDefinition describes one application capability exposed to a provider turn.
 // The caller validates its schema and permissions before executing the handler.
@@ -68,13 +71,36 @@ func codexProvider(cwd string, open func(context.Context) (codex.LiveClient, err
 		}
 		defer client.Close()
 		tools, _ := ctx.Value(providerToolsKey{}).(providerTools)
+		settings := settingsFromContext(ctx)
 		baseInstructions := instructions
 		if len(tools.definitions) > 0 {
 			baseInstructions = toolInstructions
+			if settings.Permission == model.AssistantQueryOnly {
+				baseInstructions += " The user selected query-only permissions for this turn. You may inspect application state and explain next steps. Do not offer to prepare a change plan in this turn."
+			}
 		}
 		params, err := codex.ReadOnlyThreadParams(ctx, client, cwd, baseInstructions)
 		if err != nil {
 			return "", err
+		}
+		if settings.Model != "" {
+			models, err := codex.ListModels(func(method string, args, out any) error {
+				return client.Call(ctx, method, args, out)
+			})
+			if err != nil {
+				return "", err
+			}
+			found := false
+			for _, entry := range models {
+				if entry.Model == settings.Model {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return "", errAssistantModelUnavailable
+			}
+			params["model"] = settings.Model
 		}
 		allowed, err := addDynamicTools(params, tools)
 		if err != nil {

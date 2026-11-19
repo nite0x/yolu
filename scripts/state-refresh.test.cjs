@@ -73,7 +73,7 @@ function harness({ fullPage = false, readOnly = false } = {}) {
   mockDocument = context.document;
   context.document.defaultView = context.window;
   const scripts = fullPage
-    ? ['core/appearance.js', ...[...fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8').matchAll(/<script src="\/([^"]+)" defer(?: data-ui-bundle)?><\/script>/g)]
+    ? ['core/chat-input.js', 'core/appearance.js', ...[...fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8').matchAll(/<script src="\/([^"]+)" defer(?: data-ui-bundle)?><\/script>/g)]
       // This VM exercises business scripts; component mounting is checked in a browser.
       .filter(match => !match[0].includes('data-ui-bundle')).map(match => match[1])
       .filter(file => !readOnly || !['features/sessions/session-chat.js', 'features/sessions/session-create.js'].includes(file))]
@@ -206,7 +206,7 @@ test('the first completed check enables project actions even with no Git changes
   await h.refresh(snapshot());
   assert.equal(h.element('#content').writes, 2);
   assert.equal(markup(h.element('#content').innerHTML).querySelector('[data-project-open-primary]').disabled, false);
-  assert.match(h.element('#content').innerHTML, /无未提交改动/);
+  assert.equal(markup(h.element('#content').innerHTML).querySelector('.directory-status').textContent, '干净');
 });
 
 test('real status changes are rendered, including errors and branch drift', async () => {
@@ -297,5 +297,5 @@ test('new task directories use their individual expected branch and recorded sou
   assert.doesNotMatch(h.element('#content').innerHTML, /分支已变化/);
   const document = markup(h.element('#content').innerHTML);
   assert.equal(markup(h.element('#content').innerHTML).querySelector('[data-action="git-open"]').disabled, false);
-  assert([...document.querySelectorAll('.task-project-details code')].some(node => node.textContent === 'release'));
+  assert([...document.querySelectorAll('.directory-details code')].some(node => node.textContent === 'release'));
 });

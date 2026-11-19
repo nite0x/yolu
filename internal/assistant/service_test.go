@@ -70,6 +70,11 @@ func TestConversationLifecycleAndRequestRecovery(t *testing.T) {
 	request(t, h, "POST", base+"/runs", `{"request_id":"send-one","text":"Plan my work"}`, 200)
 	request(t, h, "POST", base+"/runs", `{"request_id":"send-one","text":"Changed text"}`, 409)
 	request(t, h, "POST", base+"/runs", `{"request_id":"send-two","text":"Concurrent text"}`, 409)
+	var conversations []store.AssistantConversation
+	json.Unmarshal(request(t, h, "GET", "/api/assistant/conversations", "", 200), &conversations)
+	if len(conversations) != 2 || conversations[0].ID != "yolu-one" || conversations[0].Activity != "running" {
+		t.Fatalf("active conversations %+v", conversations)
+	}
 	close(release)
 	waitRun(t, s, "send-one", "completed")
 	request(t, h, "POST", base+"/runs", `{"request_id":"send-one","text":"Plan my work"}`, 200)
@@ -84,9 +89,9 @@ func TestConversationLifecycleAndRequestRecovery(t *testing.T) {
 	if len(snapshot.Messages) != 2 || snapshot.Run.Status != "completed" {
 		t.Fatalf("snapshot %+v", snapshot)
 	}
-	var conversations []store.AssistantConversation
+	conversations = nil
 	json.Unmarshal(request(t, h, "GET", "/api/assistant/conversations", "", 200), &conversations)
-	if len(conversations) != 2 || conversations[0].Kind != "yolu" || conversations[0].Environment != "local" {
+	if len(conversations) != 2 || conversations[0].Kind != "yolu" || conversations[0].Environment != "local" || conversations[0].Activity != "" {
 		t.Fatalf("conversations %+v", conversations)
 	}
 	var native int

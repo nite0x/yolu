@@ -20,7 +20,7 @@ function refreshRequirementProjectPicker(selectID = null) {
   const q = state.requirements.find(q => q.id === requirementProjectsID);
   if (!q) { $('#requirementProjectsDialog').close(); return; }
   const selected = new Set([...$('#requirementProjectPicker').querySelectorAll('input[name="project_ids"]:checked')].map(i => i.value));
-  if (selectID) selected.add(selectID);
+  for (const id of Array.isArray(selectID) ? selectID : selectID ? [selectID] : []) selected.add(id);
   const available = state.projects.filter(p => !q.members.some(m => m.project_id === p.id));
   $('#requirementProjectsDescription').textContent = uiText("为“{0}”添加 {1} 中的项目，可使用已有目录或新建工作目录。最多关联 30 个项目，当前已有 {2} 个。", q.name, environmentName(), q.members.length);
   renderTaskProjectPicker('#requirementProjectPicker', available, selected, activeEnvironment, q.branch || 'codex/' + q.slug);

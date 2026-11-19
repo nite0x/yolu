@@ -24,7 +24,7 @@ html[data-workhub-desktop] .sidebar :is(.nav-item,.task-shortcut-picker > summar
   width: var(--yolu-rail-control-size);
   height: var(--yolu-rail-control-size);
 }
-html[data-workhub-desktop] .sidebar :is(.nav-icon,.task-shortcut-picker > summary,.sidebar-settings,#refreshButton,.codex-quota-trigger) > svg {
+html[data-workhub-desktop] .sidebar :is(.nav-icon,.task-shortcut-picker > summary,.sidebar-settings,#openYoluAssistant,#refreshButton,.codex-quota-trigger) > svg {
   width: var(--yolu-rail-icon-size);
   height: var(--yolu-rail-icon-size);
   stroke-width: 1.8;
@@ -44,7 +44,17 @@ html[data-workhub-desktop] .sidebar .session-navigation-status {
 html[data-workhub-desktop] .sidebar .session-navigation-status:empty { display: none; }
 html[data-workhub-desktop] .sidebar .sidebar-footer { justify-content: center; padding: 0; }
 html[data-workhub-desktop] .sidebar-footer-actions { flex-direction: column; gap: var(--yolu-rail-gap); }
-html[data-workhub-desktop] .sidebar .sidebar-settings { align-items: center; justify-content: center; padding: 0; }
+html[data-workhub-desktop] .sidebar :is(.sidebar-settings,#openYoluAssistant) { align-items: center; justify-content: center; padding: 0; }
+#openYoluAssistant { position: relative; }
+#openYoluAssistant[aria-expanded="true"] { background: var(--yolu-rail-selected); color: var(--yolu-rail-active); }
+.assistant-launcher-status { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; }
+#openYoluAssistant[data-activity="running"] .assistant-launcher-status { background: var(--yolu-primary); }
+#openYoluAssistant[data-activity="waiting"] .assistant-launcher-status { background: var(--yolu-warning); }
+
+html[data-workspace-assistant] :is(.sidebar,.sidebar-resize) { display: none !important; }
+html[data-workspace-assistant] body .shell { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+html[data-workspace-assistant] .shell main { display: flex; flex-direction: column; padding: 0; }
+html[data-workspace-assistant] main > :not(#globalAssistantPage) { display: none !important; }
 html[data-workhub-desktop] .sidebar .codex-quota-mount { display: flex; justify-content: center; margin-top: auto; padding: 10px 0 var(--yolu-rail-gap); }
 html[data-workhub-desktop] .sidebar .codex-quota-trigger { justify-content: center; min-height: 0; padding: 0; }
 html[data-workhub-desktop] .sidebar .codex-quota-trigger :is(.codex-quota-copy,.codex-quota-chevron) { display: none; }

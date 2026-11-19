@@ -16,6 +16,7 @@ import (
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 	"worktree-hub/internal/store"
 )
 
@@ -23,6 +24,19 @@ type activeRun struct {
 	id     string
 	cancel context.CancelFunc
 }
+
+type runOptions struct {
+	Selection
+	model.AssistantSettings
+}
+
+type settingsContextKey struct{}
+
+func settingsFromContext(ctx context.Context) model.AssistantSettings {
+	settings, _ := ctx.Value(settingsContextKey{}).(model.AssistantSettings)
+	return settings
+}
+
 type Service struct {
 	store    *store.Store
 	provider Provider
@@ -151,9 +165,10 @@ func (s *Service) snapshot(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		ID      string    `json:"request_id"`
-		Text    string    `json:"text"`
-		Context Selection `json:"context"`
+		ID       string                  `json:"request_id"`
+		Text     string                  `json:"text"`
+		Context  Selection               `json:"context"`
+		Settings model.AssistantSettings `json:"settings"`
 	}
 	if !httpx.DecodeLimit(w, r, &input, 400000) {
 		return
@@ -163,8 +178,12 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 400, "请输入消息（最多 64000 字节）并提供发送标识")
 		return
 	}
+	if err := input.Settings.Validate(); err != nil {
+		httpx.WriteError(w, 400, err.Error())
+		return
+	}
 	conversation := r.PathValue("conversation")
-	selection, _ := json.Marshal(input.Context)
+	options, _ := json.Marshal(runOptions{Selection: input.Context, AssistantSettings: input.Settings})
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closing {
@@ -179,7 +198,7 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 			httpx.DbError(w, contextErr)
 			return
 		}
-		if old.Input != input.Text || string(previous) != string(selection) {
+		if old.Input != input.Text || string(previous) != string(options) {
 			httpx.WriteError(w, 409, "助手发送标识已用于另一条消息")
 			return
 		}
@@ -203,7 +222,7 @@ func (s *Service) send(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
-	run, created, err := s.store.BeginAssistantRun(conversation, input.ID, input.Text, selection)
+	run, created, err := s.store.BeginAssistantRun(conversation, input.ID, input.Text, options)
 	if errors.Is(err, store.ErrAssistantConflict) {
 		httpx.WriteError(w, 409, "助手会话正在运行，请等待完成或停止后再发送")
 		return
@@ -226,20 +245,22 @@ func (s *Service) drive(ctx context.Context, cancel context.CancelFunc, run stor
 	messages, err := s.store.AssistantMessages(run.ConversationID, 0, 100)
 	output := ""
 	if err == nil {
-		if s.registry != nil {
-			raw, contextErr := s.store.AssistantRunContext(run.ConversationID, run.ID)
-			if contextErr != nil {
-				err = contextErr
-			} else {
-				var selection Selection
-				if err = json.Unmarshal(raw, &selection); err == nil {
-					ctx = context.WithValue(ctx, selectionContextKey{}, selection)
-					ctx = context.WithValue(ctx, runContextKey{}, run)
-					ctx = WithTools(ctx, s.registry.Tools(s.isReadOnly()), func(toolCtx context.Context, name string, args json.RawMessage) (any, error) {
-						result, err := s.invoke(toolCtx, run, name, args)
-						return compactToolResult(result), err
-					})
-				}
+		var raw json.RawMessage
+		raw, err = s.store.AssistantRunContext(run.ConversationID, run.ID)
+		var options runOptions
+		if err == nil {
+			err = json.Unmarshal(raw, &options)
+		}
+		if err == nil {
+			ctx = context.WithValue(ctx, settingsContextKey{}, options.AssistantSettings)
+			if s.registry != nil {
+				ctx = context.WithValue(ctx, selectionContextKey{}, options.Selection)
+				ctx = context.WithValue(ctx, runContextKey{}, run)
+				onlyQueries := s.isReadOnly() || options.Permission == model.AssistantQueryOnly
+				ctx = WithTools(ctx, s.registry.Tools(onlyQueries), func(toolCtx context.Context, name string, args json.RawMessage) (any, error) {
+					result, err := s.invoke(toolCtx, run, name, args)
+					return compactToolResult(result), err
+				})
 			}
 		}
 	}
@@ -249,6 +270,9 @@ func (s *Service) drive(ctx context.Context, cancel context.CancelFunc, run stor
 	status, code := "completed", ""
 	if err != nil {
 		status, code = "failed", "codex_unavailable"
+		if errors.Is(err, errAssistantModelUnavailable) {
+			code = "model_unavailable"
+		}
 		if errors.Is(ctx.Err(), context.Canceled) {
 			status, code = "interrupted", "cancelled"
 		}

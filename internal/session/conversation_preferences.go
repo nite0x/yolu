@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"worktree-hub/internal/codex"
 	"worktree-hub/internal/httpx"
 )
 
@@ -41,7 +42,7 @@ func (a *Service) conversationModels(ctx context.Context) ([]chatModel, error) {
 		return nil, err
 	}
 	defer c.Close()
-	return listChatModels(c.Call)
+	return codex.ListModels(c.Call)
 }
 
 func availableConversationModel(models []chatModel, model string) bool {

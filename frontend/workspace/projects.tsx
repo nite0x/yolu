@@ -1,17 +1,14 @@
-import { uiText, uiLocale } from "../i18n";
-import { Fragment } from "react"
-import { ArrowLeft, Check, ChevronDown, Circle, CircleAlert, Copy, FolderGit2, GitCommitHorizontal, MoreHorizontal, Pencil } from "lucide-react"
+import { uiText } from "../i18n";
+import { ArrowLeft, Circle, CircleAlert, Copy, FolderGit2, MoreHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { TableCell, TableRow } from "@/components/ui/table"
-import { Action, Branch, DataTable, Feedback, GitSyncStatus, ProjectOpenActions, StatusBadge, TreeStatus } from "./shared"
+import { Action, Feedback, StatusBadge, type ProjectOpenTool } from "./shared"
 import type { Project, Task, Worktree } from "./types"
-import type { ProjectOpenTool } from "./shared"
 import { compactWorkspacePath } from "./workspace-path"
+import { WorkingDirectoryRow, WorkingDirectoryTable, directoryBranch } from "./working-directories"
 
 export type ProjectFilter = "all" | "dirty" | "error"
 export type DirectoryFilter = "all" | "issues"
 const directoryHasIssue = (t: Worktree) => !!(t.missing || t.prunable || t.error)
-const directoryBranch = (t: Worktree) => t.branch || (t.detached ? "detached HEAD" : t.bare ? uiText("裸仓库") : uiText("尚未读取分支"))
 const hasIssue = (p: Project) => !!p.error || p.worktrees.some(directoryHasIssue)
 const hasChanges = (p: Project) => p.worktrees.some(t => (t.dirty || 0) > 0)
 const directoryTasks = (t: Worktree) => t.requirements?.length ? t.requirements : t.requirement_id ? [{ id: t.requirement_id, name: t.requirement_name || t.requirement_id }] : []
@@ -31,24 +28,23 @@ function DirectoryRecovery({ tree, project, tasks }: { tree: Worktree; project: 
   </div></div>
 }
 
-function DirectoryDetails({ tree: t }: { tree: Worktree }) {
-  return <details className="project-row-details"><summary>{uiText("详情")}<ChevronDown aria-hidden="true" /></summary><div>
-    <p>{uiText("完整路径")}{" "}<code>{t.path}</code></p>
-    <p>{uiText("当前分支")}{" "}<code>{directoryBranch(t)}</code></p>
-    {t.compare_available ? <p>{uiText("相对基线")}{" "}<code>{t.comparison_ref || "master"}</code> · {t.ahead || t.behind ? uiText("领先 {0} · 落后 {1}", t.ahead || 0, t.behind || 0) : uiText("与基线一致")}</p> : null}
-    {t.upstream ? <p>{uiText("上游")}{" "}<code>{t.upstream}</code></p> : null}
-    {t.locked ? <p>{uiText("工作目录已锁定")}</p> : null}
-    {t.status_updated_at ? <p>{uiText("上次检查")} <time data-status-path={t.path} dateTime={t.status_updated_at}>{new Date(t.status_updated_at).toLocaleTimeString(uiLocale(), { hour12: false })}</time></p> : <p>{directoryHasIssue(t) ? uiText("目录不可用，暂无法读取最新状态") : uiText("正在检查目录状态")}</p>}
-  </div></details>
+function ProjectDirectoryDetails({ tree }: { tree: Worktree }) {
+  return <>
+    <div>{uiText("当前分支")} <code>{directoryBranch(tree)}</code></div>
+    {tree.compare_available ? <div>{uiText("相对基线")} <code>{tree.comparison_ref || "master"}</code> · {tree.ahead || tree.behind ? uiText("领先 {0} · 落后 {1}", tree.ahead || 0, tree.behind || 0) : uiText("与基线一致")}</div> : null}
+    {tree.upstream ? <div>{uiText("上游")} <code>{tree.upstream}</code></div> : null}
+    {tree.locked ? <div>{uiText("工作目录已锁定")}</div> : null}
+    {!tree.status_updated_at ? <div>{directoryHasIssue(tree) ? uiText("目录不可用，暂无法读取最新状态") : uiText("正在检查目录状态")}</div> : null}
+  </>
 }
 
-function DirectoryLocalStatus({ tree: t, project, title }: { tree: Worktree; project: string; title: string }) {
-  if (t.bare || directoryHasIssue(t) || !t.status_updated_at) return <TreeStatus tree={t} compact />
-  const committed = !t.detached && !!t.upstream && t.sync_available && (t.sync_ahead || 0) > 0
-  return <div className="project-local-status">
-    {t.dirty ? <Action action="changes-open" id={project} data-path={t.path} variant="ghost" className="project-changes-link" aria-label={uiText("查看 {0} 的 {1} 项改动", title, t.dirty)}><StatusBadge kind="warning"><Pencil aria-hidden="true" />{uiText("有改动")}{" "}{t.dirty}</StatusBadge></Action> : !committed ? <span title={uiText("工作目录干净，无未提交改动")}><StatusBadge kind="ready"><Check aria-hidden="true" />{uiText("干净")}</StatusBadge></span> : null}
-    {committed ? <span title={uiText("已有 {0} 个提交待推送", t.sync_ahead)}><StatusBadge kind="primary-tag"><GitCommitHorizontal aria-hidden="true" />{uiText("已提交")}</StatusBadge></span> : null}
-  </div>
+function LinkedWorkspaces({ linked }: { linked: NonNullable<Worktree["requirements"]> }) {
+  return linked.length ? <div className="project-linked-workspaces">
+    {linked.map(workspace => {
+      const name = workspace.name || workspace.id
+      return <Action key={workspace.id} action="jump-requirement" id={workspace.id} variant="link" title={name} aria-label={uiText("打开工作区 {0}", name)}><span>{name}</span><span aria-hidden="true">↗</span></Action>
+    })}
+  </div> : <span className="directory-muted">{uiText("未关联工作区")}</span>
 }
 
 export function Projects({ projects, selectedID, openTool = "vscode", filter = "all", detailOpen = false, tasks = [], directoryFilter = "all", searching = false, status }: {
@@ -75,24 +71,27 @@ export function Projects({ projects, selectedID, openTool = "vscode", filter = "
     <section id="projectDetail" className="project-detail workspace-pane" aria-label={p ? uiText("{0} 项目详情", p.name) : uiText("项目详情")}>
       {p ? <>
         <div className="project-list-back"><Action action="project-list" variant="ghost" className="pl-0 text-muted-foreground"><ArrowLeft aria-hidden="true" />{uiText("返回项目列表")}</Action></div>
-        <header className="project-detail-heading"><div><h2 tabIndex={-1}>{p.name}</h2><button type="button" className="project-directory-path" data-action="copy-path" data-path={p.path} title={uiText("{0}\n复制项目路径", p.path)} aria-label={uiText("复制项目路径 {0}", p.path)}>{compactWorkspacePath(p.path)}<Copy aria-hidden="true" /></button></div>
+        <header className="project-detail-heading"><div><h2 tabIndex={-1}>{p.name}</h2><button type="button" className="directory-path" data-action="copy-path" data-path={p.path} title={uiText("{0}\n复制项目路径", p.path)} aria-label={uiText("复制项目路径 {0}", p.path)}><span>{compactWorkspacePath(p.path)}</span><Copy aria-hidden="true" /></button></div>
           <div className="project-detail-actions"><Action action="project-conversations" id={p.id}>{uiText("相关对话")}</Action><Action action="new-worktree" id={p.id} disabled={!!p.error}>{uiText("创建 Worktree")}</Action>
             <details className="task-project-details project-more"><summary aria-label={uiText("更多项目操作")}><MoreHorizontal aria-hidden="true" /></summary><div className="task-project-details-body"><Action action="git-open" id={p.id} variant="ghost">{uiText("Git 操作 · 分支管理")}</Action><Action action="project-open-remote" id={p.id} data-path={p.path} variant="ghost" disabled={!!p.error}>{uiText("打开远端仓库")}</Action><hr /><Action action="remove-project" id={p.id} variant="ghost" className="text-destructive">{uiText("移除登记")}</Action></div></details>
           </div>
         </header>
         <div className="project-directories-heading"><h3>{uiText("工作目录")}{" "}<span>{p.worktrees.length}</span></h3><span>{uiText("自动发现并更新本地状态")}</span></div>
         {p.worktrees.length ? <div className="project-directory-filters" aria-label={uiText("筛选工作目录")}><Action action="project-directory-filter" id={p.id} data-filter="all" aria-pressed={directoryFilter === "all"} variant={directoryFilter === "all" ? "secondary" : "outline"}>{uiText("全部目录 ·")}{" "}{p.worktrees.length}</Action>{issues || directoryFilter === "issues" ? <Action action="project-directory-filter" id={p.id} data-filter="issues" aria-pressed={directoryFilter === "issues"} variant={directoryFilter === "issues" ? "secondary" : "outline"} className={issues ? "project-issue-filter" : undefined}><CircleAlert aria-hidden="true" />{uiText("需要处理 ·")}{" "}{issues}</Action> : null}</div> : null}
-        {p.error ? <Feedback variant="destructive"><p className="m-0">{uiText("项目读取失败：")}{p.error}</p><Action action="project-refresh" id={p.id}>{uiText("重新检查")}</Action></Feedback> : directories.length ? <div className="project-directory-table"><DataTable label={uiText("项目工作目录")} headers={[uiText("工作目录"), uiText("远程同步"), uiText("关联任务"), uiText("本地改动"), uiText("操作")]}>{directories.map(t => {
-          const linked = directoryTasks(t)
-          const usable = !t.bare && !directoryHasIssue(t) && !!t.status_updated_at
-          const title = t.path === p.path ? uiText("主工作目录") : linked.length ? linked.map(q => q.name || q.id).join("、") : t.branch || t.path.split(/[\\/]/).filter(Boolean).pop()
-          return <Fragment key={t.path}><TableRow data-project-id={p.id} data-directory-path={t.path} className={directoryHasIssue(t) ? "project-directory-has-issue" : undefined}>
-          <TableCell className="project-directory-cell p-[var(--project-cell-padding)] align-top whitespace-normal"><div className="project-directory-heading"><strong className="project-directory-name">{title}{t.bare ? <StatusBadge kind="neutral">{uiText("裸仓库")}</StatusBadge> : null}</strong><DirectoryDetails tree={t} /></div><Branch>⑂ {directoryBranch(t)}</Branch><button type="button" className="project-directory-path" data-action="copy-path" data-path={t.path} title={uiText("{0}\n复制目录路径", t.path)} aria-label={uiText("复制目录路径 {0}", t.path)}><span>{compactWorkspacePath(t.path)}</span><Copy aria-hidden="true" /></button></TableCell>
-          <TableCell className="project-branch-cell p-[var(--project-cell-padding)] align-top whitespace-normal"><span className="project-cell-label">{uiText("远程同步")}</span><GitSyncStatus tree={t} compact minimal />{!usable ? <span className="quiet">{directoryHasIssue(t) ? uiText("目录不可用，暂无法确认") : t.bare ? uiText("不适用") : uiText("正在检查")}</span> : null}</TableCell>
-          <TableCell className="project-task-cell p-[var(--project-cell-padding)] align-top whitespace-normal"><span className="project-cell-label">{uiText("关联任务")}</span><div className="project-linked-tasks">{linked.map(q => <Action key={q.id} action="jump-requirement" id={q.id} variant="link" title={q.name || q.id} aria-label={uiText("打开任务 {0}", q.name || q.id)}><span>{q.name || q.id}</span><span aria-hidden="true">↗</span></Action>)}</div>{!linked.length ? <span className="quiet">{uiText("未关联任务")}</span> : null}</TableCell>
-          <TableCell className="project-status-cell p-[var(--project-cell-padding)] align-top whitespace-normal"><DirectoryLocalStatus tree={t} project={p.id} title={title || t.path} /></TableCell>
-          <TableCell className="project-actions-cell p-[var(--project-cell-padding)] align-top"><div className="project-directory-actions"><ProjectOpenActions project={p.id} path={t.path} tool={openTool} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at} /><Action action="changes-open" id={p.id} data-path={t.path} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at}>{uiText("文件与改动")}</Action><details className="task-more project-directory-more"><summary aria-label={uiText("{0} 更多操作", t.branch || uiText("当前目录"))}><MoreHorizontal aria-hidden="true" /></summary><div className="task-more-menu"><Action action="workspace-conversation-new" id={p.id} data-path={t.path} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at}>{uiText("新建对话…")}</Action><hr /><Action action="git-open" id={p.id} data-path={t.path} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at}>{uiText("Git 操作")}</Action><Action action="project-open-remote" id={p.id} data-path={t.path} disabled={t.bare || t.missing || t.prunable || !!t.error || !t.status_updated_at}>{uiText("打开远端仓库")}</Action></div></details></div></TableCell>
-        </TableRow>{directoryHasIssue(t) ? <TableRow className="project-directory-recovery-row" data-project-id={p.id}><TableCell colSpan={5}><DirectoryRecovery tree={t} project={p} tasks={tasks} /></TableCell></TableRow> : null}</Fragment>})}</DataTable></div> : directoryFilter === "issues" && p.worktrees.length ? <div className="project-detail-empty">{uiText("没有需要处理的工作目录。")}<Action action="project-directory-filter" id={p.id} data-filter="all">{uiText("查看全部目录")}</Action></div> : <div className="project-detail-empty">{p.refreshing ? uiText("正在发现工作目录…") : uiText("尚未发现工作目录，请检查项目路径后重新扫描。")}{!p.refreshing ? <Action action="project-refresh" id={p.id}>{uiText("重新检查")}</Action> : null}</div>}
+        {p.error ? <Feedback variant="destructive"><p className="m-0">{uiText("项目读取失败：")}{p.error}</p><Action action="project-refresh" id={p.id}>{uiText("重新检查")}</Action></Feedback> : directories.length ? <WorkingDirectoryTable label={uiText("项目工作目录")} showLinkedWorkspaces>
+          {directories.map(tree => {
+            const linked = directoryTasks(tree)
+            const issue = directoryHasIssue(tree)
+            const name = tree.path === p.path ? uiText("主工作目录") : linked.length ? linked.map(workspace => workspace.name || workspace.id).join("、") : tree.branch || tree.path.split(/[\\/]/).filter(Boolean).pop() || tree.path
+            return <WorkingDirectoryRow
+              key={tree.path} project={p.id} name={name} path={tree.path} tree={tree} tool={openTool}
+              usable={!tree.bare && !issue && !!tree.status_updated_at} issue={issue}
+              linkedWorkspaces={<LinkedWorkspaces linked={linked} />}
+              details={<ProjectDirectoryDetails tree={tree} />}
+              notice={issue ? <DirectoryRecovery tree={tree} project={p} tasks={tasks} /> : null}
+            />
+          })}
+        </WorkingDirectoryTable> : directoryFilter === "issues" && p.worktrees.length ? <div className="project-detail-empty">{uiText("没有需要处理的工作目录。")}<Action action="project-directory-filter" id={p.id} data-filter="all">{uiText("查看全部目录")}</Action></div> : <div className="project-detail-empty">{p.refreshing ? uiText("正在发现工作目录…") : uiText("尚未发现工作目录，请检查项目路径后重新扫描。")}{!p.refreshing ? <Action action="project-refresh" id={p.id}>{uiText("重新检查")}</Action> : null}</div>}
       </> : <div className="project-detail-empty">{status === "empty" ? uiText("登记本地 Git 仓库，或从 Git 克隆新项目。已有 Worktree 会自动发现。") : status === "loading" ? null : uiText("没有匹配的项目，请调整搜索或筛选条件。")}</div>}
     </section>
   </div>

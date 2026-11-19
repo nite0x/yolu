@@ -41,6 +41,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     return entry.promise.then(response => response.clone());
   }};
   const pages = document.getElementById('workspacePages');
+  const assistant = document.getElementById('workspaceAssistant');
+  let assistantFrame, assistantReady = false, assistantContext, assistantReturnFocus, assistantActivity = '';
   const paneChrome = document.createElement('div');
   paneChrome.className = 'workspace-pane-chrome'; pages.append(paneChrome);
   const versions = page => [page, ...(page.alternate ? [page.alternate] : [])];
@@ -115,9 +117,86 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   function renderNavigationModal() {
     const open = !!(navigation?.visible && navigation.modalOpen);
+    const assistantModal = !assistant.hidden && innerWidth <= 760;
+    if (assistantModal) assistant.setAttribute('aria-modal', 'true');
+    else assistant.removeAttribute('aria-modal');
     navigation?.wrapper.toggleAttribute('data-modal',open);
-    pages.toggleAttribute('inert',open);
-    if (navigation) navigation.resizeHandle.hidden = !navigation.visible || open;
+    navigation?.wrapper.toggleAttribute('inert',assistantModal);
+    pages.toggleAttribute('inert',open || assistantModal);
+    if (navigation) navigation.resizeHandle.hidden = !navigation.visible || open || assistantModal;
+  }
+  function syncAssistantLaunchers() {
+    const status = assistantActivity === 'waiting' ? uiText("助手有操作待确认") : assistantActivity === 'running' ? uiText("助手正在运行") : '';
+    for (const page of [...allPages(), navigation]) {
+      const launcher = page?.ready && page.frame.contentDocument?.getElementById('openYoluAssistant');
+      if (!launcher) continue;
+      launcher.setAttribute('aria-expanded', String(!assistant.hidden));
+      launcher.dataset.activity = assistantActivity;
+      if (status) launcher.setAttribute('aria-description', status);
+      else launcher.removeAttribute('aria-description');
+    }
+  }
+  function currentPage() {
+    return conversationsPresented ? group.pages.find(page => page.id === group.focused) || group.pages[0] : workspace;
+  }
+  function showAssistant(source, environment) {
+    if (!assistant.hidden) return;
+    const page = source && source !== navigation ? source : currentPage();
+    const bridge = page?.frame.contentWindow?.WorkHubPage;
+    const snapshot = environment ? {environment} : (bridge?.snapshot?.() || page?.snapshot);
+    const match = snapshot?.route?.match(/^\/(requirements|projects)\/([\w-]+)/);
+    const scope = snapshot?.conversation?.scope;
+    const workspaceID = match?.[1] === 'requirements' ? match[2] : scope?.kind === 'task' ? scope.id : snapshot?.terminal?.taskID;
+    const projectID = match?.[1] === 'projects' ? match[2] : scope?.kind === 'project' ? scope.id : snapshot?.terminal?.projectID;
+    const environmentID = snapshot?.sessionEnvironment || scope?.environment || snapshot?.environment || 'local';
+    assistantContext = {environment_id: environmentID, workspace_id: workspaceID, project_id: projectID,
+      environmentLabel: bridge?.environmentName?.(environmentID) || environmentID,
+      label: match ? snapshot.title : workspaceID || projectID ? snapshot.context?.split(' · ')[0] || snapshot.title || workspaceID || projectID : ''};
+    const frame = (source || page)?.frame;
+    const element = frame?.contentDocument?.activeElement;
+    assistantReturnFocus = {frame, element};
+    assistant.hidden = false;
+    renderNavigationModal();
+    syncAssistantLaunchers();
+    showAssistantFrame();
+    if (assistantFrame) return;
+    assistantFrame = document.createElement('iframe');
+    assistantFrame.title = uiText("Yolu 助手");
+    assistantFrame.src = '/?workspace-page=assistant#/assistant';
+    assistant.append(assistantFrame);
+  }
+  function showAssistantFrame() {
+    if (assistantReady && !assistant.hidden) {
+      assistantFrame.contentWindow.postMessage({type:'workhub:assistant-show', context:assistantContext},location.origin);
+    }
+  }
+  function closeAssistant(restoreFocus = true) {
+    if (assistant.hidden) return;
+    assistantFrame?.contentWindow?.dispatchEvent(new CustomEvent('workhub:assistant-hide'));
+    assistant.hidden = true;
+    renderNavigationModal();
+    syncAssistantLaunchers();
+    const {frame, element} = assistantReturnFocus || {};
+    assistantReturnFocus = undefined;
+    if (restoreFocus) {
+      if (frame?.getClientRects().length && element?.isConnected && element.getClientRects().length) element.focus({preventScroll:true});
+      else currentPage()?.frame.focus({preventScroll:true});
+    }
+  }
+  function toggleAssistant(source) {
+    if (assistant.hidden) showAssistant(source);
+    else closeAssistant();
+  }
+  function assistantKeydown(event) {
+    if (event.defaultPrevented || event.isComposing || event.repeat) return;
+    if (event.code === 'KeyY' && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      const source = [...allPages(), navigation].find(page => page?.frame.contentDocument === event.currentTarget);
+      toggleAssistant(source);
+    } else if (event.key === 'Escape' && !assistant.hidden && event.currentTarget === assistantFrame?.contentDocument) {
+      event.preventDefault();
+      closeAssistant();
+    }
   }
   function renderLayout() {
     const visible = visiblePages(group), split = grouped(group), shared = sharedLayout();
@@ -306,6 +385,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   function openPage(snapshot) {
     const clean = normalize(snapshot);
+    if (clean.route === '/assistant') { showAssistant(undefined, clean.environment); return; }
     if (clean.route === '/sessions' || isTerminal(clean)) {
       conversationsVisible = true;
       if (!group.pages.length) {
@@ -352,9 +432,27 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('message',event => {
     if (event.origin !== location.origin || !event.data || typeof event.data !== 'object') return;
     const message = event.data;
+    if (assistantFrame && assistantFrame.contentWindow === event.source) {
+      if (message.type === 'workhub:assistant-ready') {
+        assistantReady = true;
+        assistantFrame.contentDocument?.addEventListener('keydown', assistantKeydown);
+        showAssistantFrame();
+      } else if (message.type === 'workhub:assistant-close') closeAssistant();
+      else if (message.type === 'workhub:assistant-activity') {
+        assistantActivity = ['waiting', 'running'].includes(message.activity) ? message.activity : '';
+        syncAssistantLaunchers();
+      } else if (message.type === 'workhub:page-open' && !assistant.hidden) {
+        closeAssistant(false);
+        dispatchOpen(message);
+        currentPage()?.frame.focus({preventScroll:true});
+      }
+      return;
+    }
     if (navigation?.frame.contentWindow === event.source) {
       if (message.type === 'workhub:page-ready') {
         navigation.ready = true;
+        navigation.frame.contentDocument?.addEventListener('keydown', assistantKeydown);
+        syncAssistantLaunchers();
         send(navigation,'workhub:page-restore',{snapshot:navigation.snapshot,active:!!navigation.visible}); renderLayout();
       } else if (message.type === 'workhub:page-restored') {
         navigation.restored = true;
@@ -364,6 +462,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         navigation.modalOpen = message.open === true;
         renderNavigationModal();
       }
+      else if (message.type === 'workhub:assistant-toggle' && navigation.visible) toggleAssistant(navigation);
       else if (message.type === 'workhub:conversation-select') {
         if (message.initial && (!conversationsVisible || group.pages.some(page => isPaneView(page.snapshot)))) return;
         openConversation(message.snapshot);
@@ -380,6 +479,15 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (!displayed && !['workhub:page-ready','workhub:page-restored','workhub:page-state'].includes(message.type)) return;
     if (message.type === 'workhub:page-ready') {
       page.ready = true;
+      page.frame.contentDocument?.addEventListener('keydown', assistantKeydown);
+      syncAssistantLaunchers();
+      if (page === workspace && !assistantReady) {
+        page.frame.contentWindow.WorkHubPage?.readAssistantActivity?.().then(activity => {
+          if (assistantReady) return;
+          assistantActivity = activity;
+          syncAssistantLaunchers();
+        }).catch(() => {});
+      }
       send(page,'workhub:page-pane',{split:page !== workspace && grouped(group),shared:page !== workspace && sharedLayout()});
       send(page,'workhub:page-restore',{snapshot:page.snapshot,active:!!page.visible});
       renderLayout();
@@ -400,7 +508,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (page === workspace && clean.route === '/sessions') openPage(clean);
       else if (displayed) update();
       if (isTerminal(clean)) send(navigation,'workhub:terminals-changed');
-    } else if (message.type === 'workhub:terminals-changed') send(navigation,'workhub:terminals-changed');
+    } else if (message.type === 'workhub:assistant-toggle' && page.visible) toggleAssistant(page);
+    else if (message.type === 'workhub:terminals-changed') send(navigation,'workhub:terminals-changed');
     else if (message.type === 'workhub:conversation-kind') switchCreation(group,page,message.kind,message.snapshot);
     else if (message.type === 'workhub:page-open') dispatchOpen(message,group,page === workspace ? group.focused : page.id);
     else if (message.type === 'workhub:page-pane-command' && conversationsVisible) {
@@ -408,6 +517,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       else if (message.command === 'zoom' && wide(group)) {group.focused = page.id; group.zoomed = group.zoomed ? '' : page.id; update();}
     } else if (message.type === 'workhub:page-focus' && visiblePages(group).includes(page)) focusPane(group,page.id);
   });
+  document.addEventListener('keydown', assistantKeydown);
   window.addEventListener('resize',renderLayout);
   window.addEventListener('workhub:desktop-chrome',renderLayout);
   window.addEventListener('workhub:desktop-home', () => {
@@ -417,13 +527,29 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   function followURL() {
     if (appliedURL === location.href) return;
     appliedURL = location.href;
-    openPage({route:location.hash.slice(1),environment:new URLSearchParams(location.search).get('environment') || 'local'});
+    const route = location.hash.slice(1), environment = new URLSearchParams(location.search).get('environment') || 'local';
+    if (route === '/assistant') {
+      showAssistant(undefined, environment);
+      const url = new URL(location.href);
+      url.hash = conversationsVisible ? '/sessions' : workspace.snapshot.route;
+      history.replaceState(null, '', url);
+      appliedURL = location.href;
+      return;
+    }
+    openPage({route,environment});
   }
   window.addEventListener('hashchange',followURL);
   window.addEventListener('popstate',followURL);
   const initial = {route:location.hash.slice(1),environment:new URLSearchParams(location.search).get('environment') || 'local'};
-  const workspace = createPage({...initial,route:initial.route === '/sessions' ? '/requirements' : initial.route},'workspace');
+  const assistantLink = initial.route === '/assistant';
+  if (assistantLink) {
+    const url = new URL(location.href);
+    url.hash = '/requirements';
+    history.replaceState(null, '', url);
+  }
+  const workspace = createPage({...initial,route:initial.route === '/sessions' || assistantLink ? '/requirements' : initial.route},'workspace');
   sharedListWidth?.subscribe(paintConversationListWidth);
   mountPage(workspace);
-  openPage(initial);
+  openPage(assistantLink ? {...initial, route:'/requirements'} : initial);
+  if (assistantLink) showAssistant(undefined, initial.environment);
 })();

@@ -58,6 +58,10 @@ test('English applies to production React forms while task names remain verbatim
  w.ResizeObserver=class{observe(){} unobserve(){} disconnect(){}};
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
  w.eval(fs.readFileSync(path.join(root,'web/ui/ui.js'),'utf8'));
+ assert.equal(w.document.querySelector('#projectSource option[value="scan"]').textContent,'Scan directory and add in bulk');
+ const scan=w.WorkHubUI.projectScanResults({repositories:[{path:'/repo/example',name:'用户项目',common_dir:'/repo/example/.git',selected:true}],warnings:[],truncated:false});
+ assert.match(scan,/Found 1 repositories, including 0 already registered/);
+ assert.match(scan,/用户项目/);
  assert.equal(w.document.querySelector('#languageTitle').textContent,'Interface language');
  assert.equal(w.document.querySelector('#saveLanguage').textContent,'Save and apply language');
  assert.equal(w.document.querySelector('#languageSelect option[value="zh-CN"]').textContent,'简体中文');

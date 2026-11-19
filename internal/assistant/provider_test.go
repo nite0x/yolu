@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/model"
 	"worktree-hub/internal/store"
 )
 
@@ -28,6 +29,8 @@ func (f *providerFixture) Call(_ context.Context, method string, params, out any
 	switch method {
 	case "config/read":
 		response = `{"config":{"mcp_servers":{"untrusted":{"command":"anything"}}}}`
+	case "model/list":
+		response = `{"data":[{"id":"fixture-id","model":"fixture-model"}]}`
 	case "thread/start":
 		response = `{"thread":{"id":"ephemeral"}}`
 	case "turn/start":
@@ -45,6 +48,24 @@ func (f *providerFixture) Call(_ context.Context, method string, params, out any
 		return json.Unmarshal([]byte(response), out)
 	}
 	return nil
+}
+func TestAssistantProviderUsesSelectedCatalogModel(t *testing.T) {
+	for _, name := range []string{"fixture-model", "unlisted-model"} {
+		t.Run(name, func(t *testing.T) {
+			fixture := &providerFixture{events: make(chan codex.Event, 4), calls: map[string]map[string]any{}}
+			provider := codexProvider(t.TempDir(), func(context.Context) (codex.LiveClient, error) { return fixture, nil })
+			ctx := context.WithValue(context.Background(), settingsContextKey{}, model.AssistantSettings{Model: name})
+			output, err := provider(ctx, []store.AssistantMessage{{Role: "user", Text: "Hello"}})
+			start := fixture.calls["thread/start"]
+			if name == "unlisted-model" {
+				if err != errAssistantModelUnavailable || start != nil {
+					t.Fatalf("unlisted model started a thread: %+v, %v", start, err)
+				}
+			} else if err != nil || output != "Ready" || start["model"] != name || start["sandbox"] != "read-only" {
+				t.Fatalf("selected model or isolation lost: %+v, %q, %v", start, output, err)
+			}
+		})
+	}
 }
 func (f *providerFixture) Close()                           { f.once.Do(func() { close(f.events) }) }
 func (f *providerFixture) Events() <-chan codex.Event       { return f.events }

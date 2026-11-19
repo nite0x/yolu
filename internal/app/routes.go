@@ -37,10 +37,15 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/language", a.languageHandler)
 	mux.HandleFunc("GET /api/settings/appearance", a.appearanceHandler)
 	mux.HandleFunc("PUT /api/settings/appearance", a.appearanceHandler)
+	mux.HandleFunc("GET /api/settings/chat-input", a.chatInputHandler)
+	mux.HandleFunc("PUT /api/settings/chat-input", a.chatInputHandler)
 	mux.HandleFunc("GET /api/settings/browser-access", a.browserAccessHandler)
 	mux.HandleFunc("PUT /api/settings/browser-access", a.browserAccessHandler)
 	if a.Assistant != nil {
 		a.Assistant.RegisterRoutes(mux)
+	}
+	if a.voice != nil {
+		a.voiceRoutes(mux)
 	}
 	a.Projects.RegisterRoutes(mux)
 	a.Tasks.RegisterRoutes(mux, a.Projects.InvalidateStateAfter)
@@ -53,6 +58,6 @@ func (a *App) handler() http.Handler {
 
 func (a *App) assetsHandler() http.Handler {
 	return web.Handler(a.token, a.Workspace.ReadOnlySessions, func() web.UISettings {
-		return web.UISettings{Language: a.uiLanguage(), ColorTheme: a.uiColorTheme()}
+		return web.UISettings{Language: a.uiLanguage(), ColorTheme: a.uiColorTheme(), SendShortcut: a.uiSendShortcut()}
 	})
 }

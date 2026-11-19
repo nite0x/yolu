@@ -122,7 +122,7 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	requestCtx, end := context.WithTimeout(ctx, 15*time.Second)
 	defer end()
 	if input.Settings.Model != "" {
-		models, err := listChatModels(func(method string, params any, out any) error { return c.Call(requestCtx, method, params, out) })
+		models, err := codex.ListModels(func(method string, params any, out any) error { return c.Call(requestCtx, method, params, out) })
 		if err != nil || !availableConversationModel(models, input.Settings.Model) {
 			if err != nil {
 				httpx.WriteError(w, 503, "无法核对默认模型："+err.Error())

@@ -38,22 +38,10 @@ export const expectedBranch = (m: Member, q: Task) => m.branch || q.branch
 export const canOpenMember = (m: Member) => m.state === "ready" && !m.error && !!m.worktree?.status_updated_at && !m.worktree.bare && !m.worktree.missing && !m.worktree.prunable && !m.worktree.error
 export const branchSummary = (q: Task) => [...new Set(q.members.map(m => m.worktree?.branch || m.branch || (reusesDirectory(m) ? "detached HEAD" : q.branch)).filter(Boolean))].join(" · ") || uiText("使用已有工作目录")
 
-export function GitSyncStatus({ tree: t, compact = false, minimal = false }: { tree?: Worktree; compact?: boolean; minimal?: boolean }) {
-  if (!t?.status_updated_at || t.missing || t.error || t.prunable || t.bare) return null
-  const differences = [t.sync_ahead ? uiText("待推 {0}", t.sync_ahead) : "", t.sync_behind ? uiText("待拉 {0}", t.sync_behind) : ""].filter(Boolean).join(" · ") || uiText("已同步")
-  return <div className="comparison space-y-1" title={uiText("同步数量基于本地最近获取的上游记录；获取远端后更新。")}>
-    {minimal && t.upstream && !t.detached ? <div className="project-sync-summary"><code title={t.upstream}>{t.upstream}</code>{t.sync_available ? <span className="project-sync-counts" aria-label={uiText("待推送 {0} 个提交，待拉取 {1} 个提交", t.sync_ahead || 0, t.sync_behind || 0)} title={uiText("↑ 待推送 {0} · ↓ 待拉取 {1}{2}", t.sync_ahead || 0, t.sync_behind || 0, t.sync_ahead && t.sync_behind ? uiText(" · 已分歧") : "")}><span data-active={!!t.sync_ahead}>↑{t.sync_ahead || 0}</span><span data-active={!!t.sync_behind}>↓{t.sync_behind || 0}</span></span> : <span title={uiText("上游不可用，请获取远端")}>{uiText("暂不可用")}</span>}</div> : <div>{t.detached ? uiText("游离 HEAD") : !t.upstream ? compact ? uiText("未设置上游") : uiText("尚未设置上游 · 推送时发布分支") : !t.sync_available ? uiText("上游 {0} 不可用，请获取远端", t.upstream) : compact ? <>{uiText("上游")} <code>{t.upstream}</code> · {differences}{t.sync_ahead && t.sync_behind ? uiText(" · 已分歧") : ""}</> : <>{uiText("上游")} {t.upstream}<br />{uiText("待推送")}{" "}{t.sync_ahead || 0}{" "}{uiText("· 待拉取")}{" "}{t.sync_behind || 0}{t.sync_ahead && t.sync_behind ? uiText(" · 已分歧") : ""}</>}</div>}
-    {t.operation ? <div className="font-medium text-amber-800 dark:text-amber-300">{t.operation === "merge" ? uiText("合并进行中{0}", t.conflicts?.length ? uiText(" · {0} 个冲突文件", t.conflicts.length) : uiText(" · 等待完成提交")) : uiText("{0} 进行中", t.operation)}</div> : null}
-  </div>
-}
-
 export function Action({ action, id, children, ...props }: ComponentProps<typeof Button> & { action: string; id?: string }) {
   return <Button type="button" variant="outline" size="sm" data-action={action} data-id={id} {...props}>{children}</Button>
 }
 
-export function ProjectOpenActions(props: Parameters<typeof TaskOpenActions>[0]) {
-  return <div className="workspace-project-actions mt-2"><TaskOpenActions {...props} /></div>
-}
 export type ProjectOpenTool = "vscode" | "idea" | "terminal"
 export const projectOpenLabels: Record<ProjectOpenTool, string> = { vscode: "VS Code", idea: "IDEA", terminal: uiText("终端") }
 export function TaskOpenActions({ project, path, disabled, tool, primary = false }: { project: string; path: string; disabled?: boolean; tool: ProjectOpenTool; primary?: boolean }) {
@@ -83,8 +71,8 @@ export function ModalHeader({ id, title }: { id: string; title: string }) {
 export function ModalFooter({ children, note }: { children: ReactNode; note?: string }) {
   return <div className="dialog-footer">{note ? <span className="footer-note">{note}</span> : null}<Button type="button" variant="outline" className="close-dialog">{uiText("取消")}</Button>{children}</div>
 }
-export function DataTable({ headers, children, label }: { headers: string[]; children: ReactNode; label: string }) {
-  return <Table aria-label={label}><TableHeader><TableRow>{headers.map((title, index) => <TableHead key={index} className="bg-muted px-3 text-xs text-muted-foreground">{title}</TableHead>)}</TableRow></TableHeader><TableBody>{children}</TableBody></Table>
+export function DataTable({ headers, children, label, containerClassName }: { headers: string[]; children: ReactNode; label: string; containerClassName?: string }) {
+  return <Table role="table" aria-label={label} containerClassName={containerClassName}><TableHeader role="rowgroup"><TableRow role="row">{headers.map((title, index) => <TableHead key={index} role="columnheader" scope="col" className="bg-muted px-3 text-xs text-muted-foreground whitespace-normal">{title}</TableHead>)}</TableRow></TableHeader><TableBody role="rowgroup">{children}</TableBody></Table>
 }
 export function SourceOptions({ overview: v, includeHead = true }: { overview: GitOverview; includeHead?: boolean }) {
   return <><Option value="">{uiText("请选择来源分支")}</Option>{[[uiText("远端分支"), "remote"], [uiText("本地分支"), "local"]].map(([label, kind]) => {

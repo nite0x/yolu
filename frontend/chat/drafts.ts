@@ -1,12 +1,14 @@
 import type {Attachment} from "@assistant-ui/react";
 import type {TurnSettings, QuestionDraft} from "./model";
+import type {AssistantTurnSettings} from "./settings";
 
 export interface DraftRecord {
  text: string; images: {id:string;name:string;contentType:string;url:string}[];
  files?: {id:string;name:string;contentType:string;text:string}[];
  settings: TurnSettings; project: string;
  reading: {top:number;bottom:boolean;anchor:string;offset:number;latest?:string}; updated: number;
- assistant_request?: {request_id: string; text: string; context?: {environment_id: string; workspace_id?: string; project_id?: string}};
+ assistant_settings?: AssistantTurnSettings;
+ assistant_request?: {request_id: string; text: string; context?: {environment_id: string; workspace_id?: string; project_id?: string}; settings?: AssistantTurnSettings};
  questions?: Record<string, Record<string, QuestionDraft>>;
 }
 export const draftStorageKey = (key: string) => "workhub:chat-draft:v1:" + key;

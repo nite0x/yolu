@@ -298,16 +298,28 @@ test('a narrow single reader retains its own sidebar and history list', t => {
   assert.equal(messages.findLast(message => message.type === 'workhub:page-pane').shared,false);
 });
 
-test('assistant routing preserves native conversation panes while opening the global workspace page', t => {
+test('assistant links and launcher open a retained panel over the current page', t => {
   const h = harness(t, '#/assistant', {desktop:true});
-  assert.equal(new URL(h.workspace.src).hash, '#/assistant');
+  const panel = h.w.document.getElementById('workspaceAssistant');
+  const assistant = panel.querySelector('iframe');
+  assert.equal(new URL(h.workspace.src).hash, '#/requirements');
+  assert.equal(panel.hidden, false);
+  assert.equal(h.w.location.hash, '#/requirements');
+  h.send(assistant, 'workhub:assistant-close');
   open(h, conversation('native-thread'));
   const retained = h.frames().find(frame => frame !== h.workspace && frame !== h.nav());
-  open(h, {route:'/assistant',environment:'local'});
-  assert.equal(h.workspace.hidden, false);
-  assert(h.frames().includes(retained));
-  assert.equal(retained.hidden, true);
-  assert.equal(h.messages.get(h.workspace).at(-1).snapshot?.route || h.w.location.hash.slice(1), '/assistant');
-  open(h, conversation('native-thread'));
+  h.send(h.nav(), 'workhub:assistant-toggle');
+  assert.equal(panel.hidden, false);
+  assert.equal(panel.querySelector('iframe'), assistant);
   assert.equal(retained.hidden, false);
+  assert.equal(h.w.location.hash, '#/sessions');
+  assert.equal(h.workspace.hidden, true);
+  Object.defineProperty(h.w,'innerWidth',{value:640});
+  h.w.dispatchEvent(new h.w.Event('resize'));
+  assert.equal(panel.getAttribute('aria-modal'), 'true');
+  assert.equal(h.w.document.getElementById('workspacePages').hasAttribute('inert'), true);
+  h.send(assistant, 'workhub:assistant-close');
+  assert.equal(panel.hidden, true);
+  assert.equal(retained.hidden, false);
+  assert.equal(h.w.document.getElementById('workspacePages').hasAttribute('inert'), false);
 });

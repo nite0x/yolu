@@ -5,6 +5,21 @@ button{font:inherit;cursor:pointer}
 [hidden]{display:none!important}
 .workspace-pages{position:absolute;inset:0;min-height:0}
 .workspace-page{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--yolu-canvas,#f8f9fd)}
+#workspaceAssistant {
+  position: fixed;
+  z-index: 20;
+  inset: calc(var(--workspace-window-header-height, 0px) + var(--workspace-pane-top-inset)) var(--workspace-pane-inset) var(--workspace-pane-inset) auto;
+  width: clamp(420px, 38vw, 540px);
+  overflow: hidden;
+  border: 1px solid var(--yolu-border);
+  border-radius: var(--yolu-pane-radius);
+  box-shadow: var(--yolu-elevation-float);
+  background: var(--yolu-surface);
+}
+#workspaceAssistant > iframe { display: block; width: 100%; height: 100%; border: 0; }
+@media (max-width: 760px) {
+  #workspaceAssistant { inset: var(--workspace-window-header-height, 0px) 0 0; width: 100%; border: 0; border-radius: 0; }
+}
 html[data-workhub-desktop],html[data-workhub-desktop] body{background:var(--yolu-subtle,#f3f5fa)}
 html[data-workhub-desktop] .workspace-page{background:var(--yolu-subtle,#f3f5fa)}
 .window-brand-menu{z-index:110;min-width:220px;padding:5px;border:1px solid var(--yolu-border,#dfe4ee);border-radius:9px;background:var(--yolu-surface,#fff);color:var(--yolu-secondary-ink,#475569);box-shadow:0 8px 28px #25324d1f;outline:none}

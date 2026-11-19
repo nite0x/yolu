@@ -10,7 +10,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         globalModule.openGlobalAssistant(request, options);
       } catch {
         loading = null;
-        document.getElementById('globalAssistantRoot').textContent = uiText("聊天界面加载失败，请重新打开对话。");
+        const target = document.getElementById('globalAssistantRoot');
+        target.textContent = uiText("聊天界面加载失败，请重新打开对话。");
+        if (options.close) {
+          const close = document.createElement('button');
+          close.type = 'button'; close.className = 'button secondary'; close.textContent = uiText("关闭");
+          close.addEventListener('click', options.close);
+          target.append(close);
+        }
       }
     },
     async open(options) {

@@ -13,6 +13,7 @@ type AssistantConversation struct {
 	Environment string `json:"environment_id"`
 	Title       string `json:"title"`
 	Updated     int64  `json:"updated_at"`
+	Activity    string `json:"activity,omitempty"`
 }
 type AssistantMessage struct {
 	ID    int64  `json:"id"`
@@ -55,7 +56,15 @@ func (s *Store) CreateAssistant(id string) error {
 	return err
 }
 func (s *Store) AssistantConversations() ([]AssistantConversation, error) {
-	rows, err := s.DB.Query(`SELECT id,title,updated_at FROM assistant_conversations ORDER BY updated_at DESC,id`)
+	rows, err := s.DB.Query(`
+SELECT c.id,c.title,c.updated_at,
+ CASE
+  WHEN EXISTS (SELECT 1 FROM assistant_action_plans WHERE conversation_id=c.id AND status='pending') THEN 'waiting'
+  WHEN EXISTS (SELECT 1 FROM assistant_runs WHERE conversation_id=c.id AND status='running')
+    OR EXISTS (SELECT 1 FROM assistant_action_plans WHERE conversation_id=c.id AND status IN ('running','cancelling')) THEN 'running'
+  ELSE ''
+ END
+FROM assistant_conversations c ORDER BY c.updated_at DESC,c.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +72,7 @@ func (s *Store) AssistantConversations() ([]AssistantConversation, error) {
 	out := []AssistantConversation{}
 	for rows.Next() {
 		v := AssistantConversation{Kind: "yolu", Environment: "local"}
-		if err := rows.Scan(&v.ID, &v.Title, &v.Updated); err != nil {
+		if err := rows.Scan(&v.ID, &v.Title, &v.Updated, &v.Activity); err != nil {
 			return nil, err
 		}
 		out = append(out, v)

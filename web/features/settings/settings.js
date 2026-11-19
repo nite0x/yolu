@@ -324,6 +324,24 @@ $('#copyBrowserAccessCode').addEventListener('click', () => copy($('#browserAcce
 $('#resetBrowserAccessCode').addEventListener('click', () => { void saveBrowserAccess(true); });
 window.addEventListener('yolu:appearance', () => { $('#colorThemeSelect').value = window.YoluTheme.current(); showThemePreview(); });
 
+$('#sendShortcutSelect').value = window.YoluChatInput.current();
+window.addEventListener('yolu:chat-input', () => { $('#sendShortcutSelect').value = window.YoluChatInput.current(); });
+$('#chatInputForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = $('#saveChatInput');
+  button.disabled = true;
+  $('#chatInputStatus').textContent = '';
+  try {
+    const result = await api('/api/settings/chat-input', {method:'PUT', environment:'local', body:JSON.stringify({send_shortcut:$('#sendShortcutSelect').value})});
+    window.YoluChatInput.apply(result.send_shortcut);
+    $('#chatInputStatus').textContent = uiText('对话输入设置已保存并应用');
+  } catch (error) {
+    $('#chatInputStatus').textContent = error.message || uiText('保存对话输入设置失败，请重试。');
+  } finally {
+    button.disabled = false;
+  }
+});
+
 $('#languageSelect').value = window.YoluI18n?.language || 'system';
 $('#languageForm').addEventListener('submit', async event => {
   event.preventDefault();

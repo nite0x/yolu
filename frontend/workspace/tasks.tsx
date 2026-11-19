@@ -1,12 +1,11 @@
-import { uiText, uiLocale } from "../i18n";
+import { uiText } from "../i18n";
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { CircleAlert, ClipboardCheck, Copy, GitBranch, MoreHorizontal, Plus, SlidersHorizontal, Terminal } from "lucide-react"
-import { Action, GitSyncStatus, TaskOpenActions, StatusBadge, TreeStatus, canOpenMember, reusesDirectory } from "./shared"
-import type { ProjectOpenTool } from "./shared"
+import { CircleAlert, ClipboardCheck, Plus, SlidersHorizontal } from "lucide-react"
+import { Action, StatusBadge, TreeStatus, canOpenMember, reusesDirectory, type ProjectOpenTool } from "./shared"
 import type { Project, Task } from "./types"
 import { memberSignals, taskSignals, taskFilterLabels, type TaskFilter } from "./task-signals"
-import { compactWorkspacePath } from "./workspace-path"
+import { WorkingDirectoryRow, WorkingDirectoryTable } from "./working-directories"
 
 export function TaskList({ tasks, selectedID, environment }: { tasks: Task[]; selectedID?: string | null; environment?: string }) {
   return <div className="task-list shadcn-scope divide-y divide-border">{tasks.map(q => {
@@ -56,7 +55,7 @@ export function TaskDetail({ task: q, projects, openTool = "vscode", filter = "a
     </div>
     {!q.members.length ? <div className="task-project-empty">{uiText("尚未关联项目。添加项目并选择工作目录，即可继续这项工作。")}</div> : null}
     {q.members.length > 0 && !members.length ? <p className="task-project-empty">{uiText("没有符合此状态的项目。")}<Action action="task-project-filter" id={q.id} data-filter="all">{uiText("查看全部项目")}</Action></p> : null}
-    <div className="task-project-list" aria-label={uiText("任务关联项目")}>{members.map(m => {
+    {members.length ? <WorkingDirectoryTable label={uiText("关联项目与工作目录")}>{members.map(m => {
       const t = m.worktree
       const usable = canOpenMember(m)
       const active = usable && editable
@@ -68,48 +67,32 @@ export function TaskDetail({ task: q, projects, openTool = "vscode", filter = "a
       const creationRef = m.base_ref?.replace(/^refs\/(heads|remotes)\//, "") || uiText("已有工作目录")
       const baseline = t?.comparison_ref || creationRef
       const difference = t?.compare_available ? [t.ahead ? uiText("领先 {0}", t.ahead) : "", t.behind ? uiText("落后 {0}", t.behind) : ""].filter(Boolean).join(" · ") || uiText("与基线一致") : uiText("暂不可比较")
-      const changes = t?.dirty || 0
-      const changeLabel = changes ? uiText("{0} 项改动", changes) : uiText("无未提交改动")
-      const browseLabel = changes ? uiText("查看 {0} 的 {1} 项改动", m.project_name, changes) : `${uiText("文件与改动")} · ${changeLabel}`
       const directoryKind = {project: uiText("项目原目录"), worktree: uiText("已有 Worktree"), new: uiText("新建 Worktree"), existing: uiText("新建 Worktree（已有分支）")}[m.mode || "new"]
-      return <article key={m.project_id} className={`task-project${issue ? " task-project-has-issue" : ""}`} data-project-id={m.project_id} aria-label={m.project_name}>
-        <div className="task-project-main">
-          <div className="task-project-heading">
-            <strong>{m.project_name}</strong>
-            {t ? <Action className="task-current-branch" variant="ghost" action="git-open" id={m.project_id} data-path={m.path} data-requirement={q.id} data-git-section="branches" disabled={!active} aria-label={uiText("查看 {0} 的分支", m.project_name)} title={t.branch || "detached HEAD"}><GitBranch aria-hidden="true" /><span>{t.branch || "detached HEAD"}</span></Action> : <span className="quiet">{uiText("尚未读取分支")}</span>}
-            <div className="task-project-state">
-              {usable ? <Action action="changes-open" id={m.project_id} data-path={m.path} variant="ghost" className="task-changes-link project-changes-link" aria-label={browseLabel} title={uiText("文件与改动")}><StatusBadge kind={changes ? "warning" : "neutral"}>{changeLabel}</StatusBadge></Action> : m.state === "ready" ? m.error ? <StatusBadge kind="failed">{uiText("目录不可用")}</StatusBadge> : <TreeStatus tree={t} pending={pending(m)} compact /> : <StatusBadge kind={m.state} />}
-              {m.state === "ready" && !m.error ? <GitSyncStatus tree={t} compact /> : null}
-            </div>
-          </div>
-          <button type="button" className="task-project-path path" data-action="copy-path" data-path={m.path} title={uiText("{0}\n点击复制完整路径", m.path)} aria-label={uiText("复制工作目录路径 {0}", m.path)}><span>{compactWorkspacePath(m.path)}</span><Copy aria-hidden="true" /></button>
-        </div>
-        <div className="workspace-project-actions task-project-primary-actions">
-          <TaskOpenActions project={m.project_id} path={m.path} disabled={!usable} tool={openTool} />
-          <Action action="workspace-terminal" id={m.project_id} data-path={m.path} disabled={!usable} size="icon-sm" className="task-project-terminal" title={uiText("用 {0} 打开工作目录", uiText("终端"))} aria-label={uiText("用 {0} 打开工作目录", uiText("终端"))}><Terminal aria-hidden="true" /></Action>
-          <details className="task-more task-project-more" data-workspace-detail={`menu:${m.project_id}`}><summary aria-label={uiText("{0} 更多操作", m.project_name)}><MoreHorizontal aria-hidden="true" /></summary><div className="task-more-menu">
-            <Action action="workspace-conversation-new" id={m.project_id} data-path={m.path} disabled={!usable}>{uiText("新建对话…")}</Action>
-            <Action action="changes-open" id={m.project_id} data-path={m.path} disabled={!usable}>{uiText("文件与改动")}</Action>
-            <hr />
-            <Action action="git-open" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active}>{uiText("Git 操作")}</Action>
-            <Action action="git-task-pull" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active || !!t?.detached || !!t?.operation || !!t?.dirty}>{uiText("拉取")}</Action>
-            <Action action="git-task-push" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active || !!t?.detached || !!t?.operation}>{uiText("推送")}</Action>
-            <Action action="project-open-remote" id={m.project_id} data-path={m.path} disabled={!usable}>{uiText("打开远端仓库")}</Action>
-            <hr />
-            <Action action="change-task-directory" id={q.id} data-project={m.project_id} disabled={!editable}>{uiText("更换工作目录")}</Action>
-            <Action action="remove-task-project" id={q.id} data-project={m.project_id} disabled={!editable} className="text-destructive">{uiText("从任务移除")}</Action>
-          </div></details>
-        </div>
+      const unavailableStatus = m.state !== "ready" ? <StatusBadge kind={m.state} /> :
+        m.error ? <StatusBadge kind="failed">{uiText("目录不可用")}</StatusBadge> : <TreeStatus tree={t} pending={pending(m)} compact />
+      const directoryNotice = drifted || notice || t?.operation === "merge" ? <>
         {drifted ? <div className="table-message task-project-notice">{uiText("分支已变化，原记录为")}{" "}{expected}<Action action="git-task-adopt" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active || !!t?.detached}>{uiText("采用当前分支")}</Action></div> : null}
         {notice ? <div className={`task-project-notice task-directory-notice${issue ? " has-issue" : ""}`} role="status">{issue ? <CircleAlert aria-hidden="true" /> : null}<span>{notice}</span>{issue ? <div className="task-recovery-actions">{retryable ? <Action action="retry" id={q.id} data-project={m.project_id} disabled={!editable}>{m.state === "removed" ? uiText("恢复此目录") : uiText("重试此项目")}</Action> : null}<Action action="change-task-directory" id={q.id} data-project={m.project_id} disabled={!editable || !projects.some(p => p.id === m.project_id)}>{uiText("更换工作目录")}</Action>{!editable ? <span className="task-recovery-help">{q.state === "archived" ? uiText("取消归档后可处理目录。") : uiText("任务创建完成后可处理目录。")}</span> : null}</div> : null}</div> : null}
         {t?.operation === "merge" ? <div className="task-project-notice"><Action action="git-task-ai" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active}>{uiText("让 AI 完成合并")}</Action></div> : null}
-        <details className="task-project-details" data-workspace-detail={`project:${m.project_id}`}><summary>{uiText("详细信息")}</summary><div className="task-project-details-body">
-          <div className="task-full-path">{directoryKind}{" · "}<code>{m.path}</code></div>
-          <div>{uiText("创建来源")}{" "}<code>{creationRef}</code>{m.base_commit ? <> · <code>{m.base_commit.slice(0,8)}</code></> : null}</div>
-          <div className="task-baseline" title={uiText("创建来源：{0}{1}", creationRef, m.base_commit ? uiText("；创建提交：{0}", m.base_commit) : "")}>{uiText("基线")}{" "}<code>{baseline}</code> · {difference}</div>
-          {t?.status_updated_at ? <div>{uiText("上次检查")} <time data-status-path={t.path} dateTime={t.status_updated_at}>{new Date(t.status_updated_at).toLocaleTimeString(uiLocale(), { hour12: false })}</time></div> : null}
-        </div></details>
-      </article>
-    })}</div>
+      </> : null
+      return <WorkingDirectoryRow
+        key={m.project_id} project={m.project_id} name={m.project_name} path={m.path} tree={t} tool={openTool}
+        usable={usable} issue={issue} workspace={{ id: q.id, editable }} unavailableStatus={unavailableStatus}
+        details={<>
+          <div>{directoryKind}</div>
+          <div>{uiText("创建来源")} <code>{creationRef}</code>{m.base_commit ? <> · <code>{m.base_commit.slice(0, 8)}</code></> : null}</div>
+          <div className="task-baseline" title={uiText("创建来源：{0}{1}", creationRef, m.base_commit ? uiText("；创建提交：{0}", m.base_commit) : "")}>{uiText("基线")} <code>{baseline}</code> · {difference}</div>
+        </>}
+        gitMenuActions={<>
+          <Action action="git-task-pull" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active || !!t?.detached || !!t?.operation || !!t?.dirty}>{uiText("拉取")}</Action>
+          <Action action="git-task-push" id={m.project_id} data-path={m.path} data-requirement={q.id} disabled={!active || !!t?.detached || !!t?.operation}>{uiText("推送")}</Action>
+        </>}
+        workspaceMenuActions={<>
+          <Action action="change-task-directory" id={q.id} data-project={m.project_id} disabled={!editable}>{uiText("更换工作目录")}</Action>
+          <Action action="remove-task-project" id={q.id} data-project={m.project_id} disabled={!editable} className="text-destructive">{uiText("从任务移除")}</Action>
+        </>}
+        notice={directoryNotice}
+      />
+    })}</WorkingDirectoryTable> : null}
   </Card>
 }

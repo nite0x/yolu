@@ -14,7 +14,7 @@ Missing shadcn UI dependencies use the official `new-york` registry; existing
 project UI components are reused.
 
 Local integration changes in `elements/thread.aui.tsx` include localized labels,
-Ctrl/Command+Enter sending, the 32,000 character limit, attachment handling,
+configurable Enter or Ctrl/Command+Enter sending, the 32,000 character limit, attachment handling,
 compact spacing and slots for application controls and pending questions. Keep
 these integrations when updating from the registry. The application toolbar is
 composed separately in `frontend/chat/controls.tsx`; messages and the composer
@@ -38,7 +38,7 @@ Styles compile through `npm run chat:build`. `chat/style.css` contains the style
 Preflight reset, and compact application toolbar/overlay styles. Do not add a global reset to the old pages.
 
 The external-store runtime sends through `composer.send`, including the send
-button and Ctrl/Command+Enter during an active turn. The controller uses native
+button and the configured send shortcut during an active turn. The controller uses native
 `turn/steer` for a supplement rather than silently queueing a new turn. Unsupported
 edit/regenerate actions remain hidden. Tool groups and common labels use the shared application locale. Context, management and search controls live in
 `frontend/chat/controls.tsx`; `frontend/chat/drafts.ts` adapts persistent drafts.
