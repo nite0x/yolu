@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 // A process boundary fixture: no real Codex data or model turns are used.
@@ -65,7 +65,7 @@ func TestRemoteChatOptionsCrossWorkspaceHelperBoundary(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("WORK_HUB_CATALOG_FIXTURE", "1")
 	client := testWorkspaceClient(t)
-	a, err := openAppForWorkspace(filepath.Join(t.TempDir(), "metadata"), t.TempDir(), client)
+	a, err := openAppForExecution(filepath.Join(t.TempDir(), "metadata"), t.TempDir(), client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestRemoteChatOptionsCrossWorkspaceHelperBoundary(t *testing.T) {
 		t.Fatalf("remote model picker: %d %s (%v)", code, raw, err)
 	}
 	for _, method := range []string{"thread/start", "turn/start", "thread/delete", "thread/name/set", "config/value/write"} {
-		if err := client.Call(context.Background(), workspace.Request{Op: "session", Method: method}, nil); err == nil || !strings.Contains(err.Error(), "只支持读取") {
+		if err := client.Call(context.Background(), execution.Request{Op: "session", Method: method}, nil); err == nil || !strings.Contains(err.Error(), "只支持读取") {
 			t.Fatalf("mutating method %s passed the read-only helper: %v", method, err)
 		}
 	}

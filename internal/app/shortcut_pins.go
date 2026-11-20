@@ -12,7 +12,7 @@ import (
 )
 
 type shortcutPins struct {
-	Tasks       []string                `json:"tasks"`
+	Workspaces  []string                `json:"workspaces"`
 	Directories []string                `json:"directories"`
 	Initialized bool                    `json:"initialized"`
 	Icons       map[string]shortcutIcon `json:"icons,omitempty"`
@@ -37,7 +37,7 @@ func (a *App) shortcutPinsHandler(w http.ResponseWriter, r *http.Request) {
 	key := "shortcut_pins:" + environment
 	if r.Method == http.MethodPut {
 		var input struct {
-			Tasks       []string                `json:"tasks"`
+			Workspaces  []string                `json:"workspaces"`
 			Directories []string                `json:"directories"`
 			Initialize  bool                    `json:"initialize"`
 			Icons       map[string]shortcutIcon `json:"icons"`
@@ -45,12 +45,12 @@ func (a *App) shortcutPinsHandler(w http.ResponseWriter, r *http.Request) {
 		if !httpx.Decode(w, r, &input) {
 			return
 		}
-		pins := shortcutPins{Tasks: uniqueShortcutValues(input.Tasks, false), Directories: uniqueShortcutValues(input.Directories, true), Initialized: true}
+		pins := shortcutPins{Workspaces: uniqueShortcutValues(input.Workspaces, false), Directories: uniqueShortcutValues(input.Directories, true), Initialized: true}
 		// Older clients omit icons when updating pins; keep their saved appearance.
 		pins.Icons = input.Icons
 		if pins.Icons == nil {
 			var previous string
-			err := a.Workspace.Store.DB.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key=?`, key).Scan(&previous)
+			err := a.Execution.Store.DB.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key=?`, key).Scan(&previous)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				httpx.DbError(w, err)
 				return
@@ -65,7 +65,7 @@ func (a *App) shortcutPinsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		for id, icon := range pins.Icons {
-			if len(id) > 8192 || (!strings.HasPrefix(id, "task:") && !strings.HasPrefix(id, "directory:")) ||
+			if len(id) > 8192 || (!strings.HasPrefix(id, "workspace:") && !strings.HasPrefix(id, "directory:")) ||
 				!slices.Contains([]string{"auto", "folder", "code", "terminal", "rocket", "bug", "sparkles", "database", "globe", "layers", "briefcase", "flask"}, icon.Icon) ||
 				!slices.Contains([]string{"indigo", "blue", "teal", "green", "amber", "rose", "violet", "slate"}, icon.Color) {
 				httpx.WriteError(w, 400, "固定入口图标无效")
@@ -82,14 +82,14 @@ func (a *App) shortcutPinsHandler(w http.ResponseWriter, r *http.Request) {
 			// Import localStorage once. Old origins must never resurrect removed pins.
 			query = `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING`
 		}
-		if _, err := a.Workspace.Store.DB.ExecContext(r.Context(), query, key, string(raw)); err != nil {
+		if _, err := a.Execution.Store.DB.ExecContext(r.Context(), query, key, string(raw)); err != nil {
 			httpx.DbError(w, err)
 			return
 		}
 	}
-	pins := shortcutPins{Tasks: []string{}, Directories: []string{}}
+	pins := shortcutPins{Workspaces: []string{}, Directories: []string{}}
 	var raw string
-	err := a.Workspace.Store.DB.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key=?`, key).Scan(&raw)
+	err := a.Execution.Store.DB.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key=?`, key).Scan(&raw)
 	if err == nil {
 		err = json.Unmarshal([]byte(raw), &pins)
 		pins.Initialized = true

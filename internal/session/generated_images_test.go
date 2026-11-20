@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"worktree-hub/internal/codex"
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 const generatedPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1cAAAAASUVORK5CYII="
@@ -52,7 +52,7 @@ func TestGeneratedHistoryImagesBecomeScopedLazyReferences(t *testing.T) {
 	if string(first) != string(second) {
 		t.Fatal("repeated preparation changed image identity")
 	}
-	files, err := os.ReadDir(filepath.Join(a.Workspace.DataDir, "history-images"))
+	files, err := os.ReadDir(filepath.Join(a.Execution.DataDir, "history-images"))
 	if err != nil || len(files) != 1 {
 		t.Fatalf("cache not deduplicated: %d %v", len(files), err)
 	}
@@ -121,7 +121,7 @@ func TestInstalledCodexGeneratedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := json.Marshal(history)
-	environment, err := workspace.Open(t.TempDir(), t.TempDir(), nil)
+	environment, err := execution.Open(t.TempDir(), t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,7 +7,7 @@ import { FileTypeIcon } from "@/components/file-type-icon"
 import { FileSplit } from "./file-split"
 import { Button } from "@/components/ui/button"
 import { NativeSelect, Option, Action } from "./shared"
-import type { ChangedFile } from "./task-review"
+import type { ChangedFile } from "./workspace-review"
 import type { FileDisplay, FilePreview } from "./file-display"
 
 export type BrowserRequest = <T>(path: string, options?: RequestInit & {environment?: string}) => Promise<T>

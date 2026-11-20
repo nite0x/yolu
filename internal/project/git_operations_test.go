@@ -91,7 +91,7 @@ func TestTerminalFetchUsesSelectedRemoteAndPreservesCheckout(t *testing.T) {
 	sentinel := filepath.Join(clone, "unsaved.txt")
 	_ = os.WriteFile(sentinel, []byte("keep this"), 0644)
 	var captured model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { captured = p; return nil }
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { captured = p; return nil }
 	if code, raw := gitAction(t, a, id, GitAction{Action: "fetch_terminal", Remote: "other"}); code != 400 {
 		t.Fatalf("unregistered remote accepted: %d %s", code, raw)
 	}
@@ -124,7 +124,7 @@ func TestTerminalFetchUsesSelectedRemoteAndPreservesCheckout(t *testing.T) {
 	if mode, err := os.Stat(captured.Script); err != nil || mode.Mode().Perm() != 0700 {
 		t.Fatal("terminal script must remain private")
 	}
-	a.Workspace.Launch = func(model.LaunchPlan, func()) error { return fmt.Errorf("terminal unavailable") }
+	a.Execution.Launch = func(model.LaunchPlan, func()) error { return fmt.Errorf("terminal unavailable") }
 	if code, raw := gitAction(t, a, id, GitAction{Action: "fetch_terminal", Remote: remote}); code != 503 || !strings.Contains(string(raw), "command") {
 		t.Fatalf("missing terminal fallback command: %d %s", code, raw)
 	}
@@ -178,7 +178,7 @@ func TestFetchNarrowCloneAndPrepareMasterWithoutChangingCheckout(t *testing.T) {
 	}
 	code, q, raw := create(t, a, id, nil, "after-prepare")
 	if code != 201 || q.State != "ready" {
-		t.Fatalf("requirement still blocked %d %s", code, raw)
+		t.Fatalf("workspace still blocked %d %s", code, raw)
 	}
 }
 
@@ -300,7 +300,7 @@ func TestGitInputsAndTerminalAreScopedToRegisteredRepository(t *testing.T) {
 		}
 	}
 	var captured model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { captured = p; return nil }
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { captured = p; return nil }
 	if code, raw := gitAction(t, a, id, GitAction{Action: "terminal", Path: path}); code != 200 {
 		t.Fatalf("terminal %d %s", code, raw)
 	}

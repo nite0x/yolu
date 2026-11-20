@@ -5,7 +5,7 @@ import (
 	"worktree-hub/internal/model"
 )
 
-func TestCompletedDiscoveryReportsMissingTaskDirectory(t *testing.T) {
+func TestCompletedDiscoveryReportsMissingWorkspaceDirectory(t *testing.T) {
 	for _, step := range []struct {
 		refreshing bool
 		failed     bool
@@ -15,9 +15,9 @@ func TestCompletedDiscoveryReportsMissingTaskDirectory(t *testing.T) {
 		if step.failed {
 			p.Error = "repository unavailable"
 		}
-		tasks := []model.Requirement{{ID: "q", Members: []model.Member{{ProjectID: "p", Path: "/missing", State: "ready"}}}}
-		LinkWorktrees([]model.Project{p}, tasks)
-		observed := tasks[0].Members[0].Worktree
+		workspaces := []model.Workspace{{ID: "q", Members: []model.Member{{ProjectID: "p", Path: "/missing", State: "ready"}}}}
+		LinkWorktrees([]model.Project{p}, workspaces)
+		observed := workspaces[0].Members[0].Worktree
 		if step.refreshing {
 			if observed != nil {
 				t.Fatal("incomplete discovery reported missing")

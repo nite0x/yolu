@@ -55,9 +55,9 @@ main { flex: 1; min-height: 0; width: 100%; overflow: auto; overscroll-behavior:
 html[data-workspace-conversation] .sidebar,html[data-workspace-conversation] .sidebar-resize { display:none; }
 html[data-workspace-conversation] body .shell { margin:0; padding:0; border:0; border-radius:0; }
 html[data-workspace-conversation] { --workspace-page-padding:0px; }
-/* The HTML defaults to Tasks. A restored conversation must never paint that
+/* The HTML defaults to Workspaces. A restored conversation must never paint that
    content while its deferred UI bundle and host handshake are still pending. */
-html[data-workspace-initial-route="sessions"] :is(.page-heading,#workContent,#stats,#settingsPage,#backToRequirements){display:none!important}
+html[data-workspace-initial-route="sessions"] :is(.page-heading,#workContent,#stats,#settingsPage,#backToWorkspaces){display:none!important}
 html[data-workspace-initial-route="sessions"] main{display:flex;flex-direction:column;max-width:none;height:100dvh;padding:0;background:var(--yolu-surface,#fff)}
 html[data-workspace-initial-route="sessions"] #sessionsPage{display:flex!important}
 html[data-workspace-initial-route="sessions"] #sessionPageMount:not(:has(#sessionBrowser:not([hidden])))::before{content:"正在读取对话…";display:grid;place-items:center;flex:1;color:var(--yolu-muted-ink,#71809a);font-size:12px}

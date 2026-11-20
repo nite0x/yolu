@@ -5,7 +5,7 @@ const path = require('node:path');
 const {JSDOM} = require('jsdom');
 const root = path.join(__dirname, '../web');
 
-function harness(t, hash = '#/requirements', {desktop = false, listWidth} = {}) {
+function harness(t, hash = '#/workspaces', {desktop = false, listWidth} = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(root,'workspace.html'),'utf8'), {url:'http://localhost:4317/' + hash, runScripts:'outside-only'});
   t.after(() => dom.window.close());
   const {window:w} = dom;
@@ -49,7 +49,7 @@ const open = (h,snapshot,placement) => {
 const visible = h => h.frames().filter(frame => !frame.hidden);
 
 test('desktop shares a 52px rail from the first paint and ignores expanded sidebar preferences', t => {
-  const h = harness(t, '#/requirements', {desktop:true});
+  const h = harness(t, '#/workspaces', {desktop:true});
   const width = frame => new URL(frame.src).searchParams.get('workspace-sidebar-width');
   assert.equal(width(h.workspace), '52');
   open(h, conversation('one'));
@@ -60,20 +60,20 @@ test('desktop shares a 52px rail from the first paint and ignores expanded sideb
 });
 
 test('desktop native home menu preserves the active environment when leaving projects and conversations', t => {
-  const h = harness(t, '#/requirements', {desktop:true});
+  const h = harness(t, '#/workspaces', {desktop:true});
   open(h,{route:'/projects/app',environment:'remote'});
   h.w.dispatchEvent(new h.w.Event('workhub:desktop-home'));
-  assert.equal(h.w.location.hash, '#/requirements');
+  assert.equal(h.w.location.hash, '#/workspaces');
   assert.equal(h.w.location.search, '?environment=remote');
   open(h,{...conversation('one'),environment:'remote'});
   h.w.dispatchEvent(new h.w.Event('workhub:desktop-home'));
   assert.deepEqual(visible(h), [h.workspace]);
-  assert.equal(h.w.location.hash, '#/requirements');
+  assert.equal(h.w.location.hash, '#/workspaces');
   assert.equal(h.w.location.search, '?environment=remote');
 });
 
 test('desktop conversation list leaves space for detail on resize and restores the saved width', t => {
-  const h = harness(t, '#/requirements', {desktop:true, listWidth:520});
+  const h = harness(t, '#/workspaces', {desktop:true, listWidth:520});
   open(h, conversation('one'));
   const current = () => h.w.document.body.style.getPropertyValue('--workspace-conversation-list-width');
   assert.equal(current(), '520px');
@@ -176,7 +176,7 @@ test('a retained creation form can finish restoring while its alternate is visib
 
 test('independent pages reuse one document and preserve project routes and directory parameters', t => {
   const h = harness(t);
-  for (const route of ['/projects','/projects/app','/projects/app/git?path=%2Frepo%2Fapp&requirement=task','/projects/app/worktrees','/requirements/task','/settings']) {
+  for (const route of ['/projects','/projects/app','/projects/app/git?path=%2Frepo%2Fapp&workspace=workspace','/projects/app/worktrees','/workspaces/workspace','/settings']) {
     open(h,{route,environment:'remote'});
     assert.equal(h.frames().length,1);
     assert.equal(visible(h)[0],h.workspace);
@@ -278,9 +278,9 @@ test('late updates from the hidden workspace cannot replace a parallel Agent', t
 test('page navigation from a single reader preserves its conversation and opens the workspace document', t => {
   const h = harness(t);
   open(h,conversation('one')); const reader = visible(h)[0]; h.ready(reader); h.ready(h.nav());
-  h.send(reader,'workhub:page-state',{snapshot:{route:'/requirements/task',environment:'local'}});
+  h.send(reader,'workhub:page-state',{snapshot:{route:'/workspaces/workspace',environment:'local'}});
   assert.deepEqual(visible(h),[h.workspace]);
-  assert.equal(h.w.location.hash,'#/requirements/task');
+  assert.equal(h.w.location.hash,'#/workspaces/workspace');
   const restored = h.messages.get(reader).findLast(message => message.type === 'workhub:page-restore');
   assert.equal(restored.snapshot.conversation.selected,'one');
   assert.equal(restored.active,false);
@@ -302,9 +302,9 @@ test('assistant links and launcher open a retained panel over the current page',
   const h = harness(t, '#/assistant', {desktop:true});
   const panel = h.w.document.getElementById('workspaceAssistant');
   const assistant = panel.querySelector('iframe');
-  assert.equal(new URL(h.workspace.src).hash, '#/requirements');
+  assert.equal(new URL(h.workspace.src).hash, '#/workspaces');
   assert.equal(panel.hidden, false);
-  assert.equal(h.w.location.hash, '#/requirements');
+  assert.equal(h.w.location.hash, '#/workspaces');
   h.send(assistant, 'workhub:assistant-close');
   open(h, conversation('native-thread'));
   const retained = h.frames().find(frame => frame !== h.workspace && frame !== h.nav());

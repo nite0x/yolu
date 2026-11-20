@@ -12,7 +12,7 @@ before(async () => {
   bundle = output.outputFiles.find(file=>file.path.endsWith(".js"))!.text + "\nwindow.ChatTest = ChatTest;";
 });
 
-const task = {id:"task",name:"测试任务",state:"ready",primary_project_id:"p",members:[{project_id:"p",project_name:"项目",path:"/workspace/project"}]};
+const workspace = {id:"workspace",name:"测试工作区",state:"ready",primary_project_id:"p",members:[{project_id:"p",project_name:"项目",path:"/workspace/project"}]};
 const session = {id:"session",name:"测试会话",cwd:"/workspace/project"};
 const tick = () => new Promise(resolve=>setTimeout(resolve,20));
 async function until(check:()=>unknown) { const deadline=Date.now()+5000; while(Date.now()<deadline){if(check()) return; await tick();} assert.ok(check(),"chat did not reach expected state"); }
@@ -40,7 +40,7 @@ function mount(existing = false, entries: Entry[] = [], extra: Partial<ChatOptio
   const calls: {path:string;body:any}[] = [];
   let sendFailures = 0;
   let chat: ChatState = idleChat();
-  const options = {task,session:existing?session:null,environment:"local",created(){},close(){bridge.close();},stream:async()=>{throw new Error("fixture offline");},request:async(path:string,init?:RequestInit)=>{
+  const options = {workspace,session:existing?session:null,environment:"local",created(){},close(){bridge.close();},stream:async()=>{throw new Error("fixture offline");},request:async(path:string,init?:RequestInit)=>{
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({path,body});
     if (body && (path.endsWith("/sessions/new") || path.endsWith("/chat")) && sendFailures-- > 0) throw new Error("发送失败，请重试");
@@ -400,15 +400,15 @@ test("official composer keeps drafts across reopening and sends through the exis
     await until(()=>h.input());
     assert.equal(h.w.document.querySelector(".aui-thread-root")!=null,true);
     assert.ok(h.w.document.querySelector(".aui-composer-add-attachment"));
-    h.type("继续完成任务"); await tick();
-    assert.equal(h.input().value,"继续完成任务");
+    h.type("继续完成工作区"); await tick();
+    assert.equal(h.input().value,"继续完成工作区");
     h.input().dispatchEvent(new h.w.KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));
     await tick(); assert(!h.calls.some(call=>call.body));
     h.bridge.close(); await tick(); h.bridge.open(h.options);
-    await until(()=>h.input()?.value==="继续完成任务");
+    await until(()=>h.input()?.value==="继续完成工作区");
     h.input().dispatchEvent(new h.w.KeyboardEvent("keydown",{key:"Enter",ctrlKey:true,bubbles:true,cancelable:true}));
     await until(()=>h.calls.some(call=>call.path.endsWith("/sessions/new")));
-    assert.equal(h.calls.find(call=>call.path.endsWith("/sessions/new"))?.body.text,"继续完成任务");
+    assert.equal(h.calls.find(call=>call.path.endsWith("/sessions/new"))?.body.text,"继续完成工作区");
     assert.deepEqual(h.errors,[]);
   } finally {h.dispose();}
 });
@@ -430,7 +430,7 @@ for (const busy of [false, true]) test(`Enter-to-send applies live and preserves
   }
   try {
     await until(() => h.input());
-    h.type('继续完成任务');
+    h.type('继续完成工作区');
     await tick();
     (h.w as any).YoluChatInput.apply('enter');
     await until(() => h.input().title.includes('Shift+Enter'));
@@ -438,11 +438,11 @@ for (const busy of [false, true]) test(`Enter-to-send applies live and preserves
       h.input().dispatchEvent(new h.w.KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true, ...modifiers}));
       await tick();
       assert(!h.calls.some(call => call.body));
-      assert.equal(h.input().value, '继续完成任务');
+      assert.equal(h.input().value, '继续完成工作区');
     }
     h.input().dispatchEvent(new h.w.KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
     await until(() => h.calls.some(call => call.path.endsWith(busy ? '/chat/steer' : '/sessions/new')));
-    assert.equal(h.calls.find(call => call.body)?.body.text, '继续完成任务');
+    assert.equal(h.calls.find(call => call.body)?.body.text, '继续完成工作区');
     assert.deepEqual(h.errors, []);
   } finally {h.dispose();}
 });
@@ -463,39 +463,39 @@ test("official Markdown and tool components render existing history and expose c
   } finally {h.dispose();}
 });
 
-test("workspace links expose every task and project without expanding working details", async () => {
+test("workspace links expose every workspace and project without expanding working details", async () => {
   const opened: [string, string][] = [];
-  const h = mount(true, [], {workspace: {tasks: [task, {...task, id:"other", name:"另一任务"}], projects: []}, openWorkspace: (kind, id) => {opened.push([kind, id]);}});
+  const h = mount(true, [], {overview: {workspaces: [workspace, {...workspace, id:"other", name:"另一工作区"}], projects: []}, openWorkspace: (kind, id) => {opened.push([kind, id]);}});
   try {
     await until(() => h.input());
     const context = h.w.document.querySelector<HTMLDetailsElement>(".chat-workspace-context")!;
     h.w.document.querySelector<HTMLButtonElement>('[aria-label="打开项目详情：项目"]')!.click();
     assert.equal(context.open, false);
-    const tasks = h.w.document.querySelectorAll<HTMLButtonElement>('.chat-workspace-tasks button');
-    assert.equal(tasks.length, 2);
-    tasks.forEach(button => button.click());
-    assert.deepEqual(opened, [["project","p"],["task","task"],["task","other"]]);
+    const workspaces = h.w.document.querySelectorAll<HTMLButtonElement>('.chat-workspace-links button');
+    assert.equal(workspaces.length, 2);
+    workspaces.forEach(button => button.click());
+    assert.deepEqual(opened, [["project","p"],["workspace","workspace"],["workspace","other"]]);
     assert.deepEqual(h.errors, []);
   } finally { h.dispose(); }
 });
 
 test("external directories show no workspace navigation targets", async () => {
-  const h = mount(true, [], {task: undefined, workspace: {tasks: [], projects: []}, openWorkspace() {assert.fail("external directory has no details");}});
+  const h = mount(true, [], {workspace: undefined, overview: {workspaces: [], projects: []}, openWorkspace() {assert.fail("external directory has no details");}});
   try {
     await until(() => h.input());
     assert.equal(h.w.document.querySelector(".chat-workspace-link"), null);
-    assert.equal(h.w.document.querySelector(".chat-workspace-tasks"), null);
+    assert.equal(h.w.document.querySelector(".chat-workspace-links"), null);
   } finally { h.dispose(); }
 });
 
-test("chat chrome identifies task and project with expandable working directory details", async () => {
+test("chat chrome identifies workspace and project with expandable working directory details", async () => {
   const h = mount(true, [{id:"a",turn_id:"turn",kind:"assistant",text:"当前检查已完成。"}]);
   try {
     await until(() => h.input());
     assert.equal(h.w.document.querySelector("footer"), null);
     assert.doesNotMatch(h.w.document.body.textContent || "", /可以在这里继续对话|可粘贴或拖入图片|Ctrl\+Enter 发送/);
-    assert.match(h.w.document.querySelector(".chat-context-facts")?.textContent || "", /关联任务测试任务/);
-    assert.doesNotMatch(h.w.document.querySelector(".chat-workspace-context > summary")?.textContent || "", /测试任务/);
+    assert.match(h.w.document.querySelector(".chat-context-facts")?.textContent || "", /关联工作区测试工作区/);
+    assert.doesNotMatch(h.w.document.querySelector(".chat-workspace-context > summary")?.textContent || "", /测试工作区/);
     const context = h.w.document.querySelector<HTMLElement>(".chat-workspace-context")!;
     assert.match(context.textContent || "", /执行环境本机/);
     assert.match(context.textContent || "", /\/workspace\/project/);
@@ -595,7 +595,7 @@ test("without unread messages, switching and reopening restores the reading posi
     h.bridge.open(second); await until(() => h.input()?.value === "");
     await until(() => h.w.document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')?.scrollTop === 2400);
     h.type("第二个会话的草稿"); await tick();
-    h.bridge.open({...h.options, task: {...task, id: "other-task"}});
+    h.bridge.open({...h.options, workspace: {...workspace, id: "other-workspace"}});
     await until(() => h.input()?.value === "第一个会话的草稿");
     await until(() => h.w.document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')?.scrollTop === 360);
     const restoredViewport = h.w.document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
@@ -902,10 +902,10 @@ test("URL flow opens the system browser through the scoped API and awaits a sepa
 });
 
 
-test("the shared panel opens a project directory without any task object", async () => {
+test("the shared panel opens a project directory without any workspace object", async () => {
  const h = mount(false,[],{
-  task:undefined,target:{project_id:"p",cwd:"/workspace/project"},
-  workspace:{tasks:[],projects:[{id:"p",name:"项目",path:"/repo/project",worktrees:[{path:"/workspace/project",branch:"feature/current"}]}]},
+  workspace:undefined,target:{project_id:"p",cwd:"/workspace/project"},
+  overview:{workspaces:[],projects:[{id:"p",name:"项目",path:"/repo/project",worktrees:[{path:"/workspace/project",branch:"feature/current"}]}]},
  });
  try {
   await until(()=>h.input());
@@ -918,7 +918,7 @@ test("the shared panel opens a project directory without any task object", async
   await until(()=>h.calls.some(call=>call.body));
   const sent = h.calls.find(call=>call.body)!;
   assert.equal(sent.path,"/api/sessions/new");
-  assert.equal(sent.body.task_id,undefined);
+  assert.equal(sent.body.workspace_id,undefined);
   assert.equal(sent.body.cwd,"/workspace/project");
   await until(()=>!h.w.document.querySelector(".chat-creation-directory"));
   assert.deepEqual(h.errors,[]);
@@ -1479,8 +1479,8 @@ test('short history automatically fills the viewport across empty pages', async 
 
 
 test("typing and identical workspace refreshes leave the chat panel mounted without rendering it again", async () => {
- const workspace={tasks:[task],projects:[]};
- const h=mount(true,[],{workspace});
+ const overview={workspaces:[workspace],projects:[]};
+ const h=mount(true,[],{overview});
  try {
   await until(()=>h.input() && !h.w.document.querySelector('[aria-label="刷新历史"]')?.hasAttribute('disabled'));
   await tick();
@@ -1488,11 +1488,11 @@ test("typing and identical workspace refreshes leave the chat panel mounted with
   for(const text of ['独','独立','独立输入']) {h.type(text);await tick();}
   assert.equal((h.w as any).__panelRenders,before,'composer text must not rerender the history and header');
   assert.equal(h.input().value,'独立输入');
-  for(let i=0;i<10;i++) h.bridge.updateWorkspace(JSON.parse(JSON.stringify(workspace)));
+  for(let i=0;i<10;i++) h.bridge.updateOverview(JSON.parse(JSON.stringify(overview)));
   await tick();
   assert.equal((h.w as any).__panelRenders,before,'identical metadata must not rerender the panel');
-  h.bridge.updateWorkspace({tasks:[{...task,name:'更新后的任务'}],projects:[]});
-  await until(()=>h.w.document.body.textContent?.includes('更新后的任务'));
+  h.bridge.updateOverview({workspaces:[{...workspace,name:'更新后的工作区'}],projects:[]});
+  await until(()=>h.w.document.body.textContent?.includes('更新后的工作区'));
   assert((h.w as any).__panelRenders>before);
   assert.equal(h.input().value,'独立输入');
  } finally {h.dispose();}

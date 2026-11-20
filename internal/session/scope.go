@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/project"
-	"worktree-hub/internal/workspace"
 )
 
 // A scope is a query, never an owner of a session. A nil directory set lists all
@@ -69,17 +69,17 @@ func uniqueDirectories(paths []string) []string {
 	return out
 }
 
-func (a *Service) taskScope(id string) (sessionScope, error) {
-	q, err := a.Workspace.Store.Requirement(id)
+func (a *Service) workspaceScope(id string) (sessionScope, error) {
+	q, err := a.Execution.Store.Workspace(id)
 	if err != nil {
 		return sessionScope{}, err
 	}
-	pins, err := a.Workspace.Store.PinnedSessionIDs(id)
-	return sessionScope{paths: uniqueDirectories(requirementSessionPaths(q)), pins: pins}, err
+	pins, err := a.Execution.Store.PinnedSessionIDs(id)
+	return sessionScope{paths: uniqueDirectories(workspaceSessionPaths(q)), pins: pins}, err
 }
 
 func (a *Service) projectScope(ctx context.Context, id string) (sessionScope, error) {
-	p, err := project.LookupProject(ctx, a.Workspace, id)
+	p, err := project.LookupProject(ctx, a.Execution, id)
 	if err != nil {
 		return sessionScope{}, err
 	}
@@ -87,7 +87,7 @@ func (a *Service) projectScope(ctx context.Context, id string) (sessionScope, er
 }
 
 func projectDirectoryScope(ctx context.Context, p model.Project) (sessionScope, error) {
-	raw, err := workspace.Git(ctx, p.Path, "worktree", "list", "--porcelain", "-z")
+	raw, err := execution.Git(ctx, p.Path, "worktree", "list", "--porcelain", "-z")
 	if err != nil {
 		return sessionScope{}, err
 	}
@@ -101,17 +101,17 @@ func projectDirectoryScope(ctx context.Context, p model.Project) (sessionScope, 
 }
 
 func (a *Service) queryScope(r *http.Request) (sessionScope, error) {
-	taskID, projectID, cwd := r.URL.Query().Get("task_id"), r.URL.Query().Get("project_id"), r.URL.Query().Get("cwd")
+	workspaceID, projectID, cwd := r.URL.Query().Get("workspace_id"), r.URL.Query().Get("project_id"), r.URL.Query().Get("cwd")
 	if legacy := r.PathValue("id"); legacy != "" {
-		taskID = legacy
+		workspaceID = legacy
 	}
-	if taskID != "" && projectID != "" {
-		return sessionScope{}, fmt.Errorf("请选择任务范围或项目范围")
+	if workspaceID != "" && projectID != "" {
+		return sessionScope{}, fmt.Errorf("请选择工作区范围或项目范围")
 	}
 	scope := sessionScope{}
 	var err error
-	if taskID != "" {
-		scope, err = a.taskScope(taskID)
+	if workspaceID != "" {
+		scope, err = a.workspaceScope(workspaceID)
 		scope.linkedOnly = r.URL.Query().Get("linked") == "true"
 	}
 	if projectID != "" {
@@ -129,7 +129,7 @@ func (a *Service) queryScope(r *http.Request) (sessionScope, error) {
 		if !directoryScope.includes("", cwd) {
 			linkedDirectory := false
 			for id := range scope.pins {
-				s, readErr := a.Workspace.Store.Session(id)
+				s, readErr := a.Execution.Store.Session(id)
 				if readErr == nil && platform.SameWorkspacePath(s.Cwd, cwd) {
 					linkedDirectory = true
 					break
@@ -149,7 +149,7 @@ func (a *Service) queryScope(r *http.Request) (sessionScope, error) {
 }
 
 func (a *Service) cachedScope(scope sessionScope) ([]model.Session, error) {
-	all, err := a.Workspace.Store.Sessions()
+	all, err := a.Execution.Store.Sessions()
 	if err != nil {
 		return nil, err
 	}
@@ -166,10 +166,10 @@ func (a *Service) cachedScope(scope sessionScope) ([]model.Session, error) {
 }
 
 // Global operations identify a thread only by the environment's Store plus
-// session ID, with no task readiness requirement.
+// session ID, with no workspace readiness workspace.
 func (a *Service) requestSession(w http.ResponseWriter, r *http.Request) (model.Session, bool) {
 	id := r.PathValue("session")
-	s, err := a.Workspace.Store.Session(id)
+	s, err := a.Execution.Store.Session(id)
 	if errors.Is(err, sql.ErrNoRows) {
 		c, openErr := a.openSessions(r.Context())
 		if openErr != nil {
@@ -183,7 +183,7 @@ func (a *Service) requestSession(w http.ResponseWriter, r *http.Request) (model.
 		if err == nil {
 			err = a.SaveSession("", current, "codex", titleObservedAt)
 			if err == nil {
-				s, err = a.Workspace.Store.Session(id)
+				s, err = a.Execution.Store.Session(id)
 			}
 		}
 	}
@@ -198,13 +198,14 @@ func (a *Service) requestSession(w http.ResponseWriter, r *http.Request) (model.
 	return s, true
 }
 
-// SessionTarget selects the initial execution directory. Task/project fields are
+// SessionTarget selects the initial execution directory. Workspace/project fields are
 // resolved at the HTTP boundary and are not persisted as session ownership.
 type SessionTarget struct {
-	TaskID                string    `json:"task_id,omitempty"`
+	WorkspaceID           string    `json:"workspace_id,omitempty"`
 	ProjectID             string    `json:"project_id,omitempty"`
 	Cwd                   string    `json:"cwd,omitempty"`
 	AdditionalDirectories *[]string `json:"additional_directories,omitempty"`
+	requireReady          bool
 }
 
 type executionContext struct {
@@ -214,13 +215,16 @@ type executionContext struct {
 
 func (a *Service) resolveCreation(ctx context.Context, target SessionTarget) (executionContext, error) {
 	var out executionContext
-	if target.TaskID != "" {
-		q, err := a.Workspace.Store.Requirement(target.TaskID)
+	if target.WorkspaceID != "" {
+		q, err := a.Execution.Store.Workspace(target.WorkspaceID)
 		if err != nil {
 			return out, err
 		}
 		if q.State == "archived" {
-			return out, fmt.Errorf("请先取消归档再新建任务对话")
+			return out, fmt.Errorf("请先取消归档再新建工作区对话")
+		}
+		if target.requireReady && q.State != "ready" {
+			return out, invalidSessionTarget("工作区的工作目录尚未全部就绪")
 		}
 		selected := target.Cwd
 		if selected == "" {
@@ -241,13 +245,13 @@ func (a *Service) resolveCreation(ctx context.Context, target SessionTarget) (ex
 				allowed[platform.CleanWorkspacePath(m.Path)] = true
 			}
 		}
-		// A materialized task workspace is also a valid explicit target.
-		if info, statErr := workspace.Stat(ctx, q.Path, false); statErr == nil && info.IsDir() && q.HasWorkspace {
+		// A materialized workspace is also a valid explicit target.
+		if info, statErr := execution.Stat(ctx, q.Path, false); statErr == nil && info.IsDir() && q.HasDirectory {
 			allowed[platform.CleanWorkspacePath(q.Path)] = true
 		}
 		selected = platform.CleanWorkspacePath(selected)
 		if !allowed[selected] {
-			return out, invalidSessionTarget("请选择任务中可用的工作目录")
+			return out, invalidSessionTarget("请选择工作区中可用的工作目录")
 		}
 		if target.ProjectID != "" {
 			found := false
@@ -272,9 +276,9 @@ func (a *Service) resolveCreation(ctx context.Context, target SessionTarget) (ex
 		out.plan = model.LaunchPlan{Cwd: selected, Title: "Codex", AdditionalDirectories: []string{}}
 		for _, dir := range uniqueDirectories(append([]string{selected}, dirs...)) {
 			if !allowed[platform.CleanWorkspacePath(dir)] {
-				return out, invalidSessionTarget("附加目录不属于任务的可用工作目录")
+				return out, invalidSessionTarget("附加目录不属于工作区的可用工作目录")
 			}
-			info, statErr := workspace.Stat(ctx, dir, false)
+			info, statErr := execution.Stat(ctx, dir, false)
 			if statErr != nil || !info.IsDir() {
 				return out, fmt.Errorf("工作目录不可用：%s", dir)
 			}
@@ -282,34 +286,34 @@ func (a *Service) resolveCreation(ctx context.Context, target SessionTarget) (ex
 				if !platform.SameWorkspacePath(m.Path, dir) {
 					continue
 				}
-				p, lookupErr := project.LookupProject(ctx, a.Workspace, m.ProjectID)
+				p, lookupErr := project.LookupProject(ctx, a.Execution, m.ProjectID)
 				if lookupErr != nil {
 					return out, lookupErr
 				}
-				common, gitErr := workspace.Git(ctx, dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+				common, gitErr := execution.Git(ctx, dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
 				if gitErr != nil {
 					return out, gitErr
 				}
-				resolved, evalErr := workspace.Eval(ctx, strings.TrimSpace(common))
+				resolved, evalErr := execution.Eval(ctx, strings.TrimSpace(common))
 				if evalErr != nil || !platform.SameWorkspacePath(resolved, p.CommonDir) {
 					return out, fmt.Errorf("工作目录的仓库归属已变化")
 				}
-				// Sessions use the directory's current checkout. The task's recorded
+				// Sessions use the directory's current checkout. The workspace's recorded
 				// branch is creation metadata, not a restriction on later checkouts.
 			}
 			if !platform.SameWorkspacePath(dir, selected) {
 				out.plan.AdditionalDirectories = append(out.plan.AdditionalDirectories, dir)
 			}
 		}
-		out.instructions = "当前工作属于任务 " + q.Name + "。任务说明：\n" + q.Description + "\n请遵循各工作目录适用的 AGENTS.md；各项目的 Git、构建及测试在对应仓库执行。"
+		out.instructions = "当前工作属于工作区 " + q.Name + "。工作区说明：\n" + q.Description + "\n请遵循各工作目录适用的 AGENTS.md；各项目的 Git、构建及测试在对应仓库执行。"
 		if allowed[platform.CleanWorkspacePath(q.Path)] {
-			out.instructions += " 最新目录清单见 " + platform.JoinWorkspacePath(q.Path, "WORK_HUB_CONTEXT.md") + "（自动维护）；BRIEF.md 保留为用户笔记，可能包含旧目录。任务目标以本次提供的说明为准。"
+			out.instructions += " 最新目录清单见 " + platform.JoinWorkspacePath(q.Path, "WORK_HUB_CONTEXT.md") + "（自动维护）；BRIEF.md 保留为用户笔记，可能包含旧目录。工作区目标以本次提供的说明为准。"
 		}
 	} else {
 		if target.ProjectID == "" {
-			return out, invalidSessionTarget("请选择项目及工作目录，或任务")
+			return out, invalidSessionTarget("请选择项目及工作目录，或工作区")
 		}
-		p, err := project.LookupProject(ctx, a.Workspace, target.ProjectID)
+		p, err := project.LookupProject(ctx, a.Execution, target.ProjectID)
 		if err != nil {
 			return out, err
 		}
@@ -323,16 +327,16 @@ func (a *Service) resolveCreation(ctx context.Context, target SessionTarget) (ex
 		out.plan = model.LaunchPlan{Cwd: platform.CleanWorkspacePath(target.Cwd), Title: "Codex", AdditionalDirectories: []string{}}
 		out.instructions = "开始修改前先阅读当前工作目录下适用的 AGENTS.md；Git、构建及测试在对应仓库执行。"
 		// Verify the selected worktree still belongs to the registered repository.
-		common, err := workspace.Git(ctx, out.plan.Cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+		common, err := execution.Git(ctx, out.plan.Cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
 		if err != nil {
 			return out, err
 		}
-		resolved, err := workspace.Eval(ctx, strings.TrimSpace(common))
+		resolved, err := execution.Eval(ctx, strings.TrimSpace(common))
 		if err != nil || !platform.SameWorkspacePath(resolved, p.CommonDir) {
 			return out, fmt.Errorf("工作目录的仓库归属已变化")
 		}
 	}
-	info, err := workspace.Stat(ctx, out.plan.Cwd, true)
+	info, err := execution.Stat(ctx, out.plan.Cwd, true)
 	if err != nil || !info.IsDir() {
 		return out, fmt.Errorf("工作目录不可用")
 	}

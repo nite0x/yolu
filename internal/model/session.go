@@ -1,12 +1,49 @@
 package model
 
-// Session is an environment-local index of a Codex thread. It has no task or
-// project owner; directory scopes determine where it is displayed. Each runtime
-// environment already has its own Store, so IDs and paths never cross environments.
+const (
+	ProviderCodex = "codex"
+	ProviderAgy   = "agy"
+)
+
+func NormalizeProvider(provider string) string {
+	switch provider {
+	case "", ProviderCodex:
+		return ProviderCodex
+	case ProviderAgy:
+		return ProviderAgy
+	default:
+		return provider
+	}
+}
+
+func SupportedProvider(provider string) bool {
+	return provider == "" || provider == ProviderCodex || provider == ProviderAgy
+}
+
+type ProviderCapabilities struct {
+	Steer      bool `json:"steer"`
+	Fork       bool `json:"fork"`
+	Handoff    bool `json:"handoff"`
+	RateLimits bool `json:"rate_limits"`
+	Voice      bool `json:"voice"`
+}
+
+func CapabilitiesForProvider(provider string) ProviderCapabilities {
+	if NormalizeProvider(provider) == ProviderAgy {
+		return ProviderCapabilities{}
+	}
+	return ProviderCapabilities{Steer: true, Fork: true, Handoff: true, RateLimits: true, Voice: true}
+}
+
+// Session is an environment-local index of a coding agent thread/session. It has
+// no workspace or project owner; directory scopes determine where it is displayed.
+// Each runtime environment already has its own Store, so IDs and paths never
+// cross environments.
 type Session struct {
 	Pinned                bool     `json:"pinned"`
 	Archived              bool     `json:"archived"`
 	ID                    string   `json:"id"`
+	Provider              string   `json:"provider,omitempty"`
 	Name                  string   `json:"name"`
 	TitleSource           string   `json:"title_source,omitempty"`
 	TitleChangedAt        int64    `json:"-"`

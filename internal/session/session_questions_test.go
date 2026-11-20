@@ -13,7 +13,7 @@ func TestChatQuestionsEnabledForCreatedAndResumedThreads(t *testing.T) {
 			method := "thread/resume"
 			if createThread {
 				method = "thread/start"
-				if code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"task_id": q.ID, "request_id": "questions", "text": "选择标题方案"}); code != 202 {
+				if code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"workspace_id": q.ID, "request_id": "questions", "text": "选择标题方案"}); code != 202 {
 					t.Fatalf("%d %s", code, raw)
 				}
 				awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })

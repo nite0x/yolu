@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/workspace"
 )
 
 // Opt-in local UI fixture: exercises the production HTTP/SSE path with an
@@ -145,7 +145,7 @@ func TestBrowserChatFixture(t *testing.T) {
 		t.Skip("opt-in browser fixture")
 	}
 	a, q, _, _ := chatFixture(t)
-	_, _ = a.Workspace.Store.DB.Exec(`UPDATE requirements SET name='侧栏对话验证',description='验证文字输入、实时回复、审批和停止' WHERE id=?`, q.ID)
+	_, _ = a.Execution.Store.DB.Exec(`UPDATE workspaces SET name='侧栏对话验证',description='验证文字输入、实时回复、审批和停止' WHERE id=?`, q.ID)
 	a.openLive = func(context.Context) (codex.LiveClient, error) {
 		return &browserLive{fakeLiveClient: &fakeLiveClient{updates: make(chan codex.Event, 256), cwd: q.Members[0].Path}, decision: make(chan string, 2), stop: make(chan struct{})}, nil
 	}
@@ -175,17 +175,17 @@ func TestBrowserChatFixture(t *testing.T) {
 			}
 			if method == "thread/read" {
 				s.ID = p["threadId"].(string)
-				if stored, err := a.Workspace.Store.Session(s.ID); err == nil {
+				if stored, err := a.Execution.Store.Session(s.ID); err == nil {
 					s.Name = stored.Name
 				}
 				s.Model = "model"
 				s.Effort = "medium"
 				return map[string]any{"thread": s}, nil
 			}
-			return map[string]any{"data": []any{map[string]any{"turnId": "saved", "item": map[string]any{"id": "saved-reply", "type": "agentMessage", "text": "已阅读任务说明，准备继续实现。"}}, map[string]any{"turnId": "saved", "item": map[string]any{"id": "saved-user", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "请先阅读任务说明并检查当前项目。"}}}}}}, nil
+			return map[string]any{"data": []any{map[string]any{"turnId": "saved", "item": map[string]any{"id": "saved-reply", "type": "agentMessage", "text": "已阅读工作区说明，准备继续实现。"}}, map[string]any{"turnId": "saved", "item": map[string]any{"id": "saved-user", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "请先阅读工作区说明并检查当前项目。"}}}}}}, nil
 		}}, nil
 	}
-	a.Workspace.Launch = func(plan model.LaunchPlan, _ func()) error {
+	a.Execution.Launch = func(plan model.LaunchPlan, _ func()) error {
 		child := exec.Command("sleep", "1800")
 		if err := child.Start(); err != nil {
 			return err
@@ -216,22 +216,22 @@ func TestBrowserChatFixture(t *testing.T) {
 	}
 	a.terminalConflict = func(string, string) error {
 		if _, err := os.Stat("/tmp/worktree-hub-chat-terminal-busy"); err == nil {
-			return &workspace.SessionConflictError{Message: "此工作目录仍有 Codex 终端打开，请先退出终端中的 Codex"}
+			return &execution.SessionConflictError{Message: "此工作目录仍有 Codex 终端打开，请先退出终端中的 Codex"}
 		}
 		return nil
 	}
 	production := a.handler()
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/task-inventory" {
-			task, _ := a.Workspace.Store.Requirement(q.ID)
-			raw, _ := json.Marshal(task)
+		if r.URL.Path == "/api/workspace-inventory" {
+			workspace, _ := a.Execution.Store.Workspace(q.ID)
+			raw, _ := json.Marshal(workspace)
 			var row map[string]any
 			_ = json.Unmarshal(raw, &row)
 			row["environment_id"] = "local"
 			row["environment_name"] = "本机"
 			row["connected"] = true
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"requirements": []any{row}, "environments": []any{map[string]any{"id": "local", "name": "本机", "connected": true}}, "project_count": 1})
+			_ = json.NewEncoder(w).Encode(map[string]any{"workspaces": []any{row}, "environments": []any{map[string]any{"id": "local", "name": "本机", "connected": true}}, "project_count": 1})
 			return
 		}
 		if r.URL.Path == "/api/environments" {
@@ -248,6 +248,6 @@ func TestBrowserChatFixture(t *testing.T) {
 	server.Listener = listener
 	server.Start()
 	defer server.Close()
-	fmt.Println("CHAT_FIXTURE_READY http://localhost:44317/#/requirements/" + q.ID)
+	fmt.Println("CHAT_FIXTURE_READY http://localhost:44317/#/workspaces/" + q.ID)
 	time.Sleep(30 * time.Minute)
 }

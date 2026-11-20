@@ -93,7 +93,7 @@ export function mountWorkspaceSidebar() {
   const sidebar = document.querySelector<HTMLElement>(".sidebar")
   if (!sidebar) return
   sidebar.id = "workspaceSidebar"
-  for (const [view, Icon] of [["requirements", ListTodo], ["projects", FolderGit2], ["sessions", MessagesSquare], ["assistant", Sparkles]] as const) {
+  for (const [view, Icon] of [["workspaces", ListTodo], ["projects", FolderGit2], ["sessions", MessagesSquare], ["assistant", Sparkles]] as const) {
     const icon = sidebar.querySelector(`[data-view="${view}"] .nav-icon`)
     if (icon) icon.innerHTML = renderToStaticMarkup(<Icon aria-hidden="true" size={18} />)
   }

@@ -1,10 +1,11 @@
 import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from "react"
-import { Plus, Search, SlidersHorizontal, X } from "lucide-react"
+import { ChevronDown, Plus, Search, SlidersHorizontal, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { uiText } from "../i18n"
 
-export function ListCreateButton({ label, ...props }: ComponentProps<typeof Button> & { label: string }) {
+export function ListCreateButton({ label, showLabel, ...props }: ComponentProps<typeof Button> & { label: string; showLabel?: boolean }) {
+  if (showLabel) return <Button type="button" size="sm" className="resource-list-create" {...props}><Plus aria-hidden="true" />{label}</Button>
   return <Button type="button" variant="ghost" size="icon-sm" className="list-create-button size-[28px] rounded-[5px]" aria-label={label} title={label} {...props}>
     <Plus className="size-[15px]" aria-hidden="true" />
   </Button>
@@ -56,4 +57,24 @@ export function syncListFilter(picker: HTMLDetailsElement, visible = true) {
   panel.style.bottom = useBelow ? "auto" : `${window.innerHeight - anchor.top + 6}px`
   panel.style.maxHeight = `${Math.max(0, Math.min(560, useBelow ? below : above))}px`
   if (!panel.matches(":popover-open")) panel.showPopover()
+}
+
+export function ResourceSwitcherTrigger({ kind }: { kind: "workspace" | "project" }) {
+  const label = kind === "workspace" ? uiText("切换工作区") : uiText("切换项目")
+  return <Button type="button" variant="ghost" size="icon-sm" className="resource-switcher-trigger"
+    data-resource-switcher={kind} aria-label={label} title={label} aria-haspopup="dialog" aria-controls="resourceSwitcher">
+    <ChevronDown aria-hidden="true" />
+  </Button>
+}
+
+export function ResourceSwitcherDialog() {
+  return <div className="resource-switcher-content">
+    <header className="dialog-header">
+      <h2 id="resourceSwitcherTitle"></h2>
+      <Button type="button" size="icon-sm" variant="ghost" className="close-dialog" aria-label={uiText("关闭")}><X aria-hidden="true" /></Button>
+    </header>
+    <ListSearch input="resourceSwitcherSearch" label={uiText("搜索")} placeholder={uiText("搜索")} clear={{ id: "resourceSwitcherClear" }} filter={null} />
+    <div id="resourceSwitcherResults" className="resource-switcher-results"></div>
+    <p id="resourceSwitcherEmpty" role="status" hidden>{uiText("没有匹配的结果")}</p>
+  </div>
 }

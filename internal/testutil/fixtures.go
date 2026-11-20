@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/workspace"
 )
 
 type Server interface {
@@ -20,7 +20,7 @@ type Server interface {
 	TestToken() string
 }
 
-// TempDir uses the same canonical directory spelling as Git and workspace.Open.
+// TempDir uses the same canonical directory spelling as Git and execution.Open.
 // macOS's default temporary root contains a /var -> /private/var alias.
 func TempDir(t *testing.T) string {
 	t.Helper()
@@ -33,7 +33,7 @@ func TempDir(t *testing.T) string {
 
 func Git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	v, err := workspace.Git(context.Background(), dir, args...)
+	v, err := execution.Git(context.Background(), dir, args...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,10 +81,10 @@ func Register(t *testing.T, a Server, name, path string) string {
 	return v["id"]
 }
 
-func Create(t *testing.T, a Server, primary string, others []string, slug string) (int, model.Requirement, []byte) {
+func Create(t *testing.T, a Server, primary string, others []string, slug string) (int, model.Workspace, []byte) {
 	t.Helper()
-	code, raw := Call(t, a, "POST", "/api/requirements", map[string]any{"name": "订单审批 '$(touch SHOULD_NOT_EXIST)'", "slug": slug, "description": "前后端联调", "primary_project_id": primary, "project_ids": others})
-	var q model.Requirement
+	code, raw := Call(t, a, "POST", "/api/workspaces", map[string]any{"name": "订单审批 '$(touch SHOULD_NOT_EXIST)'", "slug": slug, "description": "前后端联调", "primary_project_id": primary, "project_ids": others})
+	var q model.Workspace
 	_ = json.Unmarshal(raw, &q)
 	return code, q, raw
 }

@@ -11,15 +11,15 @@ import (
 
 func TestMetadataSnapshotPreservesPathsAndImportsTransactionally(t *testing.T) {
 	source := testApp(t)
-	_, err := source.Workspace.Store.DB.Exec(`INSERT INTO projects VALUES('p','Project','/original/repo','/original/repo/.git','project','now');
-INSERT INTO requirements(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('r','Task','task','notes','codex/task','/saved/workspace/task','p','creating','now');
-INSERT INTO members(requirement_id,project_id,path,base_commit,state,error) VALUES('r','p','/saved/workspace/task/project','baseline','creating','');
+	_, err := source.Execution.Store.DB.Exec(`INSERT INTO projects VALUES('p','Project','/original/repo','/original/repo/.git','project','now');
+INSERT INTO workspaces(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('r','Workspace','workspace','notes','codex/workspace','/saved/workspace/workspace','p','creating','now');
+INSERT INTO members(workspace_id,project_id,path,base_commit,state,error) VALUES('r','p','/saved/workspace/workspace/project','baseline','creating','');
 INSERT INTO settings VALUES('terminal','{"kind":"windows-terminal"}');
-INSERT INTO requirement_sessions VALUES('r','session','Title','/saved/workspace/task/project',123,456,'manual')`)
+INSERT INTO workspace_sessions VALUES('r','session','Title','/saved/workspace/workspace/project',123,456,'manual')`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := store.ExportMetadata(context.Background(), filepath.Join(source.Workspace.DataDir, "worktree-hub.db"))
+	snapshot, err := store.ExportMetadata(context.Background(), filepath.Join(source.Execution.DataDir, "worktree-hub.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,34 +30,34 @@ INSERT INTO requirement_sessions VALUES('r','session','Title','/saved/workspace/
 		t.Fatal(err)
 	}
 	target := testApp(t)
-	if err := target.Workspace.Store.ImportMetadata(transferred); err != nil {
+	if err := target.Execution.Store.ImportMetadata(transferred); err != nil {
 		t.Fatal(err)
 	}
-	q, err := target.Workspace.Store.Requirement("r")
+	q, err := target.Execution.Store.Workspace("r")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q.Path != "/saved/workspace/task" || q.State != "partial" || len(q.Members) != 1 || q.Members[0].State != "failed" {
+	if q.Path != "/saved/workspace/workspace" || q.State != "partial" || len(q.Members) != 1 || q.Members[0].State != "failed" {
 		t.Fatalf("import changed workspace or lost interrupted operation: %+v", q)
 	}
 	sessions, err := target.Sessions.StoredSessions("r")
 	if err != nil || len(sessions) != 1 || sessions[0].UpdatedAt != 456 {
 		t.Fatalf("sessions: %+v %v", sessions, err)
 	}
-	if err := target.Workspace.Store.ImportMetadata(transferred); err == nil {
+	if err := target.Execution.Store.ImportMetadata(transferred); err == nil {
 		t.Fatal("import overwrote an existing environment")
 	}
 	var state string
-	if err := source.Workspace.Store.DB.QueryRow("SELECT state FROM requirements WHERE id='r'").Scan(&state); err != nil || state != "creating" {
+	if err := source.Execution.Store.DB.QueryRow("SELECT state FROM workspaces WHERE id='r'").Scan(&state); err != nil || state != "creating" {
 		t.Fatalf("source database modified: %s %v", state, err)
 	}
 	broken := testApp(t)
 	transferred.Tables["members"][0] = []any{"invalid"}
-	if err := broken.Workspace.Store.ImportMetadata(transferred); err == nil {
+	if err := broken.Execution.Store.ImportMetadata(transferred); err == nil {
 		t.Fatal("invalid import succeeded")
 	}
 	var count int
-	if err := broken.Workspace.Store.DB.QueryRow("SELECT count(*) FROM projects").Scan(&count); err != nil || count != 0 {
+	if err := broken.Execution.Store.DB.QueryRow("SELECT count(*) FROM projects").Scan(&count); err != nil || count != 0 {
 		t.Fatal("failed import left partial metadata")
 	}
 }

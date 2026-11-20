@@ -39,7 +39,7 @@ func TestMergeIntoCheckedOutTargetPreservesSourceAndDirtyFiles(t *testing.T) {
 	root := repo(t, "merge-into", "main")
 	id := register(t, a, "App", root)
 	source := filepath.Join(t.TempDir(), "source")
-	testGit(t, root, "worktree", "add", "-b", "feature/task", source)
+	testGit(t, root, "worktree", "add", "-b", "feature/workspace", source)
 	commitFile(t, source, "feature.txt", "committed feature")
 	head := testGit(t, source, "rev-parse", "HEAD")
 	if err := os.WriteFile(filepath.Join(source, "feature.txt"), []byte("staged source edit"), 0644); err != nil {
@@ -56,7 +56,7 @@ func TestMergeIntoCheckedOutTargetPreservesSourceAndDirtyFiles(t *testing.T) {
 	if code, raw := gitAction(t, a, id, in); code != 200 {
 		t.Fatalf("merge: %d %s", code, raw)
 	}
-	if testGit(t, source, "branch", "--show-current") != "feature/task" || testGit(t, source, "rev-parse", "HEAD") != head {
+	if testGit(t, source, "branch", "--show-current") != "feature/workspace" || testGit(t, source, "rev-parse", "HEAD") != head {
 		t.Fatal("source branch moved")
 	}
 	if testGit(t, root, "rev-parse", "HEAD") != head || testGit(t, root, "status", "--porcelain") != "" {
@@ -82,10 +82,10 @@ func TestMergeIntoDivergedTargetCreatesMergeCommit(t *testing.T) {
 		t.Run(map[bool]string{false: "unoccupied", true: "occupied"}[occupied], func(t *testing.T) {
 			a := testApp(t)
 			root := repo(t, "diverged", "main")
-			testGit(t, root, "branch", "feature/task")
+			testGit(t, root, "branch", "feature/workspace")
 			commitFile(t, root, "target.txt", "target commit")
 			targetHead := testGit(t, root, "rev-parse", "HEAD")
-			testGit(t, root, "switch", "feature/task")
+			testGit(t, root, "switch", "feature/workspace")
 			commitFile(t, root, "source.txt", "source commit")
 			sourceHead := testGit(t, root, "rev-parse", "HEAD")
 			targetPath := ""
@@ -101,7 +101,7 @@ func TestMergeIntoDivergedTargetCreatesMergeCommit(t *testing.T) {
 			if got := testGit(t, root, "rev-list", "--parents", "-1", "main"); !strings.HasSuffix(got, " "+targetHead+" "+sourceHead) {
 				t.Fatalf("incorrect merge parents: %s", got)
 			}
-			if testGit(t, root, "branch", "--show-current") != "feature/task" || testGit(t, root, "rev-parse", "HEAD") != sourceHead {
+			if testGit(t, root, "branch", "--show-current") != "feature/workspace" || testGit(t, root, "rev-parse", "HEAD") != sourceHead {
 				t.Fatal("source branch changed")
 			}
 			if occupied {
@@ -117,11 +117,11 @@ func TestMergeIntoDivergedTargetCreatesMergeCommit(t *testing.T) {
 func TestMergeIntoConflictLeavesBothBranchesUntouched(t *testing.T) {
 	a := testApp(t)
 	root := repo(t, "conflict", "main")
-	testGit(t, root, "branch", "feature/task")
+	testGit(t, root, "branch", "feature/workspace")
 	commitFile(t, root, "README.md", "target edit\n")
 	targetHead := testGit(t, root, "rev-parse", "HEAD")
 	source := filepath.Join(t.TempDir(), "source")
-	testGit(t, root, "worktree", "add", source, "feature/task")
+	testGit(t, root, "worktree", "add", source, "feature/workspace")
 	commitFile(t, source, "README.md", "source edit\n")
 	sourceHead := testGit(t, source, "rev-parse", "HEAD")
 	id := register(t, a, "App", root)
@@ -143,7 +143,7 @@ func TestMergeIntoRejectsUnsafeOrStaleTargets(t *testing.T) {
 			a := testApp(t)
 			root := repo(t, "guards", "main")
 			source := filepath.Join(t.TempDir(), "source")
-			testGit(t, root, "worktree", "add", "-b", "feature/task", source)
+			testGit(t, root, "worktree", "add", "-b", "feature/workspace", source)
 			commitFile(t, source, "feature.txt", "feature")
 			id := register(t, a, "App", root)
 			in := previewMergeInto(t, a, id, source, "main")
@@ -163,7 +163,7 @@ func TestMergeIntoRejectsUnsafeOrStaleTargets(t *testing.T) {
 			case "missing-preview":
 				in.ExpectedHead = ""
 			case "same-branch":
-				in.Target = "refs/heads/feature/task"
+				in.Target = "refs/heads/feature/workspace"
 			case "remote-target":
 				testGit(t, root, "update-ref", "refs/remotes/origin/main", "main")
 				in.Target = "refs/remotes/origin/main"

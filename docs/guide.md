@@ -1,6 +1,6 @@
 # User guide
 
-Yolu is a personal desktop workspace for development across multiple Git projects. Tasks organize the goal and participating working directories; projects supply repositories; conversations remain independent and can be linked to tasks.
+Yolu is a desktop app for cross-project development. Open a workspace to see its development goal, participating repositories, branches and working directories. Conversations can be linked to a workspace and opened from its detail page.
 
 [Project overview](../README.md) · [Development and packaging](development.md) · [Work Hub migration](brand/yolu/migration.md)
 
@@ -11,60 +11,60 @@ The interface supports English and Simplified Chinese. It follows the system lan
 1. Install the package for your operating system and CPU. See [Installation and upgrades](#installation-and-upgrades).
 2. Install Git in the local or WSL execution environment where the repository lives. For conversations, install and authenticate the Codex CLI in that same environment. Verify Git remote authentication in a terminal first.
 3. Register an existing repository under Projects.
-4. Create a task with a name, goal and participating projects. Choose a new branch and worktree, the original repository directory, or an existing worktree for each project.
-5. Open the task, inspect each directory's actual branch and modification state, and continue in a terminal, editor or conversation.
+4. Create a workspace with a name, goal and participating projects. Choose a new branch and worktree, the original repository directory, or an existing worktree for each project.
+5. Open the workspace, inspect each directory's actual branch and modification state, and continue in a terminal, editor or conversation.
 
 Codex compatibility depends on the installed CLI protocol. Check the CLI version in Settings and the tested versions in the release notes. An installed CLI alone does not establish protocol compatibility or model access; developers can run the opt-in compatibility check in the development guide.
 
-## Tasks, projects and working directories
+## Workspaces, projects and working directories
 
-A project is a repository used across tasks. A task is a piece of work with a goal, such as a feature, fix, refactor or experiment. Each task belongs to one execution environment and can include several projects from that environment.
+A project is a repository used across workspaces. A workspace organizes one development goal, such as a feature, fix, refactor or experiment. Each workspace belongs to one execution environment and can include several projects from that environment.
 
-The default workspace root is `~/workspaces` in the execution environment. A task with new worktrees normally uses this structure:
+The default workspace root is `~/workspaces` in the execution environment. A workspace with new worktrees normally uses this structure:
 
 ```text
-~/workspaces/task-slug/
+~/workspaces/workspace-slug/
 ├── WORK_HUB_CONTEXT.md
 ├── BRIEF.md
 ├── frontend/
 └── backend/
 ```
 
-Each project directory is an independent Git worktree. The task directory itself is an ordinary directory. Creating an isolated worktree does not switch the original repository's branch. If all projects reuse existing directories, Yolu does not create a task directory merely to reserve a path.
+Each project directory is an independent Git worktree. The workspace directory itself is an ordinary directory. Creating an isolated worktree does not switch the original repository's branch. If all projects reuse existing directories, Yolu does not create a workspace directory merely to reserve a path.
 
-Use `--root` to choose another workspace root. Existing tasks retain their saved locations; changing the default does not move them. Yolu does not automatically prefer a Windows-mounted directory when running in WSL.
+Use `--root` to choose another workspace root. Existing workspaces retain their saved locations; changing the default does not move them. Yolu does not automatically prefer a Windows-mounted directory when running in WSL.
 
-`WORK_HUB_CONTEXT.md` contains the current generated goal and directory list. Yolu updates files with its generation marker and does not overwrite a conflicting user file or symbolic link. `BRIEF.md` remains task notes and history; new conversations use the current goal in the database rather than treating old notes as the current goal.
+`WORK_HUB_CONTEXT.md` contains the current generated goal and directory list. Yolu updates files with its generation marker and does not overwrite a conflicting user file or symbolic link. `BRIEF.md` remains workspace notes and history; new conversations use the current goal in the database rather than treating old notes as the current goal.
 
-You can edit the task goal, add projects, retry a failed project, replace a working directory or remove a project association. Removing an association retains the old worktree, branch and sessions. An archived task must be restored before changing its project setup.
+You can edit the workspace goal, add projects, retry a failed project, replace a working directory or remove a project association. Removing an association retains the old worktree, branch and sessions. An archived workspace must be restored before changing its project setup.
 
 ## Git status and operations
 
-Task and project views show actual branches, modification state and upstream status. Ahead/behind counts use the latest fetched remote information; they are separate from comparisons against a default branch. Automatic checks use cached results, so refresh after external changes when needed.
+Workspace and project views show actual branches, modification state and upstream status. Ahead/behind counts use the latest fetched remote information; they are separate from comparisons against a default branch. Automatic checks use cached results, so refresh after external changes when needed.
 
-The Git panel supports fetching branches, branch creation and switching, fast-forward pulls, pushes, merge previews, merges and opening a Git terminal. Fetch a missing remote branch before selecting it as a worktree source. Git operations use the environment's existing credential helper; Yolu does not store Git passwords in task records.
+The Git panel supports fetching branches, branch creation and switching, fast-forward pulls, pushes, merge previews, merges and opening a Git terminal. Fetch a missing remote branch before selecting it as a worktree source. Git operations use the environment's existing credential helper; Yolu does not store Git passwords in workspace records.
 
-Switching branches and pulling require the relevant working-directory checks to pass. A branch checked out by another worktree cannot be checked out again. A divergent branch is not silently force-updated. Shared directories can affect more than one task; review the associated-task warning before switching branches.
+Switching branches and pulling require the relevant working-directory checks to pass. A branch checked out by another worktree cannot be checked out again. A divergent branch is not silently force-updated. Shared directories can affect more than one workspace; review the associated-workspace warning before switching branches.
 
 Change previews cover working-tree changes, untracked files and staged changes. They are read-only and subject to size and file-type limits: untracked text previews are limited to 512 KiB, and Git diffs to 256 KiB. Use an editor for larger or binary files.
 
-Project and task actions open the selected working directory in a terminal, VS Code or IntelliJ IDEA. Install the tool first. On Windows, WSL editor actions use the appropriate WSL path. An unavailable task directory does not silently fall back to the main repository.
+Project and workspace actions open the selected working directory in a terminal, VS Code or IntelliJ IDEA. Install the tool first. On Windows, WSL editor actions use the appropriate WSL path. An unavailable workspace directory does not silently fall back to the main repository.
 
 ### Archive and clean up
 
-Archiving a task retains its directories, branches and conversations. Use the task's review/cleanup action to inspect linked directories and old worktrees under its saved workspace path.
+Archiving a workspace retains its directories, branches and conversations. Use the workspace's review/cleanup action to inspect linked directories and old worktrees under its saved workspace path.
 
-Cleanup requires explicit selection and confirmation. Currently linked worktrees require the task to be archived first. The backend rechecks the preview before removal and refuses unsafe candidates, including protected or shared directories, active operations, locked worktrees and unconfirmed changes or commits. It uses `git worktree remove` without `--force`.
+Cleanup requires explicit selection and confirmation. Currently linked worktrees require the workspace to be archived first. The backend rechecks the preview before removal and refuses unsafe candidates, including protected or shared directories, active operations, locked worktrees and unconfirmed changes or commits. It uses `git worktree remove` without `--force`.
 
-Cleanup retains branches, task records, conversation history, the task root and notes. Restore an archived task to recover a removed member directory from its retained branch, or choose a different working directory. Cleanup is distinct from deleting or accepting the task's development result.
+Cleanup retains branches, workspace records, conversation history, the workspace root and notes. Restore an archived workspace to recover a removed member directory from its retained branch, or choose a different working directory. Cleanup is distinct from deleting or accepting the workspace's development result.
 
 ## Conversations
 
-Open related conversations from a task or project, or use the global conversation page. Task views show explicitly linked sessions by default. Project views aggregate sessions from all discovered worktrees. Directory discovery uses the exact normalized working directory, rather than every subdirectory or every repository a session has accessed.
+Open related conversations from a workspace or project, or use the global conversation page. Workspace views show explicitly linked sessions by default. Project views aggregate sessions from all discovered worktrees. Directory discovery uses the exact normalized working directory, rather than every subdirectory or every repository a session has accessed.
 
-The global list can combine registered execution environments. Search and filter by environment, task, project, directory, archive state and activity. Opening a conversation uses its own environment; it does not change a session's working directory to match the current project view.
+The global list can combine registered execution environments. Search and filter by environment, workspace, project, directory, archive state and activity. Opening a conversation uses its own environment; it does not change a session's working directory to match the current project view.
 
-Create a conversation in a specific available project or task directory. An aggregate scope requires choosing a concrete directory first. Linking or unlinking an existing session changes the task reference; it does not move the session, erase history or stop execution.
+Create a conversation in a specific available project or workspace directory. An aggregate scope requires choosing a concrete directory first. Linking or unlinking an existing session changes the workspace reference; it does not move the session, erase history or stop execution.
 
 ### Voice dictation
 
@@ -84,7 +84,7 @@ Use Ctrl+Enter or Command+Enter to send; Enter inserts a newline. While a Yolu-m
 
 Permission requests and structured questions appear within the conversation. Some asynchronous questions remain answerable after the current turn ends. Pending answers and the normal message draft are stored separately so answering a question does not discard the message you were composing.
 
-Closing a panel, changing tabs or leaving the page does not stop a running conversation. Reopening it restores the shared controller and saved draft. A backend restart does not promise restoration of every in-memory running operation; check the reported state and history.
+Closing a panel, switching pages or leaving the application does not stop a running conversation. Reopening it restores the shared controller and saved draft. A backend restart does not promise restoration of every in-memory running operation; check the reported state and history.
 
 ### Attachments and file previews
 
@@ -94,31 +94,31 @@ Draft attachments can be removed before sending and restored with a saved draft.
 
 Conversation management includes renaming, local pinning, native Codex archive/restore and branching from loaded history. Branching a conversation retains its directory context and does not create a Git worktree. The backend attempts a topic title once from the first accepted input, using an additional model request; see [title behavior](session-titles.md).
 
-## Tabs, panes and embedded terminals
+## Navigation, panes and embedded terminals
 
-Open tasks, projects and conversations in workspace tabs. Use Ctrl/Command+T for a new tab and Ctrl/Command+W to close the current tab. Closing a tab does not stop its background conversation. Up to three panes can hold independent tabs; panes can be resized, temporarily maximized or merged back together. Layout and navigation state are saved locally.
+Use the navigation rail to switch between workspaces, projects and conversations, or to open Settings. Select a workspace to open its details beside the list. In a narrow window, use **Back to workspace list** to switch panes. Conversations can open side by side in up to three panes.
 
 The new-conversation entry also offers a terminal mode. Choose an available directory and an installed shell or CLI, such as Codex, Claude Code, Gemini CLI or OpenCode, or supply a custom executable and JSON argument array. These tools use their own authentication and permission prompts. Launching a tool in a terminal does not provide Yolu's native Codex conversation integration for that tool.
 
-Changing tabs or closing a terminal view leaves its process running. Reconnect from the existing-terminal list, or explicitly end the process to stop it and its children. The backend owns terminal processes and retains a bounded output buffer; stopping or restarting the backend ends those processes and does not restore them afterward.
+Switching pages or closing a terminal view leaves its process running. Reconnect from the existing-terminal list, or explicitly end the process to stop it and its children. The backend owns terminal processes and retains a bounded output buffer; stopping or restarting the backend ends those processes and does not restore them afterward.
 
-Pinned task and directory shortcuts retain their execution environment and can have custom icons and colors. Pinning is navigation metadata, not exclusive ownership of a directory.
+Pinned workspace and directory shortcuts retain their execution environment and can have custom icons and colors. Pinning is navigation metadata, not exclusive ownership of a directory.
 
 ## Execution environments and WSL
 
 Local projects do not require WSL. On Windows, connect a distribution and Linux user from Settings to work in WSL. Yolu deploys its bundled helper and communicates through private stdin/stdout JSONL; no SSH server or listening WSL port is required.
 
-Use Windows paths for local repositories and Linux paths for WSL repositories. Do not register a WSL repository through a `\\wsl.localhost` path as a local Windows project. A task's environment is fixed at creation; repositories in different environments require separate tasks.
+Use Windows paths for local repositories and Linux paths for WSL repositories. Do not register a WSL repository through a `\\wsl.localhost` path as a local Windows project. A workspace's environment is fixed at creation; repositories in different environments require separate workspaces.
 
-WSL task metadata is held in a separate environment database under the Windows application's data directory. Git and file operations execute inside WSL. Connecting can optionally import an existing WSL user's records into an empty environment database. Import preserves repository and worktree paths and does not establish ongoing synchronization with the old database.
+WSL workspace metadata is held in a separate environment database under the Windows application's data directory. Git and file operations execute inside WSL. Connecting can optionally import an existing WSL user's records into an empty environment database. Import preserves repository and worktree paths and does not establish ongoing synchronization with the old database.
 
-Disconnected environments retain their locally stored task listings. Opening a task can reconnect its environment; Settings also provides reconnection. Writes with uncertain results are not silently replayed. Refresh to inspect their actual result and retry failed task preparation where offered.
+Disconnected environments retain their locally stored workspace listings. Opening a workspace can reconnect its environment; Settings also provides reconnection. Writes with uncertain results are not silently replayed. Refresh to inspect their actual result and retry failed workspace preparation where offered.
 
 ## Appearance
 
 ### Color palette
 
-In Settings, choose **Appearance → Color palette** and select **Yolu Mint**, **Classic indigo**, **Light**, **Dark** or **Follow system**. Save and apply to update the workspace, tabs, conversations and terminal colors immediately. This does not reload pages or stop running work. The palette is stored in the local application database, shared across execution environments and retained when the backend port changes. Existing installations keep Classic indigo until a different palette is selected.
+In Settings, choose **Appearance → Color palette** and select **Yolu Mint**, **Classic indigo**, **Light**, **Dark** or **Follow system**. Save and apply to update the colors of open pages, conversations and terminals immediately. This does not reload pages or stop running work. The palette is stored in the local application database, shared across execution environments and retained when the backend port changes. Existing installations keep Classic indigo until a different palette is selected.
 
 Yolu Mint uses a warm white background, deep teal text and mint accents. Light is a neutral white and gray palette with blue accents, and Dark is its charcoal counterpart with sky blue accents. Follow system switches between Light and Dark with the operating system appearance, including while Yolu is open. Status colors and code syntax colors retain their separate meanings.
 
@@ -128,13 +128,15 @@ Open Settings and choose Follow system, English or Simplified Chinese under Inte
 
 Before reloading, Yolu waits for open conversation drafts to be saved. If a draft cannot be saved, the page remains open and explains the failure. Background conversations and terminal processes continue during the UI reload. Save other unfinished settings before applying a language change.
 
-Application labels, conversation controls, accessibility labels, date formatting and desktop menus follow this setting. Task descriptions, user-selected names, conversation messages, file contents and terminal output remain unchanged. Details returned by underlying tools or the operating system may retain their original language.
+Application labels, conversation controls, accessibility labels, date formatting and desktop menus follow this setting. Workspace descriptions, user-selected names, conversation messages, file contents and terminal output remain unchanged. Details returned by underlying tools or the operating system may retain their original language.
 
 ## Settings and diagnostics
 
 Settings manages execution environments, new-conversation model and permission defaults, terminal tools and the optional daily default-branch update configuration. Terminal actions share the configured tool. macOS defaults to Terminal; other options depend on the execution platform and installed tools.
 
-Codex installation diagnostics report resolved CLI paths and versions, authentication-configuration presence, session-list access and available backend information. You can inspect registered environments individually or copy a sanitized report. Diagnostics do not start a model conversation or prove that credentials are valid for a particular model. After installing or changing the CLI, quit and stop the backend, then reopen Yolu so it rediscovers the environment.
+In **Settings → Codex installation diagnostics**, check the local host or a registered WSL user. Choose **Install Codex CLI** to install the latest stable release with the OpenAI installer. **Upgrade Codex CLI** uses the detected standalone installation, npm package or Homebrew cask. Use the original installation method for other distributions.
+
+Yolu verifies the CLI version, starts the shared daemon in the same environment and checks that it can read the conversation list. The diagnostic report refreshes after the operation and shows authentication configuration, session-list access and shared daemon status. If conversations still use an older backend after upgrading, finish active work, quit and stop the backend, then reopen Yolu. See the [official Codex CLI installation guide](https://developers.openai.com/codex/cli).
 
 ## Browser access
 
@@ -154,7 +156,7 @@ The saved LAN setting is restored when the backend starts. Closing the desktop w
 | --- | --- |
 | Windows application data | `%LOCALAPPDATA%\WorktreeHub` |
 | macOS and Linux application data | `~/.local/share/worktree-hub` |
-| New task worktrees | `~/workspaces` in the execution environment |
+| New workspace worktrees | `~/workspaces` in the execution environment |
 | Backend log | `desktop.log` in the application data directory |
 
 The retained Work Hub names are intentional compatibility identifiers. See the [migration guide](brand/yolu/migration.md).
@@ -196,7 +198,7 @@ Install Git and, for conversations, the Codex CLI separately. Installed Yolu pac
 - **Linux DEB:** install with `sudo apt install ./yolu_<version>_x86_64-unknown-linux-gnu.deb`. Stop the backend before upgrading or removing with `sudo apt remove yolu`. Maintenance scripts refuse replacement while installed host/backend processes remain active.
 - **Linux AppImage:** store it in a stable location, make it executable with `chmod +x`, and run it. Stop the backend before replacing or deleting it. It does not automatically register a launcher or a systemd service.
 
-Uninstalling does not remove task worktrees, repositories or application data. Read the [migration guide](brand/yolu/migration.md) before replacing an older Work Hub installation.
+Uninstalling does not remove workspace worktrees, repositories or application data. Read the [migration guide](brand/yolu/migration.md) before replacing an older Work Hub installation.
 
 Release directories include `SHA256SUMS` and source information in `release.json`. Check file integrity with `sha256sum -c SHA256SUMS` on Linux, `shasum -a 256 -c SHA256SUMS` on macOS, or `Get-FileHash -Algorithm SHA256` on Windows. Checksums do not establish publisher identity; check the release's stated signing and notarization status.
 

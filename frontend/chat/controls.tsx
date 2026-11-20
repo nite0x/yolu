@@ -1,18 +1,19 @@
 import { uiText } from "../i18n";
 import {memo, useEffect, useId, useRef, useState, useSyncExternalStore, type RefObject} from "react";
-import {ArchiveIcon, ArchiveRestoreIcon, ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, GitForkIcon, LoaderCircleIcon, MoreHorizontalIcon, PencilIcon, PinIcon, PinOffIcon, RefreshCwIcon, SearchIcon, HandIcon, ShieldCheckIcon, ShieldAlertIcon, ZapIcon, XIcon} from "lucide-react";
+import {ArchiveIcon, ArchiveRestoreIcon, ArrowDownIcon, ArrowUpIcon, BotIcon, CheckIcon, ChevronDownIcon, GitForkIcon, LoaderCircleIcon, MoreHorizontalIcon, PencilIcon, PinIcon, PinOffIcon, RefreshCwIcon, SearchIcon, HandIcon, ShieldCheckIcon, ShieldAlertIcon, ZapIcon, XIcon} from "lucide-react";
 import {Collapsible, DropdownMenu, Popover} from "radix-ui";
 import {TooltipIconButton} from "@/components/assistant-ui/elements/tooltip-icon-button";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {NativeSelect, NativeSelectOption} from "@/components/ui/native-select";
-import {convertEntries, mergeEntries, newConversationSettings, type ChatContext, type PermissionMode} from "./model";
+import {convertEntries, mergeEntries, newConversationSettings, type AgentProvider, type ChatContext, type PermissionMode} from "./model";
 import {ChatController} from "./controller";
 import {useChatState} from './use-chat-state';
 import {ConversationStatusBadge} from '../workspace/conversation-surface';
 
-const modeLabel = (mode?: string) => mode === "plan" ? uiText("规划") : mode === "default" ? uiText("执行") : uiText("未获取工作模式");
-const approvalLabel = (policy: unknown) => typeof policy === "string" ? ({"on-request": uiText("按需审批"), untrusted: uiText("非受信任操作需审批"), "on-failure": uiText("失败后审批"), never: uiText("无需审批")}[policy] || policy) : uiText("由 Codex 管理");
+const providerLabel = (provider?: AgentProvider) => provider === "agy" ? "Antigravity" : "Codex";
+const modeLabel = (mode?: string) => mode === "plan" ? uiText("规划") : mode === "default" ? uiText("执行") : mode === "accept-edits" ? uiText("自动编辑") : mode === "auto" ? uiText("自动") : uiText("未获取工作模式");
+const approvalLabel = (policy: unknown, provider?: AgentProvider) => typeof policy === "string" ? ({"on-request": uiText("按需审批"), untrusted: uiText("非受信任操作需审批"), "on-failure": uiText("失败后审批"), never: uiText("无需审批")}[policy] || policy) : provider === "agy" ? uiText("由 Antigravity 管理") : uiText("由 Codex 管理");
 type ControlsProps = {controller: ChatController; portal: RefObject<HTMLElement | null>};
 const overlayClass = "chat-control-overlay rounded-xl border bg-background p-4 text-sm text-foreground shadow-lg outline-none";
 
@@ -40,12 +41,35 @@ function contextPermission(context?: ChatContext): PermissionMode | undefined {
   if (context.approvalsReviewer === "auto_review" || context.approvalsReviewer === "guardian_subagent") return "auto";
   return context.approvalsReviewer === "user" ? "ask" : undefined;
 }
+const providers = [
+  {value: "codex" as AgentProvider, label: "Codex", description: uiText("通过 Codex App Server 运行，支持原生引导、分叉与终端交接")},
+  {value: "agy" as AgentProvider, label: "Antigravity (AGY)", description: uiText("通过 ACP 协议运行 Antigravity Agent，支持多目录、审批与终端继续")},
+] as const;
+
+function ChatProviderView({controller, portal}: ControlsProps) {
+  const s = useChatState(controller, s => ({session: s.session, provider: s.provider, submitting: s.submitting}));
+  if (s.session) return null;
+  return <DropdownMenu.Root>
+    <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="sm" className="chat-permission-trigger" data-agent-provider={s.provider} aria-label={uiText("选择对话引擎")} title={providerLabel(s.provider)} disabled={s.submitting}>
+      <BotIcon aria-hidden="true" /><span>{providerLabel(s.provider)}</span><ChevronDownIcon className="size-3" aria-hidden="true" />
+    </Button></DropdownMenu.Trigger>
+    <DropdownMenu.Portal container={portal.current}><DropdownMenu.Content className={`${overlayClass} chat-permission-menu`} align="start" side="top" sideOffset={10} collisionPadding={12}>
+      <DropdownMenu.Label className="chat-permission-heading">{uiText("选择对话引擎")}</DropdownMenu.Label>
+      <DropdownMenu.RadioGroup value={s.provider} onValueChange={value => controller.setProvider(value as AgentProvider)}>
+        {providers.map(p => <DropdownMenu.RadioItem key={p.value} value={p.value} className="chat-permission-option" data-provider-option={p.value}>
+          <BotIcon aria-hidden="true" /><span><strong>{p.label}</strong><span className="chat-permission-description">{p.description}</span></span>{s.provider === p.value && <CheckIcon className="chat-permission-check" aria-hidden="true" />}
+        </DropdownMenu.RadioItem>)}
+      </DropdownMenu.RadioGroup>
+    </DropdownMenu.Content></DropdownMenu.Portal>
+  </DropdownMenu.Root>;
+}
+
 function ChatPermissionsView({controller, portal}: ControlsProps) {
-  const s = useChatState(controller, s => ({session:s.session,context:s.context,settings:s.settings,defaults:s.defaults,submitting:s.submitting,chat:{busy:s.chat.busy,context:s.chat.context}}));
+  const s = useChatState(controller, s => ({session:s.session,provider:s.provider,context:s.context,settings:s.settings,defaults:s.defaults,submitting:s.submitting,chat:{busy:s.chat.busy,context:s.chat.context}}));
   const context = s.chat.context || s.context;
   const current = contextPermission(context);
   const value = s.settings.permission || (s.session ? current : s.defaults.permission);
-  const inheritedLabel = s.session ? uiText("沿用对话权限") : uiText("沿用 Codex 默认权限");
+  const inheritedLabel = s.session ? uiText("沿用对话权限") : s.provider === "agy" ? uiText("沿用 Antigravity 默认权限") : uiText("沿用 Codex 默认权限");
   const selected = permissions.find(p => p.value === value);
   const Icon = selected?.icon || ShieldCheckIcon;
   const pending = !!s.session && s.chat.busy && !!s.settings.permission && s.settings.permission !== current;
@@ -68,7 +92,7 @@ function ChatPermissionsView({controller, portal}: ControlsProps) {
 const effortLabel = (effort?: string) => effort ? ({none: uiText("无"), minimal: uiText("最低"), low: uiText("低"), medium: uiText("中"), high: uiText("高"), xhigh: uiText("超高"), max: uiText("最高"), ultra: uiText("极高")}[effort] || effort) : "";
 
 function ChatControlsView({controller, portal}: ControlsProps) {
-  const s = useChatState(controller, s => ({session:s.session,context:s.context,settings:s.settings,defaults:s.defaults,submitting:s.submitting,chat:{busy:s.chat.busy,context:s.chat.context},models:s.models,modes:s.modes,optionsLoading:s.optionsLoading}));
+  const s = useChatState(controller, s => ({session:s.session,provider:s.provider,context:s.context,settings:s.settings,defaults:s.defaults,submitting:s.submitting,chat:{busy:s.chat.busy,context:s.chat.context},models:s.models,modes:s.modes,optionsLoading:s.optionsLoading}));
   const title = useId();
   useEffect(() => {if (!controller.options.readOnly) void controller.loadOptions();}, [controller]);
   const context = s.chat.context || s.context;
@@ -83,9 +107,12 @@ function ChatControlsView({controller, portal}: ControlsProps) {
   const nextMode = s.settings.mode || context?.mode;
   const efforts = selectedModel?.supportedReasoningEfforts || [];
   const changed = s.session ? nextModel !== model || nextEffort !== effort || nextMode !== context?.mode : Object.values(s.settings).some(Boolean);
+  const defaultModelLabel = s.provider === "agy" ? uiText("沿用 Antigravity 默认模型") : uiText("沿用 Codex 默认模型");
+  const loadingSettingsLabel = s.provider === "agy" ? uiText("正在读取 Antigravity 设置…") : uiText("正在读取 Codex 设置…");
+  const unreportedLabel = s.provider === "agy" ? uiText("Antigravity 未报告") : uiText("Codex 未报告");
   return <Popover.Root onOpenChange={open => {if (open) void controller.loadOptions();}}>
     <Popover.Trigger asChild><Button type="button" variant="ghost" size="sm" className="chat-context-trigger" aria-label={uiText("上下文与设置")}>
-      <ZapIcon aria-hidden="true" /><span className="truncate">{modelName || (s.optionsLoading ? uiText("正在读取模型…") : !s.session ? uiText("沿用 Codex 默认模型") : uiText("选择模型"))}{nextEffort ? ` · ${effortLabel(nextEffort)}` : ""}{nextMode ? ` · ${modeLabel(nextMode)}` : ""}</span>{s.chat.busy && changed && <span className="chat-next-turn">{uiText("下轮")}</span>}<ChevronDownIcon aria-hidden="true" />
+      <ZapIcon aria-hidden="true" /><span className="truncate">{modelName || (s.optionsLoading ? uiText("正在读取模型…") : !s.session ? defaultModelLabel : uiText("选择模型"))}{nextEffort ? ` · ${effortLabel(nextEffort)}` : ""}{nextMode ? ` · ${modeLabel(nextMode)}` : ""}</span>{s.chat.busy && changed && <span className="chat-next-turn">{uiText("下轮")}</span>}<ChevronDownIcon aria-hidden="true" />
     </Button></Popover.Trigger>
     <Popover.Portal container={portal.current}><Popover.Content className={`${overlayClass} chat-settings-popover space-y-3`} align="end" side={controller.options.readOnly ? "bottom" : "top"} sideOffset={8} collisionPadding={12} aria-labelledby={title}>
       <div className="flex items-center justify-between gap-4"><h3 id={title} className="text-sm font-semibold">{uiText("上下文与设置")}</h3><Popover.Close asChild><Button variant="ghost" size="icon" className="size-6" aria-label={uiText("关闭设置")}><XIcon className="size-4" /></Button></Popover.Close></div>
@@ -96,11 +123,11 @@ function ChatControlsView({controller, portal}: ControlsProps) {
           <label className="grid gap-1.5 text-xs">{uiText("思考强度")}<NativeSelect aria-label={uiText("下轮思考强度")} value={s.session ? nextEffort || "" : s.settings.effort || ""} disabled={s.optionsLoading || s.submitting} onChange={e => controller.setSettings({...s.settings, effort: s.session && e.target.value === inheritedEffort ? undefined : e.target.value || undefined})}>{!s.session ? <NativeSelectOption value="">{uiText("使用模型默认强度")}</NativeSelectOption> : !nextEffort && <NativeSelectOption value="" disabled>{uiText("未获取思考强度")}</NativeSelectOption>}{nextEffort && !efforts.some(e => e.reasoningEffort === nextEffort) && <NativeSelectOption value={nextEffort}>{effortLabel(nextEffort)}</NativeSelectOption>}{efforts.map(e => <NativeSelectOption key={e.reasoningEffort} value={e.reasoningEffort}>{effortLabel(e.reasoningEffort)}</NativeSelectOption>)}</NativeSelect></label>
           <label className="grid gap-1.5 text-xs">{uiText("工作模式")}<NativeSelect aria-label={uiText("下轮工作模式")} value={nextMode || ""} disabled={s.optionsLoading || s.submitting} onChange={e => controller.setSettings({...s.settings, mode: e.target.value === context?.mode ? undefined : e.target.value || undefined})}>{!nextMode && <NativeSelectOption value="" disabled>{uiText("未获取工作模式")}</NativeSelectOption>}{nextMode && !s.modes.includes(nextMode) && <NativeSelectOption value={nextMode}>{modeLabel(nextMode)}</NativeSelectOption>}{s.modes.map(mode => <NativeSelectOption key={mode} value={mode}>{modeLabel(mode)}</NativeSelectOption>)}</NativeSelect></label>
         </div>
-        {s.optionsLoading && <p role="status" className="text-xs text-muted-foreground">{uiText("正在读取 Codex 设置…")}</p>}
+        {s.optionsLoading && <p role="status" className="text-xs text-muted-foreground">{loadingSettingsLabel}</p>}
         {changed && <div className="flex items-center justify-between gap-2 text-xs"><span>{uiText("已设置下一轮参数")}</span><Button size="sm" variant="ghost" onClick={() => {const settings = s.settings.permission ? {permission: s.settings.permission} : {}; controller.setSettings(s.session ? settings : {});}}>{s.session ? uiText("恢复当前设置") : uiText("恢复默认设置")}</Button></div>}
       </>}
       <Collapsible.Root className="border-t pt-3"><Collapsible.Trigger className="chat-context-disclosure flex w-full items-center justify-between text-xs">{uiText("当前上下文与权限")}<ChevronDownIcon className="size-3" aria-hidden="true" /></Collapsible.Trigger><Collapsible.Content>
-        <dl className="chat-context-facts mt-3 grid gap-2 text-xs"><dt>{uiText("主工作目录")}</dt><dd>{context?.cwd || s.session?.cwd || controller.options.target?.cwd || uiText("所选项目目录")}</dd><dt>{uiText("额外工作目录")}</dt><dd>{context?.additional_directories?.join("、") || uiText("未报告额外目录")}</dd><dt>{uiText("当前模型 / 思考强度")}</dt><dd>{model || uiText("Codex 未报告")} / {effort ? effortLabel(effort) : uiText("未获取思考强度")}</dd><dt>{uiText("当前工作模式")}</dt><dd>{modeLabel(context?.mode)}</dd><dt>{uiText("审批策略")}</dt><dd>{approvalLabel(context?.approvalPolicy)}</dd><dt>{uiText("批准方式")}</dt><dd>{context?.approvalsReviewer === "auto_review" || context?.approvalsReviewer === "guardian_subagent" ? uiText("帮我批准") : context?.approvalsReviewer === "user" ? uiText("手动批准") : uiText("Codex 未报告")}</dd><dt>{uiText("沙箱")}</dt><dd>{context?.sandbox?.type || uiText("Codex 未报告")}</dd></dl>
+        <dl className="chat-context-facts mt-3 grid gap-2 text-xs"><dt>{uiText("对话引擎")}</dt><dd>{providerLabel(s.provider)}</dd><dt>{uiText("主工作目录")}</dt><dd>{context?.cwd || s.session?.cwd || controller.options.target?.cwd || uiText("所选项目目录")}</dd><dt>{uiText("额外工作目录")}</dt><dd>{context?.additional_directories?.join("、") || uiText("未报告额外目录")}</dd><dt>{uiText("当前模型 / 思考强度")}</dt><dd>{model || unreportedLabel} / {effort ? effortLabel(effort) : uiText("未获取思考强度")}</dd><dt>{uiText("当前工作模式")}</dt><dd>{modeLabel(context?.mode)}</dd><dt>{uiText("审批策略")}</dt><dd>{approvalLabel(context?.approvalPolicy, s.provider)}</dd><dt>{uiText("批准方式")}</dt><dd>{context?.approvalsReviewer === "auto_review" || context?.approvalsReviewer === "guardian_subagent" ? uiText("帮我批准") : context?.approvalsReviewer === "user" ? uiText("手动批准") : unreportedLabel}</dd><dt>{uiText("沙箱")}</dt><dd>{context?.sandbox?.type || unreportedLabel}</dd></dl>
       </Collapsible.Content></Collapsible.Root>
     </Popover.Content></Popover.Portal>
   </Popover.Root>;
@@ -132,7 +159,7 @@ export function ChatSessionMenu({controller, portal, onSearch}: ControlsProps & 
         <DropdownMenu.Separator className="chat-menu-secondary-action my-1 border-t" />
         <DropdownMenu.Item className="chat-menu-item" onSelect={() => openEditor("rename")}><PencilIcon />{uiText("重命名")}</DropdownMenu.Item>
         <DropdownMenu.Item className="chat-menu-item" onSelect={() => void controller.manage(s.session?.pinned ? "unpin" : "pin")}>{s.session.pinned ? <PinOffIcon /> : <PinIcon />}{s.session.pinned ? uiText("取消固定") : uiText("固定对话")}</DropdownMenu.Item>
-        <DropdownMenu.Item className="chat-menu-item" disabled={s.chat.busy || s.submitting || s.session.archived} onSelect={() => openEditor("fork")}><GitForkIcon />{uiText("从历史分叉")}</DropdownMenu.Item>
+        {s.capabilities.fork && <DropdownMenu.Item className="chat-menu-item" disabled={s.chat.busy || s.submitting || s.session.archived} onSelect={() => openEditor("fork")}><GitForkIcon />{uiText("从历史分叉")}</DropdownMenu.Item>}
         <DropdownMenu.Separator className="my-1 border-t" />
         <DropdownMenu.Item className="chat-menu-item" disabled={s.chat.busy || s.submitting} onSelect={() => void controller.manage(s.session?.archived ? "restore" : "archive")}>{s.session.archived ? <ArchiveRestoreIcon /> : <ArchiveIcon />}{s.session.archived ? uiText("恢复对话") : uiText("归档对话")}</DropdownMenu.Item>
         </>}
@@ -179,5 +206,6 @@ export function ChatSearch({controller, container, open, onClose}: {controller: 
 }
 
 export const ChatStatus = memo(ChatStatusView);
+export const ChatProviderSelect = memo(ChatProviderView);
 export const ChatPermissions = memo(ChatPermissionsView);
 export const ChatControls = memo(ChatControlsView);

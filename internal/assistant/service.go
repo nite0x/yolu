@@ -270,8 +270,9 @@ func (s *Service) drive(ctx context.Context, cancel context.CancelFunc, run stor
 	status, code := "completed", ""
 	if err != nil {
 		status, code = "failed", "codex_unavailable"
-		if errors.Is(err, errAssistantModelUnavailable) {
-			code = "model_unavailable"
+		var failure runFailure
+		if errors.As(err, &failure) {
+			code = string(failure)
 		}
 		if errors.Is(ctx.Err(), context.Canceled) {
 			status, code = "interrupted", "cancelled"

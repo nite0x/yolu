@@ -47,7 +47,7 @@ func TestSessionHistoryIsReadOnlyScopedAndChronological(t *testing.T) {
 			}
 		}}, nil
 	}
-	code, raw := call(t, a, "GET", "/api/requirements/"+q.ID+"/sessions/linked/history?cursor=opaque%20cursor", nil)
+	code, raw := call(t, a, "GET", "/api/workspaces/"+q.ID+"/sessions/linked/history?cursor=opaque%20cursor", nil)
 	if code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
@@ -72,14 +72,14 @@ func TestSessionHistoryIsReadOnlyScopedAndChronological(t *testing.T) {
 		t.Fatal(requests)
 	}
 	requests = nil
-	if code, _ := call(t, a, "GET", "/api/requirements/"+q.ID+"/sessions/unlinked/history", nil); code != 404 || len(requests) != 0 {
+	if code, _ := call(t, a, "GET", "/api/workspaces/"+q.ID+"/sessions/unlinked/history", nil); code != 404 || len(requests) != 0 {
 		t.Fatal("unlinked history queried Codex")
 	}
 	_, other, _ := create(t, a, p, nil, "other-history")
-	if code, _ := call(t, a, "GET", "/api/requirements/"+other.ID+"/sessions/linked/history", nil); code != 404 || len(requests) != 0 {
-		t.Fatal("cross-requirement history exposed")
+	if code, _ := call(t, a, "GET", "/api/workspaces/"+other.ID+"/sessions/linked/history", nil); code != 404 || len(requests) != 0 {
+		t.Fatal("cross-workspace history exposed")
 	}
-	if code, _ := call(t, a, "GET", "/api/requirements/missing/sessions/linked/history", nil); code != 404 {
+	if code, _ := call(t, a, "GET", "/api/workspaces/missing/sessions/linked/history", nil); code != 404 {
 		t.Fatal(code)
 	}
 }
@@ -118,7 +118,7 @@ func TestSessionHistoryFailurePreservesAssociation(t *testing.T) {
 		t.Fatal(err)
 	}
 	fakeSessions(a, map[string]codex.Session{})
-	endpoint := "/api/requirements/" + q.ID + "/sessions/missing/history"
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/missing/history"
 	if code, raw := call(t, a, "GET", endpoint, nil); code != 503 || !strings.Contains(string(raw), "无法读取对话详情") {
 		t.Fatalf("%d %s", code, raw)
 	}

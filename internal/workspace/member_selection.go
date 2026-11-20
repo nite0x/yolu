@@ -1,0 +1,171 @@
+package workspace
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+
+	"worktree-hub/internal/execution"
+	"worktree-hub/internal/model"
+	"worktree-hub/internal/platform"
+)
+
+// MemberSelection describes how a project participates without changing its
+// existing checkout. Omitted selections preserve the original new-worktree API.
+type MemberSelection struct {
+	ProjectID string `json:"project_id"`
+	Mode      string `json:"mode"`
+	Path      string `json:"path"`
+	Source    string `json:"source"`
+	Branch    string `json:"branch"`
+}
+
+func selectionsByProject(selections []MemberSelection) (map[string]MemberSelection, error) {
+	out := map[string]MemberSelection{}
+	for _, selection := range selections {
+		if _, exists := out[selection.ProjectID]; exists || selection.ProjectID == "" {
+			return nil, fmt.Errorf("项目工作目录选择重复或无效")
+		}
+		out[selection.ProjectID] = selection
+	}
+	return out, nil
+}
+
+func selectedMember(ctx context.Context, p model.Project, directory, branch string, selection MemberSelection) (model.Member, error) {
+	m := model.Member{ProjectID: p.ID, ProjectName: p.Name, Mode: selection.Mode, State: "pending"}
+	if m.Mode == "" {
+		m.Mode = "new"
+	}
+	if err := verifyRepository(ctx, p); err != nil {
+		return m, err
+	}
+	switch m.Mode {
+	case "new", "existing":
+		m.Branch = strings.TrimSpace(selection.Branch)
+		if m.Branch == "" && m.Mode == "new" {
+			m.Branch = branch
+		}
+		if m.Branch == "" || len(m.Branch) > 160 || strings.HasPrefix(m.Branch, "-") || strings.Contains(m.Branch, "@{") {
+			return m, fmt.Errorf("分支名无效")
+		}
+		if _, err := execution.Git(ctx, p.Path, "check-ref-format", "--branch", m.Branch); err != nil {
+			return m, fmt.Errorf("分支名无效")
+		}
+		if m.Mode == "new" {
+			if _, err := execution.Git(ctx, p.Path, "rev-parse", "--verify", "--quiet", "refs/heads/"+m.Branch); err == nil {
+				return m, fmt.Errorf("分支 %s 已存在，请选择使用已有分支创建 Worktree 或换一个新分支名", m.Branch)
+			}
+		} else if err := availableLocalBranch(ctx, p, m.Branch); err != nil {
+			return m, err
+		}
+		m.Path = platform.JoinWorkspacePath(directory, p.Folder)
+		if !platform.Within(directory, m.Path) {
+			return m, fmt.Errorf("Worktree 路径越过工作区目录")
+		}
+		if _, err := execution.Stat(ctx, m.Path, false); !errors.Is(err, os.ErrNotExist) {
+			return m, fmt.Errorf("工作目录已存在或无法检查，不能覆盖：%s", m.Path)
+		}
+		m.BaseRef = strings.TrimSpace(selection.Source)
+		if m.Mode == "existing" {
+			m.BaseRef = "refs/heads/" + m.Branch
+		}
+		if m.BaseRef == "" {
+			m.BaseRef = execution.DefaultBranchSource(ctx, p.Path)
+		}
+		if m.BaseRef != "HEAD" {
+			if !strings.HasPrefix(m.BaseRef, "refs/heads/") && !strings.HasPrefix(m.BaseRef, "refs/remotes/") {
+				return m, fmt.Errorf("请选择本地或远端来源分支")
+			}
+			if _, err := execution.Git(ctx, p.Path, "check-ref-format", m.BaseRef); err != nil {
+				return m, fmt.Errorf("来源分支无效")
+			}
+		}
+		commit, err := execution.Git(ctx, p.Path, "rev-parse", "--verify", m.BaseRef+"^{commit}")
+		if err != nil {
+			return m, fmt.Errorf("来源分支不存在或尚无提交，请重新选择：%s", m.BaseRef)
+		}
+		m.BaseCommit = strings.TrimSpace(commit)
+	case "project", "worktree":
+		m.Path = p.Path
+		if m.Mode == "worktree" {
+			if !platform.AbsoluteWorkspacePath(selection.Path) {
+				return m, fmt.Errorf("请选择已有 Worktree 的绝对路径")
+			}
+			m.Path = platform.CleanWorkspacePath(selection.Path)
+		}
+		st, err := execution.Stat(ctx, m.Path, false)
+		if err != nil {
+			return m, err
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			return m, fmt.Errorf("Worktree 路径是符号链接，拒绝使用")
+		}
+		// Persist the execution environment's canonical path so later launch
+		// and cleanup checks compare the same directory identity as Git.
+		m.Path, err = execution.Normalize(ctx, m.Path)
+		if err != nil {
+			return m, err
+		}
+		if err := VerifyMember(ctx, p, m, ""); err != nil {
+			return m, err
+		}
+		m.Branch, _ = execution.Git(ctx, m.Path, "symbolic-ref", "--quiet", "--short", "HEAD")
+		m.Branch = strings.TrimSpace(m.Branch)
+		commit, _ := execution.Git(ctx, m.Path, "rev-parse", "--verify", "HEAD^{commit}")
+		m.BaseCommit = strings.TrimSpace(commit)
+	default:
+		return m, fmt.Errorf("请选择新建工作目录、项目原目录或已有 Worktree")
+	}
+	return m, nil
+}
+
+func availableLocalBranch(ctx context.Context, p model.Project, branch string) error {
+	if _, err := execution.Git(ctx, p.Path, "show-ref", "--verify", "--quiet", "refs/heads/"+branch); err != nil {
+		return fmt.Errorf("本地分支 %s 不存在，请重新选择", branch)
+	}
+	raw, err := execution.Git(ctx, p.Path, "worktree", "list", "--porcelain", "-z")
+	if err != nil {
+		return err
+	}
+	for _, field := range strings.Split(raw, "\x00") {
+		if field == "branch refs/heads/"+branch {
+			return fmt.Errorf("分支 %s 已被 Worktree 占用，请选择使用已有 Worktree 或其他分支", branch)
+		}
+	}
+	return nil
+}
+
+func createsWorktree(mode string) bool {
+	return mode == "new" || mode == "existing"
+}
+
+func verifyRepository(ctx context.Context, p model.Project) error {
+	common, err := execution.Git(ctx, p.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	resolved, err := execution.Eval(ctx, strings.TrimSpace(common))
+	if err != nil || !platform.SameWorkspacePath(resolved, p.CommonDir) {
+		return fmt.Errorf("仓库位置已变更，请检查登记路径")
+	}
+	return nil
+}
+
+func memberBranch(m model.Member, fallback string) string {
+	if m.Branch != "" {
+		return m.Branch
+	}
+	return fallback
+}
+
+func memberDescription(m model.Member) string {
+	if m.Mode == "project" || m.Mode == "worktree" {
+		return "使用已有工作目录"
+	}
+	if m.Mode == "existing" {
+		return "使用已有分支 " + m.Branch + " 新建 Worktree；提交 " + m.BaseCommit
+	}
+	return "新建分支 " + m.Branch + "；来源 " + m.BaseRef + "；提交 " + m.BaseCommit
+}

@@ -1,36 +1,36 @@
 const translations = {
   en: {
-    shotTask:'Task workspace', shotChanges:'Files & changes', shotTerminal:'Terminal', enlarge:'View larger ↗',
+    shotWorkspace:'Workspace', shotChanges:'Files & changes', shotTerminal:'Terminal', enlarge:'View larger ↗',
     captureCaption:'Real app capture · Mint palette in development · Example data', captureTitle:'Inside the real Yolu app',
     skip: 'Skip to main content', navFeatures: 'Features', navWorkflow: 'How it works', navSource: 'Open source',
     eyebrow: 'YOUR LOCAL DEVELOPMENT WORKSPACE',
     heroTitle: 'Good work starts<br>with a little<br>clarity<span class="mint-period">.</span>',
     heroDescription: 'Projects, branches, terminals, AI conversations.<br>Bring your development context together in Yolu.<br>Less switching. More making.',
     getYolu: 'Get Yolu', seeWorkflow: 'Explore the workspace', platformNote: 'macOS · Windows · Linux', licenseNote: 'Apache 2.0 open source',
-    tasks: 'Tasks', projects: 'Projects', conversations: 'Conversations', inProgress: 'IN PROGRESS',
-    taskCheckout: 'Refine checkout', taskApi: 'Optimize the API', taskTheme: 'Explore dark mode',
+    workspaces: 'Workspaces', projects: 'Projects', conversations: 'Conversations', inProgress: 'IN PROGRESS',
+    workspaceCheckout: 'Refine checkout', workspaceApi: 'Optimize the API', workspaceTheme: 'Explore dark mode',
     overview: 'Overview', changes: 'Changes', terminal: 'Terminal', continueConversation: 'Continue with Codex',
-    contextReady: 'Context is ready', demoCaption: 'Interactive illustration · Try the tasks and tabs',
-    diffNote: 'Review each change in the context of your task.',
-    principleOne: 'Start with a task', principleTwo: 'Bring repositories together', principleThree: 'Stay in control, locally', principleFour: 'Keep your favorite tools',
-    featuresEyebrow: 'A PLACE FOR YOUR DEVELOPMENT CONTEXT', featuresTitle: 'One task. Many projects.<br>A clear place to work.',
+    contextReady: 'Context is ready', demoCaption: 'Interactive illustration · Switch between workspaces',
+    diffNote: 'Review each change in the context of your workspace.',
+    principleOne: 'Start with a workspace', principleTwo: 'Bring repositories together', principleThree: 'Stay in control, locally', principleFour: 'Keep your favorite tools',
+    featuresEyebrow: 'A PLACE FOR YOUR DEVELOPMENT CONTEXT', featuresTitle: 'One workspace. Many projects.<br>A clear place to work.',
     featuresIntro: 'A feature rarely lives in a single repository.<br>Yolu brings the directories, branches, and tools together,<br>so you know where you are — and where to go next.',
-    featureOneTitle: 'One goal, across every repository.', featureOneBody: 'Connect projects to a task. Create isolated Git worktrees or reuse existing directories. Keep cross-project work connected to a clear goal.',
-    taskWorkspace: 'Task workspace', taskNotes: 'Goal & notes', featureTwoTitle: 'See what changed. At a glance.',
-    featureTwoBody: 'Actual branches, local changes, upstream status, and diffs. Check the state of your Git work right from the task before taking the next step.',
+    featureOneTitle: 'One goal, across every repository.', featureOneBody: 'Connect projects to a workspace. Create isolated Git worktrees or reuse existing directories. Keep cross-project work connected to a clear goal.',
+    workspaceLabel: 'Workspace', workspaceNotes: 'Goal & notes', featureTwoTitle: 'See what changed. At a glance.',
+    featureTwoBody: 'Actual branches, local changes, upstream status, and diffs. Check the state of your Git work right from the workspace before taking the next step.',
     gitFooter: 'From reviewing changes to preparing a commit.', featureThreeTitle: 'Tools ready. Train of thought intact.',
     featureThreeBody: 'Open a terminal, editor, or Codex conversation in the right directory. Keep your work in tabs and panes, ready for when you return.',
     workflowEyebrow: 'FROM AN IDEA TO YOUR NEXT COMMIT', workflowTitle: 'Make room for the work<br>you came here to do.', readGuide: 'Read the user guide',
     stepOneTitle: 'Bring your projects', stepOneBody: 'Register your existing Git repositories. Your projects stay in the local environment you already use.',
-    stepTwoTitle: 'Give your goal a task', stepTwoBody: 'Describe the goal, pick the participating projects, and prepare a branch and working directory for each.',
-    stepThreeTitle: 'Find your focus. Start building.', stepThreeBody: 'Review changes, open a terminal, or continue a conversation. Come back to the same task when you are ready.',
+    stepTwoTitle: 'Give your goal a workspace', stepTwoBody: 'Describe the goal, pick the participating projects, and prepare a branch and working directory for each.',
+    stepThreeTitle: 'Find your focus. Start building.', stepThreeBody: 'Review changes, open a terminal, or continue a conversation. Come back to the same workspace when you are ready.',
     sourceEyebrow: 'LOCAL FIRST. OPEN SOURCE.', sourceTitle: 'Your workspace.<br>Your way forward.',
     sourceBody: 'Application records stay local. Repositories stay in your environment.<br>Yolu is open source under the Apache 2.0 license.<br>Use it, explore the code, and help make it better.', exploreSource: 'Explore the source',
     faqEyebrow: 'BEFORE YOU BEGIN', faqTitle: 'A few things to know.',
-    faqOneQ: 'How does Yolu fit with my editor?', faqOneA: 'Yolu organizes tasks, their projects, working directories, and development tools. Keep using your favorite editor and enter the right working environment directly from a task.',
+    faqOneQ: 'How does Yolu fit with my editor?', faqOneA: 'Yolu organizes workspaces, their projects, working directories, and development tools. Keep using your favorite editor and enter the right working environment directly from a workspace.',
     faqTwoQ: 'What do I need to install?', faqTwoA: 'Install a Yolu package matching your system and processor, and Git in the environment where your repositories live. For integrated Codex conversations, install and authenticate the Codex CLI in that same environment. Installed Yolu packages do not require Go, Rust, or Node.js.',
     faqThreeQ: 'Which account do AI conversations use?', faqThreeA: 'Integrated conversations use the Codex CLI installed and authenticated in the selected environment, with that environment’s account and provider configuration. Model access, network requests, and costs depend on your account and settings. Other CLIs launched in terminals use their own authentication.',
-    faqFourQ: 'Can I work inside WSL on Windows?', faqFourA: 'Yes. The Windows app can connect to a WSL distribution and user to execute Git and file operations there. Each task belongs to one execution environment; local and WSL projects are organized separately.',
+    faqFourQ: 'Can I work inside WSL on Windows?', faqFourA: 'Yes. The Windows app can connect to a WSL distribution and user to execute Git and file operations there. Each workspace belongs to one execution environment; local and WSL projects are organized separately.',
     downloadEyebrow: 'MAKE ROOM FOR FOCUS.', downloadTitle: 'Your next good idea<br>starts here.', downloadBody: 'Give your development work a clearer starting point.',
     releaseNote: 'Available builds and installation notes are listed on GitHub Releases.', footerTagline: 'Less switching. More making.', documentation: 'Docs', feedback: 'Feedback',
   },
@@ -40,13 +40,13 @@ const chinese = {};
 document.querySelectorAll('[data-i18n]').forEach(element => { chinese[element.dataset.i18n] = element.innerHTML; });
 translations.zh = chinese;
 let language = 'zh';
-let currentShot = 'task';
+let currentShot = 'workspace';
 let currentPlatform = /Windows/i.test(navigator.userAgent) ? 'windows' : /Linux/i.test(navigator.userAgent) ? 'linux' : 'macos';
 let copyFeedbackTimer;
 const captures = {
- task:{file:'task-workspace.jpg',zh:'Yolu 实际任务工作区：任务列表、目标与两个关联项目',en:'Actual Yolu task workspace with the task list, goal, and two linked projects'},
+ workspace:{file:'workspace.jpg',zh:'Yolu 实际工作区：工作区列表、目标与两个关联项目',en:'Actual Yolu workspace with the workspace list, goal, and two linked projects'},
  changes:{file:'changes.jpg',zh:'Yolu 实际文件与改动查看器：示例项目的 Git 差异',en:'Actual Yolu file and change viewer with a sample project Git diff'},
- terminal:{file:'terminal.jpg',zh:'Yolu 实际终端：在任务工作目录中运行 Git 命令',en:'Actual Yolu terminal running Git commands in the task working directory'},
+ terminal:{file:'terminal.jpg',zh:'Yolu 实际终端：在工作区工作目录中运行 Git 命令',en:'Actual Yolu terminal running Git commands in the workspace working directory'},
 };
 function renderCapture() {
  const capture=captures[currentShot];
@@ -67,8 +67,8 @@ function renderPlatform() {
 function setLanguage(next) {
  language=next;document.documentElement.lang=language==='zh'?'zh-CN':'en';
  document.querySelectorAll('[data-i18n]').forEach(element=>{const copy=translations[language][element.dataset.i18n];if(copy!==undefined)element.innerHTML=copy;});
- document.title=language==='zh'?'Yolu — 开发，从一个清晰的任务开始':'Yolu — A clearer place for your development work';
- const description=language==='zh'?'Yolu 是以任务为中心的本地开发工作台。把多个项目、Git worktree、终端和 Codex 对话放在同一个上下文里，让开发从容开始。':'Yolu is a local, task-centered desktop workspace. Bring repositories, Git worktrees, terminals, and Codex conversations into one clear development context.';
+ document.title=language==='zh'?'Yolu — 开发，从一个清晰的工作区开始':'Yolu — A clearer place for your development work';
+ const description=language==='zh'?'Yolu 是以工作区为中心的本地开发工作台。把多个项目、Git worktree、终端和 Codex 对话放在同一个上下文里，让开发从容开始。':'Yolu is a local desktop app for cross-project development. Bring repositories, Git worktrees, terminals, and Codex conversations into one clear development context.';
  document.querySelector('meta[name="description"]').content=description;document.querySelector('meta[property="og:title"]').content=document.title;document.querySelector('meta[property="og:description"]').content=description;
  const languageButton=document.getElementById('language');
  languageButton.innerHTML=language==='zh'?'EN <span aria-hidden="true">↗</span>':'中文 <span aria-hidden="true">↗</span>';

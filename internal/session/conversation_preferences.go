@@ -11,19 +11,31 @@ import (
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 )
 
-// Empty fields inherit Codex configuration. Preferences belong to this execution
+// Empty fields inherit provider configuration. Preferences belong to this execution
 // environment and are applied only when creating a conversation.
 type conversationPreferences struct {
 	Model      string `json:"model,omitempty"`
 	Permission string `json:"permission,omitempty"`
 }
 
+func conversationPreferencesKey(provider string) string {
+	if model.NormalizeProvider(provider) == model.ProviderAgy {
+		return "conversation_defaults:v1:agy"
+	}
+	return "conversation_defaults:v1"
+}
+
 func (a *Service) conversationPreferences(ctx context.Context) (conversationPreferences, error) {
+	return a.conversationPreferencesForProvider(ctx, model.ProviderCodex)
+}
+
+func (a *Service) conversationPreferencesForProvider(ctx context.Context, provider string) (conversationPreferences, error) {
 	var settings conversationPreferences
 	var raw string
-	err := a.Workspace.Store.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='conversation_defaults:v1'`).Scan(&raw)
+	err := a.Execution.Store.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, conversationPreferencesKey(provider)).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return settings, nil
 	}
@@ -55,14 +67,26 @@ func availableConversationModel(models []chatModel, model string) bool {
 }
 
 func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.Request) {
+	provider := r.URL.Query().Get("provider")
+	if !model.SupportedProvider(provider) {
+		httpx.WriteError(w, http.StatusBadRequest, "不支持的对话引擎")
+		return
+	}
+	provider = model.NormalizeProvider(provider)
+	key := conversationPreferencesKey(provider)
 	if r.Method == http.MethodGet {
-		settings, err := a.conversationPreferences(r.Context())
+		settings, err := a.conversationPreferencesForProvider(r.Context(), provider)
 		if err != nil {
 			httpx.DbError(w, err)
 			return
 		}
+		if provider == model.ProviderAgy {
+			opts := a.agyChatOptions(r.Context())
+			httpx.WriteJSON(w, http.StatusOK, map[string]any{"provider": provider, "settings": settings, "models": opts["models"]})
+			return
+		}
 		models, err := a.conversationModels(r.Context())
-		result := map[string]any{"settings": settings, "models": models}
+		result := map[string]any{"provider": provider, "settings": settings, "models": models}
 		if err != nil {
 			// Keep saved preferences editable so an offline CLI cannot prevent
 			// restoring native defaults or changing the permission preference.
@@ -81,7 +105,7 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if settings.Model != "" {
+	if settings.Model != "" && provider == model.ProviderCodex {
 		models, err := a.conversationModels(r.Context())
 		if err != nil {
 			httpx.WriteError(w, http.StatusServiceUnavailable, "无法核对默认模型："+err.Error())
@@ -93,9 +117,9 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 		}
 	}
 	raw, _ := json.Marshal(settings)
-	if _, err := a.Workspace.Store.DB.ExecContext(r.Context(), `INSERT INTO settings(key,value) VALUES('conversation_defaults:v1',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(raw)); err != nil {
+	if _, err := a.Execution.Store.DB.ExecContext(r.Context(), `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, string(raw)); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"settings": settings})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"provider": provider, "settings": settings})
 }

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 func TestWindowsNativePathsAndPowerShellArguments(t *testing.T) {
@@ -26,11 +26,11 @@ func TestWindowsNativePathsAndPowerShellArguments(t *testing.T) {
 	if strings.HasPrefix(got, "/mnt/") {
 		t.Fatal("Windows project was converted to a WSL path")
 	}
-	if got := platform.JoinWorkspacePath("/home/nite/workspaces", "task", "project"); got != "/home/nite/workspaces/task/project" {
+	if got := platform.JoinWorkspacePath("/home/nite/workspaces", "workspace", "project"); got != "/home/nite/workspaces/workspace/project" {
 		t.Fatal(got)
 	}
 	p := model.LaunchPlan{Tool: "codex", Cwd: root, Args: []string{"--cd", root, "--add-dir", `D:\other project`, "引号 ' 和 \"，$() & ; | ` 都是文字"}}
-	if err := workspace.WriteTerminalScript(t.TempDir(), &p); err != nil {
+	if err := execution.WriteTerminalScript(t.TempDir(), &p); err != nil {
 		t.Fatal(err)
 	}
 	output := filepath.Join(t.TempDir(), "args.json")
@@ -57,7 +57,7 @@ func TestWindowsNativePathsAndPowerShellArguments(t *testing.T) {
 			t.Fatalf("argument %d changed: %q != %q", i, arg, p.Args[i])
 		}
 	}
-	command, err := workspace.TerminalCommand(model.TerminalSettings{Kind: "powershell", Style: "powershell"}, "powershell.exe", "", p)
+	command, err := execution.TerminalCommand(model.TerminalSettings{Kind: "powershell", Style: "powershell"}, "powershell.exe", "", p)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,8 +1,8 @@
 'use strict';
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
 
-const requirementSessions = new Map();
-let sessionPickerRequirement = null;
+const workspaceSessions = new Map();
+let sessionPickerWorkspace = null;
 let sessionPickerEnvironment = null;
 let sessionPickerCursor = null;
 let sessionPickerLoading = false;
@@ -36,23 +36,23 @@ window.addEventListener('storage', event => {
   sessionReadMemory.delete(event.key);
   if (typeof conversationVisible === 'function' && conversationVisible()) renderConversationList();
   else if (typeof updateConversationNavigation === 'function') updateConversationNavigation();
-  for (const requirement of requirementSessions.keys()) updateRequirementSessionsView(requirement);
+  for (const workspace of workspaceSessions.keys()) updateWorkspaceSessionsView(workspace);
 });
 function sessionWithUnread(session) {
   const seen = sessionReadProgress(session);
-  const open = typeof sessionHistoryState !== 'undefined' && sessionHistoryState?.session === session.id && (!sessionHistoryState.environment || sessionHistoryState.environment === (session.environment_id || activeEnvironment)) && !document.hidden && (typeof conversationReadingSession === 'function' ? conversationReadingSession(session.id, session.environment_id || activeEnvironment) : !document.getElementById('taskConversation')?.hidden);
+  const open = typeof sessionHistoryState !== 'undefined' && sessionHistoryState?.session === session.id && (!sessionHistoryState.environment || sessionHistoryState.environment === (session.environment_id || activeEnvironment)) && !document.hidden && (typeof conversationReadingSession === 'function' ? conversationReadingSession(session.id, session.environment_id || activeEnvironment) : !document.getElementById('workspaceConversation')?.hidden);
   if (open) saveSessionRead(session);
   return { ...session, unread: !open && ((session.updated_at || 0) > seen.time || !!session.completed_run && session.completed_run !== seen.run) };
 }
-function markSessionRead(requirement, session) {
-  const item = requirementSessions.get(requirement)?.sessions.find(s => s.id === session);
-  if (item) { saveSessionRead(item); updateRequirementSessionsView(requirement); }
+function markSessionRead(workspace, session) {
+  const item = workspaceSessions.get(workspace)?.sessions.find(s => s.id === session);
+  if (item) { saveSessionRead(item); updateWorkspaceSessionsView(workspace); }
 }
-function updateSessionChatActivity(requirement, session, chat, environment = activeEnvironment) {
+function updateSessionChatActivity(workspace, session, chat, environment = activeEnvironment) {
   if (typeof browserSessionActivity === 'function') browserSessionActivity(session, chat, environment);
   if (environment !== activeEnvironment) return;
-  // Every task sharing this directory observes the same session activity.
-  for (const [id, data] of requirementSessions) {
+  // Every workspace sharing this directory observes the same session activity.
+  for (const [id, data] of workspaceSessions) {
     const item = data.sessions.find(s => s.id === session);
     if (!item) continue;
     const status = chat.busy ? chat.status : '';
@@ -60,7 +60,7 @@ function updateSessionChatActivity(requirement, session, chat, environment = act
     if (item.chat_status === status && item.completed_run === completed) continue;
     item.chat_status = status;
     item.completed_run = completed;
-    updateRequirementSessionsView(id);
+    updateWorkspaceSessionsView(id);
   }
 }
 
@@ -68,25 +68,25 @@ function sessionTime(value) {
   return value ? new Date(value * 1000).toLocaleString(window.YoluI18n?.locale || 'zh-CN', { hour12: false }) : uiText("暂无活动记录");
 }
 
-function renderRequirementSessions(q) {
-  const data = requirementSessions.get(q.id);
+function renderWorkspaceSessions(q) {
+  const data = workspaceSessions.get(q.id);
   return window.WorkHubUI.sessions(q, data && { ...data, sessions: data.sessions.map(sessionWithUnread) }, typeof sessionReadOnly !== 'undefined' && sessionReadOnly);
 }
 
-function updateRequirementSessionsView(id) {
-  if (state.selectedRequirement !== id || state.view !== 'requirements') return;
-  const q = state.requirements.find(q => q.id === id);
-  const container = $('#requirementSessions');
+function updateWorkspaceSessionsView(id) {
+  if (state.selectedWorkspace !== id || state.view !== 'workspaces') return;
+  const q = state.workspaces.find(q => q.id === id);
+  const container = $('#workspaceSessions');
   if (q && container) {
-    const view = $('#taskSessionsView');
+    const view = $('#workspaceSessionsView');
     const top = view?.scrollTop || 0;
     const focused = container.contains(document.activeElement) ? document.activeElement : null;
     const focusSession = focused?.dataset.session;
     const focusAction = focused?.dataset.sessionAction;
-    const markup = renderRequirementSessions(q);
+    const markup = renderWorkspaceSessions(q);
     if (container.outerHTML !== markup) {
       container.outerHTML = markup;
-      const next = $('#requirementSessions');
+      const next = $('#workspaceSessions');
       if (view) view.scrollTop = top;
       if (focused) {
         const target = [...next.querySelectorAll('[data-session-action]')].find(node => node.dataset.session === focusSession && node.dataset.sessionAction === focusAction);
@@ -94,25 +94,25 @@ function updateRequirementSessionsView(id) {
       }
     }
   }
-  if (typeof updateTaskConversationStatus === 'function') updateTaskConversationStatus();
+  if (typeof updateWorkspaceConversationStatus === 'function') updateWorkspaceConversationStatus();
 }
 
-async function refreshRequirementSessions(id, force = true) {
-  const previous = requirementSessions.get(id);
+async function refreshWorkspaceSessions(id, force = true) {
+  const previous = workspaceSessions.get(id);
   if (previous?.loading) return;
   if (!force && previous?.checkedAt && Date.now() - previous.checkedAt < 10000) return;
   const data = { sessions: previous?.sessions || [], loading: true, error: '', checkedAt: Date.now() };
-  requirementSessions.set(id, data);
+  workspaceSessions.set(id, data);
   try {
-    const result = await api(`/api/sessions?task_id=${encodeURIComponent(id)}&linked=true`);
+    const result = await api(`/api/sessions?workspace_id=${encodeURIComponent(id)}&linked=true`);
     data.sessions = result.sessions;
     data.error = result.error || '';
   } catch (error) { data.error = error.message; }
-  finally { data.loading = false; updateRequirementSessionsView(id); }
+  finally { data.loading = false; updateWorkspaceSessionsView(id); }
 }
 
 function renderSessionPicker() {
-  const items = sessionPickerEnvironment === activeEnvironment ? requirementSessions.get(sessionPickerRequirement)?.sessions : !!window.WorkHubConversations && window.WorkHubConversations.current?.scope.kind === 'task' && window.WorkHubConversations.current.scope.id === sessionPickerRequirement && conversationScopeEnvironment(window.WorkHubConversations.current.scope) === sessionPickerEnvironment ? window.WorkHubConversations.current.sessions : [];
+  const items = sessionPickerEnvironment === activeEnvironment ? workspaceSessions.get(sessionPickerWorkspace)?.sessions : !!window.WorkHubConversations && window.WorkHubConversations.current?.scope.kind === 'workspace' && window.WorkHubConversations.current.scope.id === sessionPickerWorkspace && conversationScopeEnvironment(window.WorkHubConversations.current.scope) === sessionPickerEnvironment ? window.WorkHubConversations.current.sessions : [];
   const linked = new Set((items || []).map(s => s.id));
   $('#sessionPickerResults').innerHTML = window.WorkHubUI.sessionPicker(sessionPickerItems, [...linked]);
   $('#sessionPickerMore').hidden = !sessionPickerCursor;
@@ -131,13 +131,13 @@ async function loadSessionPicker(more = false) {
   try {
     const [page, nearby] = await Promise.all([
       api('/api/codex/sessions?' + params, {environment:sessionPickerEnvironment}),
-      !more && !sessionPickerSearch ? api('/api/sessions?task_id=' + encodeURIComponent(sessionPickerRequirement), {environment:sessionPickerEnvironment}).catch(() => ({sessions:[]})) : Promise.resolve({sessions:[]}),
+      !more && !sessionPickerSearch ? api('/api/sessions?workspace_id=' + encodeURIComponent(sessionPickerWorkspace), {environment:sessionPickerEnvironment}).catch(() => ({sessions:[]})) : Promise.resolve({sessions:[]}),
     ]);
     if (generation !== sessionPickerGeneration) return;
     const byID = new Map((more ? sessionPickerItems : []).map(s => [s.id, s]));
     [...nearby.sessions, ...page.data].forEach(s => byID.set(s.id, s));
-    const task = (typeof conversationWorkspace === 'function' ? conversationWorkspace(sessionPickerEnvironment) : state).requirements.find(q => q.id === sessionPickerRequirement);
-    const paths = new Set(task ? [task.path,...task.members.map(m => m.path)] : []);
+    const workspace = (typeof conversationWorkspace === 'function' ? conversationWorkspace(sessionPickerEnvironment) : state).workspaces.find(q => q.id === sessionPickerWorkspace);
+    const paths = new Set(workspace ? [workspace.path,...workspace.members.map(m => m.path)] : []);
     sessionPickerItems = [...byID.values()].sort((a,b) => Number(paths.has(b.cwd))-Number(paths.has(a.cwd)));
     sessionPickerCursor = page.nextCursor;
     renderSessionPicker();
@@ -150,12 +150,12 @@ async function loadSessionPicker(more = false) {
 }
 
 async function linkPickedSession(id) {
-  const requirement = sessionPickerRequirement;
+  const workspace = sessionPickerWorkspace;
   const environment = sessionPickerEnvironment;
   await mutation(uiText("正在关联对话"), async () => {
-    const result = await api(`/api/requirements/${encodeURIComponent(requirement)}/sessions`, { environment, method: 'POST', body: JSON.stringify({ session_id: id }) });
-    if (environment === activeEnvironment) await refreshRequirementSessions(requirement);
-    window.dispatchEvent(new CustomEvent('workhub:task-sessions', {detail:{task:requirement, environment}}));
+    const result = await api(`/api/workspaces/${encodeURIComponent(workspace)}/sessions`, { environment, method: 'POST', body: JSON.stringify({ session_id: id }) });
+    if (environment === activeEnvironment) await refreshWorkspaceSessions(workspace);
+    window.dispatchEvent(new CustomEvent('workhub:workspace-sessions', {detail:{workspace:workspace, environment}}));
     $('#sessionDialog').close();
     toast(result.message);
   }, $('#sessionPickerError'));
@@ -165,13 +165,13 @@ document.addEventListener('click', async event => {
   const target = event.target.closest('[data-session-action]');
   if (!target || target.disabled || state.busy) return;
   const action = target.dataset.sessionAction;
-  const id = target.dataset.requirement;
-  if (action === 'refresh') return refreshRequirementSessions(id);
+  const id = target.dataset.workspace;
+  if (action === 'refresh') return refreshWorkspaceSessions(id);
   if (action === 'picker') {
     if (sessionPickerLoading) return;
-    sessionPickerRequirement = id;
+    sessionPickerWorkspace = id;
     sessionPickerEnvironment = target.dataset.environment || activeEnvironment;
-    if (sessionPickerEnvironment === activeEnvironment) refreshRequirementSessions(id).then(() => { if (sessionPickerRequirement === id && $('#sessionDialog').open) renderSessionPicker(); });
+    if (sessionPickerEnvironment === activeEnvironment) refreshWorkspaceSessions(id).then(() => { if (sessionPickerWorkspace === id && $('#sessionDialog').open) renderSessionPicker(); });
     sessionPickerGeneration++;
     sessionPickerCursor = null;
     sessionPickerSearch = '';

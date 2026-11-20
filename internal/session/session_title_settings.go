@@ -18,7 +18,7 @@ type titleSettings struct {
 func (a *Service) sessionTitleSettings() (titleSettings, error) {
 	var settings titleSettings
 	var raw string
-	err := a.Workspace.Store.DB.QueryRow(`SELECT value FROM settings WHERE key='session_title'`).Scan(&raw)
+	err := a.Execution.Store.DB.QueryRow(`SELECT value FROM settings WHERE key='session_title'`).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return settings, nil
 	}
@@ -81,7 +81,7 @@ func (a *Service) SessionTitleSettingsHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 	raw, _ := json.Marshal(settings)
-	if _, err := a.Workspace.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('session_title',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(raw)); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('session_title',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(raw)); err != nil {
 		httpx.DbError(w, err)
 		return
 	}

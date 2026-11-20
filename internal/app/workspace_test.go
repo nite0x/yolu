@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/task"
 	"worktree-hub/internal/workspace"
 )
 
@@ -24,43 +24,43 @@ func TestWorkspaceAgentProcess(t *testing.T) {
 	}
 	os.Exit(0)
 }
-func testWorkspaceClient(t *testing.T) *workspace.Client {
+func testWorkspaceClient(t *testing.T) *execution.Client {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestWorkspaceAgentProcess$")
 	cmd.Env = append(os.Environ(), "WORKTREE_HUB_AGENT_TEST=1")
-	c, err := workspace.StartClient(cmd)
+	c, err := execution.StartClient(cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.Close)
 	return c
 }
-func TestRemoteWorkspaceTaskCoreFlow(t *testing.T) {
+func TestRemoteWorkspaceCoreFlow(t *testing.T) {
 	c := testWorkspaceClient(t)
 	data := filepath.Join(t.TempDir(), "host-metadata")
 	root := filepath.Join(t.TempDir(), "remote-workspaces")
-	a, err := openAppForWorkspace(data, root, c)
+	a, err := openAppForExecution(data, root, c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.Workspace.ReadOnlySessions = true
-	t.Cleanup(func() { a.Projects.Close(); a.Workspace.Store.DB.Close() })
+	a.Execution.ReadOnlySessions = true
+	t.Cleanup(func() { a.Projects.Close(); a.Execution.Store.DB.Close() })
 	first, second := repo(t, "first", "master"), repo(t, "second", "master")
 	p1, p2 := register(t, a, "first", first), register(t, a, "second", second)
-	code, raw := call(t, a, "POST", "/api/requirements", task.CreateRequirement{Name: "Remote task", Slug: "remote-task", PrimaryProjectID: p1, ProjectIDs: []string{p2}})
+	code, raw := call(t, a, "POST", "/api/workspaces", workspace.CreateWorkspaceInput{Name: "Remote workspace", Slug: "remote-workspace", PrimaryProjectID: p1, ProjectIDs: []string{p2}})
 	if code != 201 {
 		t.Fatalf("create: %d %s", code, raw)
 	}
-	var q model.Requirement
+	var q model.Workspace
 	if err := json.Unmarshal(raw, &q); err != nil {
 		t.Fatal(err)
 	}
 	if q.State != "ready" || len(q.Members) != 2 {
-		t.Fatalf("task: %+v", q)
+		t.Fatalf("workspace: %+v", q)
 	}
 	for _, m := range q.Members {
 		if filepath.Dir(m.Path) != q.Path {
-			t.Fatalf("worktree escaped task: %s", m.Path)
+			t.Fatalf("worktree escaped workspace: %s", m.Path)
 		}
 		if got := testGit(t, m.Path, "branch", "--show-current"); got != q.Branch {
 			t.Fatalf("branch: %s", got)
@@ -80,37 +80,37 @@ func TestRemoteWorkspaceTaskCoreFlow(t *testing.T) {
 		t.Fatalf("remote status: %d %s", code, raw)
 	}
 	third := register(t, a, "third", repo(t, "third", "master"))
-	a.Workspace.Root = filepath.Join(t.TempDir(), "different-root")
-	code, raw = call(t, a, "POST", "/api/requirements/"+q.ID+"/projects", map[string]any{"project_ids": []string{third}})
+	a.Execution.Root = filepath.Join(t.TempDir(), "different-root")
+	code, raw = call(t, a, "POST", "/api/workspaces/"+q.ID+"/projects", map[string]any{"project_ids": []string{third}})
 	if code != 200 {
 		t.Fatalf("add project: %d %s", code, raw)
 	}
-	var updated model.Requirement
+	var updated model.Workspace
 	_ = json.Unmarshal(raw, &updated)
 	if updated.Path != q.Path || len(updated.Members) != 3 || updated.State != "ready" {
 		t.Fatalf("persisted workspace changed: %+v", updated)
 	}
-	if err := c.Call(context.Background(), workspace.Request{Op: "session", Method: "turn/start"}, nil); err == nil {
+	if err := c.Call(context.Background(), execution.Request{Op: "session", Method: "turn/start"}, nil); err == nil {
 		t.Fatal("helper accepted a model turn")
 	}
 }
 func TestRemoteWorkspaceErrorsCancellationAndExclusiveBrief(t *testing.T) {
 	c := testWorkspaceClient(t)
-	ctx := workspace.WithClient(context.Background(), c)
+	ctx := execution.WithClient(context.Background(), c)
 	root := t.TempDir()
 	missing := filepath.Join(root, "missing")
-	if _, err := workspace.Stat(ctx, missing, false); !errors.Is(err, os.ErrNotExist) {
+	if _, err := execution.Stat(ctx, missing, false); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing error lost: %v", err)
 	}
-	q := model.Requirement{Name: "Notes", Path: root, Branch: "codex/notes"}
-	if err := task.WriteBriefContext(ctx, q); err != nil {
+	q := model.Workspace{Name: "Notes", Path: root, Branch: "codex/notes"}
+	if err := workspace.WriteBriefContext(ctx, q); err != nil {
 		t.Fatal(err)
 	}
 	file := filepath.Join(root, "BRIEF.md")
 	if err := os.WriteFile(file, []byte("user notes"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := task.WriteBriefContext(ctx, q); err != nil {
+	if err := workspace.WriteBriefContext(ctx, q); err != nil {
 		t.Fatal(err)
 	}
 	if raw, _ := os.ReadFile(file); string(raw) != "user notes" {
@@ -118,7 +118,7 @@ func TestRemoteWorkspaceErrorsCancellationAndExclusiveBrief(t *testing.T) {
 	}
 	canceled, stop := context.WithCancel(ctx)
 	stop()
-	if err := workspace.Mkdir(canceled, missing, 0755, false); !errors.Is(err, context.Canceled) {
+	if err := execution.Mkdir(canceled, missing, 0755, false); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
 	if _, err := os.Stat(missing); !os.IsNotExist(err) {
@@ -128,23 +128,23 @@ func TestRemoteWorkspaceErrorsCancellationAndExclusiveBrief(t *testing.T) {
 
 func TestRemoteWorkspaceRejectsRelativeAndWindowsRoots(t *testing.T) {
 	// An unconnected client proves invalid roots are rejected before any RPC.
-	c := &workspace.Client{Identity: workspace.Identity{Home: "/home/nite"}}
+	c := &execution.Client{Identity: execution.Identity{Home: "/home/nite"}}
 	for _, root := range []string{"relative", `C:\workspaces`} {
-		if a, err := openAppForWorkspace(t.TempDir(), root, c); err == nil {
-			a.Workspace.Store.DB.Close()
+		if a, err := openAppForExecution(t.TempDir(), root, c); err == nil {
+			a.Execution.Store.DB.Close()
 			t.Fatalf("accepted non-Linux root %q", root)
 		}
 	}
 }
 func TestReadOnlySessionModeKeepsHistoryAndRejectsControl(t *testing.T) {
 	a := testApp(t)
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	_, body := call(t, a, "GET", "/", nil)
 	raw := string(body)
 	if !strings.Contains(raw, `content="read-only"`) || strings.Contains(raw, `src="/features/sessions/session-chat.js"`) || strings.Contains(raw, `src="/features/sessions/session-create.js"`) {
 		t.Fatal("read-only page still loads interactive controls")
 	}
-	for _, path := range []string{"/api/requirements/task/sessions/new", "/api/requirements/task/sessions/session/chat", "/api/requirements/task/sessions/session/chat/handoff"} {
+	for _, path := range []string{"/api/workspaces/workspace/sessions/new", "/api/workspaces/workspace/sessions/session/chat", "/api/workspaces/workspace/sessions/session/chat/handoff"} {
 		code, _ := call(t, a, "POST", path, map[string]string{})
 		if code != 405 {
 			t.Fatalf("control %s returned %d", path, code)

@@ -8,38 +8,38 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Action, Feedback, Field, ModalHeader, NativeSelect, StatusBadge } from "./shared"
-import type { Task } from "./types"
+import type { Workspace } from "./types"
 
 export interface Session {
-  task_ids?: string[];
-  terminal?: {taskID: string; projectID?: string; attached: boolean};
+  workspace_ids?: string[];
+  terminal?: {workspaceID: string; projectID?: string; attached: boolean};
   browser_key?: string; environment_id?: string; environment_name?: string;
   context?: ReturnType<typeof import("./conversation-context").conversationContext>;
-  id: string; name: string; cwd: string; updated_at?: number; updatedAt?: number;
+  id: string; provider?: "codex" | "agy"; name: string; cwd: string; updated_at?: number; updatedAt?: number;
   source?: string; error?: string; available?: boolean;
   pinned?: boolean; archived?: boolean; chat_status?: string; completed_run?: string; unread?: boolean;
 }
 export interface SessionsData { sessions: Session[]; loading?: boolean; error?: string }
 export const sessionTime = (value?: number) => value ? new Date(value * 1000).toLocaleString(uiLocale(), { hour12: false }) : uiText("暂无活动记录")
-function SessionAction({ action, session, requirement, children, ...props }: ComponentProps<typeof Button> & { action: string; session?: string; requirement?: string }) {
-  return <Button type="button" variant="outline" size="sm" data-session-action={action} data-session={session} data-requirement={requirement} {...props}>{children}</Button>
+function SessionAction({ action, session, workspace, children, ...props }: ComponentProps<typeof Button> & { action: string; session?: string; workspace?: string }) {
+  return <Button type="button" variant="outline" size="sm" data-session-action={action} data-session={session} data-workspace={workspace} {...props}>{children}</Button>
 }
 function SessionActivity({ session: s }: { session: Session }) {
   const active = ["starting", "running", "waiting", "stopping", "handoff"].includes(s.chat_status || "")
-  return <>{active ? <StatusBadge kind={s.chat_status === "waiting" ? "warning" : "primary-tag"}>{s.chat_status === "waiting" ? uiText("待确认") : uiText("对话中")}</StatusBadge> : null}{s.unread ? <StatusBadge kind="warning">{uiText("未读")}</StatusBadge> : null}</>
+  return <>{s.provider === "agy" ? <StatusBadge kind="neutral">AGY</StatusBadge> : null}{active ? <StatusBadge kind={s.chat_status === "waiting" ? "warning" : "primary-tag"}>{s.chat_status === "waiting" ? uiText("待确认") : uiText("对话中")}</StatusBadge> : null}{s.unread ? <StatusBadge kind="warning">{uiText("未读")}</StatusBadge> : null}</>
 }
-export function SessionList({ task: q, data, readOnly }: { task: Task; data?: SessionsData; readOnly: boolean }) {
+export function SessionList({ workspace: q, data, readOnly }: { workspace: Workspace; data?: SessionsData; readOnly: boolean }) {
   const sessions = data?.sessions || []
-  return <section id="requirementSessions" className="requirement-sessions task-session-controls shadcn-scope" aria-labelledby="sessionsTitle">
-    <div className="task-sessions-heading"><div><h2 id="sessionsTitle">{uiText("对话")}{" "}<StatusBadge kind="neutral">{sessions.length}{" "}{uiText("个")}</StatusBadge></h2></div>
-      {readOnly ? <Action action="launch" id={q.id} disabled={q.state !== "ready"}>{uiText("终端新建 ↗")}</Action> : <SessionAction action="new" requirement={q.id} variant="default" disabled={q.state !== "ready"}>{uiText("＋ 新建对话")}</SessionAction>}
+  return <section id="workspaceSessions" className="workspace-sessions workspace-session-controls shadcn-scope" aria-labelledby="sessionsTitle">
+    <div className="workspace-sessions-heading"><div><h2 id="sessionsTitle">{uiText("对话")}{" "}<StatusBadge kind="neutral">{sessions.length}{" "}{uiText("个")}</StatusBadge></h2></div>
+      {readOnly ? <Action action="launch" id={q.id} disabled={q.state !== "ready"}>{uiText("终端新建 ↗")}</Action> : <SessionAction action="new" workspace={q.id} variant="default" disabled={q.state !== "ready"}>{uiText("＋ 新建对话")}</SessionAction>}
     </div>
-    <div className="task-session-menu-actions"><SessionAction action="refresh" requirement={q.id}>{uiText("刷新对话")}</SessionAction><SessionAction action="picker" requirement={q.id}>{uiText("关联已有对话")}</SessionAction></div>
+    <div className="workspace-session-menu-actions"><SessionAction action="refresh" workspace={q.id}>{uiText("刷新对话")}</SessionAction><SessionAction action="picker" workspace={q.id}>{uiText("关联已有对话")}</SessionAction></div>
     {data?.error ? <Feedback variant="destructive">{data.error}{" "}{uiText("可点击刷新对话重试。")}</Feedback> : null}
-    {sessions.length ? <ul className="task-session-list" aria-label={uiText("关联对话")}>{sessions.map(s => <li key={s.id} data-session-row={s.id}>
-      <button type="button" className="task-session-open" data-session-action="details" data-session={s.id} data-requirement={q.id} title={s.cwd}>
-        <span className="task-session-row-heading"><span className="task-session-name">{s.name || uiText("未命名对话")}</span><span data-session-indicators={s.id}><SessionActivity session={s} /></span></span>
-        <span className="task-session-meta">{q.members.find(m => m.path === s.cwd)?.project_name || (s.cwd === q.path ? uiText("任务工作区") : uiText("外部工作目录"))}{s.updated_at ? ` · ${sessionTime(s.updated_at)}` : ""}</span>
+    {sessions.length ? <ul className="workspace-session-list" aria-label={uiText("关联对话")}>{sessions.map(s => <li key={s.id} data-session-row={s.id}>
+      <button type="button" className="workspace-session-open" data-session-action="details" data-session={s.id} data-workspace={q.id} title={s.cwd}>
+        <span className="workspace-session-row-heading"><span className="workspace-session-name">{s.name || uiText("未命名对话")}</span><span data-session-indicators={s.id}><SessionActivity session={s} /></span></span>
+        <span className="workspace-session-meta">{q.members.find(m => m.path === s.cwd)?.project_name || (s.cwd === q.path ? uiText("工作区") : uiText("外部工作目录"))}{s.updated_at ? ` · ${sessionTime(s.updated_at)}` : ""}</span>
         {s.error ? <span className="table-message">{s.error}</span> : null}
       </button>
     </li>)}</ul> : <p className="session-empty" role="status">{!data || data.loading ? uiText("正在读取对话…") : data.error ? uiText("暂时无法读取对话。") : uiText("暂无关联对话，可新建或关联已有对话。")}</p>}
@@ -50,7 +50,7 @@ export function SessionPicker({ sessions, linked }: { sessions: Session[]; linke
   return <div className="grid gap-3">{sessions.map(s => <Card key={s.id} className="session-picker-row flex-row gap-4 rounded-lg p-4 shadow-none"><div><strong>{s.name || uiText("未命名对话")}</strong><div className="path">{s.cwd}</div><small>{sessionTime(s.updatedAt)} · {s.id}</small></div><SessionAction action="link" session={s.id} disabled={linked.includes(s.id)}>{linked.includes(s.id) ? uiText("已关联") : uiText("关联")}</SessionAction></Card>)}</div>
 }
 export function SessionPickerDialog() {
-  return <><ModalHeader id="sessionDialogTitle" title={uiText("关联已有对话")} /><p className="dialog-description">{uiText("优先查找任务工作目录中的对话，也可搜索当前环境的其他对话或填写 ID。关联后保留对话原有的工作目录和执行配置。")}</p>
+  return <><ModalHeader id="sessionDialogTitle" title={uiText("关联已有对话")} /><p className="dialog-description">{uiText("优先查找工作区工作目录中的对话，也可搜索当前环境的其他对话或填写 ID。关联后保留对话原有的工作目录和执行配置。")}</p>
     <form id="sessionLinkForm" className="session-search"><Field id="sessionLinkID" label={uiText("对话 ID")}><Input id="sessionLinkID" name="session_id" required maxLength={200} autoComplete="off" placeholder={uiText("粘贴对话 ID")} /></Field><Button variant="outline" type="submit">{uiText("关联 ID")}</Button></form>
     <form id="sessionSearchForm" className="session-search"><Field id="sessionSearch" label={uiText("按标题查找")}><Input id="sessionSearch" name="search" autoComplete="off" placeholder={uiText("搜索本地对话标题")} /></Field><Button variant="outline" type="submit">{uiText("搜索")}</Button></form>
     <Feedback id="sessionPickerError" variant="destructive" hidden /><div id="sessionPickerResults" aria-live="polite" />

@@ -130,8 +130,8 @@ func TestSessionMigrationSeparatesDiscoveryFromManualPins(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = s.DB.Exec(`INSERT INTO projects VALUES('p','Repo','/repo','/repo/.git','repo','now');
-INSERT INTO requirements(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('a','A','a','','','/tasks/a','p','ready','now'),('b','B','b','','','/tasks/b','p','ready','now');
-INSERT INTO requirement_sessions VALUES('a','shared','Older','/repo',1,10,'workspace'),('b','shared','Newest','/repo',1,20,'workspace'),('a','outside','Manual','/outside',2,30,'manual');
+INSERT INTO workspaces(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('a','A','a','','','/workspaces/a','p','ready','now'),('b','B','b','','','/workspaces/b','p','ready','now');
+INSERT INTO workspace_sessions VALUES('a','shared','Older','/repo',1,10,'workspace'),('b','shared','Newest','/repo',1,20,'workspace'),('a','outside','Manual','/outside',2,30,'manual');
 INSERT INTO session_create_requests VALUES('a','uncertain',''),('b','finished','shared');
 DELETE FROM schema_migrations WHERE version='sessions_index_v1';`)
 	if err != nil {
@@ -156,7 +156,7 @@ DELETE FROM schema_migrations WHERE version='sessions_index_v1';`)
 		t.Fatalf("pins: %+v %v", pins, err)
 	}
 	var pending string
-	if err := s.DB.QueryRow(`SELECT session_id FROM conversation_create_requests WHERE request_id='task:a:uncertain'`).Scan(&pending); err != nil || pending != "" {
+	if err := s.DB.QueryRow(`SELECT session_id FROM conversation_create_requests WHERE request_id='workspace:a:uncertain'`).Scan(&pending); err != nil || pending != "" {
 		t.Fatalf("pending reservation lost: %q %v", pending, err)
 	}
 	if _, err := s.DB.Exec(`UPDATE sessions SET name='Refreshed' WHERE id='shared'`); err != nil {

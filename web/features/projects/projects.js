@@ -10,93 +10,6 @@ let projectDetailOpen = false;
 const projectDirectoryFilters = new Map();
 function projectDirectoryFilterKey(id) { return JSON.stringify([activeEnvironment, id]); }
 
-const projectWidthKey = 'workhub:project-list-width:v1';
-let projectListWidth = 248;
-let projectResizeDrag = null;
-try {
-  const saved = Number(localStorage.getItem(projectWidthKey));
-  if (Number.isFinite(saved) && saved >= 200 && saved <= 10000) projectListWidth = saved;
-} catch { /* Keep the default when storage is unavailable. */ }
-$('#content').style.setProperty('--project-list-width', projectListWidth + 'px');
-
-function projectResizeBounds() {
-  const workspace = $('.project-workspace');
-  if (!workspace || window.innerWidth <= (desktopListWidth ? 760 : 1020)) return null;
-  const width = workspace.getBoundingClientRect().width;
-  if (!width) return null;
-  return desktopListWidth?.bounds() ?? (width >= 568 ? { min: 200, max: Math.floor(width - 368) } : null);
-}
-function syncProjectResize() {
-  const handle = $('[data-project-resize]');
-  const bounds = projectResizeBounds();
-  if (!handle || !bounds) return;
-  handle.setAttribute('aria-valuemin', String(bounds.min));
-  handle.setAttribute('aria-valuemax', String(bounds.max));
-  handle.setAttribute('aria-valuenow', String(desktopListWidth?.current() ?? Math.round($('#projectListPane').getBoundingClientRect().width)));
-}
-function resizeProjectList(width) {
-  const bounds = projectResizeBounds();
-  if (!bounds) return;
-  if (desktopListWidth) { desktopListWidth.resize(width); return; }
-  projectListWidth = Math.round(Math.max(bounds.min, Math.min(bounds.max, width)));
-  $('#content').style.setProperty('--project-list-width', projectListWidth + 'px');
-  syncProjectResize();
-}
-function rememberProjectWidth() {
-  if (desktopListWidth) { desktopListWidth.save(); return; }
-  try { localStorage.setItem(projectWidthKey, String(projectListWidth)); } catch { /* Retain the in-memory width. */ }
-}
-function finishProjectResize(event) {
-  if (!projectResizeDrag || event?.pointerId != null && event.pointerId !== projectResizeDrag.id) return;
-  const drag = projectResizeDrag;
-  projectResizeDrag = null;
-  const content = $('#content');
-  document.querySelectorAll('.project-workspace[data-resizing]').forEach(node => delete node.dataset.resizing);
-  if (content.hasPointerCapture?.(drag.id)) content.releasePointerCapture(drag.id);
-  if (drag.moved) rememberProjectWidth();
-}
-document.addEventListener('pointerdown', event => {
-  const handle = event.target.closest('[data-project-resize]');
-  if (!handle || event.button !== 0 || projectResizeDrag || !projectResizeBounds()) return;
-  event.preventDefault();
-  handle.focus({ preventScroll: true });
-  projectResizeDrag = { id: event.pointerId, x: event.clientX, width: desktopListWidth?.current() ?? $('#projectListPane').getBoundingClientRect().width, moved: false };
-  $('.project-workspace').dataset.resizing = '';
-  // Capture on the stable host so polling can replace the markup during a drag.
-  $('#content').setPointerCapture?.(event.pointerId);
-});
-document.addEventListener('pointermove', event => {
-  if (!projectResizeDrag || event.pointerId !== projectResizeDrag.id) return;
-  if (!projectResizeBounds()) { finishProjectResize(event); return; }
-  projectResizeDrag.moved = true;
-  resizeProjectList(projectResizeDrag.width + event.clientX - projectResizeDrag.x);
-  $('.project-workspace').dataset.resizing = '';
-});
-for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) document.addEventListener(type, finishProjectResize);
-document.addEventListener('keydown', event => {
-  if (!event.target.closest('[data-project-resize]')) return;
-  const bounds = projectResizeBounds();
-  if (!bounds || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-  event.preventDefault();
-  const width = desktopListWidth?.current() ?? $('#projectListPane').getBoundingClientRect().width;
-  resizeProjectList(event.key === 'Home' ? bounds.min : event.key === 'End' ? bounds.max : width + (event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 40 : 10));
-  rememberProjectWidth();
-});
-document.addEventListener('dblclick', event => {
-  if (desktopListWidth && event.target.closest('[data-project-resize]') && projectResizeBounds()) {
-    desktopListWidth.resize(desktopListWidth.defaultWidth); desktopListWidth.save();
-  }
-});
-if (desktopListWidth) window.addEventListener('pagehide',desktopListWidth.subscribe(syncProjectResize),{once:true});
-window.addEventListener('resize', () => { if (!projectResizeBounds()) finishProjectResize(); syncProjectResize(); });
-window.addEventListener('blur', () => finishProjectResize());
-window.addEventListener('pagehide', () => finishProjectResize());
-if (typeof ResizeObserver !== 'undefined') {
-  const observer = new ResizeObserver(syncProjectResize);
-  observer.observe($('#content'));
-  window.addEventListener('pagehide', () => observer.disconnect(), { once: true });
-}
-
 function preferredProjectOpenTool() {
   if (projectOpenTool) return projectOpenTool;
   try { projectOpenTool = localStorage.getItem('workhub:project-open:v1'); } catch { /* Use the default without storage. */ }
@@ -118,69 +31,64 @@ function rememberProjectOpenTool(choice) {
   });
 }
 
-function positionTaskMenu(menu) {
+function positionWorkspaceMenu(menu) {
   if (!menu.open) return;
-  const panel = menu.querySelector('.task-action-menu-body, .task-project-details-body');
+  const panel = menu.querySelector('.workspace-action-menu-body, .workspace-project-details-body');
   if (!panel) return;
-  const anchor = (menu.closest('.task-split-action') || menu).getBoundingClientRect();
+  const anchor = (menu.closest('.workspace-split-action') || menu).getBoundingClientRect();
   const bounds = panel.getBoundingClientRect();
-  const left = menu.classList.contains('task-project-details') ? anchor.right - bounds.width : anchor.left;
+  const left = menu.classList.contains('workspace-project-details') ? anchor.right - bounds.width : anchor.left;
   panel.style.left = Math.max(8, Math.min(left, window.innerWidth - bounds.width - 8)) + 'px';
   const below = window.innerHeight - anchor.bottom;
   const top = below < bounds.height + 8 && anchor.top > below ? anchor.top - bounds.height - 6 : anchor.bottom + 6;
   panel.style.top = Math.max(8, Math.min(top, window.innerHeight - bounds.height - 8)) + 'px';
 }
 document.addEventListener('toggle', event => {
-  if (event.target.matches('.task-action-menu, .task-project-details')) positionTaskMenu(event.target);
+  if (event.target.matches('.workspace-action-menu, .workspace-project-details')) positionWorkspaceMenu(event.target);
 }, true);
-function positionOpenTaskMenus() {
-  document.querySelectorAll('.task-action-menu[open], .task-project-details[open]').forEach(positionTaskMenu);
+function positionOpenWorkspaceMenus() {
+  document.querySelectorAll('.workspace-action-menu[open], .workspace-project-details[open]').forEach(positionWorkspaceMenu);
 }
-document.addEventListener('scroll', positionOpenTaskMenus, true);
-window.addEventListener('resize', positionOpenTaskMenus);
+document.addEventListener('scroll', positionOpenWorkspaceMenus, true);
+window.addEventListener('resize', positionOpenWorkspaceMenus);
 
 function renderProjects() {
   const status = !state.loaded ? 'loading' : !state.projects.length ? 'empty' : undefined;
-  if (!desktopWorkspace || state.view !== 'projects') {
-    if (status === 'loading') return uiText("<div class=\"loading\">正在读取当前环境的项目…</div>");
-    if (status === 'empty') return empty(uiText("你的项目，从这里连接"), uiText("登记本地 Git 仓库，或从 Git 克隆新项目。已有 Worktree 会自动发现。"), 'new-project', uiText("添加第一个项目"));
-  }
-  const text = $('#search').value.trim().toLowerCase();
+  const text = projectDetailOpen ? '' : $('#search').value.trim().toLowerCase();
   const projects = state.projects.filter(p => `${p.name} ${p.path}`.toLowerCase().includes(text));
-  const visible = projects.filter(p => projectFilter === 'dirty' ? p.worktrees.some(t => (t.dirty || 0) > 0) : projectFilter === 'error' ? p.error || p.worktrees.some(t => t.missing || t.prunable || t.error) : true);
-  const selected = visible.find(p => p.id === state.selectedProject) || visible[0];
-  return window.WorkHubUI.projects(projects, state.selectedProject, preferredProjectOpenTool(), projectFilter, projectDetailOpen, state.requirements, projectDirectoryFilters.get(projectDirectoryFilterKey(selected?.id)) || 'all', !!text, status);
+  const directoryFilter = projectDirectoryFilters.get(projectDirectoryFilterKey(state.selectedProject)) || 'all';
+  const source = state.workspaces.find(workspace => workspace.id === resourceLocation.fromWorkspace);
+  return window.WorkHubUI.projects(projects, state.selectedProject, preferredProjectOpenTool(), projectFilter, projectDetailOpen, state.workspaces, directoryFilter, !!text, status, source?.id);
 }
 
-function renderDesktopProjects(markup) {
+function renderProjectPage(markup) {
   const content = $('#content');
-  const current = content.querySelector('.project-workspace');
-  if (!current) {
-    content.innerHTML = markup;
-    const toolbar = $('#panelToolbar');
-    const actions = toolbar.querySelector('.toolbar-actions');
-    actions.prepend($('#projectAddButton'), $('#searchField'));
-    $('#projectEnvironmentSlot').append($('#projectEnvironmentWrap'));
-    $('#projectListFilterSlot').replaceChildren(content.querySelector('.project-filters'));
-    $('#projectListPane').prepend(toolbar);
-    return;
-  }
-  // Keep the toolbar and its focused input mounted while refreshing the rows.
+  const toolbar = $('#panelToolbar');
   const template = document.createElement('template');
   template.innerHTML = markup;
-  current.dataset.pane = template.content.querySelector('.project-workspace').dataset.pane;
-  // Other views move the shared toolbar out of the project pane. Restore it
-  // before refreshing its filters, retaining the search field and focus.
-  const listPane = current.querySelector('#projectListPane');
-  const toolbar = $('#panelToolbar');
-  if (toolbar.parentElement !== listPane) listPane.prepend(toolbar);
-  for (const selector of ['.project-filters', '.project-list-scroll', '#projectDetail']) {
-    const target = current.querySelector(selector);
-    const next = template.content.querySelector(selector);
-    target.hidden = next.hidden;
-    if (next.hasAttribute('aria-label')) target.setAttribute('aria-label', next.getAttribute('aria-label'));
-    target.replaceChildren(...next.childNodes);
+  const next = template.content.querySelector('.project-workspace');
+  const current = content.querySelector('.project-workspace');
+  // Keep the shared search field and both scroll containers mounted on refresh.
+  if (!current) content.replaceChildren(next);
+  else {
+    current.dataset.pane = next.dataset.pane;
+    for (const selector of ['#projectListPane', '#projectDetail']) {
+      const target = current.querySelector(selector);
+      const incoming = next.querySelector(selector);
+      target.hidden = incoming.hidden;
+      if (selector === '#projectListPane') {
+        target.querySelector('.project-list-scroll').replaceChildren(...incoming.querySelector('.project-list-scroll').childNodes);
+      } else {
+        target.setAttribute('aria-label', incoming.getAttribute('aria-label'));
+        target.replaceChildren(...incoming.childNodes);
+      }
+    }
   }
+  const list = $('#projectListPane');
+  if (!list.contains(toolbar)) list.prepend(toolbar);
+  if (!toolbar.contains($('#projectAddButton'))) toolbar.querySelector('.toolbar-actions').append($('#projectAddButton'));
+  if (!$('#projectEnvironmentSlot').contains($('#projectEnvironmentWrap'))) $('#projectEnvironmentSlot').append($('#projectEnvironmentWrap'));
+  $('#projectListFilterSlot').replaceChildren(next.querySelector('.project-filters'));
 }
 
 function openProject(onAdded = null, environment = activeEnvironment) {
@@ -384,10 +292,7 @@ async function importScannedProjects() {
     toast(uiText("已登记 {0} 个仓库，正在扫描 Worktree", ids.length));
   }
   if (ids.length && onAdded) await onAdded(ids);
-  else if (ids.length && !failures) {
-    await selectEnvironment(environment, '/projects');
-    state.selectedProject = ids[0]; $('#search').value = ''; render();
-  }
+  else if (ids.length && !failures) await selectEnvironment(environment, '/projects/' + encodeURIComponent(ids[0]));
 }
 
 $('#projectForm').addEventListener('submit', async event => {
@@ -412,16 +317,13 @@ $('#projectForm').addEventListener('submit', async event => {
     isCurrent: () => $('#projectDialog').open && $('#projectEnvironmentSelect').value === environment,
   });
   if (added && onAdded) await onAdded(added.id);
-  else if (added) {
-    await selectEnvironment(environment, '/projects');
-    state.selectedProject = added.id; $('#search').value = ''; render();
-  }
+  else if (added) await selectEnvironment(environment, '/projects/' + encodeURIComponent(added.id));
 });
 
 document.addEventListener('click', event => {
   const choice = event.target.closest('[data-project-open-choice]');
   if (choice && !choice.disabled && !state.busy) rememberProjectOpenTool(choice);
-  document.querySelectorAll('.task-action-menu[open], .project-more[open]').forEach(menu => {
+  document.querySelectorAll('.workspace-action-menu[open], .project-more[open]').forEach(menu => {
     if (!menu.contains(event.target) || event.target.closest('button:not(:disabled)')) menu.open = false;
   });
   const button = event.target.closest('[data-action^="project-open-"]');
@@ -441,8 +343,8 @@ let leavingProjectPage = false;
 function syncProjectPage() {
   const route = location.hash.slice(1), path = route.split('?')[0];
   const match = path.match(/^\/projects\/([a-zA-Z0-9_-]+)\/(git|worktrees)$/);
-  const taskGit = $('#gitDialog[open][data-task-git]');
-  if (taskGit?.open && (state.view !== 'requirements' || state.selectedRequirement !== gitRequirementID || activeEnvironment !== taskGitReturn?.environment)) taskGit.close();
+  const workspaceGit = $('#gitDialog[open][data-workspace-git]');
+  if (workspaceGit?.open && (state.view !== 'workspaces' || state.selectedWorkspace !== gitWorkspaceID || activeEnvironment !== workspaceGitReturn?.environment)) workspaceGit.close();
   const key = match ? JSON.stringify([activeEnvironment,route]) : '';
   document.body.classList.toggle('project-tool-page',!!match);
   const dialog = match ? $(match[2] === 'git' ? '#gitDialog' : '#worktreeDialog') : null;
@@ -457,7 +359,7 @@ function syncProjectPage() {
   if (!match) return;
   $('main').append(dialog);
   const params = new URLSearchParams(route.split('?')[1] || '');
-  if (match[2] === 'git') projectPageLoad = loadGit(match[1],params.get('path') || '',params.get('requirement') || '');
+  if (match[2] === 'git') projectPageLoad = loadGit(match[1],params.get('path') || '',params.get('workspace') || '');
   else projectPageLoad = loadWorktree(match[1]);
   return projectPageLoad;
 }
@@ -466,6 +368,6 @@ for (const id of ['gitDialog','worktreeDialog']) {
     // Close events are queued, so check the current route and displayed page.
     if (leavingProjectPage || !document.body.classList.contains('project-tool-page')) return;
     const current = location.hash.slice(1).split('?')[0].match(/^\/projects\/([\w-]+)\/(git|worktrees)$/);
-    if (current && !$(current[2] === 'git' ? '#gitDialog' : '#worktreeDialog').open) navigate('/projects/' + current[1]);
+    if (current && !$(current[2] === 'git' ? '#gitDialog' : '#worktreeDialog').open) navigate(projectResourceRoute(current[1]));
   });
 }

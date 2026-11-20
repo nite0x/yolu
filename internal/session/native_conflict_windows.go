@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 func nativeTerminalConflict(id, cwd string) error {
@@ -89,7 +89,7 @@ func windowsTerminalCommandConflict(id, line string) error {
 	}
 	for _, arg := range args[1:] {
 		if arg == id {
-			return &workspace.SessionConflictError{Message: "此对话仍有 Codex 终端打开，请先退出终端中的 Codex"}
+			return &execution.SessionConflictError{Message: "此对话仍有 Codex 终端打开，请先退出终端中的 Codex"}
 		}
 	}
 	return nil

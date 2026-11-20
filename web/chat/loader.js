@@ -1,7 +1,7 @@
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
-// Load the React chat island only when the user opens a task conversation.
+// Load the React chat island only when the user opens a workspace conversation.
 (() => {
-  let loading, mounted, currentWorkspace, globalModule, version = 0;
+  let loading, mounted, currentOverview, globalModule, version = 0;
   window.WorkHubAssistant = {
     async openGlobal(request, options) {
       try {
@@ -22,13 +22,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     },
     async open(options) {
       const current = ++version;
-      currentWorkspace = options.workspace;
+      currentOverview = options.overview;
       try {
         loading ||= import('/chat/assistant.js');
         const { bridge } = await loading;
         if (current !== version) return;
         mounted = bridge;
-        bridge.open({...options, workspace: currentWorkspace});
+        bridge.open({...options, overview: currentOverview});
       } catch (error) {
         loading = null;
         if (current !== version) return;
@@ -41,8 +41,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     },
     close() { version++; mounted?.close(); },
     async flushDraft() { const saved = await Promise.all([mounted?.flushDraft() ?? true, globalModule?.flushGlobalAssistantDraft() ?? true]); return saved.every(Boolean); },
-    updateTask(task) { mounted?.updateTask(task); },
-    updateWorkspace(workspace) { currentWorkspace = workspace; mounted?.updateWorkspace(workspace); },
+    updateWorkspace(workspace) { mounted?.updateWorkspace(workspace); },
+    updateOverview(overview) { currentOverview = overview; mounted?.updateOverview(overview); },
     updateSession(session) { mounted?.updateSession(session); }
   };
 })();

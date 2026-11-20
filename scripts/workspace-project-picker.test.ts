@@ -10,7 +10,7 @@ function row(): PickerRow {
   const project = { id: "web", name: "Web <app>", path: "/repo/web", worktrees: [{ path: "/workspace/existing/web", branch: "feature/existing" }] }
   return {
     project, checked: true, prefix: "projectPicker-web", trees: project.worktrees,
-    choice: { mode: "new", branch: "codex/task", path: "", source: "refs/heads/main" },
+    choice: { mode: "new", branch: "codex/workspace", path: "", source: "refs/heads/main" },
     overview: { project, remotes: [], branches: [
       { name: "main", ref: "refs/heads/main", kind: "local", commit: "12345678", worktrees: [project.path] },
       { name: "available", ref: "refs/heads/available", kind: "local", commit: "12345678", worktrees: [] },
@@ -30,7 +30,7 @@ test("a ready project stays compact while preserving native form controls and in
   assert.equal(document.querySelector<HTMLSelectElement>("#projectPicker-web-source")?.value, "refs/heads/main")
   assert.equal(document.querySelector("#projectPicker-web-source")?.hasAttribute("data-searchable-select"), true)
   assert.equal(document.querySelector("strong")?.textContent, "Web <app>")
-  assert.match(document.querySelector("[data-choice-summary]")?.textContent || "", /codex\/task.*main/)
+  assert.match(document.querySelector("[data-choice-summary]")?.textContent || "", /codex\/workspace.*main/)
   dom.window.close()
 })
 

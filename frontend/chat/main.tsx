@@ -24,18 +24,18 @@ export const bridge = {
     root.render(<ChatPanel key={++mountSequence} controller={controller} />);
   },
   close() { active?.disconnect(); active = undefined; root?.render(null); },
-  updateTask(task: ChatOptions['task']) {
-    if (!active || !task || active.options.task?.id !== task.id) return;
-    const next = reuseValue(active.options.task, task);
-    if (next === active.options.task) return;
-    active.options.task = next;
-    root?.render(<ChatPanel key={mountSequence} controller={active} />);
-  },
   updateWorkspace(workspace: ChatOptions['workspace']) {
-    if (!active) return;
+    if (!active || !workspace || active.options.workspace?.id !== workspace.id) return;
     const next = reuseValue(active.options.workspace, workspace);
     if (next === active.options.workspace) return;
     active.options.workspace = next;
+    root?.render(<ChatPanel key={mountSequence} controller={active} />);
+  },
+  updateOverview(overview: ChatOptions['overview']) {
+    if (!active) return;
+    const next = reuseValue(active.options.overview, overview);
+    if (next === active.options.overview) return;
+    active.options.overview = next;
     root?.render(<ChatPanel key={mountSequence} controller={active} />);
   },
   updateSession(session: NonNullable<ChatOptions['session']>) { active?.updateSession(session); },

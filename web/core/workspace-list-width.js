@@ -12,7 +12,7 @@
     const min = 240, max = 520, defaultWidth = 280;
     let preferred = defaultWidth;
     try {
-      for (const [candidate, low, high] of [[key,min,max], ['workhub:task-list-width:v1',240,640], ['workhub:project-list-width:v1',200,640], ['workhub:conversation-list-width:v1',220,520]]) {
+      for (const [candidate, low, high] of [[key,min,max], ['workhub:workspace-list-width:v1',240,640], ['workhub:project-list-width:v1',200,640], ['workhub:conversation-list-width:v1',220,520]]) {
         const saved = Number(localStorage.getItem(candidate));
         if (Number.isFinite(saved) && saved >= low && saved <= high) {
           preferred = Math.round(Math.max(min,Math.min(max,saved)));

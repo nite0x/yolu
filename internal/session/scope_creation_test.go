@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestTaskConversationCreationAllowsChangedCheckout(t *testing.T) {
+func TestWorkspaceConversationCreationAllowsChangedCheckout(t *testing.T) {
 	for _, checkout := range []string{"branch", "detached"} {
 		for _, directory := range []string{"member", "workspace"} {
 			t.Run(checkout+"/"+directory, func(t *testing.T) {
@@ -26,22 +26,22 @@ func TestTaskConversationCreationAllowsChangedCheckout(t *testing.T) {
 				}
 				c.cwd = cwd
 				code, raw := call(t, a, "POST", "/api/sessions/new", map[string]any{
-					"task_id": q.ID, "cwd": cwd, "text": "继续当前工作", "request_id": "changed-checkout",
+					"workspace_id": q.ID, "cwd": cwd, "text": "继续当前工作", "request_id": "changed-checkout",
 				})
 				if code != 202 {
 					t.Fatalf("create after checkout: %d %s", code, raw)
 				}
 				awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
-				saved, err := a.Workspace.Store.Session("session")
+				saved, err := a.Execution.Store.Session("session")
 				if err != nil || saved.Cwd != cwd || !reflect.DeepEqual(saved.AdditionalDirectories, additional) {
 					t.Fatalf("execution directories: %+v %v", saved, err)
 				}
 				if after := testGit(t, member.Path, "rev-parse", "--abbrev-ref", "HEAD"); after != before {
 					t.Fatalf("creation changed checkout: %s -> %s", before, after)
 				}
-				current, err := a.Workspace.Store.Requirement(q.ID)
+				current, err := a.Execution.Store.Workspace(q.ID)
 				if err != nil || current.Branch != q.Branch || current.Members[0].Branch != member.Branch {
-					t.Fatalf("creation changed task branch metadata: %+v %v", current, err)
+					t.Fatalf("creation changed workspace branch metadata: %+v %v", current, err)
 				}
 				c.event("turn/completed", map[string]any{"turn": map[string]any{"id": "turn", "status": "completed"}})
 				awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
@@ -50,7 +50,7 @@ func TestTaskConversationCreationAllowsChangedCheckout(t *testing.T) {
 	}
 }
 
-func TestTaskConversationCreationRejectsUnavailableOrReplacedRepository(t *testing.T) {
+func TestWorkspaceConversationCreationRejectsUnavailableOrReplacedRepository(t *testing.T) {
 	for _, replacement := range []string{"missing", "foreign"} {
 		t.Run(replacement, func(t *testing.T) {
 			a, q, c, _ := chatFixture(t)
@@ -64,7 +64,7 @@ func TestTaskConversationCreationRejectsUnavailableOrReplacedRepository(t *testi
 				}
 			}
 			if code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{
-				"task_id": q.ID, "cwd": cwd, "text": "继续当前工作", "request_id": "invalid-checkout",
+				"workspace_id": q.ID, "cwd": cwd, "text": "继续当前工作", "request_id": "invalid-checkout",
 			}); code != 409 {
 				t.Fatalf("invalid checkout accepted: %d %s", code, raw)
 			}

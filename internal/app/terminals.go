@@ -82,7 +82,7 @@ func (a *App) checkTerminalWorktree(path string) error {
 		return fmt.Errorf("无法确认终端目录占用：%w", err)
 	}
 	for _, info := range a.Terminals.List() {
-		// A task-root terminal can use its project subdirectories, too.
+		// A workspace-root terminal can use its project subdirectories, too.
 		if info.State == "running" && (platform.SameWorkspacePath(resolved, info.Cwd) || platform.Within(resolved, info.Cwd) || platform.Within(info.Cwd, resolved)) {
 			return fmt.Errorf("该目录仍有运行中的终端：%s，请先结束终端", info.Name)
 		}
@@ -108,7 +108,7 @@ func (a *App) reserveWorktree(ctx context.Context, path string) (func(), error) 
 
 func (a *App) customTerminalProfiles() ([]terminal.Profile, error) {
 	var raw string
-	err := a.Workspace.Store.DB.QueryRow(`SELECT value FROM settings WHERE key='terminal_profiles:v1'`).Scan(&raw)
+	err := a.Execution.Store.DB.QueryRow(`SELECT value FROM settings WHERE key='terminal_profiles:v1'`).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return []terminal.Profile{}, nil
 	}
@@ -133,8 +133,8 @@ func (a *App) saveTerminalProfileHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	input.Available = false
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
 	profiles, err := a.customTerminalProfiles()
 	if err != nil {
 		httpx.DbError(w, err)
@@ -160,7 +160,7 @@ func (a *App) saveTerminalProfileHandler(w http.ResponseWriter, r *http.Request)
 		httpx.DbError(w, err)
 		return
 	}
-	if _, err = a.Workspace.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('terminal_profiles:v1',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(raw)); err != nil {
+	if _, err = a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('terminal_profiles:v1',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(raw)); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
@@ -169,25 +169,25 @@ func (a *App) saveTerminalProfileHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (a *App) localTerminals(w http.ResponseWriter, r *http.Request) bool {
-	if a.Workspace.Remote != nil || r.Header.Get("X-Environment-ID") != "" && r.Header.Get("X-Environment-ID") != "local" {
+	if a.Execution.Remote != nil || r.Header.Get("X-Environment-ID") != "" && r.Header.Get("X-Environment-ID") != "local" {
 		httpx.WriteError(w, 409, "内置终端目前仅支持本机执行环境")
 		return false
 	}
-	if a.Workspace.Closing.Load() {
+	if a.Execution.Closing.Load() {
 		httpx.WriteError(w, 503, "后台正在退出")
 		return false
 	}
 	return true
 }
 
-// Resolve the task/member server-side. A client-supplied cwd is never used.
-func (a *App) terminalDirectory(taskID, projectID string) (string, error) {
-	q, err := a.Workspace.Store.Requirement(taskID)
+// Resolve the workspace/member server-side. A client-supplied cwd is never used.
+func (a *App) terminalDirectory(workspaceID, projectID string) (string, error) {
+	q, err := a.Execution.Store.Workspace(workspaceID)
 	if err != nil {
-		return "", fmt.Errorf("请先选择有效的任务")
+		return "", fmt.Errorf("请先选择有效的工作区")
 	}
 	if q.State == "archived" {
-		return "", fmt.Errorf("任务已归档，请先恢复任务")
+		return "", fmt.Errorf("工作区已归档，请先恢复工作区")
 	}
 	path := q.Path
 	if projectID != "" {
@@ -198,11 +198,11 @@ func (a *App) terminalDirectory(taskID, projectID string) (string, error) {
 				break
 			}
 		}
-	} else if !q.HasWorkspace {
+	} else if !q.HasDirectory {
 		path = ""
 	}
 	if path == "" {
-		return "", fmt.Errorf("所选任务工作目录不可用")
+		return "", fmt.Errorf("所选工作区工作目录不可用")
 	}
 	path, err = filepath.EvalSymlinks(path)
 	if err != nil {
@@ -225,9 +225,9 @@ func (a *App) createTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	a.terminalWorktreeMu.RLock()
 	defer a.terminalWorktreeMu.RUnlock()
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
-	path, err := a.terminalDirectory(input.TaskID, input.ProjectID)
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
+	path, err := a.terminalDirectory(input.WorkspaceID, input.ProjectID)
 	if err != nil {
 		httpx.WriteError(w, 409, err.Error())
 		return

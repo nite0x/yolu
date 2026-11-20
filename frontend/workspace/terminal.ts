@@ -11,19 +11,19 @@ import "./terminal.css"
 const unmountSurface = mountTerminalSurface(command => window.parent.postMessage({type:"workhub:page-pane-command", command}, location.origin))
 
 interface Member { project_id: string; project_name: string; path: string; state: string; worktree?: {branch?: string} }
-interface Task { id: string; name: string; path: string; has_workspace: boolean; state: string; environment_id?: string; members: Member[] }
+interface Workspace { id: string; name: string; path: string; has_directory: boolean; state: string; environment_id?: string; members: Member[] }
 interface Profile { id: string; name: string; executable: string; args: string[] | null; available: boolean }
-interface TerminalInfo { id: string; name: string; task_id: string; project_id: string; cwd: string; state: string; attached: boolean; exit_code?: number }
-interface Snapshot { route: string; environment: string; title: string; kind?: string; context?: string; terminal?: { taskID?: string; projectID?: string; id?: string }; conversation?: {scope?: object; directory?: string; creationDirectory?: string; selected?: string | null; creating?: boolean; pane?: string} }
+interface TerminalInfo { id: string; name: string; workspace_id: string; project_id: string; cwd: string; state: string; attached: boolean; exit_code?: number }
+interface Snapshot { route: string; environment: string; title: string; kind?: string; context?: string; terminal?: { workspaceID?: string; projectID?: string; id?: string }; conversation?: {scope?: object; directory?: string; creationDirectory?: string; selected?: string | null; creating?: boolean; pane?: string} }
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
-const taskSelect = element<HTMLSelectElement>("terminalTask"), directorySelect = element<HTMLSelectElement>("terminalDirectory"), profileSelect = element<HTMLSelectElement>("terminalProfile")
+const workspaceSelect = element<HTMLSelectElement>("terminalWorkspace"), directorySelect = element<HTMLSelectElement>("terminalDirectory"), profileSelect = element<HTMLSelectElement>("terminalProfile")
 const executable = element<HTMLInputElement>("customExecutable"), argsInput = element<HTMLTextAreaElement>("customArgs"), envInput = element<HTMLTextAreaElement>("customEnv"), nameInput = element<HTMLInputElement>("customName")
 const host = window.parent, token = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')!.content
 const post = (type: string, extra: object = {}) => host.postMessage({type, ...extra}, location.origin)
 let saved: Snapshot = {route:"/terminals", environment:"local", title:uiText("新建终端"), terminal:{}}
 let active = false, disposed = false, restoring = true, pending = false
-let tasks: Task[] = [], profiles: Profile[] = [], customProfiles: Profile[] = [], rows: TerminalInfo[] = []
+let workspaces: Workspace[] = [], profiles: Profile[] = [], customProfiles: Profile[] = [], rows: TerminalInfo[] = []
 let term: Terminal | undefined, fit: FitAddon | undefined, search: SearchAddon | undefined, socket: WebSocket | undefined
 let current: TerminalInfo | undefined, seq = 0, generation = 0, retry: ReturnType<typeof setTimeout> | undefined, reconnecting = false
 let restoreRevision = 0, busy = false, finished = false, lastSize = ""
@@ -73,29 +73,29 @@ function terminalExited(code?: number) {
 function snapshot(): Snapshot { return {...saved, kind:"terminals", terminal:{...saved.terminal}} }
 function publish() { if (!restoring && !disposed) post("workhub:page-state", {snapshot:snapshot()}) }
 function context() {
-  const task = tasks.find(t => t.id === saved.terminal?.taskID)
-  const member = task?.members.find(m => m.project_id === saved.terminal?.projectID)
-  element("terminalContext").textContent = task?.name || uiText("请选择任务")
-  element("terminalContext").title = task ? uiText("打开任务详情：{0}", task.name) : uiText("请在工作目录中选择任务")
-  element<HTMLButtonElement>("terminalContext").disabled = !task
+  const workspace = workspaces.find(t => t.id === saved.terminal?.workspaceID)
+  const member = workspace?.members.find(m => m.project_id === saved.terminal?.projectID)
+  element("terminalContext").textContent = workspace?.name || uiText("请选择工作区")
+  element("terminalContext").title = workspace ? uiText("打开工作区详情：{0}", workspace.name) : uiText("请在工作目录中选择工作区")
+  element<HTMLButtonElement>("terminalContext").disabled = !workspace
   element("terminalTitle").textContent = current ? current.name : uiText("新建对话")
-  element("terminalDirectoryName").textContent = member?.project_name || (task?.has_workspace ? uiText("任务根目录") : uiText("工作目录"))
+  element("terminalDirectoryName").textContent = member?.project_name || (workspace?.has_directory ? uiText("工作区根目录") : uiText("工作目录"))
   element("terminalBranch").hidden = !member?.worktree?.branch
   element("terminalBranchName").textContent = member?.worktree?.branch || ""
 }
 
 function refreshDirectories(preferred = saved.terminal?.projectID) {
-  const task = tasks.find(t => t.id === taskSelect.value)
+  const workspace = workspaces.find(t => t.id === workspaceSelect.value)
   directorySelect.replaceChildren()
-  if (task?.has_workspace && task.path) {const option = new Option(uiText("任务根目录"), ""); option.title = task.path; directorySelect.add(option)}
-  for (const member of task?.members || []) if (member.state === "ready") {const option = new Option(member.project_name, member.project_id); option.title = member.path; directorySelect.add(option)}
+  if (workspace?.has_directory && workspace.path) {const option = new Option(uiText("工作区根目录"), ""); option.title = workspace.path; directorySelect.add(option)}
+  for (const member of workspace?.members || []) if (member.state === "ready") {const option = new Option(member.project_name, member.project_id); option.title = member.path; directorySelect.add(option)}
   if ([...directorySelect.options].some(o => o.value === preferred)) directorySelect.value = preferred || ""
-  saved.terminal = {...saved.terminal, taskID:taskSelect.value, projectID:directorySelect.value}
+  saved.terminal = {...saved.terminal, workspaceID:workspaceSelect.value, projectID:directorySelect.value}
   directoryPath()
 }
 function directoryPath() {
-  const task = tasks.find(t => t.id === taskSelect.value)
-  const cwd = directorySelect.value ? task?.members.find(m => m.project_id === directorySelect.value)?.path || "" : task?.path || ""
+  const workspace = workspaces.find(t => t.id === workspaceSelect.value)
+  const cwd = directorySelect.value ? workspace?.members.find(m => m.project_id === directorySelect.value)?.path || "" : workspace?.path || ""
   element("terminalDirectoryPath").textContent = cwd
   if (!current) saved.conversation = {...saved.conversation, creationDirectory:cwd}
   context()
@@ -117,10 +117,10 @@ function selectProfile() {
   syncLauncher()
 }
 function syncLauncher() {
-  const unavailable = restoring || pending || !!current || saved.environment !== "local" || !taskSelect.value || !directorySelect.options.length
+  const unavailable = restoring || pending || !!current || saved.environment !== "local" || !workspaceSelect.value || !directorySelect.options.length
   element<HTMLButtonElement>("startTerminal").disabled = unavailable
   profileSelect.disabled = unavailable
-  taskSelect.disabled = pending || !!current
+  workspaceSelect.disabled = pending || !!current
   directorySelect.disabled = pending || !!current
   element<HTMLButtonElement>("terminalKindUI").disabled = pending || !!current
   renderCreationChoices(directorySelect, element("terminalDirectoryChoices"))
@@ -141,10 +141,10 @@ function parsedEnv(): Record<string, string> {
 }
 function showRows() {
   const list = element("terminalList"); list.replaceChildren()
-  const filtered = rows.filter(row => !taskSelect.value || row.task_id === taskSelect.value)
+  const filtered = rows.filter(row => !workspaceSelect.value || row.workspace_id === workspaceSelect.value)
   element("terminalExisting").hidden = !filtered.length
   element("terminalExistingSummary").textContent = uiText("已有终端 · {0}", filtered.length)
-  if (!filtered.length) {const p = document.createElement("p"); p.className = "terminal-help"; p.textContent = uiText("当前任务暂无终端。"); list.append(p)}
+  if (!filtered.length) {const p = document.createElement("p"); p.className = "terminal-help"; p.textContent = uiText("当前工作区暂无终端。"); list.append(p)}
   for (const row of filtered) {
     const item = document.createElement("div"); item.className = "terminal-row"
     const description = document.createElement("div"), title = document.createElement("strong"), path = document.createElement("small")
@@ -152,7 +152,7 @@ function showRows() {
     path.textContent = row.cwd; path.title = row.cwd; description.append(title, path)
     const actions = document.createElement("div"); actions.className = "terminal-row-actions"
     const attach = document.createElement("button"); attach.type = "button"; attach.textContent = row.attached ? uiText("查看") : uiText("连接")
-    attach.onclick = () => post("workhub:page-open", {placement:"current", snapshot:{route:"/terminals", environment:saved.environment, title:row.name, terminal:{id:row.id, taskID:row.task_id, projectID:row.project_id}}})
+    attach.onclick = () => post("workhub:page-open", {placement:"current", snapshot:{route:"/terminals", environment:saved.environment, title:row.name, terminal:{id:row.id, workspaceID:row.workspace_id, projectID:row.project_id}}})
     actions.append(attach)
     if (row.state !== "running") {const remove = document.createElement("button"); remove.type = "button"; remove.textContent = uiText("移除"); remove.onclick = () => void api(`/api/terminals/${encodeURIComponent(row.id)}`, "DELETE").then(refreshRows).catch(error => feedback(error.message)); actions.append(remove)}
     item.append(description, actions); list.append(item)
@@ -259,15 +259,15 @@ async function showTerminal(info: TerminalInfo) {
   if (current?.id === info.id && term) return
   disconnect(); term?.dispose(); term = undefined; fit = undefined; search = undefined; element("terminalScreen").replaceChildren()
   current = info; seq = 0; finished = false
-  const task = tasks.find(t => t.id === info.task_id), member = task?.members.find(m => m.project_id === info.project_id)
-  saved = {...saved, title:[member?.project_name, info.name].filter(Boolean).join(" · "), context:task?.name || info.cwd, terminal:{id:info.id, taskID:info.task_id, projectID:info.project_id}}
+  const workspace = workspaces.find(t => t.id === info.workspace_id), member = workspace?.members.find(m => m.project_id === info.project_id)
+  saved = {...saved, title:[member?.project_name, info.name].filter(Boolean).join(" · "), context:workspace?.name || info.cwd, terminal:{id:info.id, workspaceID:info.workspace_id, projectID:info.project_id}}
   element("terminalLauncher").hidden = true; element("terminalConsole").hidden = false
   element<HTMLButtonElement>("stopTerminal").disabled = info.state !== "running"
   element("terminalKind").hidden = true
   element("terminalDirectoryChoicesField").hidden = true
   element("terminalStatusBadge").hidden = false; element("terminalRuntimeActions").hidden = false
-  element<HTMLDetailsElement>("terminalWorkspace").open = false
-  taskSelect.disabled = true; directorySelect.disabled = true
+  element<HTMLDetailsElement>("terminalDirectoryContext").open = false
+  workspaceSelect.disabled = true; directorySelect.disabled = true
   context(); await terminalFonts
   if (disposed || current !== info) return
   createTerminal(); publish(); await connect()
@@ -276,20 +276,20 @@ async function restore(value: Snapshot) {
   const revision = ++restoreRevision; restoring = true; saved = {...value, terminal:{...value.terminal}}
   try {
     if (saved.environment !== "local") throw new Error(uiText("内置终端目前仅支持本机执行环境。"))
-    const [inventory, available, terminals] = await Promise.all([api<{requirements: Task[]}>("/api/task-inventory"), api<Profile[]>("/api/terminal-profiles"), api<TerminalInfo[]>("/api/terminals")])
+    const [inventory, available, terminals] = await Promise.all([api<{workspaces: Workspace[]}>("/api/workspace-inventory"), api<Profile[]>("/api/terminal-profiles"), api<TerminalInfo[]>("/api/terminals")])
     if (disposed || revision !== restoreRevision) return
-    tasks = inventory.requirements.filter(t => (!t.environment_id || t.environment_id === "local") && t.state !== "archived"); profiles = available.filter(p => !p.id.startsWith("custom-")); customProfiles = available.filter(p => p.id.startsWith("custom-")); rows = terminals
-    taskSelect.replaceChildren(new Option(uiText("请选择任务"), ""), ...tasks.map(t => new Option(t.name, t.id)))
-    const usable = tasks.filter(t => t.has_workspace && t.path || t.members.some(m => m.state === "ready"))
-    const taskID = saved.terminal?.taskID || conversationDefaults.get("terminal-task")
-    taskSelect.value = tasks.some(t => t.id === taskID) ? taskID : saved.terminal?.taskID ? "" : usable[0]?.id || ""
-    const task = tasks.find(t => t.id === taskSelect.value)
-    const scopePreference = 'directory:' + JSON.stringify([saved.environment, 'task', taskSelect.value, '', saved.environment])
-    const cwd = saved.conversation?.creationDirectory || saved.conversation?.directory || (saved.terminal?.projectID === undefined ? conversationDefaults.get(scopePreference) || conversationDefaults.get(`terminal-directory:${taskSelect.value}`) : '')
-    const member = task?.members.find(m => m.path === cwd && m.state === "ready")
-    const preferred = cwd === task?.path ? "" : member?.project_id ?? saved.terminal?.projectID
+    workspaces = inventory.workspaces.filter(t => (!t.environment_id || t.environment_id === "local") && t.state !== "archived"); profiles = available.filter(p => !p.id.startsWith("custom-")); customProfiles = available.filter(p => p.id.startsWith("custom-")); rows = terminals
+    workspaceSelect.replaceChildren(new Option(uiText("请选择工作区"), ""), ...workspaces.map(t => new Option(t.name, t.id)))
+    const usable = workspaces.filter(t => t.has_directory && t.path || t.members.some(m => m.state === "ready"))
+    const workspaceID = saved.terminal?.workspaceID || conversationDefaults.get("terminal-workspace")
+    workspaceSelect.value = workspaces.some(t => t.id === workspaceID) ? workspaceID : saved.terminal?.workspaceID ? "" : usable[0]?.id || ""
+    const workspace = workspaces.find(t => t.id === workspaceSelect.value)
+    const scopePreference = 'directory:' + JSON.stringify([saved.environment, 'workspace', workspaceSelect.value, '', saved.environment])
+    const cwd = saved.conversation?.creationDirectory || saved.conversation?.directory || (saved.terminal?.projectID === undefined ? conversationDefaults.get(scopePreference) || conversationDefaults.get(`terminal-directory:${workspaceSelect.value}`) : '')
+    const member = workspace?.members.find(m => m.path === cwd && m.state === "ready")
+    const preferred = cwd === workspace?.path ? "" : member?.project_id ?? saved.terminal?.projectID
     refreshDirectories(preferred); renderProfiles(); showRows(); context()
-    element<HTMLDetailsElement>("terminalWorkspace").open = !taskSelect.value
+    element<HTMLDetailsElement>("terminalDirectoryContext").open = !workspaceSelect.value
     if (saved.terminal?.id) {
       const info = rows.find(row => row.id === saved.terminal?.id)
       if (!info) throw new Error(uiText("这个终端已结束或后台已重启，请新建终端。"))
@@ -299,7 +299,7 @@ async function restore(value: Snapshot) {
   finally {if (!disposed && revision === restoreRevision) {restoring = false; syncLauncher(); publish(); post("workhub:page-restored")}}
 }
 
-taskSelect.onchange = () => {saved.terminal = {...saved.terminal, taskID:taskSelect.value, projectID:undefined}; refreshDirectories(); showRows(); context(); publish()}
+workspaceSelect.onchange = () => {saved.terminal = {...saved.terminal, workspaceID:workspaceSelect.value, projectID:undefined}; refreshDirectories(); showRows(); context(); publish()}
 directorySelect.onchange = () => {saved.terminal = {...saved.terminal, projectID:directorySelect.value}; directoryPath(); publish()}
 profileSelect.onchange = () => {selectProfile(); if (profileSelect.value !== "custom") conversationDefaults.set("terminal-profile", profileSelect.value)}
 element("saveTerminalProfile").onclick = async () => {
@@ -313,14 +313,14 @@ element("saveTerminalProfile").onclick = async () => {
   } catch (error) {feedback((error as Error).message)}
 }
 element<HTMLFormElement>("terminalForm").onsubmit = event => {
-  event.preventDefault(); if (pending || current || restoring || saved.environment !== "local" || !taskSelect.value || !directorySelect.options.length) return
+  event.preventDefault(); if (pending || current || restoring || saved.environment !== "local" || !workspaceSelect.value || !directorySelect.options.length) return
   void (async () => {
     pending = true; syncLauncher(); feedback()
     try {
       const custom = profileSelect.value === "custom" || profileSelect.value.startsWith("custom-")
-      const info = await api<TerminalInfo>("/api/terminals", "POST", {task_id:taskSelect.value, project_id:directorySelect.value, profile_id:custom ? "custom" : profileSelect.value, ...(custom ? {name:nameInput.value.trim(), executable:executable.value.trim(), args:parsedArgs(), env:parsedEnv()} : {}), cols:100, rows:30})
-      conversationDefaults.set("terminal-task", taskSelect.value)
-      conversationDefaults.set(`terminal-directory:${taskSelect.value}`, info.cwd)
+      const info = await api<TerminalInfo>("/api/terminals", "POST", {workspace_id:workspaceSelect.value, project_id:directorySelect.value, profile_id:custom ? "custom" : profileSelect.value, ...(custom ? {name:nameInput.value.trim(), executable:executable.value.trim(), args:parsedArgs(), env:parsedEnv()} : {}), cols:100, rows:30})
+      conversationDefaults.set("terminal-workspace", workspaceSelect.value)
+      conversationDefaults.set(`terminal-directory:${workspaceSelect.value}`, info.cwd)
       if (profileSelect.value !== "custom") conversationDefaults.set("terminal-profile", profileSelect.value)
       if (!disposed) await showTerminal(info)
     } catch (error) {feedback((error as Error).message)}
@@ -328,13 +328,13 @@ element<HTMLFormElement>("terminalForm").onsubmit = event => {
   })()
 }
 element("terminalContext").onclick = () => {
-  if (taskSelect.value) post("workhub:page-open", {snapshot:{route:`/requirements/${taskSelect.value}`,environment:saved.environment}})
+  if (workspaceSelect.value) post("workhub:page-open", {snapshot:{route:`/workspaces/${workspaceSelect.value}`,environment:saved.environment}})
 }
 element("terminalKindUI").onclick = () => {
   if (current || pending) return
-  const task = tasks.find(t => t.id === taskSelect.value)
-  const cwd = directorySelect.value ? task?.members.find(m => m.project_id === directorySelect.value)?.path : task?.path
-  post("workhub:conversation-kind", {kind:"ui", snapshot:{...saved,terminal:{taskID:taskSelect.value,projectID:directorySelect.value},conversation:{...saved.conversation,scope:task ? {kind:"task",id:task.id,environment:saved.environment} : saved.conversation?.scope || {kind:"all"},directory:task?.id === (saved.conversation?.scope as {id?: string})?.id ? saved.conversation?.directory || "" : "",creationDirectory:cwd || "",selected:null,creating:true,pane:"detail"}}})
+  const workspace = workspaces.find(t => t.id === workspaceSelect.value)
+  const cwd = directorySelect.value ? workspace?.members.find(m => m.project_id === directorySelect.value)?.path : workspace?.path
+  post("workhub:conversation-kind", {kind:"ui", snapshot:{...saved,terminal:{workspaceID:workspaceSelect.value,projectID:directorySelect.value},conversation:{...saved.conversation,scope:workspace ? {kind:"workspace",id:workspace.id,environment:saved.environment} : saved.conversation?.scope || {kind:"all"},directory:workspace?.id === (saved.conversation?.scope as {id?: string})?.id ? saved.conversation?.directory || "" : "",creationDirectory:cwd || "",selected:null,creating:true,pane:"detail"}}})
 }
 element("refreshTerminals").onclick = () => void refreshRows().catch(error => feedback(error.message))
 element("reconnectTerminal").onclick = () => {if (finished) {feedback(uiText("终端已退出，请新建终端。")); return}; feedback(); void connect()}

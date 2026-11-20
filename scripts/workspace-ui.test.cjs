@@ -9,15 +9,15 @@ const { JSDOM } = require('jsdom');
 const web = path.join(__dirname, '../web');
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
 
-async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pins = {}, storage = {}, storageUnavailable = false, width = 1024, route = '/requirements/task', intercept: initialIntercept, pageHost, desktop = false} = {}) {
+async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pins = {}, storage = {}, storageUnavailable = false, width = 1024, route = '/workspaces/workspace', intercept: initialIntercept, pageHost, desktop = false} = {}) {
   const tree = (path, branch) => ({ path, branch, dirty: 0, status_updated_at: '2026-10-23T06:00:00Z' });
-  const app = { id: 'app', name: 'App', folder: 'app', path: '/repo/app', worktrees: [tree('/repo/app', 'master'), tree('/workspace/task/app', 'feature/task')] };
+  const app = { id: 'app', name: 'App', folder: 'app', path: '/repo/app', worktrees: [tree('/repo/app', 'master'), tree('/workspace/workspace/app', 'feature/workspace')] };
   const backend = { id: 'backend', name: 'Backend', folder: 'backend', path: '/repo/backend', worktrees: [tree('/repo/backend', 'master')] };
-  const task = { id: 'task', name: 'Billing', slug: 'task', branch: 'feature/task', state: 'ready', path: '/workspace/task', created_at: '2026-10-23T06:00:00Z', primary_project_id: app.id, has_workspace: true, members: [{ project_id: app.id, project_name: app.name, mode: 'worktree', path: app.worktrees[1].path, state: 'ready', worktree: app.worktrees[1] }] };
-  const data = { root: '/workspace', projects: [app, backend], requirements: [task, { ...task, id: 'archived', name: 'Archived', state: 'archived' }], terminal: { platform: 'linux', available: true, settings: { kind: 'auto' }, supported_kinds: ['auto', 'custom'], supported_styles: ['command', 'otty'], launcher: '/usr/bin/terminal', message: '终端已就绪' } };
+  const workspace = { id: 'workspace', name: 'Billing', slug: 'workspace', branch: 'feature/workspace', state: 'ready', path: '/workspace/workspace', created_at: '2026-10-23T06:00:00Z', primary_project_id: app.id, has_directory: true, members: [{ project_id: app.id, project_name: app.name, mode: 'worktree', path: app.worktrees[1].path, state: 'ready', worktree: app.worktrees[1] }] };
+  const data = { root: '/workspace', projects: [app, backend], workspaces: [workspace, { ...workspace, id: 'archived', name: 'Archived', state: 'archived' }], terminal: { platform: 'linux', available: true, settings: { kind: 'auto' }, supported_kinds: ['auto', 'custom'], supported_styles: ['command', 'otty'], launcher: '/usr/bin/terminal', message: '终端已就绪' } };
   const environments = { environments: [{ id: 'local', name: '本机' }], distributions: [], platform: 'linux', wsl_supported: false };
   const sessions = [{ id: 'session-1', name: 'Billing review', cwd: app.worktrees[1].path, updated_at: 1792735200, available: true, source: 'workspace' }];
-  const links = new Map([['task', new Set(['session-1'])]]);
+  const links = new Map([['workspace', new Set(['session-1'])]]);
   const history = [
     { id: 'message-1', turn_id: 'turn-1', kind: 'user', text: '检查当前代码' },
     { id: 'command-1', turn_id: 'turn-1', kind: 'command', command: 'git status --short', cwd: app.worktrees[1].path, status: 'completed', exit_code: 0, duration_ms: 12, output: 'working tree clean' },
@@ -26,7 +26,7 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
   const overview = project => ({ project, current: 'master', credentials: { available: true, message: '使用已有凭证' }, master_source: 'refs/remotes/origin/master', remotes: [{ name: 'origin', url: '/test/remote.git' }], branches: [
     { name: 'master', ref: 'refs/heads/master', kind: 'local', commit: '12345678', worktrees: [project.path] },
     { name: 'release', ref: 'refs/heads/release', kind: 'local', commit: '12345678', worktrees: [] },
-    { name: 'feature/task', ref: 'refs/heads/feature/task', kind: 'local', commit: '12345678', worktrees: project.id === 'app' ? ['/workspace/task/app'] : [] },
+    { name: 'feature/workspace', ref: 'refs/heads/feature/workspace', kind: 'local', commit: '12345678', worktrees: project.id === 'app' ? ['/workspace/workspace/app'] : [] },
     { name: 'origin/master', ref: 'refs/remotes/origin/master', kind: 'remote', commit: '12345678', worktrees: [] },
   ] });
   const dom = new JSDOM(fs.readFileSync(path.join(web, 'index.html'), 'utf8').replaceAll('__UI_LANGUAGE__', 'zh-CN').replace('__SESSION_MODE__', readOnly ? 'read-only' : 'interactive'), { url: origin + '/#' + route, runScripts: 'outside-only', pretendToBeVisual: true });
@@ -44,7 +44,7 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
   window.HTMLDialogElement.prototype.show = function () { this.open = true; };
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   window.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new window.Event('close')); };
-  let conversationReturnRoute = '/requirements/task';
+  let conversationReturnRoute = '/workspaces/workspace';
   const requests = [];
   let intercept = initialIntercept;
   window.fetch = async (url, options = {}) => {
@@ -54,10 +54,10 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
     let result;
     if (url.startsWith('/api/shortcut-pins?')) {
       const environment = new URL(url, origin).searchParams.get('environment');
-      if (options.method === 'PUT' && (!body.initialize || !pins[environment])) pins[environment] = {tasks:body.tasks, directories:body.directories, icons:body.icons || pins[environment]?.icons, initialized:true};
-      result = pins[environment] || {tasks:[], directories:[], initialized:false};
+      if (options.method === 'PUT' && (!body.initialize || !pins[environment])) pins[environment] = {workspaces:body.workspaces, directories:body.directories, icons:body.icons || pins[environment]?.icons, initialized:true};
+      result = pins[environment] || {workspaces:[], directories:[], initialized:false};
     }
-    else if (url.startsWith('/api/task-inventory')) result = { requirements: data.requirements.map(q => ({ ...q, environment_id: 'local', environment_name: '本机', connected: true })), environments: [{ id: 'local', name: '本机', connected: true }], project_count: data.projects.length };
+    else if (url.startsWith('/api/workspace-inventory')) result = { workspaces: data.workspaces.map(q => ({ ...q, environment_id: 'local', environment_name: '本机', connected: true })), environments: [{ id: 'local', name: '本机', connected: true }], project_count: data.projects.length };
     else if (url === '/api/environments') result = options.method === 'POST' ? { id: 'wsl-test' } : environments;
     else if (url === '/api/settings/terminal' && options.method === 'PUT') result = data.terminal = { ...data.terminal, settings: body, launcher: body.path || '/usr/bin/terminal', message: '终端已就绪' };
     else if (url === '/api/settings/browser-access') result = {enabled:false,port:4318,code:'',running:false,error:'',can_manage:true,addresses:[]};
@@ -75,29 +75,29 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
     else if (url.endsWith('/chat/approval') || url.endsWith('/chat')) result = { id: body?.request_id || 'run-1', status: 'idle', busy: false, entries: [], approvals: [] };
     else if (url.endsWith('/resume')) result = { message: '已打开会话终端' };
     else if (url.startsWith('/api/codex/sessions?')) result = { data: sessions.map(s => ({ ...s, updatedAt: s.updated_at })), nextCursor: null };
-    else if (/^\/api\/requirements\/[^/]+\/sessions\/[^/]+$/.test(url) && options.method === 'DELETE') {
+    else if (/^\/api\/workspaces\/[^/]+\/sessions\/[^/]+$/.test(url) && options.method === 'DELETE') {
       links.get(url.split('/')[3])?.delete(url.split('/')[5]); result = {message: '已取消关联'};
     }
     else if (url.endsWith('/sessions') || url.startsWith('/api/sessions?')) {
       const query = new URL(url, 'http://localhost').searchParams;
-      const q = data.requirements.find(q => q.id === query.get('task_id'));
+      const q = data.workspaces.find(q => q.id === query.get('workspace_id'));
       const p = data.projects.find(p => p.id === query.get('project_id'));
       const paths = q ? [q.path, ...q.members.map(m => m.path)] : p ? p.worktrees.map(t => t.path) : null;
       if (options.method === 'POST') { const id = url.split('/')[3]; if (!links.has(id)) links.set(id,new Set()); links.get(id).add(body.session_id); result = {message:'会话已关联'}; }
       else result = {
         sessions: sessions.filter(s => (q && query.get('linked') === 'true' ? links.get(q.id)?.has(s.id) : !paths || paths.includes(s.cwd)) && (!query.has('cwd') || query.get('cwd') === s.cwd)),
-        task_sessions: Object.fromEntries(sessions.map(s => [s.id, [...links].filter(([, ids]) => ids.has(s.id)).map(([task]) => task)])),
+        workspace_sessions: Object.fromEntries(sessions.map(s => [s.id, [...links].filter(([, ids]) => ids.has(s.id)).map(([workspace]) => workspace)])),
       };
     }
     else if (url.endsWith('/git')) result = options.method === 'POST' ? { message: '已完成', output: 'fixture result' } : overview(data.projects.find(p => url.includes('/' + p.id + '/')));
     else if (url === '/api/projects' && options.method === 'POST') { data.projects.push({ id: 'new-project', ...body, folder: 'new-project', worktrees: [tree(body.path, 'master')] }); result = { id: 'new-project' }; }
-    else if (url === '/api/requirements/task' && options.method === 'PATCH') { Object.assign(data.requirements[0],body); result=data.requirements[0]; }
-    else if (url.startsWith('/api/requirements/task/projects/') && options.method === 'DELETE') { data.requirements[0].members = data.requirements[0].members.filter(m => m.project_id !== url.split('/')[5]); result=data.requirements[0]; }
-    else if (url.startsWith('/api/requirements/task/projects/') && options.method === 'PUT') { const p=data.projects.find(p => p.id === url.split('/')[5]); const m=data.requirements[0].members.find(m => m.project_id === p.id); const tree=p.worktrees.find(t => t.path === (body.mode === 'project' ? p.path : body.path)); Object.assign(m,{mode:body.mode,path:tree?.path || body.path,worktree:tree}); result=data.requirements[0]; }
-    else if (url === '/api/requirements/task/projects'  && options.method === 'POST') { result = { ...task, members: [...task.members, { project_id: backend.id, project_name: backend.name, mode: 'project', path: backend.path, state: 'ready', worktree: backend.worktrees[0] }] }; data.requirements[0] = result; }
-    else if (url === '/api/requirements' && options.method === 'POST') { result = { ...task, ...body, id: 'created', members: task.members }; data.requirements.push(result); }
+    else if (url === '/api/workspaces/workspace' && options.method === 'PATCH') { Object.assign(data.workspaces[0],body); result=data.workspaces[0]; }
+    else if (url.startsWith('/api/workspaces/workspace/projects/') && options.method === 'DELETE') { data.workspaces[0].members = data.workspaces[0].members.filter(m => m.project_id !== url.split('/')[5]); result=data.workspaces[0]; }
+    else if (url.startsWith('/api/workspaces/workspace/projects/') && options.method === 'PUT') { const p=data.projects.find(p => p.id === url.split('/')[5]); const m=data.workspaces[0].members.find(m => m.project_id === p.id); const tree=p.worktrees.find(t => t.path === (body.mode === 'project' ? p.path : body.path)); Object.assign(m,{mode:body.mode,path:tree?.path || body.path,worktree:tree}); result=data.workspaces[0]; }
+    else if (url === '/api/workspaces/workspace/projects'  && options.method === 'POST') { result = { ...workspace, members: [...workspace.members, { project_id: backend.id, project_name: backend.name, mode: 'project', path: backend.path, state: 'ready', worktree: backend.worktrees[0] }] }; data.workspaces[0] = result; }
+    else if (url === '/api/workspaces' && options.method === 'POST') { result = { ...workspace, ...body, id: 'created', members: workspace.members }; data.workspaces.push(result); }
     else if (url.endsWith('/worktrees') && options.method === 'POST') result = { message: 'Worktree 已创建', branch: body.branch };
-    else if (url.endsWith('/launch')) result = { command: 'codex --cd /workspace/task/app' };
+    else if (url.endsWith('/launch')) result = { command: 'codex --cd /workspace/workspace/app' };
     else result = data;
     return { ok: true, json: async () => structuredClone(result) };
   };
@@ -119,26 +119,26 @@ for (const readOnly of [true, false]) test(`the production UI mounts before cont
   const h = await harness(t, readOnly);
   assert.match(h.$('#content').textContent, /关联项目与工作目录/);
   assert(h.$('#content .working-directory-table'));
-  assert(h.$('#taskBrowser').classList.contains('workspace-pane'));
-  assert(h.$('#taskDetailPane').classList.contains('workspace-pane'));
+  assert(h.$('#workspaceBrowser').classList.contains('workspace-pane'));
+  assert(h.$('#workspaceDetailPane').classList.contains('workspace-pane'));
   assert(h.$('#projectForm [data-slot="input"]'));
-  assert(h.$('#requirementForm [data-slot="native-select"]'));
+  assert(h.$('#workspaceForm [data-slot="native-select"]'));
   const ids = [...h.document.querySelectorAll('[id]')].map(node => node.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.doesNotMatch(h.$('#content').textContent, /各项目的终端和 Git 操作直接进入上表对应的工作目录|首次使用 Codex 时可能需要登录/);
-  assert.equal(h.$('#requirementSlug'), null);
+  assert.equal(h.$('#workspaceSlug'), null);
   assert.equal(h.$('#primaryProject'), null);
-  assert(h.$('#taskEditForm')); assert(h.$('#taskDirectoryForm'));
+  assert(h.$('#workspaceEditForm')); assert(h.$('#workspaceDirectoryForm'));
 });
 
 test('search, archive filtering and project selection retain their existing actions', async t => {
   const h = await harness(t);
-  await h.navigate('/requirements');
-  assert.equal(h.document.querySelectorAll('#taskListContent [data-action="open-requirement"]').length, 1);
+  await h.navigate('/workspaces');
+  assert.equal(h.document.querySelectorAll('#workspaceListContent [data-action="open-workspace"]').length, 1);
   h.input('#search', 'no match');
-  assert.match(h.$('#taskListContent').textContent, /没有匹配的任务/);
+  assert.match(h.$('#workspaceListContent').textContent, /没有匹配的工作区/);
   h.input('#search', ''); h.click('#archiveFilter');
-  assert.equal(h.document.querySelectorAll('#taskListContent [data-action="open-requirement"]').length, 2);
+  assert.equal(h.document.querySelectorAll('#workspaceListContent [data-action="open-workspace"]').length, 2);
   await h.navigate('/projects');
   h.click('[data-action="select-project"][data-id="app"]');
   assert.equal(h.$('[data-action="select-project"][data-id="app"]').getAttribute('aria-pressed'), 'true');
@@ -148,40 +148,28 @@ test('search, archive filtering and project selection retain their existing acti
 
 test('desktop project controls stay in the list through search, refresh and page changes', async t => {
   const h = await harness(t, true, {desktop:true, width:960, route:'/projects'});
-  assert.equal(h.$('#taskDetailPane').classList.contains('workspace-pane'), false);
+  assert.equal(h.$('#workspaceDetailPane').classList.contains('workspace-pane'), false);
   assert(h.$('#projectListPane').classList.contains('workspace-pane'));
   assert(h.$('#projectDetail').classList.contains('workspace-pane'));
   const toolbar = h.$('#projectListPane #panelToolbar');
   const search = h.$('#projectListPane #search');
   const projectList = h.$('#projectListPane');
   assert(toolbar.querySelector('#projectAddButton button'));
-  assert(toolbar.querySelector('.list-search #taskListFilters .project-filters'));
-  assert(toolbar.querySelector('#taskListFilters #projectEnvironment'));
-  const width = () => h.document.documentElement.style.getPropertyValue('--workspace-list-width');
-  const key = (selector, key) => h.$(selector).dispatchEvent(new h.window.KeyboardEvent('keydown', {key,bubbles:true}));
-  assert.equal(width(),'280px');
-  h.$('.project-workspace').getBoundingClientRect = () => ({width:900});
-  key('[data-project-resize]','ArrowRight');
-  assert.equal(width(),'290px');
+  assert(toolbar.querySelector('.list-search #workspaceListFilters .project-filters'));
+  assert(toolbar.querySelector('#workspaceListFilters #projectEnvironment'));
   search.focus();
   h.input('#search','Backend');
   await h.window.refresh(true);
   assert.equal(h.$('#projectListPane'), projectList);
   assert.equal(h.document.activeElement, search);
   assert.deepEqual([...projectList.querySelectorAll('.project-list-item')].map(row => row.dataset.id), ['backend']);
-  await h.navigate('/requirements');
-  assert.equal(h.$('#taskBrowser #panelToolbar'), toolbar);
-  assert.equal(width(),'290px');
-  assert(toolbar.querySelector('.list-search #taskListFilters #taskStatusFilter'));
-  assert.equal(h.$('#taskListResize').hidden, false);
-  h.$('#workContent').getBoundingClientRect = () => ({width:900});
-  key('#taskListResize','ArrowRight');
-  assert.equal(width(),'300px');
-  assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'),'300');
+  await h.navigate('/workspaces');
+  assert.equal(h.$('#workspaceBrowser #panelToolbar'), toolbar);
+  assert(toolbar.querySelector('.list-search #workspaceListFilters #workspaceStatusFilter'));
+  assert.equal(h.$('#workspaceDetailPane').hidden, true);
   await h.navigate('/sessions');
   assert(h.$('.list-search #sessionScopePicker #sessionStatusFilters'));
   await h.navigate('/projects');
-  assert.equal(width(),'300px');
   assert.equal(h.$('#projectListPane #panelToolbar'), toolbar);
   await h.window.selectEnvironment('wsl-test', '/projects');
   assert.equal(h.$('#projectListPane #panelToolbar'), toolbar);
@@ -191,143 +179,143 @@ test('desktop project controls stay in the list through search, refresh and page
   assert.match(h.$('.project-list-empty').textContent, /没有已登记的项目/);
 });
 
-test('mixed task directory choices and custom branches submit through the original API', async t => {
+test('mixed workspace directory choices and custom branches submit through the original API', async t => {
   const h = await harness(t);
-  h.window.openRequirement(); await settle();
-  h.input('#requirementName', 'Billing redesign');
+  h.window.openWorkspace(); await settle();
+  h.input('#workspaceName', 'Billing redesign');
   h.click('#projectPicker-app-selected');
   assert.equal(h.$('#projectPicker-app-selected').checked, true);
   assert.equal(h.$('#projectPicker-app-selected').disabled, false);
   h.change('#projectPicker-app-mode', 'worktree'); await settle();
-  h.change('#projectPicker-app-path', '/workspace/task/app');
+  h.change('#projectPicker-app-path', '/workspace/workspace/app');
   h.click('#projectPicker-backend-selected');
   h.change('#projectPicker-backend-mode', 'new'); await settle();
   const branch = h.input('#projectPicker-backend-branch', 'custom/billing');
   assert.equal(h.$('#projectPicker-backend-branch'), branch);
-  h.input('#requirementName', 'Billing final');
+  h.input('#workspaceName', 'Billing final');
   assert.equal(h.$('#projectPicker-backend-branch').value, 'custom/billing');
-  assert.equal(h.$('#requirementSubmit').disabled, false);
-  const formData = new h.window.FormData(h.$('#requirementForm'));
+  assert.equal(h.$('#workspaceSubmit').disabled, false);
+  const formData = new h.window.FormData(h.$('#workspaceForm'));
   assert.equal(formData.get('name'), 'Billing final');
   assert.equal(formData.get('slug'), null);
-  await h.submit('#requirementForm');
-  const request = h.requests.find(r => r.url === '/api/requirements' && r.options.method === 'POST');
-  assert.deepEqual(request.body.members, [{ project_id: 'app', mode: 'worktree', path: '/workspace/task/app' }, { project_id: 'backend', mode: 'new', branch: 'custom/billing', source: 'refs/heads/master' }]);
-  assert.equal(h.$('#requirementDialog').open, false);
+  await h.submit('#workspaceForm');
+  const request = h.requests.find(r => r.url === '/api/workspaces' && r.options.method === 'POST');
+  assert.deepEqual(request.body.members, [{ project_id: 'app', mode: 'worktree', path: '/workspace/workspace/app' }, { project_id: 'backend', mode: 'new', branch: 'custom/billing', source: 'refs/heads/master' }]);
+  assert.equal(h.$('#workspaceDialog').open, false);
 });
 
-test('existing branch choices create a new task directory and retain selections across modes', async t => {
+test('existing branch choices create a new workspace directory and retain selections across modes', async t => {
   const h = await harness(t);
-  h.window.openRequirement(); await settle();
-  h.input('#requirementName', 'Existing branch');
+  h.window.openWorkspace(); await settle();
+  h.input('#workspaceName', 'Existing branch');
   h.click('#projectPicker-app-selected'); await settle();
   h.input('#projectPicker-app-branch', 'custom/new');
   h.change('#projectPicker-app-mode', 'existing');
   assert.equal(h.$('#projectPicker-app-branch'), null);
   assert.equal(h.$('#projectPicker-app-source'), null);
-  assert.equal(h.$('#requirementSubmit').disabled, true);
+  assert.equal(h.$('#workspaceSubmit').disabled, true);
   assert.equal(h.$('#projectPicker-app-existingBranch option[value="master"]').disabled, true);
-  assert.equal(h.$('#projectPicker-app-existingBranch option[value="feature/task"]').disabled, true);
+  assert.equal(h.$('#projectPicker-app-existingBranch option[value="feature/workspace"]').disabled, true);
   assert.equal(h.$('#projectPicker-app-existingBranch option[value="origin/master"]'), null);
   h.change('#projectPicker-app-existingBranch', 'release');
-  assert.equal(h.$('#requirementSubmit').disabled, false);
+  assert.equal(h.$('#workspaceSubmit').disabled, false);
   assert.match(h.$('#workspacePreview').textContent, /\/workspace\/[^/]+\/app（新建 · release）/);
   h.change('#projectPicker-app-mode', 'new');
   assert.equal(h.$('#projectPicker-app-branch').value, 'custom/new');
   h.change('#projectPicker-app-mode', 'existing');
-  h.input('#requirementName', 'Renamed task');
+  h.input('#workspaceName', 'Renamed workspace');
   assert.equal(h.$('#projectPicker-app-existingBranch').value, 'release');
-  await h.submit('#requirementForm');
-  assert.deepEqual(h.requests.find(r => r.url === '/api/requirements' && r.options.method === 'POST').body.members, [{project_id: 'app', mode: 'existing', branch: 'release'}]);
+  await h.submit('#workspaceForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/workspaces' && r.options.method === 'POST').body.members, [{project_id: 'app', mode: 'existing', branch: 'release'}]);
 });
 
-test('task creation shows each project status during the request and restores inputs after validation failure', async t => {
+test('workspace creation shows each project status during the request and restores inputs after validation failure', async t => {
   const h = await harness(t);
-  h.window.openRequirement(); await settle();
-  h.input('#requirementName', 'Slow checkout');
+  h.window.openWorkspace(); await settle();
+  h.input('#workspaceName', 'Slow checkout');
   h.click('#projectPicker-app-selected');
   h.click('#projectPicker-backend-selected'); await settle();
   let release;
   h.setIntercept((url, options) => {
-    if (url === '/api/requirements' && options.method === 'POST') return new Promise(resolve => { release = resolve; });
-    if (url.startsWith('/api/requirements/creation-progress?')) {
+    if (url === '/api/workspaces' && options.method === 'POST') return new Promise(resolve => { release = resolve; });
+    if (url.startsWith('/api/workspaces/creation-progress?')) {
       const slug = new URL(url, h.window.location.origin).searchParams.get('slug');
       return {ok:true, json:async () => ({slug, members:[{project_id:'app',state:'ready'}, {project_id:'backend',state:'creating'}]})};
     }
   });
-  await h.submit('#requirementForm');
-  assert.equal(h.$('#requirementProgress').hidden, false);
-  assert.equal(h.$('#requirementInputs').hidden, true);
-  assert.equal(h.$('#requirementProgressSummary').textContent, '已就绪 1 / 2');
-  const rows = [...h.document.querySelectorAll('#requirementProgressProjects li')].map(row => row.textContent);
+  await h.submit('#workspaceForm');
+  assert.equal(h.$('#workspaceProgress').hidden, false);
+  assert.equal(h.$('#workspaceInputs').hidden, true);
+  assert.equal(h.$('#workspaceProgressSummary').textContent, '已就绪 1 / 2');
+  const rows = [...h.document.querySelectorAll('#workspaceProgressProjects li')].map(row => row.textContent);
   assert(rows.some(row => /App.*已就绪/.test(row)));
   assert(rows.some(row => /Backend.*创建中/.test(row)));
   const progress = h.requests.find(request => request.url.includes('/creation-progress?'));
-  const create = h.requests.find(request => request.url === '/api/requirements' && request.options.method === 'POST');
+  const create = h.requests.find(request => request.url === '/api/workspaces' && request.options.method === 'POST');
   assert.equal(new URL(progress.url, h.window.location.origin).searchParams.get('slug'), create.body.slug);
   assert.equal(progress.options.headers['X-Environment-ID'], create.options.headers['X-Environment-ID']);
   release({ok:false, json:async () => ({error:'fixture validation error'})});
   await settle();
   assert.equal(progress.options.signal.aborted, true);
-  assert.equal(h.$('#requirementProgress').hidden, true);
-  assert.equal(h.$('#requirementInputs').hidden, false);
-  assert.equal(h.$('#requirementName').value, 'Slow checkout');
-  assert.equal(h.$('#requirementSubmit').disabled, false);
-  assert.equal(h.$('#requirementError').textContent, 'fixture validation error');
+  assert.equal(h.$('#workspaceProgress').hidden, true);
+  assert.equal(h.$('#workspaceInputs').hidden, false);
+  assert.equal(h.$('#workspaceName').value, 'Slow checkout');
+  assert.equal(h.$('#workspaceSubmit').disabled, false);
+  assert.equal(h.$('#workspaceError').textContent, 'fixture validation error');
 });
 
 test('existing branches can be used when adding a project or replacing its directory', async t => {
   const h = await harness(t);
-  h.window.openRequirementProjects('task');
-  h.click('#requirementProjectPicker-backend-selected'); await settle();
-  h.change('#requirementProjectPicker-backend-mode', 'existing');
-  assert.equal(h.$('#requirementProjectsSubmit').disabled, true);
-  h.change('#requirementProjectPicker-backend-existingBranch', 'release');
-  assert.equal(h.$('#requirementProjectsSubmit').disabled, false);
-  assert.match(h.$('#requirementProjectsPreview').textContent, /\/workspace\/task\/backend（新建 · release）/);
-  await h.submit('#requirementProjectsForm');
-  assert.deepEqual(h.requests.find(r => r.url === '/api/requirements/task/projects').body.members, [{project_id: 'backend', mode: 'existing', branch: 'release'}]);
-  h.window.openTaskDirectory('task', 'app'); await settle();
-  h.change('#taskDirectoryPicker-app-mode', 'existing');
-  h.change('#taskDirectoryPicker-app-existingBranch', 'release');
-  assert.equal(h.$('#taskDirectorySubmit').disabled, false);
-  assert.match(h.$('#taskDirectoryPreview').textContent, /使用已有分支 release/);
-  await h.submit('#taskDirectoryForm');
-  const request = h.requests.find(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'PUT');
+  h.window.openWorkspaceProjects('workspace');
+  h.click('#workspaceProjectPicker-backend-selected'); await settle();
+  h.change('#workspaceProjectPicker-backend-mode', 'existing');
+  assert.equal(h.$('#workspaceProjectsSubmit').disabled, true);
+  h.change('#workspaceProjectPicker-backend-existingBranch', 'release');
+  assert.equal(h.$('#workspaceProjectsSubmit').disabled, false);
+  assert.match(h.$('#workspaceProjectsPreview').textContent, /\/workspace\/workspace\/backend（新建 · release）/);
+  await h.submit('#workspaceProjectsForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/workspaces/workspace/projects').body.members, [{project_id: 'backend', mode: 'existing', branch: 'release'}]);
+  h.window.openWorkspaceDirectory('workspace', 'app'); await settle();
+  h.change('#workspaceDirectoryPicker-app-mode', 'existing');
+  h.change('#workspaceDirectoryPicker-app-existingBranch', 'release');
+  assert.equal(h.$('#workspaceDirectorySubmit').disabled, false);
+  assert.match(h.$('#workspaceDirectoryPreview').textContent, /使用已有分支 release/);
+  await h.submit('#workspaceDirectoryForm');
+  const request = h.requests.find(r => r.url === '/api/workspaces/workspace/projects/app' && r.options.method === 'PUT');
   assert.equal(request.body.mode, 'existing');
   assert.equal(request.body.branch, 'release');
-  assert.match(request.body.path, /^\/workspace\/task\/app-[a-f0-9]+$/);
+  assert.match(request.body.path, /^\/workspace\/workspace\/app-[a-f0-9]+$/);
 });
 
-test('nested project registration preserves the task draft and closes only the top dialog', async t => {
+test('nested project registration preserves the workspace draft and closes only the top dialog', async t => {
   const h = await harness(t);
-  h.window.openRequirement(); await settle();
-  h.input('#requirementName', 'Keep this draft');
-  h.click('#registerNewTaskProject');
+  h.window.openWorkspace(); await settle();
+  h.input('#workspaceName', 'Keep this draft');
+  h.click('#registerNewWorkspaceProject');
   assert.equal(h.$('#projectDialog').open, true);
-  assert.equal(h.$('#requirementDialog').open, true);
+  assert.equal(h.$('#workspaceDialog').open, true);
   assert.equal(h.$('#projectEnvironmentSelect').disabled, true);
   h.click('#projectDialog .close-dialog');
   assert.equal(h.$('#projectDialog').open, false);
-  assert.equal(h.$('#requirementDialog').open, true);
-  assert.equal(h.$('#requirementName').value, 'Keep this draft');
+  assert.equal(h.$('#workspaceDialog').open, true);
+  assert.equal(h.$('#workspaceName').value, 'Keep this draft');
 });
 
-test('registering a project and adding it to a task keep their existing request formats', async t => {
+test('registering a project and adding it to a workspace keep their existing request formats', async t => {
   const h = await harness(t);
   h.window.openProject();
   h.input('#projectName', 'New project'); h.input('#projectPath', '/repo/new-project');
   await h.submit('#projectForm');
   assert.deepEqual(h.requests.find(r => r.url === '/api/projects' && r.options.method === 'POST').body, { name: 'New project', path: '/repo/new-project' });
   assert.equal(h.$('#projectDialog').open, false);
-  h.window.openRequirementProjects('task');
-  assert.equal(h.$('#requirementProjectPicker-app-selected'), null);
-  h.click('#requirementProjectPicker-backend-selected');
-  h.change('#requirementProjectPicker-backend-mode', 'project');
-  assert.equal(h.$('#requirementProjectsSubmit').disabled, false);
-  await h.submit('#requirementProjectsForm');
-  assert.deepEqual(h.requests.find(r => r.url === '/api/requirements/task/projects').body, { project_ids: ['backend'], members: [{ project_id: 'backend', mode: 'project' }] });
-  assert.equal(h.$('#requirementProjectsDialog').open, false);
+  h.window.openWorkspaceProjects('workspace');
+  assert.equal(h.$('#workspaceProjectPicker-app-selected'), null);
+  h.click('#workspaceProjectPicker-backend-selected');
+  h.change('#workspaceProjectPicker-backend-mode', 'project');
+  assert.equal(h.$('#workspaceProjectsSubmit').disabled, false);
+  await h.submit('#workspaceProjectsForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/workspaces/workspace/projects').body, { project_ids: ['backend'], members: [{ project_id: 'backend', mode: 'project' }] });
+  assert.equal(h.$('#workspaceProjectsDialog').open, false);
 });
 
 test('folder selection fills the project path, preserves drafts on cancellation and reports failures', async t => {
@@ -384,8 +372,8 @@ test('folder selection cannot overlap or put a host path into a WSL project', as
 
 test('Git retains the selected worktree, occupied-branch protection and source tracking', async t => {
   const h = await harness(t);
-  await h.window.openGit('app', '/workspace/task/app');
-  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  await h.window.openGit('app', '/workspace/workspace/app');
+  assert.equal(h.$('#gitWorktree').value, '/workspace/workspace/app');
   assert.equal(h.$('#gitSwitch option[value="refs/heads/master"]').disabled, true);
   h.change('#gitBranchSource', 'refs/remotes/origin/master');
   assert.equal(h.$('#gitTrack').checked, true);
@@ -394,60 +382,62 @@ test('Git retains the selected worktree, occupied-branch protection and source t
   await h.submit('#gitCreateForm');
   const request = h.requests.find(r => r.options.method === 'POST' && r.url.endsWith('/git'));
   assert.deepEqual(request.body, { action: 'create_branch', name: 'feature/billing', source: 'refs/remotes/origin/master', track: true });
-  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  assert.equal(h.$('#gitWorktree').value, '/workspace/workspace/app');
   assert.equal(h.$('#gitResult').hidden, false);
 });
 
-test('task sync status and quick pull use the task worktree and current branch', async t => {
+test('workspace sync status and quick pull use the workspace worktree and current branch', async t => {
   const h = await harness(t);
-  Object.assign(h.data.projects[0].worktrees[1], { upstream: 'origin/feature/task', sync_available: true, sync_ahead: 2, sync_behind: 1 });
+  Object.assign(h.data.projects[0].worktrees[1], { upstream: 'origin/feature/workspace', sync_available: true, sync_ahead: 2, sync_behind: 1 });
   await h.window.refresh();
-  assert.match(h.$('#content').textContent, /待推 2 · 待拉 1 · 已分歧/);
-  h.click('[data-action="git-task-pull"]'); await settle();
+  const counts = h.$('#content .directory-sync-counts');
+  assert.equal(counts.textContent, '↑2↓1');
+  assert.match(counts.title, /已分歧/);
+  h.click('[data-action="git-workspace-pull"]'); await settle();
   const request = h.requests.find(r => r.body?.action === 'pull');
-  assert.deepEqual(request.body, { action: 'pull', path: '/workspace/task/app', requirement_id: 'task', expected_branch: 'feature/task' });
+  assert.deepEqual(request.body, { action: 'pull', path: '/workspace/workspace/app', workspace_id: 'workspace', expected_branch: 'feature/workspace' });
   assert.equal(h.$('#gitWorktree').disabled, true);
-  assert.match(h.$('#gitContext').textContent, /feature\/task/);
+  assert.match(h.$('#gitContext').textContent, /feature\/workspace/);
 });
 
-test('first push selects a remote target and only pushes the task branch', async t => {
+test('first push selects a remote target and only pushes the workspace branch', async t => {
   const h = await harness(t);
-  h.click('[data-action="git-task-push"]'); await settle();
+  h.click('[data-action="git-workspace-push"]'); await settle();
   assert(!h.requests.some(r => r.body?.action === 'push'));
-  assert.equal(h.$('#gitPushName').value, 'feature/task');
+  assert.equal(h.$('#gitPushName').value, 'feature/workspace');
   assert.equal(h.$('#gitPushTrack').checked, true);
-  h.input('#gitPushName', 'published/task');
+  h.input('#gitPushName', 'published/workspace');
   h.click('[data-action="git-push"]'); await settle();
-  assert.deepEqual(h.requests.find(r => r.body?.action === 'push').body, { action: 'push', remote: 'origin', name: 'published/task', track: true, path: '/workspace/task/app', requirement_id: 'task', expected_branch: 'feature/task' });
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'push').body, { action: 'push', remote: 'origin', name: 'published/workspace', track: true, path: '/workspace/workspace/app', workspace_id: 'workspace', expected_branch: 'feature/workspace' });
 });
 
-test('switching to a remote branch creates a named local branch and keeps task scope', async t => {
+test('switching to a remote branch creates a named local branch and keeps workspace scope', async t => {
   const h = await harness(t);
-  await h.window.openGit('app', '/workspace/task/app', 'task');
+  await h.window.openGit('app', '/workspace/workspace/app', 'workspace');
   h.change('#gitSwitch', 'refs/remotes/origin/master');
   assert.equal(h.$('#gitSwitchName').value, 'master');
   h.input('#gitSwitchName', 'feature/from-main');
   h.click('[data-action="git-switch"]'); await settle();
-  assert.deepEqual(h.requests.find(r => r.body?.action === 'switch').body, { action: 'switch', source: 'refs/remotes/origin/master', name: 'feature/from-main', path: '/workspace/task/app', requirement_id: 'task', expected_branch: 'feature/task' });
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'switch').body, { action: 'switch', source: 'refs/remotes/origin/master', name: 'feature/from-main', path: '/workspace/workspace/app', workspace_id: 'workspace', expected_branch: 'feature/workspace' });
 });
 
-test('merge current task branch into a local target previews and submits the same direction without switching', async t => {
+test('merge current workspace branch into a local target previews and submits the same direction without switching', async t => {
   const h = await harness(t);
   h.setIntercept((url, options, body) => {
-    if (body?.action === 'merge_into_preview') return { ok: true, json: async () => ({ message: 'feature/task → master', output: 'abc feature change', expected_branch: 'feature/task', expected_head: 'source-head', target_commit: 'target-head', target_path: '/repo/app' }) };
+    if (body?.action === 'merge_into_preview') return { ok: true, json: async () => ({ message: 'feature/workspace → master', output: 'abc feature change', expected_branch: 'feature/workspace', expected_head: 'source-head', target_commit: 'target-head', target_path: '/repo/app' }) };
   });
-  await h.window.openGit('app', '/workspace/task/app', 'task');
+  await h.window.openGit('app', '/workspace/workspace/app', 'workspace');
   assert.deepEqual([...h.$('#gitMergeTarget').options].map(option => option.value), ['refs/heads/master', 'refs/heads/release']);
-  assert.match(h.$('#gitMergeIntoDirection').textContent, /feature\/task → master/);
+  assert.match(h.$('#gitMergeIntoDirection').textContent, /feature\/workspace → master/);
   h.click('[data-action="git-merge-into-preview"]'); await settle();
-  assert.deepEqual(h.requests.find(r => r.body?.action === 'merge_into_preview').body, { action: 'merge_into_preview', target: 'refs/heads/master', path: '/workspace/task/app', requirement_id: 'task', expected_branch: 'feature/task' });
-  assert.match(h.$('#gitMergeIntoPreview').textContent, /feature\/task → master/);
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'merge_into_preview').body, { action: 'merge_into_preview', target: 'refs/heads/master', path: '/workspace/workspace/app', workspace_id: 'workspace', expected_branch: 'feature/workspace' });
+  assert.match(h.$('#gitMergeIntoPreview').textContent, /feature\/workspace → master/);
   assert.match(h.$('#gitMergeIntoPreview').textContent, /目标目录：\/repo\/app/);
   assert.equal(h.$('[data-action="git-merge-into"]').disabled, false);
   h.click('[data-action="git-merge-into"]'); await settle();
-  assert.deepEqual(h.requests.find(r => r.body?.action === 'merge_into').body, { action: 'merge_into', target: 'refs/heads/master', path: '/workspace/task/app', expected_head: 'source-head', expected_branch: 'feature/task', target_commit: 'target-head', requirement_id: 'task' });
-  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
-  assert.match(h.$('#gitContext').textContent, /feature\/task/);
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'merge_into').body, { action: 'merge_into', target: 'refs/heads/master', path: '/workspace/workspace/app', expected_head: 'source-head', expected_branch: 'feature/workspace', target_commit: 'target-head', workspace_id: 'workspace' });
+  assert.equal(h.$('#gitWorktree').value, '/workspace/workspace/app');
+  assert.match(h.$('#gitContext').textContent, /feature\/workspace/);
   assert.equal(h.$('[data-action="git-merge-into"]').disabled, true);
   assert(!h.requests.some(r => r.body?.action === 'switch' || r.body?.action === 'push'));
 });
@@ -458,10 +448,10 @@ test('merge into preview ignores a response after the target selection changes',
   h.setIntercept((url, options, body) => {
     if (body?.action === 'merge_into_preview') return new Promise(resolve => { resolvePreview = resolve; });
   });
-  await h.window.openGit('app', '/workspace/task/app', 'task');
+  await h.window.openGit('app', '/workspace/workspace/app', 'workspace');
   h.click('[data-action="git-merge-into-preview"]'); await settle();
   h.change('#gitMergeTarget', 'refs/heads/release');
-  resolvePreview({ ok: true, json: async () => ({ message: 'feature/task → master', expected_branch: 'feature/task', expected_head: 'source-head', target_commit: 'target-head' }) });
+  resolvePreview({ ok: true, json: async () => ({ message: 'feature/workspace → master', expected_branch: 'feature/workspace', expected_head: 'source-head', target_commit: 'target-head' }) });
   await settle();
   assert.equal(h.$('[data-action="git-merge-into"]').disabled, true);
   assert.equal(h.$('#gitMergeIntoPreview').hidden, true);
@@ -472,9 +462,9 @@ test('merge into preview ignores a response after the target selection changes',
 test('merge into preview is invalidated by target or source directory changes and blocks dirty targets', async t => {
   const h = await harness(t);
   h.setIntercept((url, options, body) => {
-    if (body?.action === 'merge_into_preview') return { ok: true, json: async () => ({ message: 'feature/task → master', expected_branch: 'feature/task', expected_head: 'source-head', target_commit: 'target-head' }) };
+    if (body?.action === 'merge_into_preview') return { ok: true, json: async () => ({ message: 'feature/workspace → master', expected_branch: 'feature/workspace', expected_head: 'source-head', target_commit: 'target-head' }) };
   });
-  await h.window.openGit('app', '/workspace/task/app');
+  await h.window.openGit('app', '/workspace/workspace/app');
   h.click('[data-action="git-merge-into-preview"]'); await settle();
   assert.equal(h.$('[data-action="git-merge-into"]').disabled, false);
   h.change('#gitMergeTarget', 'refs/heads/release');
@@ -486,7 +476,7 @@ test('merge into preview is invalidated by target or source directory changes an
   assert(![...h.$('#gitMergeTarget').options].some(option => option.value === 'refs/heads/master'));
   Object.assign(h.data.projects[0].worktrees[0], { dirty: 1 });
   Object.assign(h.data.projects[0].worktrees[1], { dirty: 2 });
-  await h.window.openGit('app', '/workspace/task/app', 'task');
+  await h.window.openGit('app', '/workspace/workspace/app', 'workspace');
   assert.equal(h.$('[data-action="git-merge-into-preview"]').disabled, true);
   assert.match(h.$('#gitMergeIntoDirection').textContent, /目标目录不可用或有未提交修改/);
   h.change('#gitMergeTarget', 'refs/heads/release');
@@ -497,23 +487,23 @@ for (const readOnly of [true, false]) test(`merge conflict automatically opens A
   const h = await harness(t, readOnly);
   h.setIntercept((url, options, body) => {
     const ok = data => ({ ok: true, json: async () => data });
-    if (body?.action === 'merge_preview') return ok({ message: 'origin/master → feature/task', output: 'abc source change', source_commit: 'source-head', expected_head: 'target-head' });
+    if (body?.action === 'merge_preview') return ok({ message: 'origin/master → feature/workspace', output: 'abc source change', source_commit: 'source-head', expected_head: 'target-head' });
     if (body?.action === 'merge') {
       Object.assign(h.data.projects[0].worktrees[1], { operation: 'merge', head: 'target-head', merge_head: 'source-head', conflicts: ['README.md'], dirty: 1 });
       return ok({ message: '合并出现冲突', conflict: true, merge_head: 'source-head', conflicts: ['README.md'] });
     }
     if (url.endsWith('/merge-ai')) return ok({ message: '已打开 Codex 终端' });
     if (url.endsWith('/sessions/new')) {
-      const session = { id: 'merge-session', name: '解决合并冲突', cwd: '/workspace/task/app' };
+      const session = { id: 'merge-session', name: '解决合并冲突', cwd: '/workspace/workspace/app' };
       h.sessions.push(session);
-      h.links.get('task').add(session.id);
+      h.links.get('workspace').add(session.id);
       return ok({ session, chat: { id: body.request_id, status: 'starting', busy: true, entries: [], approvals: [] } });
     }
   });
-  await h.window.openGit('app', '/workspace/task/app', 'task');
+  await h.window.openGit('app', '/workspace/workspace/app', 'workspace');
   h.change('#gitMergeSource', 'refs/remotes/origin/master');
   h.click('[data-action="git-merge-preview"]'); await settle();
-  assert.match(h.$('#gitMergePreview').textContent, /origin\/master → feature\/task/);
+  assert.match(h.$('#gitMergePreview').textContent, /origin\/master → feature\/workspace/);
   assert.equal(h.$('[data-action="git-merge"]').disabled, false);
   h.click('[data-action="git-merge"]'); await settle();
   const requests = h.requests.filter(r => r.url.endsWith(readOnly ? '/merge-ai' : '/sessions/new'));
@@ -534,49 +524,49 @@ for (const readOnly of [true, false]) test(`merge conflict automatically opens A
   assert.equal(h.requests.filter(r => r.url.endsWith(readOnly ? '/merge-ai' : '/sessions/new')).length, 1);
 });
 
-test('task and project shortcuts open the intended directory in remote browser and editors', async t => {
+test('workspace and project shortcuts open the intended directory in remote browser and editors', async t => {
   const h = await harness(t);
   for (const tool of ['remote', 'vscode', 'idea']) { h.click(`[data-action="project-open-${tool}"]`); await settle(); }
-  assert.deepEqual(h.requests.filter(r => r.url === '/api/projects/app/open').map(r => r.body), ['remote', 'vscode', 'idea'].map(tool => ({ tool, path: '/workspace/task/app' })));
-  await h.navigate('/projects');
+  assert.deepEqual(h.requests.filter(r => r.url === '/api/projects/app/open').map(r => r.body), ['remote', 'vscode', 'idea'].map(tool => ({ tool, path: '/workspace/workspace/app' })));
+  await h.navigate('/projects/app');
   h.click('[data-action="project-open-vscode"][data-id="app"]'); await settle();
   assert.deepEqual(h.requests.filter(r => r.url === '/api/projects/app/open').at(-1).body, { tool: 'vscode', path: '/repo/app' });
 });
 
 for (const desktop of [false, true]) test(`workspace directory rows share project actions and distinguish upstream sync from baseline differences (desktop=${desktop})`, async t => {
   const h = await harness(t, true, { desktop, width: 1280 });
-  Object.assign(h.data.requirements[0].members[0], { base_ref: 'refs/heads/master', base_commit: 'c2de7c96abcdef' });
+  Object.assign(h.data.workspaces[0].members[0], { base_ref: 'refs/heads/master', base_commit: 'c2de7c96abcdef' });
   const tree = h.data.projects[0].worktrees[1];
-  Object.assign(tree, { upstream: 'origin/feature/task', sync_available: true, sync_ahead: 0, sync_behind: 0, compare_available: true, comparison_ref: 'master', ahead: 1, behind: 0 });
+  Object.assign(tree, { upstream: 'origin/feature/workspace', sync_available: true, sync_ahead: 0, sync_behind: 0, compare_available: true, comparison_ref: 'master', ahead: 1, behind: 0 });
   await h.window.refresh();
   const table = h.$('#content .working-directory-table');
   assert.deepEqual([...table.querySelectorAll('th')].map(cell => cell.textContent), ['工作目录', '远程同步', '本地改动', '操作']);
-  const actions = () => [...h.document.querySelectorAll('[data-directory-path="/workspace/task/app"] .directory-actions > :is([data-project-open], [data-action], .directory-more)')]
+  const actions = () => [...h.document.querySelectorAll('[data-directory-path="/workspace/workspace/app"] .directory-actions > :is([data-project-open], [data-action], .directory-more)')]
     .map(node => node.dataset.action || (node.hasAttribute('data-project-open') ? 'open-tool' : 'more'));
   const workspaceActions = actions();
   assert.deepEqual(workspaceActions, ['open-tool', 'changes-open', 'workspace-terminal', 'more']);
-  assert.equal(h.$('.directory-path').textContent, '/workspace/task/app');
+  assert.equal(h.$('.directory-path').textContent, '/workspace/workspace/app');
   assert.equal(h.$('.directory-path').closest('details'), null);
   let copied;
   Object.defineProperty(h.window.navigator, 'clipboard', { value: { writeText: async value => { copied = value; } } });
   h.click('.directory-path'); await settle();
-  assert.equal(copied, '/workspace/task/app');
-  assert.equal(h.$('.task-project .directory-sync-summary').textContent, 'origin/feature/task↑0↓0');
-  assert.equal(h.$('.task-baseline').textContent, '基线 master · 领先 1');
-  assert.match(h.$('.task-baseline').title, /c2de7c96abcdef/);
+  assert.equal(copied, '/workspace/workspace/app');
+  assert.equal(h.$('.workspace-project .directory-sync-summary').textContent, 'origin/feature/workspace↑0↓0');
+  assert.equal(h.$('.workspace-baseline').textContent, '基线 master · 领先 1');
+  assert.match(h.$('.workspace-baseline').title, /c2de7c96abcdef/);
   assert.equal(h.$('.directory-details').open, false);
   assert.equal(h.$('.directory-status time'), null);
   assert(h.$('.directory-details time'));
-  assert.doesNotMatch(h.$('.task-project').textContent, /待推 0|待拉 0|落后 0|创建基线|相对基线/);
+  assert.doesNotMatch(h.$('.workspace-project').textContent, /待推 0|待拉 0|落后 0|创建基线|相对基线/);
   Object.assign(tree, { sync_ahead: 0, sync_behind: 3, ahead: 0, behind: 0 });
   await h.window.refresh();
-  assert.equal(h.$('.task-project .directory-sync-counts').textContent, '↑0↓3');
-  assert.equal(h.$('.task-baseline').textContent, '基线 master · 与基线一致');
+  assert.equal(h.$('.workspace-project .directory-sync-counts').textContent, '↑0↓3');
+  assert.equal(h.$('.workspace-baseline').textContent, '基线 master · 与基线一致');
   tree.sync_available = false;
   await h.window.refresh();
-  assert.match(h.$('.task-project .directory-sync-summary').textContent, /暂不可用/);
-  assert.equal(h.$('.task-project .directory-sync-counts'), null);
-  await h.navigate('/projects');
+  assert.match(h.$('.workspace-project .directory-sync-summary').textContent, /暂不可用/);
+  assert.equal(h.$('.workspace-project .directory-sync-counts'), null);
+  await h.navigate('/projects/app');
   assert.deepEqual(actions(), workspaceActions);
 });
 
@@ -588,7 +578,7 @@ test('the open split button remembers the chosen tool and retains its worktree a
   h.click('[data-project-open-choice="idea"]'); await settle();
   assert.equal(h.$('[data-project-open] details').open, false);
   assert.equal(h.window.localStorage.getItem('workhub:project-open:v1'), 'idea');
-  assert.deepEqual(h.requests.find(r => r.url === '/api/projects/app/open').body, { tool: 'idea', path: '/workspace/task/app' });
+  assert.deepEqual(h.requests.find(r => r.url === '/api/projects/app/open').body, { tool: 'idea', path: '/workspace/workspace/app' });
   h.window.render();
   assert.match(h.$('[data-project-open-primary]').textContent, /IDEA 打开/);
   h.click('[data-project-open-primary]'); await settle();
@@ -598,32 +588,32 @@ test('the open split button remembers the chosen tool and retains its worktree a
   assert.equal(h.$('[data-project-open] details').open, false);
   assert.equal(h.document.activeElement, h.$('[data-project-open] summary'));
   h.click('[data-project-open-choice="terminal"]'); await settle();
-  assert.deepEqual(h.requests.find(r => r.body?.action === 'terminal').body, { action: 'terminal', path: '/workspace/task/app' });
+  assert.deepEqual(h.requests.find(r => r.body?.action === 'terminal').body, { action: 'terminal', path: '/workspace/workspace/app' });
   h.window.render();
   assert.match(h.$('[data-project-open-primary]').textContent, /终端 打开/);
   assert.equal(h.$('[data-project-open-primary]').dataset.action, 'workspace-terminal');
 });
 
-test('task information stays visible and only offers expansion when the description overflows', async t => {
+test('workspace information stays visible and only offers expansion when the description overflows', async t => {
   const h = await harness(t);
-  h.data.requirements[0].description = '任务目标\n实现项目卡片精简\n保留完整路径\n统一打开方式';
+  h.data.workspaces[0].description = '工作区目标\n实现项目卡片精简\n保留完整路径\n统一打开方式';
   await h.window.refresh();
-  const description = h.$('#taskDescription');
-  const button = h.$('[data-action="task-info-toggle"]');
-  assert.equal(h.$('.task-info').tagName, 'SECTION');
+  const description = h.$('#workspaceDescription');
+  const button = h.$('[data-action="workspace-info-toggle"]');
+  assert.equal(h.$('.workspace-info').tagName, 'SECTION');
   assert.equal(description.closest('details'), null);
   assert.equal(button.hidden, true);
   Object.defineProperties(description, { scrollHeight: {value: 100, configurable: true}, clientHeight: {value: 60, configurable: true} });
-  h.window.syncTaskDescription();
+  h.window.syncWorkspaceDescription();
   assert.equal(button.hidden, false);
-  h.click('[data-action="task-info-toggle"]');
+  h.click('[data-action="workspace-info-toggle"]');
   assert.equal(button.getAttribute('aria-expanded'), 'true');
   assert.equal(button.textContent, '收起');
-  assert.equal(description.classList.contains('task-description-clamped'), false);
+  assert.equal(description.classList.contains('workspace-description-clamped'), false);
   h.window.render();
-  assert.equal(h.$('[data-action="task-info-toggle"]').getAttribute('aria-expanded'), 'true');
-  h.click('[data-action="task-info-toggle"]');
-  assert.equal(h.$('#taskDescription').classList.contains('task-description-clamped'), true);
+  assert.equal(h.$('[data-action="workspace-info-toggle"]').getAttribute('aria-expanded'), 'true');
+  h.click('[data-action="workspace-info-toggle"]');
+  assert.equal(h.$('#workspaceDescription').classList.contains('workspace-description-clamped'), true);
 });
 
 test('an AI launch failure preserves merge context and retries the same creation identifier', async t => {
@@ -632,7 +622,7 @@ test('an AI launch failure preserves merge context and retries the same creation
   await h.window.refresh();
   let fail = true;
   h.setIntercept(url => url.endsWith('/merge-ai') ? { ok: !fail, json: async () => fail ? { error: '终端连接暂不可用' } : { message: '已打开 Codex 终端' } } : undefined);
-  h.click('[data-action="git-task-ai"]'); await settle();
+  h.click('[data-action="git-workspace-ai"]'); await settle();
   assert.match(h.$('#gitError').textContent, /终端连接暂不可用/);
   assert.match(h.$('#gitMergeStatus').textContent, /README.md/);
   assert.equal(h.$('[data-action="git-merge-ai"]').disabled, false);
@@ -646,7 +636,7 @@ test('an AI launch failure preserves merge context and retries the same creation
 
 test('a busy Git operation allows closing its dialog and recovers its controls after failure', async t => {
   const h = await harness(t);
-  await h.window.openGit('app', '/workspace/task/app');
+  await h.window.openGit('app', '/workspace/workspace/app');
   let release;
   h.setIntercept((url, options) => options.method === 'POST' && url.endsWith('/git') ? new Promise(resolve => { release = resolve; }) : undefined);
   const operation = h.window.gitOperation({ action: 'fetch', remote: 'origin' }, '正在获取分支');
@@ -661,7 +651,7 @@ test('a busy Git operation allows closing its dialog and recovers its controls a
   assert.equal(h.$('#gitAuthHelp').hidden, false);
   assert.match(h.$('#gitError').textContent, /请在终端登录/);
   assert.equal(h.$('[data-action="git-reload"]').disabled, false);
-  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  assert.equal(h.$('#gitWorktree').value, '/workspace/workspace/app');
 });
 
 test('creating a worktree keeps both branch modes and their existing request format', async t => {
@@ -679,11 +669,11 @@ test('creating a worktree keeps both branch modes and their existing request for
   assert.deepEqual(h.requests.find(r => r.options.method === 'POST' && r.url.endsWith('/worktrees')).body, { slug: 'qa-check', mode: 'existing', branch: 'release', source: '' });
 });
 
-test('task and Git text is rendered inertly, including repository names and paths', async t => {
+test('workspace and Git text is rendered inertly, including repository names and paths', async t => {
   const h = await harness(t);
   const malicious = '<img src=x onerror=alert(1)>';
-  h.data.requirements[0].name = malicious;
-  h.data.requirements[0].description = malicious;
+  h.data.workspaces[0].name = malicious;
+  h.data.workspaces[0].description = malicious;
   h.data.projects[0].name = malicious;
   await h.window.refresh();
   assert.equal(h.$('#content').querySelector('img'), null);
@@ -854,6 +844,63 @@ test('Codex checks isolate Windows and WSL users and retain independent reports 
   assert.match(h.$('#codexDiagnosticsCopy').value, /WSL 辅助程序未连接/);
 });
 
+test('Codex installation uses the selected report environment and refreshes it after navigation', { timeout: 10000 }, async t => {
+  const h = await harness(t, false);
+  const environment = 'wsl-alice';
+  const plan = {action:'install', manager:'standalone', path:'/home/alice/.local/bin/codex'};
+  const installed = {status:'succeeded', action:'install', stage:'daemon', version:'codex-cli 1.2.3'};
+  let installation;
+  let version;
+  let resolveDaemonStart;
+  const daemonStarting = new Promise(resolve => { resolveDaemonStart = resolve; });
+  let resolvePoll;
+  const polled = new Promise(resolve => { resolvePoll = resolve; });
+  h.environments.environments.push({id:environment, name:'Ubuntu / alice', distro:'Ubuntu'});
+  h.setIntercept((url, options, body) => {
+    const target = options.headers['X-Environment-ID'];
+    if (url === '/api/settings/codex' && target === environment) {
+      return {ok:true, json:async()=>({
+        platform:'linux', user:'alice', candidates:[], checked_at:'now', status: version ? 'ok' : 'error',
+        version, checks:[
+          {id:'cli', name:'CLI 安装与版本', status:version ? 'ok' : 'error', message:version || 'missing'},
+          {id:'daemon', name:'共享后台', status:version ? 'ok' : 'skipped', message:version ? '已连接共享后台并成功读取对话列表' : 'missing'}
+        ],
+        install_state:installation, install_plan:{...plan, action:version ? 'upgrade' : 'install'}
+      })};
+    }
+    if (url !== '/api/settings/codex/install') return;
+    assert.equal(target, environment);
+    if (options.method === 'POST') {
+      assert.deepEqual(body, plan);
+      installation = {status:'running', action:'install'};
+    } else if (installation.stage !== 'daemon') {
+      installation = {...installation, stage:'daemon', version:installed.version};
+      resolveDaemonStart();
+    } else {
+      installation = installed;
+      version = installed.version;
+      resolvePoll();
+    }
+    return {ok:true, json:async()=>installation};
+  });
+  await h.navigate('/settings');
+  h.click('#checkAllCodex'); await settle();
+  const action = '[data-codex-environment="wsl-alice"] [data-codex-install]';
+  assert.match(h.$(action).textContent, /安装 Codex CLI/);
+  h.click(action); await settle();
+  assert.equal(h.$(action).disabled, true);
+  await daemonStarting; await settle();
+  assert.match(h.$('[data-codex-environment="wsl-alice"] [role="status"]').textContent, /正在启动并检测 Codex 共享后台/);
+  await h.navigate('/projects');
+  await polled; await settle();
+  await h.navigate('/settings');
+  assert.equal(h.$(action).disabled, false);
+  assert.match(h.$(action).textContent, /升级 Codex CLI/);
+  assert.match(h.$('[data-codex-environment="wsl-alice"] [role="status"]').textContent, /安装完成.*1\.2\.3/);
+  assert.match(h.$('[data-codex-environment="wsl-alice"]').textContent, /共享后台通过已连接共享后台并成功读取对话列表/);
+  assert.equal(h.requests.filter(r => r.url === '/api/settings/codex/install' && r.options.method === 'POST').length, 1);
+});
+
 test('title settings select a separate Codex model and retain unsaved edits during polling', async t => {
   const h = await harness(t);
   await h.navigate('/settings');
@@ -950,7 +997,7 @@ test('WSL connection and reconnect use the same environment payloads', async t =
 
 test('read-only conversations retain history paging, expanded commands and a live output dialog', async t => {
   const h = await harness(t);
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   assert.equal(h.$('#newBrowserSession').disabled, true);
   assert.equal(h.$('#sessionChatForm').hidden, true);
   assert(h.$('#sessionHistoryEntries [data-slot="card"]'));
@@ -977,7 +1024,7 @@ test('read-only conversations retain history paging, expanded commands and a liv
   assert(!h.requests.some(r => r.url.endsWith('/chat') || r.url.endsWith('/sessions/new')));
 });
 
-test('the global scope picker searches tasks, projects and directories without requiring task association', async t => {
+test('the global scope picker searches workspaces, projects and directories without requiring workspace association', async t => {
   const h = await harness(t);
   h.sessions.push({ id: 'outside', name: 'Outside conversation', cwd: '/outside' });
   await h.navigate('/sessions');
@@ -1034,7 +1081,7 @@ test('conversation scope menu uses the top layer, fits the viewport and closes o
 
 test('background activity and unread completion update navigation without reopening a conversation', async t => {
   const h = await harness(t);
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   await h.leaveConversations();
   const activity = () => h.$('#sessionNavigationStatus').textContent;
   h.sessions[0].chat_status = 'running';
@@ -1046,7 +1093,7 @@ test('background activity and unread completion update navigation without reopen
   assert.equal(h.$('#conversationDialog'), null);
   h.window.eval('sessionReadMemory.clear()');
   await h.window.refreshSessionWorkspace(true); assert.equal(activity(), '有新消息');
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   assert.equal(activity(), '');
   const seen = JSON.parse(h.window.localStorage.getItem('workhub:session-read:' + JSON.stringify(['local', 'session-1'])));
   assert.equal(seen.run, 'background-run');
@@ -1055,21 +1102,21 @@ test('background activity and unread completion update navigation without reopen
   await h.window.refreshSessionWorkspace(true); assert.equal(activity(), '有新消息');
 });
 
-test('conversation workspace links open task and project details and retain conversation selection', async t => {
+test('conversation workspace links open workspace and project details and retain conversation selection', async t => {
   const h = await harness(t, false);
   let opened;
   h.window.WorkHubAssistant = {open(options) {opened = options;}, close() {}};
   h.window.eval("projectFilter = 'dirty'");
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   await opened.openWorkspace('project', 'app'); await settle();
-  assert.equal(h.window.location.hash, '#/projects');
+  assert.equal(h.window.location.hash, '#/projects/app');
   assert.match(h.$('#projectDetail h2').textContent, /App/);
   assert.equal(h.document.activeElement, h.$('#projectDetail h2'));
   await h.navigate('/sessions');
   assert.equal(h.currentSession().session, 'session-1');
   assert.match(h.$('#sessionScopeLabel').textContent, /Billing/);
-  await opened.openWorkspace('task', 'task'); await settle();
-  assert.equal(h.window.location.hash, '#/requirements/task');
+  await opened.openWorkspace('workspace', 'workspace'); await settle();
+  assert.equal(h.window.location.hash, '#/workspaces/workspace');
   assert.equal(h.$('#pageTitle').textContent, 'Billing');
   assert.equal(h.document.activeElement, h.$('#pageTitle'));
   assert.equal(h.requests.some(r => r.url.endsWith('/chat/stop')), false);
@@ -1081,10 +1128,10 @@ test('workspace detail navigation uses the conversation environment', async t =>
   await h.window.loadEnvironments();
   let opened;
   h.window.WorkHubAssistant = {open(options) {opened = options;}, close() {}};
-  h.window.openSessionHistoryPanel('task', 'session-1', {environment:'remote', workspace:h.data, session:h.sessions[0]});
+  h.window.openSessionHistoryPanel('workspace', 'session-1', {environment:'remote', overview:h.data, session:h.sessions[0]});
   await opened.openWorkspace('project', 'app'); await settle();
   assert.equal(new URL(h.window.location.href).searchParams.get('environment'), 'remote');
-  assert.equal(h.window.location.hash, '#/projects');
+  assert.equal(h.window.location.hash, '#/projects/app');
   assert.match(h.$('#projectDetail h2').textContent, /App/);
   assert(h.requests.some(r => r.url === '/api/state' && r.options.headers['X-Environment-ID'] === 'remote'));
 });
@@ -1093,7 +1140,7 @@ test('assistant activity immediately updates the shared list and navigation', as
   const h = await harness(t, false);
   let opened;
   h.window.WorkHubAssistant = { open(options) { opened = options; }, close() {} };
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   opened.activity('session-1', { id: 'live', status: 'running', busy: true });
   assert.equal(h.$('[data-session-indicators="session-1"]').getAttribute('aria-label'), '运行中');
   assert(h.$('.session-browser-item-heading [data-session-indicators="session-1"] svg'));
@@ -1107,7 +1154,7 @@ test('assistant activity immediately updates the shared list and navigation', as
 
 test('interactive approval questions keep native values, secret fields and answer requests', async t => {
   const h = await harness(t, false);
-  h.window.openSessionHistory('task', 'session-1'); await settle();
+  h.window.openSessionHistory('workspace', 'session-1'); await settle();
   const current = h.currentSession();
   h.window.applyChatState(current, { id: 'approval-run', status: 'waiting', busy: true, entries: [], approvals: [{ id: 'approval-1', title: '选择方案', kind: 'questions', can_accept: true, questions: [{ id: 'method', header: '方案', question: '采用哪个方案？', options: [{ label: 'A', description: '兼容旧数据' }] }, { id: 'secret', header: '测试', question: '填写测试值', isSecret: true }] }] });
   assert.equal(h.$('[data-free-answer-for="secret"]').type, 'password');
@@ -1118,26 +1165,26 @@ test('interactive approval questions keep native values, secret fields and answe
 
 test('message shortcuts and drafts retain their concrete creation directory', async t => {
   const h = await harness(t, false);
-  h.window.openSessionHistory('task', 'session-1'); await settle();
+  h.window.openSessionHistory('workspace', 'session-1'); await settle();
   h.input('#sessionChatInput', '  继续检查  ');
   h.$('#sessionChatInput').dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
   await settle();
   const sent = h.requests.filter(r => r.url.endsWith('/chat') && r.options.method === 'POST');
   assert.equal(sent.length, 1); assert.equal(sent[0].body.text, '继续检查'); assert(sent[0].body.request_id);
   h.click('#newBrowserSession');
-  assert.equal(h.$('#sessionBrowserNewDirectory').value, '/workspace/task/app');
-  h.change('#sessionBrowserNewDirectory', '/workspace/task/app');
+  assert.equal(h.$('#sessionBrowserNewDirectory').value, '/workspace/workspace/app');
+  h.change('#sessionBrowserNewDirectory', '/workspace/workspace/app');
   assert.match(h.$('#sessionHistoryEntries').textContent, /从这里开始对话/);
   h.input('#sessionChatInput', '保留这份草稿');
-  h.window.closeSessionHistory(); h.window.openSessionHistory('task');
-  h.change('#sessionBrowserNewDirectory', '/workspace/task/app');
+  h.window.closeSessionHistory(); h.window.openSessionHistory('workspace');
+  h.change('#sessionBrowserNewDirectory', '/workspace/workspace/app');
   assert.equal(h.$('#sessionChatInput').value, '保留这份草稿');
   assert(!h.requests.some(r => r.url.endsWith('/sessions/new')));
 });
 
 test('legacy MCP forms preserve drafts when another request arrives and return typed answers', async t => {
   const h=await harness(t,false);
-  h.window.openSessionHistory('task','session-1');await settle();
+  h.window.openSessionHistory('workspace','session-1');await settle();
   const current=h.currentSession();
   const approval={id:'mcp',title:'填写配置',details:'请选择配置',kind:'elicitation',can_accept:true,choices:[{id:'decline',label:'拒绝',accepts:false},{id:'accept',label:'提交回答',accepts:true}],elicitation:{mode:'form',server_name:'apix',fields:[{name:'choice',title:'方案',type:'string',required:true,options:[{value:'id-a',label:'方案 A'}]},{name:'enabled',title:'启用',type:'boolean',required:true,default:false},{name:'count',title:'数量',type:'integer',required:true,default:0}]}};
   const chat={id:'run',status:'waiting',busy:true,entries:[],approvals:[approval]};
@@ -1151,14 +1198,15 @@ test('legacy MCP forms preserve drafts when another request arrives and return t
 });
 
 
-for (const readOnly of [true, false]) test(`task and project each have one conversation entry in ${readOnly ? 'read-only' : 'interactive'} mode`, async t => {
+for (const readOnly of [true, false]) test(`workspace and project each have one conversation entry in ${readOnly ? 'read-only' : 'interactive'} mode`, async t => {
   const h = await harness(t, readOnly);
   let opened, closed = 0;
   h.window.WorkHubAssistant = { open(options) { opened = options; }, close() { closed++; } };
-  assert.equal(h.document.querySelectorAll('[data-action="task-conversations"]').length, 1);
-  assert.equal(h.$('#content [data-session-action]'), null);
-  assert.equal(h.$('#taskWorkspaceLayout'), null);
-  await h.openConversations('task');
+  assert.equal(h.document.querySelectorAll('[data-action="workspace-conversations"]').length, 1);
+  assert(h.$('.workspace-overview-actions [data-session-action="new"]'));
+  assert.equal(h.$('tbody [data-session-action]'), null);
+  assert.equal(h.$('#workspaceDetailLayout'), null);
+  await h.openConversations('workspace');
   assert.equal(h.window.location.hash, '#/sessions');
   assert.equal(h.$('#conversationDialog'), null);
   assert.equal(h.document.activeElement, h.$('#sessionBrowserSearch'));
@@ -1176,7 +1224,7 @@ for (const readOnly of [true, false]) test(`task and project each have one conve
   assert.match(h.$('#sessionScopeLabel').textContent, /项目 · App/);
   if (!readOnly) {
     h.click('#newBrowserSession'); h.change('#sessionBrowserNewDirectory', '/repo/app');
-    assert.equal(opened.task, undefined); assert.equal(opened.session, null);
+    assert.equal(opened.workspace, undefined); assert.equal(opened.session, null);
     assert.equal(opened.target.cwd, '/repo/app'); assert.equal(opened.target.project_id, 'app');
     opened.created({ id: 'created', name: 'Created', cwd: '/repo/app' });
     assert.equal(h.currentSession().session, 'created');
@@ -1189,9 +1237,9 @@ test('conversation entry opens the page directly and restores the same scope and
   const h = await harness(t, false);
   let opens = 0, closes = 0;
   h.window.WorkHubAssistant = { open() { opens++; }, close() { closes++; } };
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   const browser = h.$('#sessionBrowser'), panel = h.$('#assistantChatRoot'), current = h.currentSession();
-  h.window.setConversationDirectory('/workspace/task/app'); await settle();
+  h.window.setConversationDirectory('/workspace/workspace/app'); await settle();
   const afterFilter = h.currentSession();
   const beforeOpens = opens, beforeCloses = closes;
   h.window.render(); await settle();
@@ -1201,21 +1249,21 @@ test('conversation entry opens the page directly and restores the same scope and
   assert.equal(h.$('#sessionPageMount #sessionBrowser'), browser);
   assert.equal(h.$('#assistantChatRoot'), panel); assert.equal(h.currentSession(), afterFilter);
   assert.equal(opens, beforeOpens); assert.equal(closes, beforeCloses);
-  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/workspace/app');
   h.click('[data-conversation-action="all"]'); await settle();
   assert.equal(h.$('#sessionScopeLabel').textContent, '全部对话');
-  await h.navigate('/requirements/task');
-  await h.openConversations('task');
+  await h.navigate('/workspaces/workspace');
+  await h.openConversations('workspace');
   assert.equal(h.$('#sessionPageMount #sessionBrowser'), browser);
   assert.equal(h.$('#assistantChatRoot'), panel);
-  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/workspace/app');
   assert.notEqual(h.currentSession(), current); // The controller registry, not DOM history state, owns drafts.
   assert(!h.requests.some(r => r.url.endsWith('/chat/stop')));
 });
 
 test('conversation columns resize without reopening chat and retain their width across navigation', async t => {
   const h = await harness(t, false);
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   const browser = h.$('#sessionBrowser'), handle = h.$('#sessionBrowserResize');
   const list = h.$('#sessionBrowserListPane'), body = h.$('.session-browser-body');
   let available = 1000, captured;
@@ -1240,7 +1288,7 @@ test('conversation columns resize without reopening chat and retain their width 
   assert.equal(captured, undefined);
   assert(!browser.hasAttribute('data-resizing'));
   assert.equal(h.window.localStorage.getItem('workhub:conversation-list-width:v1'), '400');
-  await h.leaveConversations(); await h.openConversations('task');
+  await h.leaveConversations(); await h.openConversations('workspace');
   assert.equal(browser.style.getPropertyValue('--conversation-list-width'), '400px');
   assert.equal(h.$('#assistantChatRoot'), panel);
   assert.equal(h.currentSession().session, session.session);
@@ -1258,7 +1306,7 @@ test('conversation columns resize without reopening chat and retain their width 
 
 test('conversation split supports keyboard resizing and leaves narrow-screen navigation intact', async t => {
   const h = await harness(t);
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   const browser = h.$('#sessionBrowser'), handle = h.$('#sessionBrowserResize');
   let available = 1000;
   h.$('.session-browser-body').getBoundingClientRect = () => ({ width: available });
@@ -1275,17 +1323,17 @@ test('conversation split supports keyboard resizing and leaves narrow-screen nav
   assert.equal(h.window.localStorage.getItem('workhub:conversation-list-width:v1'), '220');
 });
 
-test('task and project directory unions stay distinct and exact filters exclude subdirectories', async t => {
+test('workspace and project directory unions stay distinct and exact filters exclude subdirectories', async t => {
   const h = await harness(t);
-  h.links.get('task').add('task-root');
-  h.sessions.push({ id: 'task-root', name: 'Task brief', cwd: '/workspace/task' }, { id: 'main', name: 'Main project', cwd: '/repo/app' }, { id: 'child', name: 'Nested directory', cwd: '/workspace/task/app/src' });
-  await h.openConversations('task');
+  h.links.get('workspace').add('workspace-root');
+  h.sessions.push({ id: 'workspace-root', name: 'Workspace brief', cwd: '/workspace/workspace' }, { id: 'main', name: 'Main project', cwd: '/repo/app' }, { id: 'child', name: 'Nested directory', cwd: '/workspace/workspace/app/src' });
+  await h.openConversations('workspace');
   const ids = () => [...h.document.querySelectorAll('[data-conversation-session]')].map(b => b.dataset.conversationSession).sort();
-  assert.deepEqual(ids(), ['session-1', 'task-root']);
+  assert.deepEqual(ids(), ['session-1', 'workspace-root']);
   assert.equal(h.document.querySelectorAll('.session-browser-item-directory').length, 1);
-  assert.match(h.$('[data-conversation-session="session-1"] .session-browser-item-project').textContent, /App.*feature\/task/);
-  h.window.setConversationDirectory('/workspace/task'); await settle();
-  assert.deepEqual(ids(), ['task-root']); assert.equal(h.$('.session-browser-item-directory'), null);
+  assert.match(h.$('[data-conversation-session="session-1"] .session-browser-item-project').textContent, /App.*feature\/workspace/);
+  h.window.setConversationDirectory('/workspace/workspace'); await settle();
+  assert.deepEqual(ids(), ['workspace-root']); assert.equal(h.$('.session-browser-item-directory'), null);
   await h.leaveConversations();
   await h.navigate('/projects'); h.click('[data-action="select-project"][data-id="app"]');
   await h.openConversations('project');
@@ -1294,7 +1342,7 @@ test('task and project directory unions stay distinct and exact filters exclude 
   assert(h.requests.some(r => r.url.includes('project_id=app') && r.url.includes('cwd=%2Frepo%2Fapp')));
 });
 
-test('task-root and unattached detached worktree creation use an explicit target without adding task ownership', async t => {
+test('workspace-root and unattached detached worktree creation use an explicit target without adding workspace ownership', async t => {
   const h = await harness(t, false);
   h.data.projects[0].worktrees.push({ path: '/repo/detached', detached: true, status_updated_at: '2026-10-24T00:00:00Z' });
   h.setIntercept((url, options, body) => {
@@ -1303,13 +1351,13 @@ test('task-root and unattached detached worktree creation use an explicit target
     h.sessions.push(session);
     return { ok: true, json: async () => ({ session, chat: { id: body.request_id, status: 'running', busy: true, entries: [], approvals: [] } }) };
   });
-  await h.openConversations('task'); h.click('#newBrowserSession');
+  await h.openConversations('workspace'); h.click('#newBrowserSession');
   assert.equal(h.$('#sessionHistoryPanel').hidden, false, 'the default directory opens a composer immediately');
-  h.change('#sessionBrowserNewDirectory', '/workspace/task'); h.input('#sessionChatInput', '整理任务说明');
+  h.change('#sessionBrowserNewDirectory', '/workspace/workspace'); h.input('#sessionChatInput', '整理工作区说明');
   await h.submit('#sessionChatForm');
-  const taskRequest = h.requests.find(r => r.url === '/api/sessions/new');
-  assert.equal(taskRequest.body.task_id, 'task'); assert.equal(taskRequest.body.cwd, '/workspace/task');
-  assert(!taskRequest.body.project_id);
+  const workspaceRequest = h.requests.find(r => r.url === '/api/sessions/new');
+  assert.equal(workspaceRequest.body.workspace_id, 'workspace'); assert.equal(workspaceRequest.body.cwd, '/workspace/workspace');
+  assert(!workspaceRequest.body.project_id);
   await h.leaveConversations();
   await h.navigate('/projects'); h.click('[data-action="select-project"][data-id="app"]'); await h.openConversations('project');
   h.window.setConversationDirectory('/repo/detached'); await settle(); h.click('#newBrowserSession');
@@ -1317,8 +1365,8 @@ test('task-root and unattached detached worktree creation use an explicit target
   h.input('#sessionChatInput', '检查游离工作目录'); await h.submit('#sessionChatForm');
   const projectRequest = h.requests.filter(r => r.url === '/api/sessions/new').at(-1);
   assert.equal(projectRequest.body.project_id, 'app'); assert.equal(projectRequest.body.cwd, '/repo/detached');
-  assert.equal(projectRequest.body.task_id, undefined);
-  assert.notEqual(projectRequest.body.request_id, taskRequest.body.request_id);
+  assert.equal(projectRequest.body.workspace_id, undefined);
+  assert.notEqual(projectRequest.body.request_id, workspaceRequest.body.request_id);
   await h.leaveConversations();
   assert(!h.requests.some(r => r.url.endsWith('/chat/stop')));
 });
@@ -1327,28 +1375,28 @@ test('late directory responses cannot replace the latest filter, including switc
   const h = await harness(t);
   const pending = [];
   h.setIntercept(url => url.startsWith('/api/sessions?') && url.includes('cwd=') ? new Promise(resolve => pending.push({ url, resolve })) : undefined);
-  await h.openConversations('task');
-  h.window.setConversationDirectory('/workspace/task/app');
-  h.window.setConversationDirectory('/workspace/task');
-  h.window.setConversationDirectory('/workspace/task/app');
+  await h.openConversations('workspace');
+  h.window.setConversationDirectory('/workspace/workspace/app');
+  h.window.setConversationDirectory('/workspace/workspace');
+  h.window.setConversationDirectory('/workspace/workspace/app');
   assert.equal(pending.length, 3);
   const ok = sessions => ({ ok: true, json: async () => ({ sessions }) });
-  pending[2].resolve(ok([{ id: 'latest', name: 'Latest response', cwd: '/workspace/task/app' }])); await settle();
-  pending[0].resolve(ok([{ id: 'stale', name: 'Old response', cwd: '/workspace/task/app' }]));
-  pending[1].resolve(ok([{ id: 'wrong-dir', name: 'Wrong directory', cwd: '/workspace/task' }])); await settle();
+  pending[2].resolve(ok([{ id: 'latest', name: 'Latest response', cwd: '/workspace/workspace/app' }])); await settle();
+  pending[0].resolve(ok([{ id: 'stale', name: 'Old response', cwd: '/workspace/workspace/app' }]));
+  pending[1].resolve(ok([{ id: 'wrong-dir', name: 'Wrong directory', cwd: '/workspace/workspace' }])); await settle();
   assert.equal(h.$('[data-conversation-session]').dataset.conversationSession, 'latest');
-  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/workspace/app');
 });
 
-test('returning from the conversation page preserves task scroll and details across refresh and task navigation', async t => {
+test('returning from the conversation page preserves workspace scroll and details across refresh and workspace navigation', async t => {
   const h = await harness(t);
-  h.data.requirements.push({ ...h.data.requirements[0], id: 'other-task', name: 'Other task' });
-  h.$('#taskProjectsView').scrollTop = 135; h.$('.directory-details').open = true;
-  await h.openConversations('task'); h.window.render();
+  h.data.workspaces.push({ ...h.data.workspaces[0], id: 'other-workspace', name: 'Other workspace' });
+  h.$('#workspaceProjectsView').scrollTop = 135; h.$('.directory-details').open = true;
+  await h.openConversations('workspace'); h.window.render();
   await h.leaveConversations();
-  assert.equal(h.$('#taskProjectsView').scrollTop, 135); assert.equal(h.$('.directory-details').open, true);
-  await h.navigate('/requirements/other-task'); assert.equal(h.$('.directory-details').open, false);
-  await h.navigate('/requirements/task'); assert.equal(h.$('.directory-details').open, true); assert.equal(h.$('#taskProjectsView').scrollTop, 135);
+  assert.equal(h.$('#workspaceProjectsView').scrollTop, 135); assert.equal(h.$('.directory-details').open, true);
+  await h.navigate('/workspaces/other-workspace'); assert.equal(h.$('.directory-details').open, false);
+  await h.navigate('/workspaces/workspace'); assert.equal(h.$('.directory-details').open, true); assert.equal(h.$('#workspaceProjectsView').scrollTop, 135);
 });
 
 test('scope picker Escape, mobile list navigation and browser back retain the expected page', async t => {
@@ -1358,13 +1406,13 @@ test('scope picker Escape, mobile list navigation and browser back retain the ex
   assert.equal(h.$('#sessionScopePicker').open, false); assert(h.currentSession());
   h.click('[data-conversation-session]'); assert.equal(h.$('#sessionBrowser').dataset.pane, 'detail');
   h.click('[data-conversation-action="back"]'); assert.equal(h.$('#sessionBrowser').dataset.pane, 'list');
-  await h.navigate('/requirements/task'); await h.openConversations('task');
+  await h.navigate('/workspaces/workspace'); await h.openConversations('workspace');
   h.$('#sessionBrowserSearch').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
   assert.equal(h.window.location.hash, '#/sessions');
   const returned = new Promise(resolve => h.window.addEventListener('hashchange', resolve, {once:true}));
   h.window.history.back(); await returned; await settle();
   assert.equal(h.$('#conversationDialog'), null);
-  assert.equal(h.window.location.hash, '#/requirements/task');
+  assert.equal(h.window.location.hash, '#/workspaces/workspace');
 });
 
 test('environment switching isolates identical conversation IDs and rejects late responses', async t => {
@@ -1389,10 +1437,10 @@ test('environment switching isolates identical conversation IDs and rejects late
 
 test('a narrow list does not mark hidden conversation details as read', async t => {
   const h = await harness(t);
-  await h.openConversations('task'); await h.leaveConversations();
+  await h.openConversations('workspace'); await h.leaveConversations();
   h.sessions[0].completed_run = 'unread-mobile'; await h.window.refreshSessionWorkspace(true);
   h.$('#sessionBrowser').getBoundingClientRect = () => ({ width: 360 });
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   assert.equal(h.$('#sessionBrowser').dataset.pane, 'list');
   assert.equal(h.$('#sessionNavigationStatus').textContent, '有新消息');
   h.click('[data-conversation-session="session-1"]');
@@ -1403,7 +1451,7 @@ test('list loading failures distinguish an unreadable scope from an empty direct
   const h = await harness(t);
   let release;
   h.setIntercept(url => url.startsWith('/api/sessions?') ? new Promise(resolve => { release = resolve; }) : undefined);
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   assert.match(h.$('#sessionBrowserEmpty').textContent, /正在读取/);
   release({ ok: false, json: async () => ({ error: 'fixture offline' }) }); await settle();
   assert.equal(h.$('#sessionBrowserError').hidden, false);
@@ -1417,23 +1465,23 @@ test('project refresh never silently widens a saved directory filter while workt
   const h = await harness(t);
   await h.navigate('/projects'); h.click('[data-action="select-project"][data-id="app"]');
   await h.openConversations('project');
-  h.window.setConversationDirectory('/workspace/task/app'); await settle();
+  h.window.setConversationDirectory('/workspace/workspace/app'); await settle();
   h.data.projects[0].worktrees = [];
   await h.window.refresh(true);
-  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/workspace/app');
   assert.equal(h.$('#sessionDirectoryFilter'), null);
-  assert.match(h.$('#sessionActiveFilterLabel').title, /workspace\/task\/app/);
+  assert.match(h.$('#sessionActiveFilterLabel').title, /workspace\/workspace\/app/);
   await h.window.refreshSessionWorkspace(true);
-  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/task/app');
-  assert(h.requests.filter(r => r.url.startsWith('/api/sessions?')).at(-1).url.includes('cwd=%2Fworkspace%2Ftask%2Fapp'));
+  assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/workspace/app');
+  assert(h.requests.filter(r => r.url.startsWith('/api/sessions?')).at(-1).url.includes('cwd=%2Fworkspace%2Fworkspace%2Fapp'));
 });
 
 test('conversation pinning sorts the shared list and the archive filter uses its own query',async t=>{
  const h=await harness(t);
- h.sessions.push({id:'pinned',name:'Pinned conversation',cwd:'/workspace/task/app',updated_at:1,pinned:true});
+ h.sessions.push({id:'pinned',name:'Pinned conversation',cwd:'/workspace/workspace/app',updated_at:1,pinned:true});
  await h.navigate('/sessions');
  assert.equal(h.$('[data-conversation-session]').dataset.conversationSession,'pinned');
- h.setIntercept(url=>url.startsWith('/api/sessions?')&&url.includes('archived=true')?{ok:true,json:async()=>({sessions:[{id:'archive',name:'Archived conversation',cwd:'/workspace/task/app',archived:true}]})}:undefined);
+ h.setIntercept(url=>url.startsWith('/api/sessions?')&&url.includes('archived=true')?{ok:true,json:async()=>({sessions:[{id:'archive',name:'Archived conversation',cwd:'/workspace/workspace/app',archived:true}]})}:undefined);
  h.$('#sessionBrowserArchived').checked=true;h.$('#sessionBrowserArchived').dispatchEvent(new h.window.Event('change',{bubbles:true}));await settle();
  assert.equal(h.$('[data-conversation-session]').dataset.conversationSession,'archive');
  assert(h.requests.some(r=>r.url.includes('archived=true')));
@@ -1446,9 +1494,9 @@ test('session organization events update the same browser without reopening anot
  assert.match(h.$('[data-conversation-session="session-1"]').textContent,/Renamed/);
  notify({...h.sessions[0],name:'Wrong environment'},'rename','remote');
  assert.doesNotMatch(h.$('#sessionBrowserList').textContent,/Wrong environment/);
- notify({id:'fork',name:'Forked conversation',cwd:'/workspace/task/app'},'fork');
+ notify({id:'fork',name:'Forked conversation',cwd:'/workspace/workspace/app'},'fork');
  assert.equal(h.currentSession().session,'fork');
- notify({id:'fork',name:'Forked conversation',cwd:'/workspace/task/app',archived:true},'archive');
+ notify({id:'fork',name:'Forked conversation',cwd:'/workspace/workspace/app',archived:true},'archive');
  assert.equal(h.$('[data-conversation-session="fork"]'),null);
 });
 
@@ -1472,11 +1520,11 @@ test('conversation list omits shared context and retains active counts and refre
   let updated;
   h.window.WorkHubAssistant = {open() {}, close() {}, updateSession(session) {updated = session;}};
   h.sessions[0].chat_status = 'running';
-  await h.openConversations('task');
-  assert.match(h.$('#sessionBrowserContext').textContent, /任务 · Billing · 本机/);
+  await h.openConversations('workspace');
+  assert.match(h.$('#sessionBrowserContext').textContent, /工作区 · Billing · 本机/);
   assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'), /1 个运行中/);
   assert.equal(h.$('[data-conversation-session="session-1"] .session-browser-item-context'), null);
-  assert.equal(h.$('.session-browser-item-task'), null);
+  assert.equal(h.$('.session-browser-item-workspace'), null);
   assert.equal(h.$('.session-browser-item-directory'), null);
   assert(h.$('[data-session-menu] [data-conversation-unlink="session-1"]'));
   h.sessions[0].name = 'Codex generated title';
@@ -1491,7 +1539,7 @@ test('shared project navigation restores the same toolbar after conversations an
   const search = h.$('#search');
   const errors = [];
   h.window.addEventListener('error', event => errors.push(event.error));
-  for (const route of ['/sessions', '/settings', '/requirements']) {
+  for (const route of ['/sessions', '/settings', '/workspaces']) {
     await h.navigate(route);
     await h.navigate('/projects');
     assert.equal(h.$('#projectListPane #panelToolbar'), toolbar);
@@ -1517,56 +1565,56 @@ test('browser navigation uses the shared rail and ignores old expandable sidebar
   assert.equal(h.window.location.hash, route);
 });
 
-test('browser rail keeps individual task and directory shortcuts visible with direct navigation', async t => {
-  const h = await harness(t, true, {width:1024, pins:{local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}}});
+test('browser rail keeps individual workspace and directory shortcuts visible with direct navigation', async t => {
+  const h = await harness(t, true, {width:1024, pins:{local:{workspaces:['workspace'], directories:['/workspace/workspace/app'], initialized:true}}});
   const panel = h.$('#conversationShortcuts');
   assert(h.$('.sidebar-shortcut-rail'));
   assert.equal(h.document.body.classList.contains('sidebar-collapsed'), false);
   assert(!panel.hasAttribute('popover'));
-  assert(h.$('[data-task-shortcut="task"] .shortcut-badge'));
-  assert(h.$('[data-directory-shortcut="/workspace/task/app"] .shortcut-badge'));
-  const identity = h.$('[data-task-shortcut="task"]').dataset.shortcutIcon;
-  h.click('[data-task-shortcut="task"]'); await settle();
-  assert.equal(h.$('#sessionScopeLabel').textContent, '任务 · Billing');
-  assert.equal(h.$('[data-task-shortcut="task"]').getAttribute('aria-current'), 'true');
-  h.click('[data-directory-shortcut="/workspace/task/app"]'); await settle();
-  assert.equal(h.$('[data-directory-shortcut="/workspace/task/app"]').getAttribute('aria-current'), 'true');
+  assert(h.$('[data-workspace-shortcut="workspace"] .shortcut-badge'));
+  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"] .shortcut-badge'));
+  const identity = h.$('[data-workspace-shortcut="workspace"]').dataset.shortcutIcon;
+  h.click('[data-workspace-shortcut="workspace"]'); await settle();
+  assert.equal(h.$('#sessionScopeLabel').textContent, '工作区 · Billing');
+  assert.equal(h.$('[data-workspace-shortcut="workspace"]').getAttribute('aria-current'), 'true');
+  h.click('[data-directory-shortcut="/workspace/workspace/app"]'); await settle();
+  assert.equal(h.$('[data-directory-shortcut="/workspace/workspace/app"]').getAttribute('aria-current'), 'true');
   assert.equal(h.document.body.classList.contains('sidebar-collapsed'), false);
-  h.click('#taskShortcutPicker summary'); await settle();
-  assert.equal(h.$('[data-task-shortcut="task"]').dataset.shortcutIcon, identity);
-  assert(h.$('[data-directory-shortcut="/workspace/task/app"]'));
+  h.click('#workspaceShortcutPicker summary'); await settle();
+  assert.equal(h.$('[data-workspace-shortcut="workspace"]').dataset.shortcutIcon, identity);
+  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"]'));
 });
 
 test('desktop shows pinned icons directly and keeps their management in the picker', async t => {
-  const pins = {local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}};
+  const pins = {local:{workspaces:['workspace'], directories:['/workspace/workspace/app'], initialized:true}};
   const h = await harness(t, true, {desktop:true, width:1440, pins});
   assert.equal(h.$('.sidebar-toggle, .sidebar-resize'), null);
-  assert.equal(h.$('#taskShortcutPicker').open, false);
+  assert.equal(h.$('#workspaceShortcutPicker').open, false);
   const list = h.$('.sidebar-shortcut-list');
-  assert(list.querySelector('[data-task-shortcut="task"] .shortcut-badge'));
-  assert(list.querySelector('[data-directory-shortcut="/workspace/task/app"] .shortcut-badge'));
-  h.click('.sidebar-shortcut-list [data-task-shortcut="task"]');
+  assert(list.querySelector('[data-workspace-shortcut="workspace"] .shortcut-badge'));
+  assert(list.querySelector('[data-directory-shortcut="/workspace/workspace/app"] .shortcut-badge'));
+  h.click('.sidebar-shortcut-list [data-workspace-shortcut="workspace"]');
   await settle();
-  assert.equal(h.$('#sessionScopeLabel').textContent, '任务 · Billing');
-  h.click('.sidebar-shortcut-list [data-directory-shortcut="/workspace/task/app"]');
+  assert.equal(h.$('#sessionScopeLabel').textContent, '工作区 · Billing');
+  h.click('.sidebar-shortcut-list [data-directory-shortcut="/workspace/workspace/app"]');
   await settle();
-  assert.equal(h.$('[data-directory-shortcut="/workspace/task/app"]').getAttribute('aria-current'), 'true');
-  h.click('#taskShortcutPicker summary');
+  assert.equal(h.$('[data-directory-shortcut="/workspace/workspace/app"]').getAttribute('aria-current'), 'true');
+  h.click('#workspaceShortcutPicker summary');
   await settle();
   h.$('.sidebar-shortcut-list').scrollTop = 48;
-  h.click('#shortcutPickerPanel [data-task-shortcut-pin="task"]');
+  h.click('#shortcutPickerPanel [data-workspace-shortcut-pin="workspace"]');
   await settle();
-  assert.equal(h.$('#taskShortcutPicker').open, true);
+  assert.equal(h.$('#workspaceShortcutPicker').open, true);
   assert.equal(h.$('.sidebar-shortcut-list').scrollTop, 48);
-  assert.equal(h.$('[data-task-shortcut="task"]'), null);
-  assert.deepEqual(pins.local.tasks, []);
+  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
+  assert.deepEqual(pins.local.workspaces, []);
   h.$('#shortcutPickerPanel').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
-  assert.equal(h.$('#taskShortcutPicker').open, false);
-  assert.equal(h.document.activeElement, h.$('#taskShortcutPicker summary'));
+  assert.equal(h.$('#workspaceShortcutPicker').open, false);
+  assert.equal(h.document.activeElement, h.$('#workspaceShortcutPicker summary'));
 });
 
 test('icon customization persists without browser storage and rollback keeps pins intact', async t => {
-  const pins = {local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}};
+  const pins = {local:{workspaces:['workspace'], directories:['/workspace/workspace/app'], initialized:true}};
   const h = await harness(t, true, {pins, storageUnavailable:true});
   h.click('[data-shortcut-icon-settings]');
   assert(h.$('.shortcut-icon-dialog').open);
@@ -1574,28 +1622,28 @@ test('icon customization persists without browser storage and rollback keeps pin
   h.click('.shortcut-icon-dialog [aria-label="玫红"]');
   await settle();
   await h.submit('.shortcut-icon-dialog form');
-  assert.deepEqual(pins.local.icons['task:task'], {icon:'rocket', color:'rose'});
-  assert(h.$('[data-task-shortcut="task"] .shortcut-badge[data-color="rose"] svg'));
+  assert.deepEqual(pins.local.icons['workspace:workspace'], {icon:'rocket', color:'rose'});
+  assert(h.$('[data-workspace-shortcut="workspace"] .shortcut-badge[data-color="rose"] svg'));
   const pinReads = () => h.requests.filter(r => r.url.startsWith('/api/shortcut-pins?') && !r.options.method).length;
   const previousReads = pinReads();
   h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:shortcut-pins-updated:local'})); await settle();
   assert.equal(pinReads(), previousReads + 1, 'another window changing pins reloads them from the database');
-  assert(h.$('[data-task-shortcut="task"] .shortcut-badge[data-color="rose"] svg'));
+  assert(h.$('[data-workspace-shortcut="workspace"] .shortcut-badge[data-color="rose"] svg'));
   h.click('[data-shortcut-icon-settings]');
   const key = h.$('[data-directory-shortcut]').dataset.shortcutIconKey;
   h.change('#shortcutIconEntry', key); await settle();
   h.click('.shortcut-icon-dialog [aria-label="终端"]'); await settle();
   await h.submit('.shortcut-icon-dialog form');
-  assert.equal(pins.local.icons['directory:/workspace/task/app'].icon, 'terminal');
-  assert.equal(pins.local.icons['task:task'].icon, 'rocket');
+  assert.equal(pins.local.icons['directory:/workspace/workspace/app'].icon, 'terminal');
+  assert.equal(pins.local.icons['workspace:workspace'].icon, 'rocket');
   h.setIntercept(async (url, options) => url.startsWith('/api/shortcut-pins?') && options.method === 'PUT' ? {ok:false,json:async()=>({error:'fixture save failed'})} : null);
   h.click('[data-shortcut-icon-settings]');
   h.click('.shortcut-icon-dialog [aria-label="数据库"]'); await settle();
   await h.submit('.shortcut-icon-dialog form');
-  assert(h.$('[data-task-shortcut="task"] .shortcut-badge[data-color="rose"] svg'));
-  assert.equal(JSON.parse(h.$('[data-task-shortcut="task"]').dataset.shortcutIcon).icon, 'rocket');
-  assert.deepEqual(pins.local.tasks, ['task']);
-  assert.deepEqual(pins.local.directories, ['/workspace/task/app']);
+  assert(h.$('[data-workspace-shortcut="workspace"] .shortcut-badge[data-color="rose"] svg'));
+  assert.equal(JSON.parse(h.$('[data-workspace-shortcut="workspace"]').dataset.shortcutIcon).icon, 'rocket');
+  assert.deepEqual(pins.local.workspaces, ['workspace']);
+  assert.deepEqual(pins.local.directories, ['/workspace/workspace/app']);
 });
 
 test('icon settings escape a clipped same-origin navigation iframe and restore focus', async t => {
@@ -1604,7 +1652,7 @@ test('icon settings escape a clipped same-origin navigation iframe and restore f
   outer.window.HTMLDialogElement.prototype.show = function () { this.open = true; };
   outer.window.HTMLDialogElement.prototype.showModal = function () {this.open = true;};
   outer.window.HTMLDialogElement.prototype.close = function () {this.open = false;};
-  const h = await harness(t, true, {pageHost:outer.window, pins:{local:{tasks:['task'], directories:[], initialized:true}}});
+  const h = await harness(t, true, {pageHost:outer.window, pins:{local:{workspaces:['workspace'], directories:[], initialized:true}}});
   for (const data of [{type:'workhub:page-navigation'}, {type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}}]) h.window.dispatchEvent(new h.window.MessageEvent('message',{source:outer.window,origin:'http://localhost:4317',data}));
   await settle();await settle();
   h.click('[data-shortcut-icon-settings]');
@@ -1616,16 +1664,16 @@ test('icon settings escape a clipped same-origin navigation iframe and restore f
   dialog.querySelector('form').dispatchEvent(new outer.window.Event('submit',{bubbles:true,cancelable:true})); await settle();
   assert(!dialog.open);
   assert.equal(h.document.activeElement, h.$('[data-shortcut-icon-settings]'));
-  assert.equal(JSON.parse(h.$('[data-task-shortcut="task"]').dataset.shortcutIcon).icon, 'rocket');
+  assert.equal(JSON.parse(h.$('[data-workspace-shortcut="workspace"]').dataset.shortcutIcon).icon, 'rocket');
 });
 
 test('fixed shortcut manager searches both kinds and icon dialog cancels without saving', async t => {
-  const h = await harness(t, true, {pins:{local:{tasks:['task'], directories:['/workspace/task/app'], initialized:true}}});
-  h.$('#taskShortcutPicker').open = true;
+  const h = await harness(t, true, {pins:{local:{workspaces:['workspace'], directories:['/workspace/workspace/app'], initialized:true}}});
+  h.$('#workspaceShortcutPicker').open = true;
   h.input('#shortcutSearch', 'Billing');
-  assert(h.$('[data-task-shortcut-pin="task"]'));
+  assert(h.$('[data-workspace-shortcut-pin="workspace"]'));
   assert.equal(h.$('#shortcutPickerPanel [data-directory-shortcut-pin]'), null);
-  assert(h.$('[data-directory-shortcut="/workspace/task/app"]'), 'search does not hide pinned entries');
+  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"]'), 'search does not hide pinned entries');
   h.click('[data-shortcut-icon-settings]');
   h.click('.shortcut-icon-dialog [aria-label="数据库"]'); await settle();
   h.$('.shortcut-icon-dialog').dispatchEvent(new h.window.Event('cancel', {cancelable:true}));
@@ -1634,100 +1682,100 @@ test('fixed shortcut manager searches both kinds and icon dialog cancels without
   assert.equal(h.requests.filter(r => r.options.method === 'PUT' && r.url.startsWith('/api/shortcut-pins?')).length, 0);
 });
 
-test('fixed tasks persist and open only explicitly linked conversations', async t => {
+test('fixed workspaces persist and open only explicitly linked conversations', async t => {
   const h = await harness(t);
-  h.sessions.push({id:'same-directory', name:'Not linked', cwd:'/workspace/task/app', updated_at:1999999999});
+  h.sessions.push({id:'same-directory', name:'Not linked', cwd:'/workspace/workspace/app', updated_at:1999999999});
   h.sessions.push({id:'newer', name:'Newest linked', cwd:'/external', updated_at:1899999999});
-  h.links.get('task').add('newer');
+  h.links.get('workspace').add('newer');
   assert.match(h.$('#shortcutPinnedTitle').textContent, /固定入口/);
   assert.equal(h.$('#shortcutRecentTitle'), null);
-  assert.equal(h.$('[data-task-shortcut-pin="archived"]'), null);
-  h.click('[data-task-shortcut-pin="task"]'); await settle();
-  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-tasks:v1:local')), ['task']);
-  assert.match(h.$('[data-task-shortcut="task"]').textContent, /Billing.*App/);
+  assert.equal(h.$('[data-workspace-shortcut-pin="archived"]'), null);
+  h.click('[data-workspace-shortcut-pin="workspace"]'); await settle();
+  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-workspaces:v1:local')), ['workspace']);
+  assert.match(h.$('[data-workspace-shortcut="workspace"]').textContent, /Billing.*App/);
   assert.equal(h.requests.some(r => r.url.endsWith('/manage')), false);
   h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:shortcut-pins-updated:local'})); await settle();
-  assert(h.$('[data-task-shortcut="task"]'));
-  h.click('[data-task-shortcut="task"]'); await settle();
+  assert(h.$('[data-workspace-shortcut="workspace"]'));
+  h.click('[data-workspace-shortcut="workspace"]'); await settle();
   assert.equal(h.window.location.hash, '#/sessions');
-  assert.equal(h.$('#sessionScopeLabel').textContent, '任务 · Billing');
+  assert.equal(h.$('#sessionScopeLabel').textContent, '工作区 · Billing');
   assert.equal(h.currentSession().session, 'newer');
   assert.equal(h.$('[data-conversation-session="same-directory"]'), null);
-  assert.equal(h.$('[data-task-shortcut="task"]').getAttribute('aria-current'), 'true');
+  assert.equal(h.$('[data-workspace-shortcut="workspace"]').getAttribute('aria-current'), 'true');
   h.click('[data-conversation-session="session-1"]'); await settle();
   await h.navigate('/projects');
-  h.click('[data-task-shortcut="task"]'); await settle();
+  h.click('[data-workspace-shortcut="workspace"]'); await settle();
   assert.equal(h.currentSession().session, 'session-1');
-  h.window.setConversationDirectory('/workspace/task/app'); await settle();
+  h.window.setConversationDirectory('/workspace/workspace/app'); await settle();
   h.input('#sessionBrowserSearch', 'no match');
-  h.click('[data-task-shortcut="task"]'); await settle();
+  h.click('[data-workspace-shortcut="workspace"]'); await settle();
   assert.equal(h.window.WorkHubConversations.current.directory, '');
   assert.equal(h.$('#sessionBrowserSearch').value, '');
   assert.equal(h.$('#sessionBrowserArchived').checked, false);
-  h.$('.conversation-shortcut-row [data-task-shortcut-pin="task"]').focus();
-  h.click('.conversation-shortcut-row [data-task-shortcut-pin="task"]'); await settle();
-  assert.equal(h.$('[data-task-shortcut="task"]'), null);
-  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-tasks:v1:local')), []);
-  assert.equal(h.document.activeElement, h.$('#taskShortcutPicker summary'));
-  h.$('#taskShortcutPicker').open = true;
-  h.$('#taskShortcutPicker summary').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
-  assert.equal(h.$('#taskShortcutPicker').open, false);
+  h.$('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]').focus();
+  h.click('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]'); await settle();
+  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
+  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-workspaces:v1:local')), []);
+  assert.equal(h.document.activeElement, h.$('#workspaceShortcutPicker summary'));
+  h.$('#workspaceShortcutPicker').open = true;
+  h.$('#workspaceShortcutPicker summary').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+  assert.equal(h.$('#workspaceShortcutPicker').open, false);
 });
 
-test('fixed tasks and directories survive a new origin without browser storage', async t => {
+test('fixed workspaces and directories survive a new origin without browser storage', async t => {
   const pins = {};
   const first = await harness(t, true, {origin:'http://localhost:50101', pins});
-  first.click('[data-task-shortcut-pin="task"]');
-  first.click('[data-directory-shortcut-pin="/workspace/task/app"]');
+  first.click('[data-workspace-shortcut-pin="workspace"]');
+  first.click('[data-directory-shortcut-pin="/workspace/workspace/app"]');
   await settle();
-  assert.deepEqual(pins.local.tasks, ['task']);
-  assert.deepEqual(pins.local.directories, ['/workspace/task/app']);
+  assert.deepEqual(pins.local.workspaces, ['workspace']);
+  assert.deepEqual(pins.local.directories, ['/workspace/workspace/app']);
   const restarted = await harness(t, true, {origin:'http://localhost:50202', pins, storageUnavailable:true});
-  assert(restarted.$('[data-task-shortcut="task"]'));
-  assert(restarted.$('[data-directory-shortcut="/workspace/task/app"]'));
-  restarted.click('.conversation-shortcut-row [data-task-shortcut-pin="task"]');
-  restarted.click('.conversation-shortcut-row [data-directory-shortcut-pin="/workspace/task/app"]');
+  assert(restarted.$('[data-workspace-shortcut="workspace"]'));
+  assert(restarted.$('[data-directory-shortcut="/workspace/workspace/app"]'));
+  restarted.click('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]');
+  restarted.click('.conversation-shortcut-row [data-directory-shortcut-pin="/workspace/workspace/app"]');
   await settle();
   const again = await harness(t, true, {origin:'http://localhost:50303', pins});
-  assert.equal(again.$('[data-task-shortcut="task"]'), null);
-  assert.equal(again.$('[data-directory-shortcut="/workspace/task/app"]'), null);
+  assert.equal(again.$('[data-workspace-shortcut="workspace"]'), null);
+  assert.equal(again.$('[data-directory-shortcut="/workspace/workspace/app"]'), null);
   for (const h of [first, restarted, again]) assert(h.requests.filter(r => r.url.startsWith('/api/shortcut-pins?')).every(r => r.options.headers['X-Environment-ID'] === 'local'));
 });
 
 test('legacy pins migrate once and stale browser storage cannot resurrect removed entries', async t => {
   const pins = {};
-  const storage = {'workhub:pinned-tasks:v1:local':'["task"]', 'workhub:pinned-directories:v1:local':'["/workspace/task/app"]'};
+  const storage = {'workhub:pinned-workspaces:v1:local':'["workspace"]', 'workhub:pinned-directories:v1:local':'["/workspace/workspace/app"]'};
   const migrated = await harness(t, true, {pins, storage});
-  assert(migrated.$('[data-task-shortcut="task"]'));
-  assert(migrated.$('[data-directory-shortcut="/workspace/task/app"]'));
-  migrated.click('.conversation-shortcut-row [data-task-shortcut-pin="task"]');
-  migrated.click('.conversation-shortcut-row [data-directory-shortcut-pin="/workspace/task/app"]');
+  assert(migrated.$('[data-workspace-shortcut="workspace"]'));
+  assert(migrated.$('[data-directory-shortcut="/workspace/workspace/app"]'));
+  migrated.click('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]');
+  migrated.click('.conversation-shortcut-row [data-directory-shortcut-pin="/workspace/workspace/app"]');
   await settle();
   const stale = await harness(t, true, {pins, storage});
-  assert.equal(stale.$('[data-task-shortcut="task"]'), null);
-  assert.equal(stale.$('[data-directory-shortcut="/workspace/task/app"]'), null);
+  assert.equal(stale.$('[data-workspace-shortcut="workspace"]'), null);
+  assert.equal(stale.$('[data-directory-shortcut="/workspace/workspace/app"]'), null);
   assert.equal(stale.requests.filter(r => r.url.startsWith('/api/shortcut-pins?') && r.body?.initialize).length, 0);
 });
 
 test('pin changes wait for loading, serialize rapid clicks and roll back failed saves', async t => {
-  const pins = {local:{tasks:[], directories:[], initialized:true}};
+  const pins = {local:{workspaces:[], directories:[], initialized:true}};
   let releaseLoad;
   const h = await harness(t, true, {pins, intercept:(url, options) => url.startsWith('/api/shortcut-pins?') && !options.method ? new Promise(resolve => {releaseLoad = resolve;}) : undefined});
-  h.click('[data-task-shortcut-pin="task"]');
+  h.click('[data-workspace-shortcut-pin="workspace"]');
   assert.equal(h.requests.some(r => r.url.startsWith('/api/shortcut-pins?') && r.options.method === 'PUT'), false);
   releaseLoad({ok:true, json:async () => pins.local});
   await settle();
-  assert.deepEqual(pins.local.tasks, ['task']);
+  assert.deepEqual(pins.local.workspaces, ['workspace']);
   h.setIntercept(undefined);
   let releaseSave;
   h.setIntercept((url, options) => url.startsWith('/api/shortcut-pins?') && options.method === 'PUT' && !releaseSave ? new Promise(resolve => {releaseSave = () => {pins.local = {...JSON.parse(options.body), initialized:true}; resolve({ok:true, json:async () => structuredClone(pins.local)});};}) : undefined);
   h.click('[data-directory-shortcut-pin="/repo/app"]');
   await settle();
-  h.click('.conversation-shortcut-row [data-task-shortcut-pin="task"]');
+  h.click('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]');
   await settle();
-  assert.deepEqual(pins.local.tasks, ['task']);
+  assert.deepEqual(pins.local.workspaces, ['workspace']);
   releaseSave(); await settle();
-  assert.deepEqual(pins.local.tasks, []);
+  assert.deepEqual(pins.local.workspaces, []);
   assert.deepEqual(pins.local.directories, ['/repo/app']);
   h.setIntercept((url, options) => url.startsWith('/api/shortcut-pins?') && options.method === 'PUT' ? {ok:false, json:async () => ({error:'disk full'})} : undefined);
   h.click('.conversation-shortcut-row [data-directory-shortcut-pin="/repo/app"]');
@@ -1737,66 +1785,66 @@ test('pin changes wait for loading, serialize rapid clicks and roll back failed 
   assert.match(h.$('#toastMessage').textContent, /保存固定入口失败.*disk full/);
 });
 
-test('shortcut picker searches the complete task list and preserves focus and pin state across refreshes', async t => {
+test('shortcut picker searches the complete workspace list and preserves focus and pin state across refreshes', async t => {
   const h = await harness(t);
-  h.data.requirements.push({...h.data.requirements[0], id:'second', name:'Second task'});
+  h.data.workspaces.push({...h.data.workspaces[0], id:'second', name:'Second workspace'});
   await h.window.refresh(true); await settle();
-  h.$('#taskShortcutPicker').open = true; await settle();
-  h.click('#taskShortcutPicker [data-task-shortcut-pin="task"]'); await settle();
-  assert.equal(h.$('#taskShortcutPicker').open, true);
-  assert.equal(h.$('#taskShortcutPicker [data-task-shortcut-pin="task"]').getAttribute('aria-pressed'), 'true');
-  assert.match(h.$('.shortcut-picker-caption').textContent, /2 个未归档任务 · 已固定 1 个/);
+  h.$('#workspaceShortcutPicker').open = true; await settle();
+  h.click('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]'); await settle();
+  assert.equal(h.$('#workspaceShortcutPicker').open, true);
+  assert.equal(h.$('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]').getAttribute('aria-pressed'), 'true');
+  assert.match(h.$('.shortcut-picker-caption').textContent, /2 个未归档工作区 · 已固定 1 个/);
   h.$('#shortcutSearch').focus();
   h.input('#shortcutSearch', 'Second');
   h.$('#shortcutSearch').setSelectionRange(2, 4);
-  h.data.requirements.find(task => task.id === 'second').name = 'Second updated';
+  h.data.workspaces.find(workspace => workspace.id === 'second').name = 'Second updated';
   await h.window.refresh(true); await settle();
   assert.equal(h.document.activeElement.id, 'shortcutSearch');
   assert.equal(h.$('#shortcutSearch').value, 'Second');
   assert.equal(h.$('#shortcutSearch').selectionStart, 2);
   assert.equal(h.$('#shortcutSearch').selectionEnd, 4);
-  assert.equal(h.$('#taskShortcutPicker [data-task-shortcut-pin="task"]'), null);
-  assert(h.$('#taskShortcutPicker [data-task-shortcut-pin="second"]'));
+  assert.equal(h.$('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]'), null);
+  assert(h.$('#workspaceShortcutPicker [data-workspace-shortcut-pin="second"]'));
   h.input('#shortcutSearch', 'App');
-  assert.equal(h.document.querySelectorAll('#taskShortcutPicker [data-task-shortcut-pin]').length, 2);
+  assert.equal(h.document.querySelectorAll('#workspaceShortcutPicker [data-workspace-shortcut-pin]').length, 2);
   h.input('#shortcutSearch', 'Archived');
-  assert.equal(h.$('[data-task-shortcut-pin="archived"]'), null);
+  assert.equal(h.$('[data-workspace-shortcut-pin="archived"]'), null);
   h.$('#shortcutArchived').checked = true;
   h.$('#shortcutArchived').dispatchEvent(new h.window.Event('change', {bubbles:true}));
-  assert(h.$('[data-task-shortcut-pin="archived"]').disabled);
+  assert(h.$('[data-workspace-shortcut-pin="archived"]').disabled);
   h.input('#shortcutSearch', 'Billing');
-  h.click('#taskShortcutPicker [data-task-shortcut-pin="task"]');
-  assert.equal(h.$('#taskShortcutPicker [data-task-shortcut-pin="task"]').getAttribute('aria-pressed'), 'false');
-  assert.equal(h.$('[data-task-shortcut="task"]'), null);
+  h.click('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]');
+  assert.equal(h.$('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]').getAttribute('aria-pressed'), 'false');
+  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
   await settle();
 });
 
-test('fixed directories persist by environment and open exact directory conversations without task ownership', async t => {
+test('fixed directories persist by environment and open exact directory conversations without workspace ownership', async t => {
   const h = await harness(t, false);
-  h.sessions.push({id:'not-linked',name:'Same directory, separate conversation',cwd:'/workspace/task/app'}, {id:'child',name:'Nested',cwd:'/workspace/task/app/src'});
+  h.sessions.push({id:'not-linked',name:'Same directory, separate conversation',cwd:'/workspace/workspace/app'}, {id:'child',name:'Nested',cwd:'/workspace/workspace/app/src'});
   await h.navigate('/sessions');
-  h.click('[data-directory-shortcut-pin="/workspace/task/app"]');
-  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-directories:v1:local')), ['/workspace/task/app']);
+  h.click('[data-directory-shortcut-pin="/workspace/workspace/app"]');
+  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-directories:v1:local')), ['/workspace/workspace/app']);
   h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:shortcut-pins-updated:local'})); await settle();
-  h.click('[data-directory-shortcut="/workspace/task/app"]'); await settle();
-  assert.equal(h.$('#sessionScopeLabel').textContent, '目录 · /workspace/task/app');
-  assert.equal(h.$('[data-directory-shortcut="/workspace/task/app"]').getAttribute('aria-current'), 'true');
+  h.click('[data-directory-shortcut="/workspace/workspace/app"]'); await settle();
+  assert.equal(h.$('#sessionScopeLabel').textContent, '目录 · /workspace/workspace/app');
+  assert.equal(h.$('[data-directory-shortcut="/workspace/workspace/app"]').getAttribute('aria-current'), 'true');
   assert.deepEqual([...h.document.querySelectorAll('[data-conversation-session]')].map(button => button.dataset.conversationSession).sort(), ['not-linked','session-1']);
-  assert.equal(h.$('#taskConversationTools').hidden, true);
+  assert.equal(h.$('#workspaceConversationTools').hidden, true);
   assert.equal(h.$('#pinConversationDirectory').getAttribute('aria-pressed'), 'true');
   assert.equal(h.$('#newBrowserSession').disabled, false);
   h.click('#newBrowserSession'); await settle();
-  assert.equal(h.currentSession().target.cwd, '/workspace/task/app');
-  assert.equal(h.currentSession().target.task_id, undefined);
+  assert.equal(h.currentSession().target.cwd, '/workspace/workspace/app');
+  assert.equal(h.currentSession().target.workspace_id, undefined);
   assert.equal(h.requests.some(request => request.options.method === 'POST'), false);
   await h.window.selectEnvironment('wsl-test', '/projects'); await settle();
-  assert(h.$('[data-directory-shortcut="/workspace/task/app"]'));
+  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"]'));
   assert.equal(h.window.localStorage.getItem('workhub:pinned-directories:v1:wsl-test'), null);
   await h.window.selectEnvironment('local', '/sessions'); await settle();
-  assert(h.$('[data-directory-shortcut="/workspace/task/app"]'));
-  h.click('[data-directory-shortcut="/workspace/task/app"]'); await settle();
+  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"]'));
+  h.click('[data-directory-shortcut="/workspace/workspace/app"]'); await settle();
   h.click('#pinConversationDirectory');
-  assert.equal(h.$('[data-directory-shortcut="/workspace/task/app"]'), null);
+  assert.equal(h.$('[data-directory-shortcut="/workspace/workspace/app"]'), null);
   assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-directories:v1:local')), []);
   await settle();
 });
@@ -1807,10 +1855,10 @@ test('directory pinning is available from known directory filters and keeps same
   h.window.setConversationDirectory('/repo/app'); await settle();
   assert.equal(h.$('#pinConversationDirectory').hidden, false);
   h.click('#pinConversationDirectory');
-  h.click('[data-directory-shortcut-pin="/workspace/task/app"]');
+  h.click('[data-directory-shortcut-pin="/workspace/workspace/app"]');
   assert.equal(h.document.querySelectorAll('[data-directory-shortcut]').length, 2);
   assert.match(h.$('[data-directory-shortcut="/repo/app"]').textContent, /app.*\/repo/);
-  assert.match(h.$('[data-directory-shortcut="/workspace/task/app"]').textContent, /app.*\/workspace\/task/);
+  assert.match(h.$('[data-directory-shortcut="/workspace/workspace/app"]').textContent, /app.*\/workspace\/workspace/);
   h.sessions.push({id:'external',name:'External',cwd:'/outside'});
   h.click('[data-conversation-action="all"]'); await settle();
   h.$('#sessionScopePicker').open = true; await settle();
@@ -1820,48 +1868,48 @@ test('directory pinning is available from known directory filters and keeps same
   assert.equal(h.$('#newBrowserSession').disabled, true);
 });
 
-test('fixed tasks switch between task conversations and recover when a saved session is unlinked', async t => {
+test('fixed workspaces switch between workspace conversations and recover when a saved session is unlinked', async t => {
   const h = await harness(t);
-  h.data.requirements.push({...h.data.requirements[0], id:'second', name:'Second task'});
+  h.data.workspaces.push({...h.data.workspaces[0], id:'second', name:'Second workspace'});
   h.sessions.push({id:'second-session', name:'Second conversation', cwd:'/external', updated_at:1});
   h.links.set('second', new Set(['second-session']));
   await h.window.refresh(true); await settle();
-  h.click('[data-task-shortcut-pin="task"]');
-  h.click('[data-task-shortcut-pin="second"]');
-  h.click('[data-task-shortcut="task"]'); await settle();
+  h.click('[data-workspace-shortcut-pin="workspace"]');
+  h.click('[data-workspace-shortcut-pin="second"]');
+  h.click('[data-workspace-shortcut="workspace"]'); await settle();
   assert.equal(h.currentSession().session, 'session-1');
-  h.click('[data-task-shortcut="second"]'); await settle();
+  h.click('[data-workspace-shortcut="second"]'); await settle();
   assert.equal(h.currentSession().session, 'second-session');
-  h.click('[data-task-shortcut="task"]'); await settle();
+  h.click('[data-workspace-shortcut="workspace"]'); await settle();
   assert.equal(h.currentSession().session, 'session-1');
-  h.links.get('task').clear();
-  h.click('[data-task-shortcut="task"]'); await settle();
+  h.links.get('workspace').clear();
+  h.click('[data-workspace-shortcut="workspace"]'); await settle();
   assert.equal(h.$('#sessionBrowserEmpty').hidden, false);
   assert.match(h.$('#sessionBrowserEmpty').textContent, /这里还没有对话/);
-  assert.equal(h.$('#taskConversationTools').hidden, false);
+  assert.equal(h.$('#workspaceConversationTools').hidden, false);
 });
 
-test('fixed tasks remain global, retain per-environment storage and hide archived or removed tasks', async t => {
+test('fixed workspaces remain global, retain per-environment storage and hide archived or removed workspaces', async t => {
   const h = await harness(t);
-  h.click('[data-task-shortcut-pin="task"]');
+  h.click('[data-workspace-shortcut-pin="workspace"]');
   await h.window.selectEnvironment('wsl-test', '/projects'); await settle();
-  assert(h.$('[data-task-shortcut="task"]'));
-  assert(h.$('[data-task-shortcut-pin="task"]'));
-  assert.equal(h.window.localStorage.getItem('workhub:pinned-tasks:v1:wsl-test'), null);
+  assert(h.$('[data-workspace-shortcut="workspace"]'));
+  assert(h.$('[data-workspace-shortcut-pin="workspace"]'));
+  assert.equal(h.window.localStorage.getItem('workhub:pinned-workspaces:v1:wsl-test'), null);
   await h.window.selectEnvironment('local', '/projects'); await settle();
-  assert(h.$('[data-task-shortcut="task"]'));
-  h.data.requirements[0].name = 'Renamed task';
+  assert(h.$('[data-workspace-shortcut="workspace"]'));
+  h.data.workspaces[0].name = 'Renamed workspace';
   await h.window.refresh(true); await settle();
-  assert.match(h.$('[data-task-shortcut="task"]').textContent, /Renamed task/);
-  h.data.requirements[0].state = 'archived';
+  assert.match(h.$('[data-workspace-shortcut="workspace"]').textContent, /Renamed workspace/);
+  h.data.workspaces[0].state = 'archived';
   await h.window.refresh(true); await settle();
-  assert.equal(h.$('[data-task-shortcut="task"]'), null);
-  h.data.requirements[0].state = 'ready';
+  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
+  h.data.workspaces[0].state = 'ready';
   await h.window.refresh(true); await settle();
-  assert(h.$('[data-task-shortcut="task"]'));
-  h.data.requirements.shift();
+  assert(h.$('[data-workspace-shortcut="workspace"]'));
+  h.data.workspaces.shift();
   await h.window.refresh(true); await settle();
-  assert.equal(h.$('[data-task-shortcut="task"]'), null);
+  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
 });
 
 test('compact conversation filters expose active choices, clear together and settings live beside refresh', async t => {
@@ -1887,7 +1935,7 @@ test('compact conversation filters expose active choices, clear together and set
   assert.equal(h.$('#sessionScopePicker summary').querySelectorAll('svg').length, 1);
   assert.equal(h.$('#newBrowserSession').dataset.variant, 'ghost');
   assert(h.$('#pinConversationDirectory').closest('#sessionScopePicker'));
-  h.window.setConversationDirectory('/workspace/task/app'); await settle();
+  h.window.setConversationDirectory('/workspace/workspace/app'); await settle();
   h.click('#sessionBrowserArchived'); await settle();
   assert.equal(h.$('#sessionClearFilters').hidden, false);
   assert.match(h.$('#sessionActiveFilterLabel').textContent, /app.*已归档/);
@@ -1934,18 +1982,20 @@ test('project filters retain selection, distinguish directory changes and recove
   h.click('[data-action="project-filter"][data-filter="dirty"]');
   assert.equal(h.document.querySelectorAll('.project-list-item').length, 1);
   assert.equal(h.$('.project-list-item').dataset.id, 'app');
-  assert.match(h.$('#projectDetail').textContent, /有改动 3/);
+  assert.equal(h.$('#projectDetail').hidden, true);
   h.click('[data-action="select-project"][data-id="app"]');
   assert.equal(h.$('.project-workspace').dataset.pane, 'detail');
-  h.click('[data-action="select-project"][data-id="app"]');
+  assert.match(h.$('#projectDetail').textContent, /有改动 3/);
   assert.equal(h.$('#projectDetail h2').textContent, 'App');
   h.click('[data-action="project-list"]');
   assert.equal(h.$('.project-workspace').dataset.pane, 'list');
   assert.equal(h.document.activeElement, h.$('.project-list-item'));
   h.click('[data-action="project-filter"][data-filter="error"]');
   assert.equal(h.$('.project-list-item').dataset.id, 'backend');
+  h.click('[data-action="select-project"][data-id="backend"]');
   assert.match(h.$('#projectDetail').textContent, /Repository unavailable/);
   assert.equal(h.$('[data-action="new-worktree"]').disabled, true);
+  h.click('[data-action="project-list"]');
   h.input('#search', 'no match');
   assert.match(h.$('.project-list-empty').textContent, /没有匹配的项目/);
   h.click('.project-list-empty [data-action="project-filter"]');
@@ -1957,29 +2007,29 @@ test('project filters retain selection, distinguish directory changes and recove
 test('project directory controls retain the exact worktree and compact zero-value Git details', async t => {
   const h = await harness(t);
   const tree = h.data.projects[0].worktrees[1];
-  Object.assign(tree, { upstream: 'origin/feature/task', sync_available: true, sync_ahead: 0, sync_behind: 0, compare_available: true, comparison_ref: 'main', ahead: 0, behind: 0 });
-  await h.navigate('/projects');
-  const row = h.$('[data-action="git-open"][data-path="/workspace/task/app"]').closest('tr');
-  assert.equal(row.querySelector('.directory-sync-summary').textContent, 'origin/feature/task↑0↓0');
+  Object.assign(tree, { upstream: 'origin/feature/workspace', sync_available: true, sync_ahead: 0, sync_behind: 0, compare_available: true, comparison_ref: 'main', ahead: 0, behind: 0 });
+  await h.navigate('/projects/app');
+  const row = h.$('[data-action="git-open"][data-path="/workspace/workspace/app"]').closest('tr');
+  assert.equal(row.querySelector('.directory-sync-summary').textContent, 'origin/feature/workspace↑0↓0');
   assert.equal(row.querySelector('.directory-sync-counts').getAttribute('aria-label'), '待推送 0 个提交，待拉取 0 个提交');
   assert.equal(row.querySelector('.directory-local-status').textContent, '干净');
   assert.equal(row.querySelector('.directory-details').open, false);
   assert.match(row.querySelector('.directory-details').textContent, /与基线一致/);
-  h.click('[data-action="git-open"][data-path="/workspace/task/app"]'); await settle();
-  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  h.click('[data-action="git-open"][data-path="/workspace/workspace/app"]'); await settle();
+  assert.equal(h.$('#gitWorktree').value, '/workspace/workspace/app');
   h.$('#gitDialog').close();
-  h.click('[data-project-open-primary][data-path="/workspace/task/app"]'); await settle();
-  assert.deepEqual(h.requests.filter(r => r.url === '/api/projects/app/open').at(-1).body, { tool: 'vscode', path: '/workspace/task/app' });
-  Object.assign(tree, {sync_ahead:2, sync_behind:3, requirements:[{id:'task',name:'很长的关联任务名称，悬停或聚焦仍然能够查看和打开完整任务'}]});
+  h.click('[data-project-open-primary][data-path="/workspace/workspace/app"]'); await settle();
+  assert.deepEqual(h.requests.filter(r => r.url === '/api/projects/app/open').at(-1).body, { tool: 'vscode', path: '/workspace/workspace/app' });
+  Object.assign(tree, {sync_ahead:2, sync_behind:3, workspaces:[{id:'workspace',name:'很长的关联工作区名称，悬停或聚焦仍然能够查看和打开完整工作区'}]});
   await h.window.refresh();
-  const updatedRow = () => h.$('[data-directory-path="/workspace/task/app"]');
+  const updatedRow = () => h.$('[data-directory-path="/workspace/workspace/app"]');
   assert.equal(updatedRow().querySelector('.directory-sync-counts').textContent, '↑2↓3');
   assert.match(updatedRow().querySelector('.directory-sync-counts').title, /已分歧/);
   assert.equal(updatedRow().querySelector('.directory-local-status').textContent, '已提交');
   assert.equal(updatedRow().querySelector('.directory-local-status > span').title, '已有 2 个提交待推送');
-  const taskLink = updatedRow().querySelector('.project-linked-workspaces button');
-  assert.equal(taskLink.title, tree.requirements[0].name);
-  assert.equal(taskLink.getAttribute('aria-label'), `打开工作区 ${tree.requirements[0].name}`);
+  const workspaceLink = updatedRow().querySelector('.project-linked-workspaces button');
+  assert.equal(workspaceLink.title, tree.workspaces[0].name);
+  assert.equal(workspaceLink.getAttribute('aria-label'), `打开工作区 ${tree.workspaces[0].name}`);
   tree.dirty = 1;
   await h.window.refresh();
   assert.equal(updatedRow().querySelector('.directory-local-status').textContent, '有改动 1已提交');
@@ -1991,25 +2041,39 @@ test('project directory controls retain the exact worktree and compact zero-valu
   assert.equal(updatedRow().querySelector('.directory-local-status').textContent, '有改动 1');
 });
 
-test('project directories identify their task, separate local and remote state and recover the selected task in place', async t => {
+test('project details pin the main directory and group only actionable worktree signals', async t => {
+  const h = await harness(t);
+  const [main, worktree] = h.data.projects[0].worktrees;
+  const detached = {...worktree, path:'/repo/detached', branch:'', detached:true, sync_available:true, sync_ahead:4};
+  const awaitingPush = {...worktree, path:'/repo/awaiting-push', upstream:'origin/main', sync_available:true, sync_ahead:1};
+  h.data.projects[0].worktrees = [detached, worktree, awaitingPush, main];
+  await h.navigate('/projects/app');
+  const table = h.$('#projectDetail .working-directory-table');
+  assert.deepEqual([...table.querySelectorAll('[data-directory-path]')].map(row => row.dataset.directoryPath), [main.path, awaitingPush.path, detached.path, worktree.path]);
+  assert.equal(table.querySelector('[data-primary-directory]').dataset.directoryPath, main.path);
+  assert.deepEqual([...table.querySelectorAll('.directory-group h4')].map(heading => heading.textContent), ['需要关注1', '其他 Worktree2']);
+});
+
+test('project directories identify their workspace, separate local and remote state and recover the selected workspace in place', async t => {
   const h = await harness(t);
   const tree = h.data.projects[0].worktrees[1];
-  Object.assign(tree, {requirements:[{id:'task',name:'Billing'}], missing:true, upstream:'origin/feature/task', sync_available:true});
-  await h.navigate('/projects');
+  Object.assign(tree, {workspaces:[{id:'workspace',name:'Billing'}], missing:true, upstream:'origin/feature/workspace', sync_available:true});
+  await h.navigate('/projects/app');
   const rows = h.document.querySelectorAll('[data-directory-path]');
   assert.equal(rows[0].querySelector('.directory-name').textContent, '主工作目录');
-  assert.equal(rows[1].querySelector('.directory-name').textContent, 'Billing');
+  assert.equal(rows[1].querySelector('.directory-name').textContent, 'feature/workspace');
+  assert.match(rows[1].querySelector('.directory-links').textContent, /Billing/);
   assert.deepEqual([...h.document.querySelectorAll('#projectDetail th')].map(n => n.textContent), ['工作目录','远程同步','本地改动','关联工作区','操作']);
   assert.doesNotMatch(rows[1].querySelector('.directory-sync').textContent, /已同步/);
   h.click('.project-directory-filters [data-filter="issues"]');
   assert.equal(h.document.querySelectorAll('[data-directory-path]').length, 1);
-  h.click('.project-directory-recovery [data-action="change-task-directory"]'); await settle();
-  assert.equal(h.$('#taskDirectoryDialog').open, true);
-  assert.match(h.$('#taskDirectoryCurrent').textContent, /App.*\/workspace\/task\/app/);
-  h.change('#taskDirectoryPicker-app-mode', 'project');
-  await h.submit('#taskDirectoryForm');
-  assert.deepEqual(h.requests.find(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'PUT').body, {project_id:'app',mode:'project'});
-  assert.equal(h.data.requirements[0].members[0].path, '/repo/app');
+  h.click('.project-directory-recovery [data-action="change-workspace-directory"]'); await settle();
+  assert.equal(h.$('#workspaceDirectoryDialog').open, true);
+  assert.match(h.$('#workspaceDirectoryCurrent').textContent, /App.*\/workspace\/workspace\/app/);
+  h.change('#workspaceDirectoryPicker-app-mode', 'project');
+  await h.submit('#workspaceDirectoryForm');
+  assert.deepEqual(h.requests.find(r => r.url === '/api/workspaces/workspace/projects/app' && r.options.method === 'PUT').body, {project_id:'app',mode:'project'});
+  assert.equal(h.data.workspaces[0].members[0].path, '/repo/app');
   assert.equal(tree.missing, true);
   assert(!h.requests.some(r => r.options.method === 'DELETE'));
 });
@@ -2017,18 +2081,21 @@ test('project directories identify their task, separate local and remote state a
 test('project recovery explains archived and unassociated directories and retains a per-project issue filter', async t => {
   const h = await harness(t);
   const tree = h.data.projects[0].worktrees[1];
-  Object.assign(tree, {requirements:[{id:'archived',name:'Archived'}], missing:true});
-  await h.navigate('/projects');
-  assert.equal(h.$('.project-directory-recovery [data-action="change-task-directory"]').disabled, true);
+  Object.assign(tree, {workspaces:[{id:'archived',name:'Archived'}], missing:true});
+  await h.navigate('/projects/app');
+  assert.equal(h.$('.project-directory-recovery [data-action="change-workspace-directory"]').disabled, true);
   assert.match(h.$('.project-directory-recovery').textContent, /取消归档后可更换目录/);
-  tree.requirements = [];
+  tree.workspaces = [];
   await h.window.refresh();
-  assert.equal(h.$('.project-directory-recovery [data-action="change-task-directory"]'), null);
+  assert.equal(h.$('.project-directory-recovery [data-action="change-workspace-directory"]'), null);
   assert(h.$('.project-directory-recovery [data-action="new-worktree"]'));
   h.click('.project-directory-filters [data-filter="issues"]');
-  h.click('[data-action="select-project"][data-id="backend"]');
+  h.click('[data-resource-switcher="project"]');
+  h.input('#resourceSwitcherSearch', 'Backend');
+  h.click('#resourceSwitcherResults [data-id="backend"]');
   assert.equal(h.$('.project-directory-filters [data-filter="all"]').getAttribute('aria-pressed'), 'true');
-  h.click('[data-action="select-project"][data-id="app"]');
+  h.click('[data-resource-switcher="project"]');
+  h.click('#resourceSwitcherResults [data-id="app"]');
   assert.equal(h.$('.project-directory-filters [data-filter="issues"]').getAttribute('aria-pressed'), 'true');
   tree.missing = false;
   await h.window.refresh();
@@ -2037,68 +2104,69 @@ test('project recovery explains archived and unassociated directories and retain
   assert.equal(h.document.querySelectorAll('[data-directory-path]').length, 2);
 });
 
-test('a shared directory recovery only changes the task selected beside its error', async t => {
+test('a shared directory recovery only changes the workspace selected beside its error', async t => {
   const h = await harness(t);
-  const original = h.data.requirements[0];
-  const second = {...original, id:'second', name:'Second task', members:original.members.map(m => ({...m}))};
-  h.data.requirements.push(second);
-  Object.assign(h.data.projects[0].worktrees[1], {missing:true, requirements:[{id:'task',name:'Billing'},{id:'second',name:'Second task'}]});
+  const original = h.data.workspaces[0];
+  const second = {...original, id:'second', name:'Second workspace', members:original.members.map(m => ({...m}))};
+  h.data.workspaces.push(second);
+  Object.assign(h.data.projects[0].worktrees[1], {missing:true, workspaces:[{id:'workspace',name:'Billing'},{id:'second',name:'Second workspace'}]});
   h.setIntercept((url, options, body) => {
-    if (url === '/api/requirements/second/projects/app' && options.method === 'PUT') {
+    if (url === '/api/workspaces/second/projects/app' && options.method === 'PUT') {
       Object.assign(second.members[0], {mode:body.mode,path:'/repo/app',worktree:h.data.projects[0].worktrees[0]});
       return {ok:true,json:async()=>structuredClone(second)};
     }
   });
-  await h.navigate('/projects');
-  h.click('.project-task-recovery [data-action="change-task-directory"][data-id="second"]'); await settle();
-  h.change('#taskDirectoryPicker-app-mode', 'project');
-  await h.submit('#taskDirectoryForm');
-  assert.equal(original.members[0].path, '/workspace/task/app');
+  await h.navigate('/projects/app');
+  h.click('.project-workspace-recovery [data-action="change-workspace-directory"][data-id="second"]'); await settle();
+  h.change('#workspaceDirectoryPicker-app-mode', 'project');
+  await h.submit('#workspaceDirectoryForm');
+  assert.equal(original.members[0].path, '/workspace/workspace/app');
   assert.equal(second.members[0].path, '/repo/app');
-  assert(h.requests.some(r => r.url === '/api/requirements/second/projects/app' && r.options.method === 'PUT'));
-  assert(!h.requests.some(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'PUT'));
+  assert(h.requests.some(r => r.url === '/api/workspaces/second/projects/app' && r.options.method === 'PUT'));
+  assert(!h.requests.some(r => r.url === '/api/workspaces/workspace/projects/app' && r.options.method === 'PUT'));
 });
 
-test('returning from a task through browser history restores list filters, scroll and the original task focus', async t => {
+test('returning from a workspace through browser history restores list filters, scroll and the original workspace focus', async t => {
   const h = await harness(t, true, {width:740});
   h.data.projects[0].worktrees[1].dirty = 2;
-  await h.navigate('/requirements');
+  await h.navigate('/workspaces');
   h.input('#search', 'Billing');
-  h.change('#taskStatusFilter', 'dirty');
+  h.change('#workspaceStatusFilter', 'dirty');
   h.click('#archiveFilter');
-  h.$('#taskListContent').scrollTop = 260;
-  h.click('[data-action="open-requirement"][data-id="task"]'); await settle();
+  h.$('#workspaceListContent').scrollTop = 260;
+  h.click('[data-action="open-workspace"][data-id="workspace"]'); await settle();
   assert(h.$('.working-directory-table'));
   const back = new Promise(resolve => h.window.addEventListener('popstate', resolve, {once:true}));
   h.window.history.back(); await back; await settle();
   assert.equal(h.$('#search').value, 'Billing');
-  assert.equal(h.$('#taskStatusFilter').value, 'dirty');
+  assert.equal(h.$('#workspaceStatusFilter').value, 'dirty');
   assert.equal(h.$('#archiveFilter').checked, true);
-  assert.equal(h.$('#taskListContent').scrollTop, 260);
-  assert.equal(h.document.activeElement.dataset.id, 'task');
+  assert.equal(h.$('#workspaceListContent').scrollTop, 260);
+  assert.equal(h.document.activeElement.dataset.id, 'workspace');
   assert.equal(h.document.activeElement.dataset.environment, 'local');
   await h.window.refresh(true);
-  assert.equal(h.$('#taskListContent').scrollTop, 260);
-  await h.navigate('/projects');
+  assert.equal(h.$('#workspaceListContent').scrollTop, 260);
+  await h.navigate('/projects/app');
   h.input('#search', 'Backend');
-  await h.navigate('/requirements');
+  await h.navigate('/workspaces');
   assert.equal(h.$('#search').value, 'Billing');
-  assert.equal(h.$('#taskListContent').scrollTop, 260);
+  assert.equal(h.$('#workspaceListContent').scrollTop, 260);
 });
 
 test('empty search states offer a direct reset without confusing an empty project with a pending scan', async t => {
   const h = await harness(t);
-  await h.navigate('/requirements');
+  await h.navigate('/workspaces');
   h.input('#search', 'not-found');
-  h.click('[data-action="clear-task-filters"]');
+  h.click('[data-action="clear-workspace-filters"]');
   assert.equal(h.$('#search').value, '');
-  assert.equal(h.$('#taskStatusFilter').value, 'all');
+  assert.equal(h.$('#workspaceStatusFilter').value, 'all');
   assert.equal(h.document.activeElement, h.$('#search'));
   await h.navigate('/projects');
   h.input('#search', 'not-found');
   h.click('[data-action="clear-project-search"]');
   assert.equal(h.$('#search').value, '');
   assert.equal(h.document.querySelectorAll('.project-list-item').length, 2);
+  await h.navigate('/projects/app');
   h.data.projects[0].worktrees = [];
   h.data.projects[0].refreshing = false;
   await h.window.refresh();
@@ -2123,109 +2191,82 @@ test('sidebar refresh status stays compact and retains its detailed explanation'
   assert.equal(h.$('#syncDot').classList.contains('updating'), false);
 });
 
-test('project panes resize with pointer and keyboard, retain their width and respect narrow layouts', async t => {
-  const h = await harness(t, true, {width:1440});
+test('the independent project list restores search, scroll and focus after opening a detail', async t => {
+  const h = await harness(t, true, {width:1440, route:'/projects'});
   h.data.projects[0].worktrees[1].dirty = 3;
-  await h.navigate('/projects');
-  const originalBounds = h.window.HTMLElement.prototype.getBoundingClientRect;
-  h.window.HTMLElement.prototype.getBoundingClientRect = function () {
-    if (this.classList.contains('project-workspace')) return { width: 1000 };
-    if (this.id === 'projectListPane') return { width: parseFloat(h.document.documentElement.style.getPropertyValue('--workspace-list-width')) || 248 };
-    return originalBounds.call(this);
-  };
-  assert.equal(h.$('.project-list-item .lucide-chevron-right'), null);
-  assert.equal(h.$('.project-change-indicator').textContent, '1 个目录有改动');
-  assert.match(h.$('.project-change-indicator').title, /1 个工作目录/);
-  const pointer = (target, type, clientX) => {
-    const event = new h.window.MouseEvent(type, { bubbles: true, cancelable: true, clientX, button: 0 });
-    Object.defineProperty(event, 'pointerId', { value: 7 });
-    target.dispatchEvent(event);
-  };
-  pointer(h.$('[data-project-resize]'), 'pointerdown', 280);
-  pointer(h.document, 'pointermove', 350);
-  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '350px');
-  h.window.render(); // A real data change can replace the markup while dragging.
-  pointer(h.document, 'pointermove', 390);
-  pointer(h.document, 'pointerup', 390);
-  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '390px');
-  assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'), '390');
-  assert.equal(h.$('.project-workspace').hasAttribute('data-resizing'), false);
-  const key = (key, shiftKey = false) => h.$('[data-project-resize]').dispatchEvent(new h.window.KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true }));
-  key('ArrowRight');
-  assert.equal(h.$('[data-project-resize]').getAttribute('aria-valuenow'), '400');
-  key('ArrowLeft', true);
-  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '360px');
-  key('Home');
-  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '240px');
-  key('End');
-  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'), '520px');
-  await h.navigate('/requirements');
-  await h.navigate('/projects');
-  assert.equal(h.$('[data-project-resize]').getAttribute('aria-valuenow'), '520');
-  Object.defineProperty(h.window, 'innerWidth', { value: 700, configurable: true });
-  h.window.dispatchEvent(new h.window.Event('resize'));
-  key('Home');
-  assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'), '520');
-  assert.equal(h.requests.filter(r => r.url.endsWith('/open')).length, 0);
-});
-
-test('task goals save independently and the edit draft survives a polling refresh', async t => {
-  const h = await harness(t);
-  h.click('.task-info [data-action="edit-task"]');
-  h.input('#taskEditName', 'Order approval'); h.input('#taskEditDescription', 'Complete the cross-project workflow.');
   await h.window.refresh();
-  assert.equal(h.$('#taskEditName').value, 'Order approval');
-  assert.equal(h.$('#taskEditDescription').value, 'Complete the cross-project workflow.');
-  await h.submit('#taskEditForm');
-  const request = h.requests.find(r => r.url === '/api/requirements/task' && r.options.method === 'PATCH');
-  assert.deepEqual(request.body, {name:'Order approval', description:'Complete the cross-project workflow.'});
-  assert.equal(h.$('#taskEditDialog').open, false);
-  assert.equal(h.$('#pageTitle').textContent, 'Order approval');
-  assert.equal(h.$('.directory-path').textContent, '/workspace/task/app');
+  assert.equal(h.$('.project-change-indicator').textContent, '1 个目录有改动');
+  h.input('#search', 'App');
+  h.$('.project-list-scroll').scrollTop = 170;
+  h.click('[data-action="select-project"][data-id="app"]');
+  assert.equal(h.$('#projectListPane').hidden, true);
+  assert.equal(h.$('#projectDetail').hidden, false);
+  assert.equal(h.document.activeElement, h.$('#projectDetail h2'));
+  h.click('[data-action="project-list"]');
+  assert.equal(h.$('#projectListPane').hidden, false);
+  assert.equal(h.$('#projectDetail').hidden, true);
+  assert.equal(h.$('#search').value, 'App');
+  assert.equal(h.$('.project-list-scroll').scrollTop, 170);
+  assert.equal(h.document.activeElement.dataset.id, 'app');
 });
 
-test('a partially prepared task keeps ready project controls and creation directories usable', async t => {
+test('workspace goals save independently and the edit draft survives a polling refresh', async t => {
+  const h = await harness(t);
+  h.click('.workspace-info [data-action="edit-workspace"]');
+  h.input('#workspaceEditName', 'Order approval'); h.input('#workspaceEditDescription', 'Complete the cross-project workflow.');
+  await h.window.refresh();
+  assert.equal(h.$('#workspaceEditName').value, 'Order approval');
+  assert.equal(h.$('#workspaceEditDescription').value, 'Complete the cross-project workflow.');
+  await h.submit('#workspaceEditForm');
+  const request = h.requests.find(r => r.url === '/api/workspaces/workspace' && r.options.method === 'PATCH');
+  assert.deepEqual(request.body, {name:'Order approval', description:'Complete the cross-project workflow.'});
+  assert.equal(h.$('#workspaceEditDialog').open, false);
+  assert.equal(h.$('#pageTitle').textContent, 'Order approval');
+  assert.equal(h.$('.directory-path').textContent, '/workspace/workspace/app');
+});
+
+test('a partially prepared workspace keeps ready project controls and creation directories usable', async t => {
   const h = await harness(t, false);
-  h.data.requirements[0].state = 'partial';
-  h.data.requirements[0].has_workspace = false;
-  h.data.requirements[0].members.push({project_id:'backend',project_name:'Backend',mode:'new',path:'/workspace/task/backend',state:'failed',error:'fixture failure'});
+  h.data.workspaces[0].state = 'partial';
+  h.data.workspaces[0].has_directory = false;
+  h.data.workspaces[0].members.push({project_id:'backend',project_name:'Backend',mode:'new',path:'/workspace/workspace/backend',state:'failed',error:'fixture failure'});
   await h.window.refresh();
   assert.equal(h.$('[data-action="git-open"][data-id="app"]').disabled, false);
   assert.equal(h.$('[data-action="workspace-terminal"][data-id="app"]').disabled, false);
   assert.equal(h.$('[data-action="retry"]').dataset.project, 'backend');
-  await h.openConversations('task'); h.click('#newBrowserSession');
-  assert.equal(h.currentSession().target.cwd, '/workspace/task/app');
+  await h.openConversations('workspace'); h.click('#newBrowserSession');
+  assert.equal(h.currentSession().target.cwd, '/workspace/workspace/app');
   assert.deepEqual(Array.from(h.currentSession().target.additional_directories), []);
   assert.equal(h.$('#sessionBrowserAdditionalField').hidden, true);
 });
 
-test('changing and detaching a task project use the selected project and retain explicit conversation references', async t => {
+test('changing and detaching a workspace project use the selected project and retain explicit conversation references', async t => {
   const h = await harness(t);
-  h.click('[data-action="change-task-directory"][data-project="app"]'); await settle();
-  assert.match(h.$('#taskDirectoryCurrent').textContent, /\/workspace\/task\/app/);
-  h.change('#taskDirectoryPicker-app-mode', 'project');
-  assert.match(h.$('#taskDirectoryPreview').textContent, /\/repo\/app/);
-  await h.submit('#taskDirectoryForm');
-  assert.equal(h.$('#taskDirectoryDialog').open, false);
+  h.click('[data-action="change-workspace-directory"][data-project="app"]'); await settle();
+  assert.match(h.$('#workspaceDirectoryCurrent').textContent, /\/workspace\/workspace\/app/);
+  h.change('#workspaceDirectoryPicker-app-mode', 'project');
+  assert.match(h.$('#workspaceDirectoryPreview').textContent, /\/repo\/app/);
+  await h.submit('#workspaceDirectoryForm');
+  assert.equal(h.$('#workspaceDirectoryDialog').open, false);
   assert.equal(h.$('.directory-path').textContent, '/repo/app');
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   assert(h.$('[data-conversation-session="session-1"]'));
   await h.leaveConversations();
-  h.click('[data-action="remove-task-project"][data-project="app"]'); await settle();
-  assert.equal(h.data.requirements[0].members.length, 0);
+  h.click('[data-action="remove-workspace-project"][data-project="app"]'); await settle();
+  assert.equal(h.data.workspaces[0].members.length, 0);
   assert.match(h.$('#content').textContent, /尚未关联项目/);
-  assert(h.requests.some(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'DELETE'));
-  assert(h.links.get('task').has('session-1'));
+  assert(h.requests.some(r => r.url === '/api/workspaces/workspace/projects/app' && r.options.method === 'DELETE'));
+  assert(h.links.get('workspace').has('session-1'));
 });
 
-test('task conversations exclude directory-only matches until linked and unlinking preserves the global session', async t => {
+test('workspace conversations exclude directory-only matches until linked and unlinking preserves the global session', async t => {
   const h = await harness(t);
-  h.sessions.push({id:'directory-only',name:'Another task in the same directory',cwd:'/workspace/task/app'});
-  h.links.set('task', new Set());
-  await h.openConversations('task');
+  h.sessions.push({id:'directory-only',name:'Another workspace in the same directory',cwd:'/workspace/workspace/app'});
+  h.links.set('workspace', new Set());
+  await h.openConversations('workspace');
   assert.equal(h.$('[data-conversation-session="directory-only"]'), null);
   assert.match(h.$('#sessionBrowserList').textContent, /还没有关联的对话/);
-  h.click('[data-conversation-action="link-task"]'); await settle();
+  h.click('[data-conversation-action="link-workspace"]'); await settle();
   const link = [...h.document.querySelectorAll('[data-session-action="link"]')].find(b => b.dataset.session === 'directory-only');
   link.click(); await settle();
   assert(h.$('[data-conversation-session="directory-only"]'));
@@ -2235,10 +2276,10 @@ test('task conversations exclude directory-only matches until linked and unlinki
   assert(!h.requests.some(r => r.url.endsWith('/chat/stop')));
 });
 
-for (const readOnly of [true, false]) test(`split conversation actions preserve task scope and creation permissions in ${readOnly ? 'read-only' : 'interactive'} mode`, async t => {
+for (const readOnly of [true, false]) test(`split conversation actions preserve workspace scope and creation permissions in ${readOnly ? 'read-only' : 'interactive'} mode`, async t => {
   const h = await harness(t, readOnly);
-  await h.openConversations('task');
-  assert(h.$('#sessionScopePicker #linkTaskConversation'));
+  await h.openConversations('workspace');
+  assert(h.$('#sessionScopePicker #linkWorkspaceConversation'));
   assert(h.$('.session-browser-list-heading #newBrowserSession'));
   assert(h.$('.session-browser-list-heading #newBrowserSplitSession'));
   assert.equal(h.$('#sessionActionPicker'), null);
@@ -2246,7 +2287,7 @@ for (const readOnly of [true, false]) test(`split conversation actions preserve 
   assert.equal(h.$('#newBrowserSession').getAttribute('aria-label'), '新建对话');
   assert.equal(h.$('#newBrowserSplitSession').disabled, true, 'a split needs an available host pane');
   h.$('#sessionScopePicker').open = true; await settle();
-  h.click('#linkTaskConversation'); await settle();
+  h.click('#linkWorkspaceConversation'); await settle();
   assert.equal(h.$('#sessionScopePicker').open, false);
   assert.equal(h.$('#sessionDialog').open, true);
   assert.equal(h.$('#sessionDialogTitle').textContent, '关联已有对话');
@@ -2257,18 +2298,18 @@ for (const readOnly of [true, false]) test(`split conversation actions preserve 
   assert.equal(h.document.activeElement, h.$('#sessionScopePicker summary'));
   if (!readOnly) {
     h.click('#newBrowserSession'); await settle();
-    h.change('#sessionBrowserNewDirectory', '/workspace/task/app'); await settle();
-    assert.equal(h.currentSession().target.task_id, 'task');
+    h.change('#sessionBrowserNewDirectory', '/workspace/workspace/app'); await settle();
+    assert.equal(h.currentSession().target.workspace_id, 'workspace');
   }
   h.click('[data-conversation-action="all"]'); await settle();
-  assert.equal(h.$('#taskConversationTools').hidden, true);
+  assert.equal(h.$('#workspaceConversationTools').hidden, true);
 });
 
-for (const navigation of [false,true]) test(`new conversation placement keeps task association separate in ${navigation ? 'shared navigation' : 'conversation pane'}`, async t => {
+for (const navigation of [false,true]) test(`new conversation placement keeps workspace association separate in ${navigation ? 'shared navigation' : 'conversation pane'}`, async t => {
   const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
   const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
   if (navigation) post({type:'workhub:page-navigation'});
-  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',directory:'/workspace/task/app',pane:navigation ? 'list' : 'detail'}}});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace'},selected:'session-1',directory:'/workspace/workspace/app',pane:navigation ? 'list' : 'detail'}}});
   await settle(); await settle();
   post(navigation ? {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',canSplit:true} : {type:'workhub:parallel-layout',canSplit:true});
   for (const placement of ['split','current']) {
@@ -2276,8 +2317,8 @@ for (const navigation of [false,true]) test(`new conversation placement keeps ta
     const opened = host.messages.findLast(message=>message.type==='workhub:page-open');
     assert.equal(opened.placement,placement);
     assert.equal(opened.create,true,'both buttons share the direct creation flow');
-    assert.equal(opened.snapshot.conversation.scope.id,'task');
-    assert.equal(opened.snapshot.conversation.directory,'/workspace/task/app');
+    assert.equal(opened.snapshot.conversation.scope.id,'workspace');
+    assert.equal(opened.snapshot.conversation.directory,'/workspace/workspace/app');
     assert.equal(opened.snapshot.conversation.creating,true);
     assert.equal(opened.snapshot.conversation.selected,null);
     assert.equal(h.window.WorkHubPage.snapshot().conversation.creating,false,'source selection changes only when the host accepts placement');
@@ -2286,7 +2327,7 @@ for (const navigation of [false,true]) test(`new conversation placement keeps ta
   assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').placement,'current');
   const before = host.messages.filter(message=>message.type==='workhub:page-open').length;
   h.$('#sessionScopePicker').open = true; await settle();
-  h.click('#linkTaskConversation'); await settle();
+  h.click('#linkWorkspaceConversation'); await settle();
   assert.equal(h.$('#sessionDialog').open,true);
   assert.equal(h.$('#sessionScopePicker').open,false);
   assert.equal(host.messages.filter(message=>message.type==='workhub:page-open').length,before,'association does not create a conversation');
@@ -2297,26 +2338,26 @@ for (const navigation of [false,true]) test(`new conversation placement keeps ta
   assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
 });
 
-test('task and project creation entries share the direct page with their own directory scope', async t => {
+test('workspace and project creation entries share the direct page with their own directory scope', async t => {
   const host=pageHost(t), h=await harness(t,false,{pageHost:host.window});
-  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot:{route:'/requirements/task',environment:'local'}}}));
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot:{route:'/workspaces/workspace',environment:'local'}}}));
   await settle(); await settle();
-  h.click('[data-session-action="new"][data-requirement="task"]'); await settle();
+  h.click('[data-session-action="new"][data-workspace="workspace"]'); await settle();
   let opened=host.messages.findLast(message=>message.type==='workhub:page-open');
   assert.equal(opened.create,true);
-  assert.equal(opened.snapshot.conversation.scope.id,'task');
-  h.click('[data-action="workspace-conversation-new"][data-id="app"][data-path="/workspace/task/app"]'); await settle();
+  assert.equal(opened.snapshot.conversation.scope.id,'workspace');
+  h.click('[data-action="workspace-conversation-new"][data-id="app"][data-path="/workspace/workspace/app"]'); await settle();
   opened=host.messages.findLast(message=>message.type==='workhub:page-open');
   assert.equal(opened.create,true);
-  assert.equal(opened.snapshot.terminal.taskID,'task');
+  assert.equal(opened.snapshot.terminal.workspaceID,'workspace');
   assert.equal(opened.snapshot.terminal.projectID,'app');
-  assert.equal(opened.snapshot.conversation.creationDirectory,'/workspace/task/app');
-  assert(!opened.snapshot.conversation.directory, 'preselecting a draft directory must not filter the task conversation list');
+  assert.equal(opened.snapshot.conversation.creationDirectory,'/workspace/workspace/app');
+  assert(!opened.snapshot.conversation.directory, 'preselecting a draft directory must not filter the workspace conversation list');
   await h.navigate('/projects');
   h.click('[data-action="select-project"][data-id="backend"]'); await settle();
   h.click('[data-action="workspace-conversation-new"][data-id="backend"]'); await settle();
   opened=host.messages.findLast(message=>message.type==='workhub:page-open');
-  assert.equal(opened.snapshot.terminal.taskID,undefined,'an unrelated selected task must not claim this project');
+  assert.equal(opened.snapshot.terminal.workspaceID,undefined,'an unrelated selected workspace must not claim this project');
   assert.equal(opened.snapshot.conversation.scope.kind,'project');
   assert.equal(opened.snapshot.conversation.scope.id,'backend');
   assert.equal(h.requests.some(request=>request.options.method==='POST' && /\/chat$|\/terminals$/.test(request.url)),false);
@@ -2325,22 +2366,22 @@ test('task and project creation entries share the direct page with their own dir
 test('new conversation page exposes inline form switching only while creating and keeps the selected directory', async t => {
   const host=pageHost(t), h=await harness(t,false,{pageHost:host.window});
   const post=snapshot=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot}}));
-  post({route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},creating:true,selected:null,pane:'detail'}});
+  post({route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace'},creating:true,selected:null,pane:'detail'}});
   await settle(); await settle();
   assert.equal(h.$('#conversationCreationKind').hidden,false);
   assert.equal(h.document.querySelector('[role="dialog"]')?.textContent.includes('选择交互形式') || false,false);
-  h.change('#sessionBrowserNewDirectory','/workspace/task/app'); await settle();
+  h.change('#sessionBrowserNewDirectory','/workspace/workspace/app'); await settle();
   h.input('#sessionChatInput','保留我的草稿');
   h.click('[data-conversation-kind="terminal"]'); await settle();
   const switched=host.messages.findLast(message=>message.type==='workhub:conversation-kind');
   assert.equal(switched.kind,'terminal');
-  assert.equal(switched.snapshot.terminal.taskID,'task');
+  assert.equal(switched.snapshot.terminal.workspaceID,'workspace');
   assert.equal(switched.snapshot.terminal.projectID,'app');
-  assert.equal(switched.snapshot.conversation.creationDirectory,'/workspace/task/app');
+  assert.equal(switched.snapshot.conversation.creationDirectory,'/workspace/workspace/app');
   assert.equal(switched.snapshot.conversation.directory,'', 'changing forms preserves the list filter independently of the draft directory');
   assert.equal(h.$('#sessionChatInput').value,'保留我的草稿');
   assert.equal(h.requests.some(request=>request.options.method==='POST' && /\/chat$|\/terminals$/.test(request.url)),false);
-  post({route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}});
+  post({route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace'},selected:'session-1',pane:'detail'}});
   await settle(); await settle();
   assert.equal(h.$('#conversationCreationKind').hidden,true);
 });
@@ -2348,57 +2389,57 @@ test('new conversation page exposes inline form switching only while creating an
 test('one click opens a ready composer, remembers directory per scope and restores an explicit draft directory', async t => {
   const host = pageHost(t), h = await harness(t, false, {pageHost:host.window});
   const post = conversation => h.window.dispatchEvent(new h.window.MessageEvent('message', {source:host.window, origin:'http://localhost:4317', data:{type:'workhub:page-restore', active:true, snapshot:{route:'/sessions', environment:'local', conversation}}}));
-  post({scope:{kind:'task', id:'task'}, creating:true, selected:null});
+  post({scope:{kind:'workspace', id:'workspace'}, creating:true, selected:null});
   await settle(); await settle();
-  assert.equal(h.currentSession().target.cwd, '/workspace/task');
+  assert.equal(h.currentSession().target.cwd, '/workspace/workspace');
   assert.equal(h.$('#sessionHistoryPanel').hidden, false);
   assert.equal(h.$('#sessionBrowserAdditionalField').open, false);
   assert.equal(h.$('#sessionBrowserNewDirectory').hidden, true);
-  h.click('#sessionBrowserDirectoryChoices [data-creation-choice="/workspace/task/app"]'); await settle();
-  assert.equal(h.$('#sessionBrowserDirectoryChoices [aria-pressed="true"]').dataset.creationChoice, '/workspace/task/app');
+  h.click('#sessionBrowserDirectoryChoices [data-creation-choice="/workspace/workspace/app"]'); await settle();
+  assert.equal(h.$('#sessionBrowserDirectoryChoices [aria-pressed="true"]').dataset.creationChoice, '/workspace/workspace/app');
   const saved = h.window.WorkHubPage.snapshot().conversation;
-  assert.equal(saved.creationDirectory, '/workspace/task/app');
-  post({scope:{kind:'task', id:'task'}, creating:true, selected:null});
+  assert.equal(saved.creationDirectory, '/workspace/workspace/app');
+  post({scope:{kind:'workspace', id:'workspace'}, creating:true, selected:null});
   await settle(); await settle();
-  assert.equal(h.currentSession().target.cwd, '/workspace/task/app', 'a new draft remembers the last valid directory');
+  assert.equal(h.currentSession().target.cwd, '/workspace/workspace/app', 'a new draft remembers the last valid directory');
   post({scope:{kind:'project', id:'backend'}, creating:true, selected:null});
   await settle(); await settle();
-  assert.equal(h.currentSession().target.cwd, '/repo/backend', 'another scope does not inherit the task directory');
+  assert.equal(h.currentSession().target.cwd, '/repo/backend', 'another scope does not inherit the workspace directory');
   post({...saved, creationDirectory:'/missing'});
   await settle(); await settle();
-  assert.equal(h.currentSession().target.cwd, '/workspace/task/app', 'a removed directory falls back to a valid choice');
-  post({...saved, creationDirectory:'/workspace/task'});
+  assert.equal(h.currentSession().target.cwd, '/workspace/workspace/app', 'a removed directory falls back to a valid choice');
+  post({...saved, creationDirectory:'/workspace/workspace'});
   await settle(); await settle();
-  assert.equal(h.currentSession().target.cwd, '/workspace/task', 'an explicit draft overrides remembered preferences');
+  assert.equal(h.currentSession().target.cwd, '/workspace/workspace', 'an explicit draft overrides remembered preferences');
   assert.equal(h.requests.some(r => r.url === '/api/sessions/new'), false, 'opening a composer does not send a message');
 });
 
 test('new conversation access includes only the additional projects explicitly selected', async t => {
   const h = await harness(t, false);
-  h.data.requirements[0].members.push({project_id:'backend',project_name:'Backend',mode:'project',path:'/repo/backend',state:'ready',worktree:h.data.projects[1].worktrees[0]});
+  h.data.workspaces[0].members.push({project_id:'backend',project_name:'Backend',mode:'project',path:'/repo/backend',state:'ready',worktree:h.data.projects[1].worktrees[0]});
   await h.window.refresh();
-  await h.openConversations('task'); h.click('#newBrowserSession');
-  h.change('#sessionBrowserNewDirectory', '/workspace/task/app');
+  await h.openConversations('workspace'); h.click('#newBrowserSession');
+  h.change('#sessionBrowserNewDirectory', '/workspace/workspace/app');
   assert.equal(h.$('#sessionBrowserAdditionalField').hidden, false);
   assert.deepEqual(Array.from(h.currentSession().target.additional_directories), ['/repo/backend']);
   h.click('[data-additional-directory="/repo/backend"]');
   assert.deepEqual(Array.from(h.currentSession().target.additional_directories), []);
-  assert.equal(h.document.querySelectorAll('[data-additional-directory="/workspace/task"]').length, 0);
+  assert.equal(h.document.querySelectorAll('[data-additional-directory="/workspace/workspace"]').length, 0);
 });
 
-test('creating from the task list opens the saved task without a transient not-found page', async t => {
+test('creating from the workspace list opens the saved workspace without a transient not-found page', async t => {
   const h = await harness(t);
-  await h.navigate('/requirements');
+  await h.navigate('/workspaces');
   const renders = [];
   const render = h.window.render;
   h.window.render = () => { render(); renders.push(h.$('#content').textContent); };
-  h.window.openRequirement(); await settle();
-  h.input('#requirementName', 'Reuse a checkout');
+  h.window.openWorkspace(); await settle();
+  h.input('#workspaceName', 'Reuse a checkout');
   h.click('#projectPicker-app-selected');
   h.change('#projectPicker-app-mode', 'project');
-  await h.submit('#requirementForm'); await settle();
+  await h.submit('#workspaceForm'); await settle();
   assert.equal(h.$('#pageTitle').textContent, 'Reuse a checkout');
-  assert(!renders.some(text => text.includes('这个任务不存在')));
+  assert(!renders.some(text => text.includes('这个工作区不存在')));
 });
 
 
@@ -2454,34 +2495,34 @@ test('environment filtering rejects late results and a failed environment retain
   assert.equal(h.$('#sessionBrowserError').hidden, true);
 });
 
-test('cross-environment scopes, task shortcuts and creation targets preserve ownership without changing project environment', async t => {
+test('cross-environment scopes, workspace shortcuts and creation targets preserve ownership without changing project environment', async t => {
   const h = await harness(t, false);
   h.environments.environments.push({id: 'remote', name: 'WSL'});
-  const remoteTask = {...structuredClone(h.data.requirements[0]), id: 'remote-task', name: 'Remote task', environment_id: 'remote', environment_name: 'WSL'};
-  const remoteData = {...h.data, requirements: [remoteTask]};
+  const remoteWorkspace = {...structuredClone(h.data.workspaces[0]), id: 'remote-workspace', name: 'Remote workspace', environment_id: 'remote', environment_name: 'WSL'};
+  const remoteData = {...h.data, workspaces: [remoteWorkspace]};
   h.setIntercept((url, options) => {
-    if (url.startsWith('/api/task-inventory')) return {ok: true, json: async () => ({requirements: [...h.data.requirements.map(q => ({...q, environment_id: 'local'})), remoteTask], environments: h.environments.environments, project_count: 4})};
+    if (url.startsWith('/api/workspace-inventory')) return {ok: true, json: async () => ({workspaces: [...h.data.workspaces.map(q => ({...q, environment_id: 'local'})), remoteWorkspace], environments: h.environments.environments, project_count: 4})};
     if (url === '/api/state' && options.headers['X-Environment-ID'] === 'remote') return {ok: true, json: async () => remoteData};
-    if (url.startsWith('/api/sessions?') && options.headers['X-Environment-ID'] === 'remote') return {ok: true, json: async () => ({sessions: [{id: 'remote-session', name: 'Remote task session', cwd: '/workspace/task/app'}]})};
+    if (url.startsWith('/api/sessions?') && options.headers['X-Environment-ID'] === 'remote') return {ok: true, json: async () => ({sessions: [{id: 'remote-session', name: 'Remote workspace session', cwd: '/workspace/workspace/app'}]})};
   });
   await h.window.loadEnvironments(); await h.window.refresh(true); await h.navigate('/sessions');
-  h.input('#sessionScopeSearch', 'Remote task');
+  h.input('#sessionScopeSearch', 'Remote workspace');
   const scope = h.$('[data-conversation-scope]');
   assert.equal(JSON.parse(scope.dataset.conversationScope).environment, 'remote');
   scope.click(); await settle();
   assert.equal(h.currentSession().environment, 'remote');
-  const pin = [...h.document.querySelectorAll('[data-task-shortcut-pin]')].find(b => b.textContent.includes('Remote task'));
+  const pin = [...h.document.querySelectorAll('[data-workspace-shortcut-pin]')].find(b => b.textContent.includes('Remote workspace'));
   assert(pin); pin.click(); await settle();
-  const shortcut = [...h.document.querySelectorAll('[data-task-shortcut]')].find(b => b.textContent.includes('Remote task'));
+  const shortcut = [...h.document.querySelectorAll('[data-workspace-shortcut]')].find(b => b.textContent.includes('Remote workspace'));
   assert(shortcut); shortcut.click(); await settle();
   assert.equal(h.currentSession().environment, 'remote');
   h.click('#newBrowserSession'); await settle();
   const choices = [...h.$('#sessionBrowserNewDirectory').options];
   assert(choices.some(o => o.textContent.includes('WSL')));
-  h.change('#sessionBrowserNewDirectory', choices.find(o => o.value.includes('/workspace/task/app')).value); await settle();
+  h.change('#sessionBrowserNewDirectory', choices.find(o => o.value.includes('/workspace/workspace/app')).value); await settle();
   assert.equal(h.currentSession().environment, 'remote');
   assert.equal(h.$('#projectEnvironment').value, 'local');
-  assert.equal(h.$('#linkTaskConversation').dataset.environment, 'remote');
+  assert.equal(h.$('#linkWorkspaceConversation').dataset.environment, 'remote');
 });
 
 test('cross-environment assistant callbacks and read markers remain isolated for the same session ID', async t => {
@@ -2594,16 +2635,16 @@ test('conversation keyboard browsing, search reset and filtering preserve the ex
   assert.equal(h.document.activeElement.dataset.conversationSession, 'older');
 });
 
-test('workspace conversation previews switch directly between tasks and retain active older conversations', async t => {
+test('workspace conversation previews switch directly between workspaces and retain active older conversations', async t => {
   const h = await harness(t, false);
-  const task = h.data.requirements[0];
-  h.data.requirements.push({...task,id:'payments',name:'Payments',path:'/workspace/payments'});
+  const workspace = h.data.workspaces[0];
+  h.data.workspaces.push({...workspace,id:'payments',name:'Payments',path:'/workspace/payments'});
   h.links.set('payments',new Set(['refund']));
   h.sessions.push({id:'refund',name:'Refund API',cwd:'/repo/backend',updated_at:1,chat_status:'running'});
   for(let index=1;index<8;index++) {
     const id='login-' + index;
-    h.sessions.push({id,name:'Login ' + index,cwd:task.members[0].path,updated_at:100-index,chat_status:index===7?'waiting':''});
-    h.links.get('task').add(id);
+    h.sessions.push({id,name:'Login ' + index,cwd:workspace.members[0].path,updated_at:100-index,chat_status:index===7?'waiting':''});
+    h.links.get('workspace').add(id);
   }
   await h.navigate('/sessions');await settle();
   const groups=()=>[...h.document.querySelectorAll('[data-conversation-group]')];
@@ -2627,10 +2668,10 @@ test('workspace history expands in place and collapse preferences survive leavin
   for(let index=1;index<9;index++) {
     const id='older-' + index;
     h.sessions.push({id,name:'Older ' + index,cwd:'/external',updated_at:100-index});
-    h.links.get('task').add(id);
+    h.links.get('workspace').add(id);
   }
   await h.navigate('/sessions');await settle();
-  const key=JSON.stringify(['local','task']);
+  const key=JSON.stringify(['local','workspace']);
   const group=()=>[...h.document.querySelectorAll('[data-conversation-group]')].find(group=>group.dataset.conversationGroup===key);
   assert.equal(group().querySelectorAll('[data-conversation-session]').length,3);
   const controller=h.currentSession(),requests=h.requests.length;
@@ -2652,8 +2693,8 @@ test('workspace history expands in place and collapse preferences survive leavin
 
 test('global workspace membership refreshes after unlinking and shared-session menus stay scoped to their workspace', async t => {
   const h = await harness(t);
-  const task=h.data.requirements[0];
-  h.data.requirements.push({...task,id:'shared',name:'Shared'});
+  const workspace=h.data.workspaces[0];
+  h.data.workspaces.push({...workspace,id:'shared',name:'Shared'});
   h.links.set('shared',new Set(['session-1']));
   await h.navigate('/sessions');await settle();
   const shared=()=>[...h.document.querySelectorAll('[data-conversation-group]')].find(group=>group.dataset.conversationGroup===JSON.stringify(['local','shared']));
@@ -2666,7 +2707,7 @@ test('global workspace membership refreshes after unlinking and shared-session m
   assert.equal(shared(),undefined);
   assert.equal(h.document.querySelectorAll('[data-conversation-session="session-1"]').length,1);
   const unlink=h.requests.find(request=>request.options.method==='DELETE'&&request.url.endsWith('/sessions/session-1'));
-  assert.equal(unlink.url,'/api/requirements/shared/sessions/session-1');
+  assert.equal(unlink.url,'/api/workspaces/shared/sessions/session-1');
 });
 
 test('conversation date groups keep pinned records unique, handle year boundaries and expose exact timestamps', async t => {
@@ -2684,62 +2725,62 @@ test('conversation date groups keep pinned records unique, handle year boundarie
 });
 
 
-test('task status filters surface pending recovery, unpushed commits and Git operations', async t => {
+test('workspace status filters surface pending recovery, unpushed commits and Git operations', async t => {
   const h=await harness(t);
-  const member=h.data.requirements[0].members[0];
+  const member=h.data.workspaces[0].members[0];
   member.worktree.sync_ahead=2;
   member.worktree.operation='merge';member.worktree.conflicts=['file.txt'];
   await h.window.refresh(true);
-  assert.match(h.$('.task-signal-filters').textContent,/待推送 · 1/);
-  h.click('[data-action="task-project-filter"][data-filter="push"]');
-  assert.equal(h.document.querySelectorAll('.task-project').length,1);
-  h.click('[data-action="task-project-filter"][data-filter="dirty"]');
-  assert.equal(h.document.querySelectorAll('.task-project').length,0);
-  h.click('[data-action="task-project-filter"][data-filter="all"]');
+  assert.match(h.$('.workspace-signal-filters').textContent,/待推送 · 1/);
+  h.click('[data-action="workspace-project-filter"][data-filter="push"]');
+  assert.equal(h.document.querySelectorAll('.workspace-project').length,1);
+  h.click('[data-action="workspace-project-filter"][data-filter="dirty"]');
+  assert.equal(h.document.querySelectorAll('.workspace-project').length,0);
+  h.click('[data-action="workspace-project-filter"][data-filter="all"]');
   member.state='pending';await h.window.refresh(true);
   assert(h.$('[data-action="retry"][data-project="app"]'));
-  await h.navigate('/requirements');
-  h.change('#taskStatusFilter','push');
-  assert.equal(h.document.querySelectorAll('[data-action="open-requirement"]').length,1);
-  h.change('#taskStatusFilter','dirty');
-  assert.match(h.$('#taskListContent').textContent,/没有匹配/);
+  await h.navigate('/workspaces');
+  h.change('#workspaceStatusFilter','push');
+  assert.equal(h.document.querySelectorAll('[data-action="open-workspace"]').length,1);
+  h.change('#workspaceStatusFilter','dirty');
+  assert.match(h.$('#workspaceListContent').textContent,/没有匹配/);
 });
 
-test('a missing task directory exposes recovery in place and preserves project context when changing it', async t => {
+test('a missing workspace directory exposes recovery in place and preserves project context when changing it', async t => {
   const h = await harness(t);
-  const member = h.data.requirements[0].members[0];
-  Object.assign(member.worktree, {missing: true, upstream: 'origin/feature/task', sync_available: true});
+  const member = h.data.workspaces[0].members[0];
+  Object.assign(member.worktree, {missing: true, upstream: 'origin/feature/workspace', sync_available: true});
   await h.window.refresh();
-  assert.match(h.$('.task-directory-overview').textContent, /1 个关联项目.*0 个目录可打开.*1 个目录需要处理/);
-  const notice = h.$('.task-directory-notice');
+  assert.match(h.$('.workspace-directory-overview').textContent, /1 个关联项目.*0 个目录可打开.*1 个目录需要处理/);
+  const notice = h.$('.workspace-directory-notice');
   assert.match(notice.textContent, /工作目录已丢失/);
   assert.equal(h.$('[data-project-open-primary]').disabled, true);
   assert.doesNotMatch(h.$('.directory-status').textContent, /已同步|干净/);
-  h.click('.task-directory-notice [data-action="change-task-directory"]'); await settle();
-  assert.equal(h.$('#taskDirectoryDialog').open, true);
-  h.change('#taskDirectoryPicker select[id$="-mode"]', 'project');
-  await h.submit('#taskDirectoryForm');
-  const request = h.requests.find(r => r.url === '/api/requirements/task/projects/app' && r.options.method === 'PUT');
+  h.click('.workspace-directory-notice [data-action="change-workspace-directory"]'); await settle();
+  assert.equal(h.$('#workspaceDirectoryDialog').open, true);
+  h.change('#workspaceDirectoryPicker select[id$="-mode"]', 'project');
+  await h.submit('#workspaceDirectoryForm');
+  const request = h.requests.find(r => r.url === '/api/workspaces/workspace/projects/app' && r.options.method === 'PUT');
   assert.deepEqual(request.body, {project_id: 'app', mode: 'project'});
   assert.equal(h.$('[data-project-open-primary]').dataset.path, '/repo/app');
   assert.equal(h.$('[data-project-open-primary]').disabled, false);
-  assert.match(h.$('.task-directory-overview').textContent, /1 个目录可打开/);
-  assert.equal(h.$('.task-directory-notice'), null);
+  assert.match(h.$('.workspace-directory-overview').textContent, /1 个目录可打开/);
+  assert.equal(h.$('.workspace-directory-notice'), null);
 });
 
-test('archived tasks explain disabled directory recovery and unchecked directories do not imply clean work', async t => {
+test('archived workspaces explain disabled directory recovery and unchecked directories do not imply clean work', async t => {
   const h = await harness(t);
-  const member = h.data.requirements[0].members[0];
+  const member = h.data.workspaces[0].members[0];
   member.worktree.status_updated_at = '';
   await h.window.refresh();
-  assert.match(h.$('.task-directory-overview').textContent, /0 个目录可打开.*1 个目录正在检查/);
+  assert.match(h.$('.workspace-directory-overview').textContent, /0 个目录可打开.*1 个目录正在检查/);
   assert.doesNotMatch(h.$('.directory-status').textContent, /干净/);
-  assert.equal(h.$('.task-directory-notice [data-action="change-task-directory"]'), null);
-  h.data.requirements[0].state = 'archived';
+  assert.equal(h.$('.workspace-directory-notice [data-action="change-workspace-directory"]'), null);
+  h.data.workspaces[0].state = 'archived';
   member.worktree.missing = true;
   await h.window.refresh();
-  assert.equal(h.$('.task-directory-notice [data-action="change-task-directory"]').disabled, true);
-  assert.match(h.$('.task-directory-notice').textContent, /取消归档后可处理目录/);
+  assert.equal(h.$('.workspace-directory-notice [data-action="change-workspace-directory"]').disabled, true);
+  assert.match(h.$('.workspace-directory-notice').textContent, /取消归档后可处理目录/);
 });
 
 test('read-only changes show working and staged files as inert text and reject late file results', async t => {
@@ -2748,7 +2789,7 @@ test('read-only changes show working and staged files as inert text and reject l
   h.setIntercept(url=>{
     if(!url.includes('/changes?'))return;
     const params=new URL(url,'http://localhost').searchParams;
-    if(!params.has('file'))return {ok:true,json:async()=>({branch:'feature/task',files:[{path:'file.txt',index:'M',working:'M'},{path:'new.txt',index:'?',working:'?',untracked:true}]})};
+    if(!params.has('file'))return {ok:true,json:async()=>({branch:'feature/workspace',files:[{path:'file.txt',index:'M',working:'M'},{path:'new.txt',index:'?',working:'?',untracked:true}]})};
     if(params.get('file')==='new.txt')return new Promise(resolve=>{release=resolve;});
     return {ok:true,json:async()=>({text:params.get('mode')==='index'?'+staged':'<script>inert</script>',truncated:false})};
   });
@@ -2764,31 +2805,31 @@ test('read-only changes show working and staged files as inert text and reject l
   assert.equal(h.$('#changesText').textContent,'+staged');
 });
 
-test('task review archives explicitly and only sends selected cleanable directories with their preview', async t => {
+test('workspace review archives explicitly and only sends selected cleanable directories with their preview', async t => {
   const h=await harness(t);
   let cleaned=false;
-  const item={project_id:'app',project_name:'App',path:'/workspace/task/app',branch:'feature/task',current:true,dirty:0,unpushed:0,shared:[],fingerprint:'checked-head'};
+  const item={project_id:'app',project_name:'App',path:'/workspace/workspace/app',branch:'feature/workspace',current:true,dirty:0,unpushed:0,shared:[],fingerprint:'checked-head'};
   h.setIntercept((url,options)=>{
-    if(url.endsWith('/archive')&&options.method==='POST'){h.data.requirements[0].state='archived';return {ok:true,json:async()=>({message:'archived'})};}
-    if(url.endsWith('/review'))return {ok:true,json:async()=>({task:h.data.requirements[0],items:cleaned?[]:[{...item,cleanable:h.data.requirements[0].state==='archived',reasons:h.data.requirements[0].state==='archived'?[]:['请先归档任务']}]})};
+    if(url.endsWith('/archive')&&options.method==='POST'){h.data.workspaces[0].state='archived';return {ok:true,json:async()=>({message:'archived'})};}
+    if(url.endsWith('/review'))return {ok:true,json:async()=>({workspace:h.data.workspaces[0],items:cleaned?[]:[{...item,cleanable:h.data.workspaces[0].state==='archived',reasons:h.data.workspaces[0].state==='archived'?[]:['请先归档工作区']}]})};
     if(url.includes('/cleanup/')){cleaned=true;return {ok:true,json:async()=>({message:'cleaned'})};}
   });
-  h.click('[data-action="task-review"]');await settle();
+  h.click('[data-action="workspace-review"]');await settle();
   assert.equal(h.$('[data-cleanup-index]').disabled,true);
-  h.click('#taskReviewArchive');await settle();
-  assert.equal(h.data.requirements[0].state,'archived');
+  h.click('#workspaceReviewArchive');await settle();
+  assert.equal(h.data.workspaces[0].state,'archived');
   assert.equal(h.$('[data-cleanup-index]').disabled,false);
   h.$('[data-cleanup-index]').checked=true;h.$('[data-cleanup-index]').dispatchEvent(new h.window.Event('change',{bubbles:true}));
-  h.click('#taskReviewClean');await settle();
+  h.click('#workspaceReviewClean');await settle();
   const request=h.requests.find(r=>r.url.includes('/cleanup/'));
   assert.deepEqual(request.body,{path:item.path,fingerprint:'checked-head'});
-  assert.match(h.$('#taskReviewItems').textContent,/没有需要检查/);
+  assert.match(h.$('#workspaceReviewItems').textContent,/没有需要检查/);
   assert(!h.requests.some(r=>r.body?.action==='delete_branch'));
 });
 
 test('a Git network operation keeps refreshing and does not overwrite a different project after closing', async t => {
   const h=await harness(t);
-  await h.window.openGit('app','/workspace/task/app');
+  await h.window.openGit('app','/workspace/workspace/app');
   let release;
   h.setIntercept((url,options)=>options.method==='POST'&&url==='/api/projects/app/git'?new Promise(resolve=>{release=resolve;}):undefined);
   const pending=h.window.gitOperation({action:'fetch',remote:'origin'},'Background fetch');
@@ -2807,8 +2848,8 @@ test('a Git network operation keeps refreshing and does not overwrite a differen
 
 test('project search preserves checked projects and expanded configuration through refresh and submission', async t => {
   const h = await harness(t);
-  h.window.openRequirement(); await settle();
-  h.input('#requirementName', 'Searchable workspace');
+  h.window.openWorkspace(); await settle();
+  h.input('#workspaceName', 'Searchable workspace');
   h.click('#projectPicker-app-selected'); await settle();
   const configuration = h.$('[data-picker-project="app"]');
   configuration.open = true;
@@ -2820,8 +2861,8 @@ test('project search preserves checked projects and expanded configuration throu
   assert.equal(h.$('#projectPicker-app-selected').checked, true);
   h.input('#projectPickerSearch', '');
   assert.equal(h.$('[data-picker-project="app"]').open, true);
-  await h.submit('#requirementForm');
-  const request = h.requests.find(r => r.url === '/api/requirements' && r.options.method === 'POST');
+  await h.submit('#workspaceForm');
+  const request = h.requests.find(r => r.url === '/api/workspaces' && r.options.method === 'POST');
   assert.deepEqual(request.body.project_ids, ['app']);
   assert.equal(request.body.members[0].project_id, 'app');
 });
@@ -2829,7 +2870,7 @@ test('project search preserves checked projects and expanded configuration throu
 test('searchable native fields preserve disabled state, validation and controller change events', async t => {
   const h = await harness(t);
   h.window.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
-  await h.window.openGit('app', '/workspace/task/app'); await settle();
+  await h.window.openGit('app', '/workspace/workspace/app'); await settle();
   h.click('.git-section-navigation a[href="#git-branches"]');
   await settle();
   const source = h.$('#gitBranchSource');
@@ -2863,7 +2904,7 @@ test('Radix action menus route through the original project context', async t =>
   [...h.document.querySelectorAll('[role="menuitem"]')].find(item => item.textContent === 'Git 操作').click();
   await settle();
   assert.equal(h.$('#gitDialog').open, true);
-  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  assert.equal(h.$('#gitWorktree').value, '/workspace/workspace/app');
   assert.equal(h.$('#gitWorktree').disabled, true);
   h.click('#gitDialog .close-dialog'); await settle();
   assert.equal(h.document.activeElement, trigger);
@@ -2874,34 +2915,34 @@ test('the workspace branch opens the Git branches in place and preserves the wor
   const scrolled = [];
   h.window.HTMLElement.prototype.scrollIntoView = function () { scrolled.push(this.id); };
   h.input('#search', 'Billing');
-  h.$('#taskProjectsView').scrollTop = 134;
+  h.$('#workspaceProjectsView').scrollTop = 134;
   h.click('.directory-branch-action'); await settle();
   assert.equal(h.$('#gitDialog').open, true);
-  assert.equal(h.$('#gitDialog').hasAttribute('data-task-git'), true);
-  assert.equal(h.$('#gitWorktree').value, '/workspace/task/app');
+  assert.equal(h.$('#gitDialog').hasAttribute('data-workspace-git'), true);
+  assert.equal(h.$('#gitWorktree').value, '/workspace/workspace/app');
   assert(scrolled.includes('git-branches'));
   assert.equal(h.$('.git-section-navigation [aria-current="location"]').getAttribute('href'), '#git-branches');
-  assert.equal(h.window.location.hash, '#/requirements/task');
+  assert.equal(h.window.location.hash, '#/workspaces/workspace');
   const oldTrigger = h.$('.directory-branch-action');
   h.window.render(); await settle();
   assert(!oldTrigger.isConnected, 'a background refresh can replace the project row');
   h.click('#gitDialog .close-dialog'); await settle();
-  assert.equal(h.window.location.hash, '#/requirements/task');
+  assert.equal(h.window.location.hash, '#/workspaces/workspace');
   assert.equal(h.$('#search').value, 'Billing');
-  assert.equal(h.$('#taskProjectsView').scrollTop, 134);
+  assert.equal(h.$('#workspaceProjectsView').scrollTop, 134);
   assert.equal(h.document.activeElement, h.$('.directory-branch-action'));
 });
 
 test('failed conversation refresh retains cached results but a new directory never inherits them', async t => {
   const h = await harness(t);
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   assert(h.$('[data-conversation-session="session-1"]'));
   h.setIntercept(url => url.startsWith('/api/sessions?') ? {ok:false,json:async()=>({error:'fixture offline'})} : undefined);
   await h.window.refreshSessionWorkspace(true); await settle();
   assert(h.$('[data-conversation-session="session-1"]'));
   assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'), /部分结果未更新/);
   assert.match(h.$('#sessionBrowserError').textContent, /保留上次结果/);
-  h.window.setConversationDirectory('/workspace/task/app'); await settle();
+  h.window.setConversationDirectory('/workspace/workspace/app'); await settle();
   assert.equal(h.$('[data-conversation-session="session-1"]'), null);
   assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'), /数量暂不可用/);
   assert.doesNotMatch(h.$('#sessionBrowserCount').getAttribute('aria-label'), /0 个对话/);
@@ -2909,147 +2950,118 @@ test('failed conversation refresh retains cached results but a new directory nev
 });
 
 
-test('wide task workspace restores selection, keeps filters beside details and remembers each task position', async t => {
-  const h = await harness(t, true, {width:1440, route:'/requirements'});
-  assert.equal(h.window.location.hash, '#/requirements/task');
-  assert.equal(h.$('#taskBrowser').hidden, false);
-  assert(h.$('#taskToolbarSlot #search'));
-  assert(h.$('#taskCreateSlot #newButton'));
-  assert(h.$('#taskHeadingSlot #pageTitle'));
-  assert.equal(h.$('[aria-current="true"][data-action="open-requirement"]').dataset.id, 'task');
-  const first = h.data.requirements[0];
-  h.data.requirements.push({...first, id:'second', name:'Second task'});
+
+test('the workspace switcher preserves each workspace position and the independent list context', async t => {
+  const h = await harness(t, true, {width:1440, route:'/workspaces'});
+  h.data.workspaces.push({...h.data.workspaces[0], id:'second', name:'Second workspace'});
   await h.window.refresh(true);
-  h.$('#taskListContent').scrollTop = 150;
-  h.$('#taskProjectsView').scrollTop = 220;
+  h.input('#search', 'Billing');
+  h.$('#workspaceListContent').scrollTop = 150;
+  h.click('#workspaceListContent [data-action="open-workspace"]'); await settle();
+  assert.equal(h.$('#workspaceBrowser').hidden, true);
+  assert.equal(h.$('#workspaceDetailPane').hidden, false);
+  h.$('#workspaceProjectsView').scrollTop = 220;
   h.$('.directory-details').open = true;
-  h.click('[data-action="open-requirement"][data-id="second"]'); await settle();
-  assert.equal(h.$('#pageTitle').textContent, 'Second task');
-  assert.equal(h.$('#taskProjectsView').scrollTop, 0);
-  assert.equal(h.$('#taskListContent').scrollTop, 150);
-  assert.equal(h.$('.directory-details').open, false);
-  h.click('[data-action="open-requirement"][data-id="task"]'); await settle();
-  assert.equal(h.$('#taskProjectsView').scrollTop, 220);
+  h.click('[data-resource-switcher="workspace"]');
+  assert.equal(h.document.activeElement, h.$('#resourceSwitcherSearch'));
+  h.input('#resourceSwitcherSearch', 'Second');
+  h.$('#resourceSwitcherSearch').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}));
+  await settle();
+  assert.equal(h.$('#pageTitle').textContent, 'Second workspace');
+  assert.equal(h.$('#workspaceProjectsView').scrollTop, 0);
+  h.click('[data-resource-switcher="workspace"]');
+  assert.match(h.$('#resourceSwitcherResults').textContent, /最近使用/);
+  h.click('#resourceSwitcherResults [data-id="workspace"]'); await settle();
+  assert.equal(h.$('#workspaceProjectsView').scrollTop, 220);
   assert.equal(h.$('.directory-details').open, true);
-  h.input('#search', 'Billing');
-  await h.navigate('/projects');
-  assert(h.$('#projectListPane #panelToolbar #search'));
-  await h.navigate('/requirements');
+  h.click('#backToWorkspaces'); await settle();
+  assert.equal(h.window.location.hash, '#/workspaces');
   assert.equal(h.$('#search').value, 'Billing');
-  assert.equal(h.window.location.hash, '#/requirements/task');
-  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:selected-task:v1')), {id:'task', environment:'local'});
+  assert.equal(h.$('#workspaceListContent').scrollTop, 150);
 });
 
-test('wide startup restores a saved task and falls back when the saved task is archived or removed', async t => {
-  const stored = id => ({'workhub:selected-task:v1':JSON.stringify({id,environment:'local'})});
-  const h = await harness(t, true, {width:1440, route:'/requirements', storage:stored('archived')});
-  assert.equal(h.window.location.hash, '#/requirements/task');
-  const second = {...h.data.requirements[0],id:'second',name:'Second task'};
-  h.data.requirements.push(second); await h.window.refresh(true);
-  h.click('[data-action="open-requirement"][data-id="second"]'); await settle();
-  await h.navigate('/projects'); await h.navigate('/requirements');
-  assert.equal(h.window.location.hash, '#/requirements/second');
-  h.data.requirements = h.data.requirements.filter(q => q.id !== 'second');
-  await h.window.refresh(true);
-  assert.match(h.$('#content').textContent, /这个任务不存在/);
-  await h.navigate('/projects'); await h.navigate('/requirements');
-  assert.equal(h.window.location.hash, '#/requirements/task');
+
+test('wide entry opens the workspace list and a missing direct link offers a path back', async t => {
+  const h = await harness(t, true, {width:1440, route:'/workspaces'});
+  assert.equal(h.window.location.hash, '#/workspaces');
+  assert.equal(h.$('#workspaceBrowser').hidden, false);
+  assert.equal(h.$('#workspaceDetailPane').hidden, true);
+  await h.navigate('/workspaces/missing');
+  assert.match(h.$('#content').textContent, /这个工作区不存在/);
+  h.click('#backToWorkspaces'); await settle();
+  assert.equal(h.window.location.hash, '#/workspaces');
+  assert.equal(h.$('#workspaceDetailPane').hidden, true);
 });
 
-test('narrow tasks enter details explicitly, return with filters and expand to a split workspace', async t => {
-  const h = await harness(t, true, {width:700, route:'/requirements'});
-  assert.equal(h.window.location.hash, '#/requirements');
-  assert.equal(h.document.body.classList.contains('task-selection-open'), false);
+test('narrow workspaces enter details explicitly and keep the list route after widening', async t => {
+  const h = await harness(t, true, {width:700, route:'/workspaces'});
+  assert.equal(h.window.location.hash, '#/workspaces');
+  assert.equal(h.document.body.classList.contains('workspace-selection-open'), false);
   h.input('#search', 'Billing');
-  h.$('#taskListContent').scrollTop = 120;
-  h.click('[data-action="open-requirement"]'); await settle();
-  assert.equal(h.document.body.classList.contains('task-selection-open'), true);
-  assert.equal(h.$('#backToRequirements').hidden, false);
+  h.$('#workspaceListContent').scrollTop = 120;
+  h.click('[data-action="open-workspace"]'); await settle();
+  assert.equal(h.document.body.classList.contains('workspace-selection-open'), true);
+  assert.equal(h.$('#backToWorkspaces').hidden, false);
   const returned = new Promise(resolve => h.window.addEventListener('hashchange', resolve, {once:true}));
-  h.click('#backToRequirements'); await returned; await settle();
-  assert.equal(h.document.body.classList.contains('task-selection-open'), false);
+  h.click('#backToWorkspaces'); await returned; await settle();
+  assert.equal(h.document.body.classList.contains('workspace-selection-open'), false);
   assert.equal(h.$('#search').value, 'Billing');
-  assert.equal(h.$('#taskListContent').scrollTop, 120);
-  assert.equal(h.document.activeElement.dataset.id, 'task');
+  assert.equal(h.$('#workspaceListContent').scrollTop, 120);
+  assert.equal(h.document.activeElement.dataset.id, 'workspace');
   Object.defineProperty(h.window, 'innerWidth', {value:1440,configurable:true});
   h.window.dispatchEvent(new h.window.Event('resize')); await settle();
-  assert.equal(h.window.location.hash, '#/requirements/task');
-  assert(h.$('.working-directory-table'));
+  assert.equal(h.window.location.hash, '#/workspaces');
+  assert.equal(h.$('#workspaceBrowser').hidden, false);
+  assert.equal(h.$('#workspaceDetailPane').hidden, true);
 });
 
-test('an empty task workspace and unavailable browser storage retain creation and selection', async t => {
-  const h = await harness(t, true, {width:1440, route:'/requirements', storageUnavailable:true});
-  assert.equal(h.window.location.hash, '#/requirements/task');
-  h.data.requirements = []; await h.window.refresh(true);
-  await h.navigate('/requirements');
-  assert.match(h.$('#taskListContent').textContent, /创建一个任务/);
+test('an empty workspace and unavailable browser storage retain creation and selection', async t => {
+  const h = await harness(t, true, {width:1440, route:'/workspaces', storageUnavailable:true});
+  assert.equal(h.window.location.hash, '#/workspaces');
+  h.data.workspaces = []; await h.window.refresh(true);
+  await h.navigate('/workspaces');
+  assert.match(h.$('#workspaceListContent').textContent, /创建一个工作区/);
   assert.equal(h.$('#newButton').hidden, false);
   h.click('#newButton'); await settle();
-  assert.equal(h.$('#requirementDialog').open, true);
+  assert.equal(h.$('#workspaceDialog').open, true);
 });
 
 
-test('the split task list distinguishes colliding IDs and restores the selected environment', async t => {
+test('the workspace list and switcher distinguish IDs shared across environments', async t => {
   const tree = {path:'/remote/app',branch:'feature/remote',dirty:0,status_updated_at:'2026-10-29T00:00:00Z'};
-  const remoteTask = {id:'task',name:'Remote Billing',slug:'remote',branch:tree.branch,state:'ready',path:'/remote',created_at:'2026-10-29T00:00:00Z',environment_id:'remote',environment_name:'WSL',connected:true,members:[{project_id:'remote-app',project_name:'Remote App',path:tree.path,mode:'worktree',state:'ready',worktree:tree}]};
-  const remoteData = {root:'/remote',requirements:[remoteTask],projects:[{id:'remote-app',name:'Remote App',path:'/remote/repo',folder:'app',worktrees:[tree]}],terminal:{}};
-  const h = await harness(t, true, {width:1440,route:'/requirements',storage:{'workhub:selected-task:v1':JSON.stringify({id:'task',environment:'remote'})},intercept:(url,options) => {
-    if (url.startsWith('/api/task-inventory')) return {ok:true,json:async()=>({requirements:[{...remoteTask,name:'Local Billing',environment_id:'local',environment_name:'本机'},remoteTask],environments:[{id:'local',name:'本机'},{id:'remote',name:'WSL'}],project_count:3})};
+  const remoteWorkspace = {id:'workspace',name:'Remote Billing',slug:'remote',branch:tree.branch,state:'ready',path:'/remote',created_at:'2026-10-29T00:00:00Z',environment_id:'remote',environment_name:'WSL',connected:true,members:[{project_id:'remote-app',project_name:'Remote App',path:tree.path,mode:'worktree',state:'ready',worktree:tree}]};
+  const remoteData = {root:'/remote',workspaces:[remoteWorkspace],projects:[{id:'remote-app',name:'Remote App',path:'/remote/repo',folder:'app',worktrees:[tree]}],terminal:{}};
+  const h = await harness(t, true, {width:1440,route:'/workspaces',intercept:(url,options) => {
+    if (url.startsWith('/api/workspace-inventory')) return {ok:true,json:async()=>({workspaces:[{...remoteWorkspace,name:'Local Billing',environment_id:'local',environment_name:'本机'},remoteWorkspace],environments:[{id:'local',name:'本机'},{id:'remote',name:'WSL'}],project_count:3})};
     if (url.startsWith('/api/state') && options.headers['X-Environment-ID'] === 'remote') return {ok:true,json:async()=>remoteData};
   }});
+  h.input('#search','Billing');
+  h.click('#workspaceListContent [data-environment="remote"][data-id="workspace"]'); await settle();
   assert.equal(new URLSearchParams(h.window.location.search).get('environment'),'remote');
   assert.equal(h.$('#pageTitle').textContent,'Remote Billing');
-  assert.equal(h.$('[aria-current="true"][data-action="open-requirement"]').dataset.environment,'remote');
   assert.equal(h.$('.directory-path').dataset.path,'/remote/app');
-  h.input('#search','Billing');
-  h.click('[data-action="open-requirement"][data-environment="local"]'); await settle();
+  h.click('[data-resource-switcher="workspace"]');
+  h.click('#resourceSwitcherResults [data-environment="local"][data-id="workspace"]'); await settle();
   assert.equal(h.$('#pageTitle').textContent,'Billing');
   assert.equal(h.$('#search').value,'Billing');
-  assert.equal(h.$('[aria-current="true"][data-action="open-requirement"]').dataset.environment,'local');
   const back = new Promise(resolve => h.window.addEventListener('popstate',resolve,{once:true}));
   h.window.history.back(); await back; await settle();
   assert.equal(h.$('#pageTitle').textContent,'Remote Billing');
   assert.equal(h.$('#search').value,'Billing');
 });
 
-test('task divider resizes across refreshes, supports keyboard limits and restores its width without affecting narrow navigation', async t => {
+
+test('workspace and project navigation focuses the same working directory in both directions', async t => {
   const h = await harness(t, true, {width:1440});
-  const workspace = h.$('#workContent');
-  workspace.getBoundingClientRect = () => ({width:1000});
-  h.window.syncTaskResize();
-  const handle = h.$('#taskListResize');
-  assert.equal(handle.hidden, false);
-  assert.equal(handle.getAttribute('role'), 'separator');
-  const pointer = (target, type, clientX, id=7) => {
-    const event = new h.window.MouseEvent(type, {bubbles:true,cancelable:true,clientX,button:0});
-    Object.defineProperty(event,'pointerId',{value:id});
-    target.dispatchEvent(event);
-  };
-  pointer(handle,'pointerdown',280);
-  pointer(h.document,'pointermove',390);
-  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'),'390px');
-  await h.window.refresh(true);
-  pointer(h.document,'pointermove',430);
-  pointer(h.document,'pointerup',430);
-  assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'),'430px');
-  assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'),'430');
-  assert.equal(workspace.hasAttribute('data-task-resizing'),false);
-  assert.equal(h.document.activeElement,handle);
-  const key = (key,shiftKey=false) => handle.dispatchEvent(new h.window.KeyboardEvent('keydown',{key,shiftKey,bubbles:true,cancelable:true}));
-  key('ArrowRight'); key('ArrowLeft',true);
-  assert.equal(handle.getAttribute('aria-valuenow'),'400');
-  key('Home'); assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'),'240px');
-  key('End'); assert.equal(h.document.documentElement.style.getPropertyValue('--workspace-list-width'),'520px');
-  await h.navigate('/projects'); assert.equal(handle.hidden,true);
-  await h.navigate('/requirements'); assert.equal(handle.hidden,false);
-  assert.equal(handle.getAttribute('aria-valuenow'),'520');
-  h.window.innerWidth=700; h.window.dispatchEvent(new h.window.Event('resize'));
-  key('Home'); assert.equal(h.window.localStorage.getItem('workhub:desktop-list-width:v1'),'520');
-  assert.equal(handle.hidden,true);
-  await h.navigate('/requirements');
-  assert.equal(h.document.body.classList.contains('task-selection-open'),false);
-  const restored = await harness(t, true, {width:1440,storage:{'workhub:desktop-list-width:v1':'430'}});
-  assert.equal(restored.document.documentElement.style.getPropertyValue('--workspace-list-width'),'430px');
+  const directory = '/workspace/workspace/app';
+  const row = '[data-directory-path="' + directory + '"]';
+  h.click(row + ' [data-action="jump-project"]'); await settle();
+  assert.equal(h.window.location.hash.split('?')[0], '#/projects/app');
+  assert.equal(h.$('#projectListPane').hidden, true);
+  assert.equal(h.document.activeElement, h.$('#projectDetail ' + row));
+  h.click('#projectDetail [data-return-directory]'); await settle();
+  assert.equal(h.window.location.hash.split('?')[0], '#/workspaces/workspace');
+  assert.equal(h.document.activeElement, h.$('#workspaceProjectsView ' + row));
 });
 
 test('file browser lazily expands directories, renders unchanged source and disposes previews on close', async t => {
@@ -3063,11 +3075,11 @@ test('file browser lazily expands directories, renders unchanged source and disp
   }};
   h.setIntercept((url, options) => {
     const query = new URL(url, 'http://localhost').searchParams;
-    if (url.includes('/changes?')) return {ok:true,json:async()=>({branch:'feature/task',files:[]})};
+    if (url.includes('/changes?')) return {ok:true,json:async()=>({branch:'feature/workspace',files:[]})};
     if (!url.includes('/files?')) return;
     if (query.has('file')) {
       if (query.get('file') === 'late.txt') {lateSignal=options.signal;return new Promise(resolve=>{resolveLate=resolve;});}
-      return {ok:true,json:async()=>({text:'const html = "<script>inert</script>"',path:'/workspace/task/app/src/clean.ts'})};
+      return {ok:true,json:async()=>({text:'const html = "<script>inert</script>"',path:'/workspace/workspace/app/src/clean.ts'})};
     }
     return {ok:true,json:async()=>({entries:query.get('dir') === 'src' ? [{name:'clean.ts',path:'src/clean.ts',directory:false}] : [{name:'src',path:'src',directory:true},{name:'late.txt',path:'late.txt',directory:false},{name:'link',path:'link',symlink:true,directory:false}],truncated:false})};
   });
@@ -3120,7 +3132,7 @@ test('conversation files remain beside the same chat and fullscreen retains the 
     if (!url.includes('/sessions/session-1/files?')) return;
     return {ok:true,json:async()=>url.includes('file=')?{text:'const reference = 1'}:{entries:[{name:'read.ts',path:'read.ts',directory:false}],truncated:false}};
   });
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   assert.equal(h.$('#toggleConversationFiles').disabled,false);
   const chat=h.$('#sessionChatInput');
   h.input('#sessionChatInput','保留我的草稿');
@@ -3168,10 +3180,10 @@ test('conversation file references use the active session and reject stale respo
     if (url.includes('file=') && url.includes('/session-1/')) {oldSignal=options.signal;return new Promise(resolve=>{release=resolve;});}
     return {ok:true,json:async()=>url.includes('file=')?{text:'outside current file'}:{entries:[{name:'read.ts',path:'read.ts',directory:false}],truncated:false}};
   });
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   const wrong=new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'wsl-other',path:'read.ts',line:7}});
   assert.equal(h.window.dispatchEvent(wrong),true);
-  const ref=new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'local',path:'/workspace/task/app/read.ts',line:7}});
+  const ref=new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'local',path:'/workspace/workspace/app/read.ts',line:7}});
   assert.equal(h.window.dispatchEvent(ref),false);await settle();
   assert.equal(h.$('#conversationFilesDock').hidden,false);
   h.click('#expandConversationFiles');await settle();
@@ -3185,14 +3197,14 @@ test('conversation file references use the active session and reject stale respo
   release({ok:true,json:async()=>({text:'stale old result'})});await settle();
   assert.match(h.$('#conversationFilesText').textContent,/outside current file/);
   assert.doesNotMatch(h.$('#conversationFilesText').textContent,/stale/);
-  await h.navigate('/requirements/task');
+  await h.navigate('/workspaces/workspace');
   assert.equal(h.$('#conversationFilesDock').hidden,true);
   assert.equal(h.$('#conversationFilesMount').childElementCount,0);
 });
 
 test('file references open approved additional directories in the right pane and restore it from fullscreen', async t => {
   const h=await harness(t,true,{width:1440});
-  h.sessions[0].additional_directories=['/workspace/task/backend'];
+  h.sessions[0].additional_directories=['/workspace/workspace/backend'];
   h.window.WorkHubFileDisplay={render(container,preview){container.textContent=`${preview.name}:${preview.line}\n${preview.text}`;return ()=>container.replaceChildren();}};
   h.setIntercept(url=>{
     if (!url.includes('/sessions/session-1/files?')) return;
@@ -3201,12 +3213,12 @@ test('file references open approved additional directories in the right pane and
     return {ok:true,json:async()=>query.has('file')?{text:query.get('path')}:{entries:query.get('dir')==='src'?[{name:'read.ts',path:'src/read.ts',directory:false}]:[{name:'src',path:'src',directory:true},{name:'read.ts',path:'read.ts',directory:false}],truncated:false}};
   });
   const open=(path,line=7)=>h.window.dispatchEvent(new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'local',path,line}}));
-  await h.openConversations('task');
-  assert.equal(open('/workspace/task/backend/src/read.ts'),false);await settle();
+  await h.openConversations('workspace');
+  assert.equal(open('/workspace/workspace/backend/src/read.ts'),false);await settle();
   assert.equal(h.$('#conversationFilesDock').hidden,false);
   assert.equal(h.$('#conversationFilesDialog').open,false);
   assert.match(h.$('#conversationFilesContext').textContent,/backend/);
-  assert.match(h.$('#conversationFilesText').textContent,/src\/read.ts:7\n\/workspace\/task\/backend/);
+  assert.match(h.$('#conversationFilesText').textContent,/src\/read.ts:7\n\/workspace\/workspace\/backend/);
   assert.equal(h.$('#conversationFilesFiles [data-change-file="src/read.ts"]').getAttribute('aria-pressed'),'true');
   assert.equal(h.$('#conversationFilesMode').options.length,1);
   h.click('#expandConversationFiles');await settle();
@@ -3214,17 +3226,17 @@ test('file references open approved additional directories in the right pane and
   assert.equal(open('read.ts',12),false);await settle();
   assert.equal(h.$('#conversationFilesDialog').open,false);
   assert.equal(h.$('#conversationFilesPane').parentElement,h.$('#conversationFilesDock'));
-  assert.match(h.$('#conversationFilesText').textContent,/read.ts:12\n\/workspace\/task\/app/);
+  assert.match(h.$('#conversationFilesText').textContent,/read.ts:12\n\/workspace\/workspace\/app/);
   assert.equal(h.$('#conversationFilesMode').options.length,3);
-  for (const invalid of ['../read.ts','/workspace/task/backend/../secret','/workspace/task/backend/.git/config']) assert.equal(open(invalid),true);
-  for (const external of ['/workspace/task/backend-other/read.ts','/outside/read.ts']) {
+  for (const invalid of ['../read.ts','/workspace/workspace/backend/../secret','/workspace/workspace/backend/.git/config']) assert.equal(open(invalid),true);
+  for (const external of ['/workspace/workspace/backend-other/read.ts','/outside/read.ts']) {
     assert.equal(open(external),false);await settle();
     const last=h.requests.filter(r=>r.url.includes('/files?') && new URL(r.url,'http://localhost').searchParams.has('file')).at(-1);
     assert.equal(new URL(last.url,'http://localhost').searchParams.get('file'),external);
     assert.match(h.$('#conversationFilesText').textContent,/outside|backend-other/);
     assert.equal(h.$('#conversationFilesDialog').open,false);
   }
-  assert.equal(open('/workspace/task/backend/missing.ts'),false);await settle();
+  assert.equal(open('/workspace/workspace/backend/missing.ts'),false);await settle();
   assert.match(h.$('#conversationFilesError').textContent,/文件不存在、已移动/);
   assert.equal(h.$('#conversationFilesDialog').open,false);
   assert.equal(h.$('#conversationFilesDock').hidden,false);
@@ -3235,7 +3247,7 @@ test('reading splitters resize with pointer and keyboard bounds and keep the sel
   h.sessions[0].cwd='/reference-root';
   h.window.WorkHubFileDisplay={render(container,preview){container.textContent=preview.text;return ()=>container.replaceChildren();}};
   h.setIntercept(url=>url.includes('/sessions/session-1/files?')?{ok:true,json:async()=>url.includes('file=')?{text:'reference content'}:{entries:[{name:'read.ts',path:'read.ts',directory:false}],truncated:false}}:undefined);
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   h.window.dispatchEvent(new h.window.CustomEvent('workhub:open-file',{cancelable:true,detail:{session:'session-1',environment:'local',path:'read.ts',line:1}}));await settle();
   const source=h.$('#conversationFilesText');
   source.scrollTop=90;
@@ -3285,20 +3297,20 @@ function pageHost(t) {
 test('startup restores the selected conversation without waiting for state, inventory or full discovery', async t => {
   const host=pageHost(t), pending=[];
   const h=await harness(t,true,{pageHost:host.window,route:'/sessions',intercept:url => {
-    if(url==='/api/state'||url.startsWith('/api/task-inventory')) return new Promise(resolve=>pending.push({url,resolve}));
+    if(url==='/api/state'||url.startsWith('/api/workspace-inventory')) return new Promise(resolve=>pending.push({url,resolve}));
   }});
   assert(host.messages.some(message=>message.type==='workhub:page-ready'));
   assert.equal(h.requests.some(request=>request.url==='/api/state'||request.url.startsWith('/api/sessions?')),false,'the handshake does not start discovery for a temporary scope');
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
   post({type:'workhub:page-pane',split:false,shared:true});
-  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',title:'Saved title',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',title:'Saved title',conversation:{scope:{kind:'workspace',id:'workspace'},selected:'session-1',pane:'detail'}}});
   await settle();await settle();
   assert.equal(h.currentSession().session,'session-1');
   assert(h.requests.some(request=>request.url==='/api/sessions/session-1/history'));
   assert.equal(h.requests.some(request=>request.url.startsWith('/api/sessions?')),false);
-  assert.equal(h.window.WorkHubPage.snapshot().conversation.session.cwd,'/workspace/task/app','history metadata hydrates restored file context');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.session.cwd,'/workspace/workspace/app','history metadata hydrates restored file context');
   assert.equal(h.$('#sessionHistoryTitle').textContent,'Billing review');
-  for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{requirements:[],environments:[{id:'local',name:'本机'}],project_count:0}});
+  for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{workspaces:[],environments:[{id:'local',name:'本机'}],project_count:0}});
   await settle();
   assert.equal(h.currentSession().session,'session-1');
 });
@@ -3307,7 +3319,7 @@ test('startup list loading never advertises zero conversations and local results
   const host=pageHost(t), pending=[];
   let releaseList;
   const h=await harness(t,true,{pageHost:host.window,route:'/sessions',intercept:url=>{
-    if(url==='/api/state'||url.startsWith('/api/task-inventory'))return new Promise(resolve=>pending.push({url,resolve}));
+    if(url==='/api/state'||url.startsWith('/api/workspace-inventory'))return new Promise(resolve=>pending.push({url,resolve}));
     if(url.startsWith('/api/sessions?'))return new Promise(resolve=>{releaseList=resolve;});
   }});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
@@ -3322,7 +3334,7 @@ test('startup list loading never advertises zero conversations and local results
   await settle();await settle();
   assert(h.$('[data-conversation-session="session-1"]'));
   assert.equal(h.$('#sessionBrowserList').getAttribute('aria-busy'),'false');
-  for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{requirements:[],environments:[{id:'local',name:'本机'}],project_count:0}});
+  for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{workspaces:[],environments:[{id:'local',name:'本机'}],project_count:0}});
   await settle();
 });
 
@@ -3330,7 +3342,7 @@ test('shared startup fills an unselected reader from list results while metadata
   const host=pageHost(t), pending=[];
   let releaseList;
   const h=await harness(t,true,{pageHost:host.window,route:'/sessions',intercept:url=>{
-    if(url==='/api/state'||url.startsWith('/api/task-inventory'))return new Promise(resolve=>pending.push({url,resolve}));
+    if(url==='/api/state'||url.startsWith('/api/workspace-inventory'))return new Promise(resolve=>pending.push({url,resolve}));
     if(url.startsWith('/api/sessions?'))return new Promise(resolve=>{releaseList=resolve;});
   }});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
@@ -3349,7 +3361,7 @@ test('shared startup fills an unselected reader from list results while metadata
   assert.equal(selection.snapshot.conversation.selected,'session-1');
   assert.equal(h.requests.some(request=>request.url.includes('/history')),false,'the shared list does not fetch hidden history');
   post({type:'workhub:conversation-group',split:false,sessions:['session-1'],selected:'session-1',autoSelect:false});
-  for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{requirements:[],environments:[{id:'local',name:'本机'}],project_count:0}});
+  for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:{workspaces:[],environments:[{id:'local',name:'本机'}],project_count:0}});
   await settle();
   assert.equal(host.messages.filter(message=>message.type==='workhub:conversation-select').length,1);
 });
@@ -3371,19 +3383,19 @@ test('a late restored history cannot overwrite a newer conversation selection', 
   assert.equal(h.$('#sessionHistoryTitle').textContent,'Second');
 });
 
-for(const kind of ['task','project']) test(`active conversation follows its ${kind} scope and clears filters only when hidden`,async t=>{
+for(const kind of ['workspace','project']) test(`active conversation follows its ${kind} scope and clears filters only when hidden`,async t=>{
   const host=pageHost(t), h=await harness(t,true,{pageHost:host.window});
-  const secondTask={...h.data.requirements[0],id:'second-task',name:'Second task',members:[]};
-  h.data.requirements.push(secondTask);
+  const secondWorkspace={...h.data.workspaces[0],id:'second-workspace',name:'Second workspace',members:[]};
+  h.data.workspaces.push(secondWorkspace);
   h.sessions.push({id:'session-2',name:'Second conversation',cwd:'/repo/backend',updated_at:1999999999});
-  h.links.set('second-task',new Set(['session-2']));
+  h.links.set('second-workspace',new Set(['session-2']));
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  const firstScope={kind:'task',id:'task',environment:'local'};
+  const firstScope={kind:'workspace',id:'workspace',environment:'local'};
   post({type:'workhub:page-navigation'});
   post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:firstScope,pane:'list'}}});
   await settle();await settle();
   h.input('#sessionBrowserSearch','Billing');
-  const scope=kind==='task'?{kind,id:'second-task',environment:'local'}:{kind,id:'backend',environment:'local'};
+  const scope=kind==='workspace'?{kind,id:'second-workspace',environment:'local'}:{kind,id:'backend',environment:'local'};
   const group={type:'workhub:conversation-group',sessions:['session-1','session-2'],selected:'session-2',full:false,listWidth:280,target:{route:'/sessions',environment:'local',conversation:{scope,selected:'session-2',session:h.sessions[1]}}};
   post(group);await settle();await settle();
   assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.id,scope.id);
@@ -3394,7 +3406,7 @@ for(const kind of ['task','project']) test(`active conversation follows its ${ki
   assert.equal(h.$('#sessionBrowserSearch').value,'Second','resizing does not reset the list filters');
   post({...group,selected:'session-1',target:{route:'/sessions',environment:'local',conversation:{scope:firstScope,selected:'session-1',session:h.sessions[0]}}});
   await settle();await settle();
-  assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.id,'task');
+  assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.id,'workspace');
   assert.equal(h.$('[data-conversation-session="session-1"]').getAttribute('aria-pressed'),'true');
 });
 
@@ -3403,7 +3415,7 @@ test('following an active remote conversation keeps colliding local IDs isolated
   h.environments.environments.push({id:'remote',name:'Remote'});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
   post({type:'workhub:page-navigation'});
-  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},pane:'list'}}});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace',environment:'local'},pane:'list'}}});
   await settle();await settle();
   const selected=JSON.stringify(['remote','session-1']);
   post({type:'workhub:conversation-group',sessions:['session-1',selected],selected,full:false,listWidth:280,target:{route:'/sessions',environment:'remote',conversation:{scope:{kind:'project',id:'app',environment:'remote'},selected,session:h.sessions[0]}}});
@@ -3414,29 +3426,29 @@ test('following an active remote conversation keeps colliding local IDs isolated
   assert(h.requests.some(request=>request.url.includes('project_id=app')&&request.options.headers['X-Environment-ID']==='remote'));
 });
 
-test('following an unlinked conversation falls back to its project instead of inventing task ownership',async t=>{
+test('following an unlinked conversation falls back to its project instead of inventing workspace ownership',async t=>{
   const host=pageHost(t), h=await harness(t,true,{pageHost:host.window});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
   post({type:'workhub:page-navigation'});
   post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'project',id:'backend',environment:'local'},pane:'list'}}});
   await settle();await settle();
-  h.links.get('task').delete('session-1');
-  post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',full:false,listWidth:280,target:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},selected:'session-1',session:h.sessions[0]}}});
+  h.links.get('workspace').delete('session-1');
+  post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',full:false,listWidth:280,target:{route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace',environment:'local'},selected:'session-1',session:h.sessions[0]}}});
   await settle();await settle();
   assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.kind,'project');
   assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.id,'app');
   assert.equal(h.$('[data-conversation-session="session-1"]').getAttribute('aria-pressed'),'true');
-  assert.equal(h.links.get('task').has('session-1'),false);
+  assert.equal(h.links.get('workspace').has('session-1'),false);
 });
 
-test('workspace metadata renders independently when the task inventory is slow',async t=>{
+test('workspace metadata renders independently when the workspace inventory is slow',async t=>{
   let release;
-  const h=await harness(t,true,{route:'/projects',intercept:url=>url.startsWith('/api/task-inventory')?new Promise(resolve=>{release=resolve;}):undefined});
+  const h=await harness(t,true,{route:'/projects',intercept:url=>url.startsWith('/api/workspace-inventory')?new Promise(resolve=>{release=resolve;}):undefined});
   assert.match(h.$('#content').textContent,/App/);
-  assert.equal(h.$('#reqCount').textContent,'…');
-  release({ok:true,json:async()=>({requirements:h.data.requirements,environments:[{id:'local',name:'本机'}],project_count:2})});
+  assert.equal(h.$('#workspaceCount').textContent,'…');
+  release({ok:true,json:async()=>({workspaces:h.data.workspaces,environments:[{id:'local',name:'本机'}],project_count:2})});
   await settle();
-  assert.equal(h.$('#reqCount').textContent,'1');
+  assert.equal(h.$('#workspaceCount').textContent,'1');
 });
 
 test('page bridge exposes sidebar navigation without page-tab controls or keyboard interception', async t => {
@@ -3510,7 +3522,7 @@ test('split conversation bridges retain independent drafts and send only to thei
 test('shared sidebar navigates to independent pages and leaves grouped conversations intact', async t => {
   const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
   const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace'},selected:'session-1',pane:'detail'}}});
   await settle(); await settle();
   post({type:'workhub:page-pane',split:true});
   h.input('#sessionChatInput','保留在当前栏');
@@ -3520,8 +3532,8 @@ test('shared sidebar navigates to independent pages and leaves grouped conversat
   assert.equal(h.$('#sessionChatInput').value,'保留在当前栏');
   post({type:'workhub:page-navigation'});
   assert(h.document.documentElement.hasAttribute('data-workspace-navigation'));
-  h.click('[data-view="requirements"]'); await settle();
-  assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').snapshot.route,'/requirements');
+  h.click('[data-view="workspaces"]'); await settle();
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').snapshot.route,'/workspaces');
   assert.equal(h.requests.some(request=>request.url.endsWith('/chat/stop')),false);
 });
 
@@ -3546,7 +3558,7 @@ test('shared list synchronizes read markers from a visible reader and keeps back
  let opened;
  reader.window.WorkHubAssistant = {open(options) {opened = options; setImmediate(() => options.loaded?.({...reader.sessions[0]}));},close() {},updateSession() {}};
  post(nav,{type:'workhub:page-navigation'});
- post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},pane:'list'}}});
+ post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace'},pane:'list'}}});
  await settle(); await settle();
  post(nav,{type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:true});
  nav.sessions[0].completed_run = reader.sessions[0].completed_run = 'before-open';
@@ -3555,7 +3567,7 @@ test('shared list synchronizes read markers from a visible reader and keeps back
  assert(row().querySelector('.session-browser-unread-dot'),'a selected row alone does not mark a hidden conversation read');
  assert(nav.$('.session-browser-unread-dot'));
  post(reader,{type:'workhub:page-pane',shared:true});
- post(reader,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},selected:'session-1',pane:'detail'}}});
+ post(reader,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace'},selected:'session-1',pane:'detail'}}});
  await settle(); await settle();
  assert.equal(JSON.parse(values.get(key)).run,'before-open');
  assert.equal(row().querySelector('.session-browser-unread-dot'),null);
@@ -3599,7 +3611,7 @@ test('shared conversation list browses scopes without reading hidden history and
  post({type:'workhub:page-navigation'});
  const historyRequests = () => h.requests.filter(request=>request.url.includes('/history')).length;
  const before = historyRequests();
- post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task'},pane:'list'}}});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace'},pane:'list'}}});
  await settle(); await settle();
  post({type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',full:false,listWidth:280});
  assert.equal(h.window.WorkHubPage.navigationOnly,true);
@@ -3610,7 +3622,7 @@ test('shared conversation list browses scopes without reading hidden history and
  h.click('[data-conversation-session="session-1"]'); await settle();
  assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-select').snapshot.conversation.selected,'session-1');
  h.click('[data-conversation-parallel="session-1"]'); await settle();
- assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-add').snapshot.conversation.scope.id,'task');
+ assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-add').snapshot.conversation.scope.id,'workspace');
  h.$('#sessionScopePicker').open = true; await settle();
  h.click('#sessionScopeAll'); await settle(); await settle();
  assert.equal(h.window.WorkHubPage.snapshot().conversation.scope.kind,'all');
@@ -3623,42 +3635,42 @@ test('shared conversation list browses scopes without reading hidden history and
  assert.equal(historyRequests(),before);
 });
 
-for (const scope of [{kind:'directory',cwd:'/workspace/task/app',environment:'local'}, {kind:'project',id:'app',environment:'local'}, {kind:'task',id:'task',environment:'local'}]) test(`shared new conversation preserves an explicit draft across pages (${scope.kind})`, async t => {
+for (const scope of [{kind:'directory',cwd:'/workspace/workspace/app',environment:'local'}, {kind:'project',id:'app',environment:'local'}, {kind:'workspace',id:'workspace',environment:'local'}]) test(`shared new conversation preserves an explicit draft across pages (${scope.kind})`, async t => {
  const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
  const post = (h,data) => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
  post(nav,{type:'workhub:page-navigation'});
- post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,directory:'/workspace/task/app',pane:'list'}}});
+ post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,directory:'/workspace/workspace/app',pane:'list'}}});
  await settle();await settle();
  assert.equal(nav.$('#newBrowserSession').disabled,false);
  nav.click('#newBrowserSession');await settle();
  const opened = host.messages.findLast(message=>message.type==='workhub:page-open').snapshot;
  assert.equal(opened.conversation.creating,true);
  assert.equal(opened.conversation.selected,null);
- assert.equal(opened.conversation.directory,'/workspace/task/app');
+ assert.equal(opened.conversation.directory,'/workspace/workspace/app');
  const draft = await harness(t,false,{pageHost:host.window});
  post(draft,{type:'workhub:page-restore',active:true,snapshot:opened});await settle();await settle();
  assert.equal(draft.currentSession().session,null, 'existing conversations must not replace a new draft');
  assert.equal(draft.window.WorkHubPage.snapshot().conversation.creating,true);
  assert.equal(draft.window.WorkHubPage.snapshot().title,'新建对话');
  assert.equal(draft.$('#sessionBrowserNewDirectoryField').hidden,scope.kind === 'directory');
- assert.equal(draft.currentSession().target.cwd,'/workspace/task/app');
+ assert.equal(draft.currentSession().target.cwd,'/workspace/workspace/app');
  assert.equal(draft.requests.some(r=>r.url.endsWith('/chat') && r.options.method==='POST'),false);
  const saved = draft.window.WorkHubPage.snapshot();
  post(draft,{type:'workhub:page-restore',active:true,snapshot:saved});await settle();await settle();
  assert.equal(draft.currentSession().session,null);
- assert.equal(draft.currentSession().target.cwd,'/workspace/task/app');
+ assert.equal(draft.currentSession().target.cwd,'/workspace/workspace/app');
 });
 
 test('running terminals share the conversation list, retain scope and reconnect by process identity', async t => {
  const host=pageHost(t), rows=[
-  {id:'session-1',name:'Terminal Shell',task_id:'task',project_id:'app',cwd:'/workspace/task/app',state:'running',attached:false,created_at:Math.floor(Date.now()/1000)},
-  {id:'other',name:'Other task',task_id:'other-task',project_id:'backend',cwd:'/workspace/other/backend',state:'running',attached:false,created_at:1},
-  {id:'ended',name:'Ended terminal',task_id:'task',cwd:'/workspace/task',state:'exited',created_at:1},
+  {id:'session-1',name:'Terminal Shell',workspace_id:'workspace',project_id:'app',cwd:'/workspace/workspace/app',state:'running',attached:false,created_at:Math.floor(Date.now()/1000)},
+  {id:'other',name:'Other workspace',workspace_id:'other-workspace',project_id:'backend',cwd:'/workspace/other/backend',state:'running',attached:false,created_at:1},
+  {id:'ended',name:'Ended terminal',workspace_id:'workspace',cwd:'/workspace/workspace',state:'exited',created_at:1},
  ];
  const h=await harness(t,false,{pageHost:host.window,intercept:url=>url==='/api/terminals'?{ok:true,json:async()=>rows}:null});
  const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
  post({type:'workhub:page-navigation'});
- post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'task',id:'task',environment:'local'},pane:'list'}}});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'workspace',id:'workspace',environment:'local'},pane:'list'}}});
  await settle();await settle();
  const terminal=()=>h.$('[data-conversation-terminal="session-1"]');
  assert(terminal());assert.equal(terminal().querySelector('.session-browser-item-kind'),null);
@@ -3668,13 +3680,13 @@ test('running terminals share the conversation list, retain scope and reconnect 
  assert.equal(h.$('[data-conversation-terminal="ended"]'),null);
  assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/2 个对话/);
  assert.notEqual(terminal().dataset.conversationSession,'session-1','terminal and UI session IDs never collide');
- post({type:'workhub:conversation-group',split:false,sessions:[],selected:terminal().dataset.conversationSession,target:{route:'/terminals',terminal:{id:'session-1',taskID:'task'}},canSplit:true});
+ post({type:'workhub:conversation-group',split:false,sessions:[],selected:terminal().dataset.conversationSession,target:{route:'/terminals',terminal:{id:'session-1',workspaceID:'workspace'}},canSplit:true});
  assert.equal(terminal().getAttribute('aria-pressed'),'true');
  const historyCount=h.requests.filter(r=>r.url.includes('/history')).length;
  terminal().click();await settle();
  const opened=host.messages.findLast(m=>m.type==='workhub:page-open');
  assert.equal(opened.snapshot.route,'/terminals');assert.equal(opened.snapshot.terminal.id,'session-1');
- assert.equal(opened.snapshot.terminal.taskID,'task');
+ assert.equal(opened.snapshot.terminal.workspaceID,'workspace');
  assert.equal(h.requests.filter(r=>r.url.includes('/history')).length,historyCount);
  assert.equal(h.requests.some(r=>r.url==='/api/terminals'&&r.options.method==='POST'),false);
  h.input('#sessionBrowserSearch','终端');assert(terminal());assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/1 \/ 2 个对话/);
@@ -3687,10 +3699,10 @@ test('running terminals share the conversation list, retain scope and reconnect 
  assert.equal(host.messages.findLast(m=>m.type==='workhub:page-open').placement,'split');
  for (const [scope,expected] of [
   [{kind:'project',id:'backend',environment:'local'},'other'],
-  [{kind:'directory',cwd:'/workspace/task/app',environment:'local'},'session-1'],
+  [{kind:'directory',cwd:'/workspace/workspace/app',environment:'local'},'session-1'],
   [{kind:'directory',cwd:'/unrelated',environment:'local'},null],
-  [{kind:'task',id:'task',environment:'remote'},null],
-  [{kind:'task',id:'task',environment:'local'},'session-1'],
+  [{kind:'workspace',id:'workspace',environment:'remote'},null],
+  [{kind:'workspace',id:'workspace',environment:'local'},'session-1'],
  ]) {
   post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,pane:'list'}}});
   await settle();await settle();
@@ -3736,11 +3748,11 @@ test('a shared single conversation restores its detail without duplicating the s
 test('delegated navigation leaves the workspace intact and shared reader layout messages retain its draft', async t => {
  const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
- post({type:'workhub:page-restore',active:true,snapshot:{route:'/requirements/task',environment:'local'}});
+ post({type:'workhub:page-restore',active:true,snapshot:{route:'/workspaces/workspace',environment:'local'}});
  await settle(); await settle();
  const listsBefore = h.requests.filter(request=>request.url.startsWith('/api/sessions?')).length;
  h.click('[data-view="sessions"]'); await settle(); await settle();
- assert.equal(h.window.WorkHubPage.snapshot().route,'/requirements/task');
+ assert.equal(h.window.WorkHubPage.snapshot().route,'/workspaces/workspace');
  assert(!h.document.documentElement.hasAttribute('data-workspace-conversation'));
  assert(host.messages.some(message=>message.type==='workhub:page-open' && message.snapshot.route==='/sessions'));
  assert.equal(h.requests.filter(request=>request.url.startsWith('/api/sessions?')).length,listsBefore,'only the shared navigation fetches the list');
@@ -3827,7 +3839,7 @@ test('background list refresh updates its own status without regenerating unchan
 
 function expandedConversationStorage() {
  const scopeKey = JSON.stringify(['local','all','','','']);
- const groupLimits = Object.fromEntries([['local','task'],['local',''],['remote','']].map(group => [JSON.stringify(group),1000]));
+ const groupLimits = Object.fromEntries([['local','workspace'],['local',''],['remote','']].map(group => [JSON.stringify(group),1000]));
  return {['workhub:conversation-view:v1:' + scopeKey]:JSON.stringify({groupLimits})};
 }
 
@@ -3978,7 +3990,7 @@ test('file tree images and outside image links use the same adjacent preview and
     const file=query.get('file');
     return {ok:true,json:async()=>file ? file.endsWith('.png') ? {format:'image',text:'',data_url:png} : {format:'file',text:'完整文本\n可以选中复制 <script>inert</script>'} : {entries:[{name:'project.png',path:'project.png',directory:false},{name:'read.ts',path:'read.ts',directory:false}],truncated:false}};
   });
-  await h.openConversations('task');
+  await h.openConversations('workspace');
   h.click('#toggleConversationFiles');await settle();
   h.click('#conversationFilesFiles [data-change-file="project.png"]');await settle();
   assert.equal(h.$('#conversationFilesText img').getAttribute('src'),png);
@@ -4005,13 +4017,13 @@ test('workspace deletion retains its dialog and error on failure, and returns to
  const h=await harness(t,false);
  let fail=true;
  h.setIntercept((url,options)=>{
-  if(url==='/api/requirements/task' && options.method==='DELETE') {
+  if(url==='/api/workspaces/workspace' && options.method==='DELETE') {
    if(fail) return {ok:false,json:async()=>({error:'Deletion blocked'})};
-   h.data.requirements=[];
+   h.data.workspaces=[];
    return {ok:true,json:async()=>({message:'Deleted'})};
   }
  });
- h.click('[data-action="remove-task"]');await settle();
+ h.click('[data-action="remove-workspace"]');await settle();
  assert(h.$('#removalDialog').open);
  assert.match(h.$('#removalDescription').textContent,/Billing/);
  await h.submit('#removalForm');
@@ -4021,13 +4033,13 @@ test('workspace deletion retains its dialog and error on failure, and returns to
  fail=false;
  await h.submit('#removalForm');await settle();
  assert.equal(h.$('#removalDialog').open,false);
- assert.equal(h.window.location.hash,'#/requirements');
+ assert.equal(h.window.location.hash,'#/workspaces');
 });
 
 test('project removal previews archived workspace links and submits only the reviewed links', async t => {
- const h=await harness(t,false,{route:'/projects'});
+ const h=await harness(t,false,{route:'/projects/app'});
  h.setIntercept((url,options)=>{
-  if(url==='/api/projects/app/removal') return {ok:true,json:async()=>({name:'App',requirements:[{id:'task',name:'Billing',state:'archived'}]})};
+  if(url==='/api/projects/app/removal') return {ok:true,json:async()=>({name:'App',workspaces:[{id:'workspace',name:'Billing',state:'archived'}]})};
   if(url==='/api/projects/app?detach=1' && options.method==='DELETE') {
    h.data.projects=h.data.projects.filter(p=>p.id!=='app');
    return {ok:true,json:async()=>({message:'Removed'})};
@@ -4036,11 +4048,11 @@ test('project removal previews archived workspace links and submits only the rev
  h.click('[data-action="remove-project"][data-id="app"]');await settle();
  assert(h.$('#removalDialog').open);
  assert.match(h.$('#removalReferences').textContent,/Billing.*已归档/);
- assert.match(h.$('#removalReferences a').href,/#\/requirements\/task/);
+ assert.match(h.$('#removalReferences a').href,/#\/workspaces\/workspace/);
  assert.match(h.$('#removalConfirm').textContent,/解除关联/);
  await h.submit('#removalForm');
  const request=h.requests.find(r=>r.url==='/api/projects/app?detach=1');
- assert.deepEqual(request.body,{requirements:['task']});
+ assert.deepEqual(request.body,{workspaces:['workspace']});
  assert.equal(h.$('#removalDialog').open,false);
 });
 
@@ -4104,7 +4116,7 @@ for (const desktop of [false, true]) for (const width of [640, 1280]) test(`lega
   const opens = [];
   const assistantOptions = [];
   h.window.WorkHubAssistant = {openGlobal(request, options) {opens.push(request); assistantOptions.push(options);}, open() {}, close() {}};
-  assert.equal(h.$('.sidebar nav [data-view]').dataset.view, 'requirements');
+  assert.equal(h.$('.sidebar nav [data-view]').dataset.view, 'workspaces');
   assert.ok(h.$('.sidebar-footer #openYoluAssistant'));
   await h.navigate('/assistant');
   assert.equal(h.$('#globalAssistantPage').hidden, false);
@@ -4114,7 +4126,7 @@ for (const desktop of [false, true]) for (const width of [640, 1280]) test(`lega
   await opens[0]('/api/assistant/conversations');
   assert.equal(h.requests.at(-1).options.headers['X-Environment-ID'], 'local');
   const root = h.$('#globalAssistantRoot');
-  for (const route of ['/projects', '/requirements', '/sessions', '/settings']) {
+  for (const route of ['/projects', '/workspaces', '/sessions', '/settings']) {
     await h.navigate(route);
     assert.equal(h.$('#globalAssistantPage').hidden, true);
     await h.navigate('/assistant');
@@ -4125,11 +4137,11 @@ for (const desktop of [false, true]) for (const width of [640, 1280]) test(`lega
   await h.navigate('/assistant');
   assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',project_id:'app'});
   assert.match(assistantOptions.at(-1).contextLabel(), /App/);
-  await assistantOptions.at(-1).openResource({kind:'workspace',id:'task',environment_id:'local',name:'Billing'});
+  await assistantOptions.at(-1).openResource({kind:'workspace',id:'workspace',environment_id:'local',name:'Billing'});
   await settle();
-  assert.equal(h.window.location.hash, '#/requirements/task');
+  assert.equal(h.window.location.hash, '#/workspaces/workspace');
   await h.navigate('/assistant');
-  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',workspace_id:'task'});
+  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',workspace_id:'workspace'});
   assistantOptions.at(-1).clearContext();
   assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local'});
   assert.doesNotMatch(assistantOptions.at(-1).contextLabel(), /Billing/);
@@ -4195,7 +4207,7 @@ for (const desktop of [false, true]) for (const width of [640, 1280]) test(`dire
   await h.submit('#projectForm');
   assert.equal(h.$('#projectDialog').open,false);
   assert.equal(imports,2);
-  await h.navigate('/requirements'); await h.navigate('/projects');
+  await h.navigate('/workspaces'); await h.navigate('/projects');
   assert(h.$('#projectListPane'));
 });
 
@@ -4222,8 +4234,8 @@ test('directory scan invalidates results on input changes and retains failed sca
 });
 
 test('directory scan returns every registered project to the workspace picker', async t => {
-  const h = await harness(t, false, {route:'/requirements'});
-  h.click('#newButton'); await settle(); h.click('#registerNewTaskProject');
+  const h = await harness(t, false, {route:'/workspaces'});
+  h.click('#newButton'); await settle(); h.click('#registerNewWorkspaceProject');
   h.setIntercept((url, options, body) => {
     if (url === '/api/projects/scan') return {ok:true,json:async()=>({repositories:[
       {name:'Third',path:'/repo/third',common_dir:'/repo/third/.git'},
@@ -4236,7 +4248,7 @@ test('directory scan returns every registered project to the workspace picker', 
   });
   h.change('#projectSource','scan'); h.input('#projectPath','/repo');
   await h.submit('#projectForm'); await h.submit('#projectForm');
-  assert(h.$('#requirementDialog').open);
+  assert(h.$('#workspaceDialog').open);
   assert.equal(h.$('#projectDialog').open,false);
   const selected = [...h.document.querySelectorAll('#projectPicker input[name="project_ids"]:checked')].map(input => input.value);
   assert(selected.includes('batch-0')); assert(selected.includes('batch-1'));

@@ -22,7 +22,7 @@ func TestReviewedRegistrationIsCanonicalAndIdempotent(t *testing.T) {
 		t.Fatalf("non-canonical review: %+v", review)
 	}
 	var count int
-	if err := a.Workspace.Store.DB.QueryRow(`SELECT count(*) FROM projects`).Scan(&count); err != nil || count != 0 {
+	if err := a.Execution.Store.DB.QueryRow(`SELECT count(*) FROM projects`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("review persisted registration: %d %v", count, err)
 	}
 	data, err := json.Marshal(review)

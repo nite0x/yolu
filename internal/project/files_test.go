@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 func TestProjectFilesRequiresRegisteredWorktreeAndReadsUnchangedFiles(t *testing.T) {
@@ -21,7 +21,7 @@ func TestProjectFilesRequiresRegisteredWorktreeAndReadsUnchangedFiles(t *testing
 	os.WriteFile(filepath.Join(root, ".hidden"), []byte("hidden text\n"), 0600)
 	base := "/api/projects/" + id + "/files?path=" + url.QueryEscape(root)
 	code, raw := call(t, a, "GET", base, nil)
-	var listing workspace.DirectoryPreview
+	var listing execution.DirectoryPreview
 	json.Unmarshal(raw, &listing)
 	if code != 200 || len(listing.Entries) < 2 || strings.Contains(string(raw), `"name":".git"`) {
 		t.Fatalf("list %d %s", code, raw)
@@ -31,7 +31,7 @@ func TestProjectFilesRequiresRegisteredWorktreeAndReadsUnchangedFiles(t *testing
 		t.Fatalf("nested %d %s", code, raw)
 	}
 	code, raw = call(t, a, "GET", base+"&file=nested/unchanged.ts", nil)
-	var file workspace.TextFile
+	var file execution.TextFile
 	json.Unmarshal(raw, &file)
 	if code != 200 || file.Text != "export const answer = 42\n" {
 		t.Fatalf("content %d %s", code, raw)

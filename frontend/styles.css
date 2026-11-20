@@ -1,4 +1,4 @@
-/* No Preflight: the existing task, project and session pages retain their CSS.
+/* No Preflight: the existing workspace, project and session pages retain their CSS.
    Utilities win over legacy element selectors only where components use them. */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);

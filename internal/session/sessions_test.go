@@ -69,14 +69,14 @@ func fakeSessions(a *App, sessions map[string]codex.Session) {
 	}
 }
 
-func getRequirementSessions(t *testing.T, a *App, id string) []RequirementSession {
+func getWorkspaceSessions(t *testing.T, a *App, id string) []WorkspaceSession {
 	t.Helper()
-	code, raw := call(t, a, "GET", "/api/requirements/"+id+"/sessions", nil)
+	code, raw := call(t, a, "GET", "/api/workspaces/"+id+"/sessions", nil)
 	if code != 200 {
 		t.Fatalf("sessions %d: %s", code, raw)
 	}
 	var result struct {
-		Sessions []RequirementSession `json:"sessions"`
+		Sessions []WorkspaceSession `json:"sessions"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func getRequirementSessions(t *testing.T, a *App, id string) []RequirementSessio
 func TestSessionListsIncludeExplicitWorkspaceMembershipOnSuccessAndFailure(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
 	_, other, _ := create(t, a, q.PrimaryProjectID, nil, "other")
-	if _, err := a.Workspace.Store.DB.Exec(`INSERT OR IGNORE INTO task_session_pins(requirement_id,session_id) VALUES(?,?),(?,?)`, q.ID, "session", other.ID, "session"); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`INSERT OR IGNORE INTO workspace_session_pins(workspace_id,session_id) VALUES(?,?),(?,?)`, q.ID, "session", other.ID, "session"); err != nil {
 		t.Fatal(err)
 	}
 	fakeSessions(a, map[string]codex.Session{
@@ -98,7 +98,7 @@ func TestSessionListsIncludeExplicitWorkspaceMembershipOnSuccessAndFailure(t *te
 		t.Helper()
 		code, raw := call(t, a, "GET", path, nil)
 		var response struct {
-			Links map[string][]string `json:"task_sessions"`
+			Links map[string][]string `json:"workspace_sessions"`
 		}
 		if code != 200 || json.Unmarshal(raw, &response) != nil || response.Links == nil {
 			t.Fatalf("membership response: %d %s", code, raw)
@@ -109,14 +109,14 @@ func TestSessionListsIncludeExplicitWorkspaceMembershipOnSuccessAndFailure(t *te
 	if len(links["session"]) != 2 || len(links["unlinked"]) != 0 {
 		t.Fatalf("explicit membership: %+v", links)
 	}
-	if scoped := read("/api/sessions?task_id=" + other.ID + "&linked=true"); !reflect.DeepEqual(scoped["session"], links["session"]) {
+	if scoped := read("/api/sessions?workspace_id=" + other.ID + "&linked=true"); !reflect.DeepEqual(scoped["session"], links["session"]) {
 		t.Fatalf("scoped membership: %+v", scoped)
 	}
 	a.openSessions = func(context.Context) (codex.SessionClient, error) { return nil, fmt.Errorf("offline") }
 	if got := read("/api/sessions?refresh=1"); !reflect.DeepEqual(got, links) {
 		t.Fatalf("cached membership: %+v", got)
 	}
-	if code, raw := call(t, a, "DELETE", "/api/requirements/"+other.ID+"/sessions/session", nil); code != 200 {
+	if code, raw := call(t, a, "DELETE", "/api/workspaces/"+other.ID+"/sessions/session", nil); code != 200 {
 		t.Fatalf("unlink: %d %s", code, raw)
 	}
 	if got := read("/api/sessions?refresh=1"); !reflect.DeepEqual(got["session"], []string{q.ID}) {
@@ -135,7 +135,7 @@ func TestSessionListIncludesCurrentChatActivityWithoutPersistingIt(t *testing.T)
 		run.mu.Lock()
 		run.state.Status = status
 		run.mu.Unlock()
-		got := getRequirementSessions(t, a, q.ID)
+		got := getWorkspaceSessions(t, a, q.ID)
 		if len(got) != 1 || got[0].ChatStatus != status || got[0].CompletedRun != "" {
 			t.Fatalf("active session: %+v", got)
 		}
@@ -143,7 +143,7 @@ func TestSessionListIncludesCurrentChatActivityWithoutPersistingIt(t *testing.T)
 	run.mu.Lock()
 	run.state.Busy, run.state.Status = false, "completed"
 	run.mu.Unlock()
-	got := getRequirementSessions(t, a, q.ID)
+	got := getWorkspaceSessions(t, a, q.ID)
 	if got[0].ChatStatus != "" || got[0].CompletedRun != "run" {
 		t.Fatalf("completed session: %+v", got)
 	}
@@ -152,7 +152,7 @@ func TestSessionListIncludesCurrentChatActivityWithoutPersistingIt(t *testing.T)
 		t.Fatalf("runtime activity persisted: %+v, %v", stored, err)
 	}
 	a.openSessions = func(context.Context) (codex.SessionClient, error) { return nil, fmt.Errorf("offline") }
-	got = getRequirementSessions(t, a, q.ID)
+	got = getWorkspaceSessions(t, a, q.ID)
 	if got[0].CompletedRun != "run" {
 		t.Fatalf("runtime activity lost on metadata failure: %+v", got)
 	}
@@ -167,7 +167,7 @@ func TestSessionActivityTracksManagedTerminalStatus(t *testing.T) {
 		{`{"method":"turn/completed","params":{"threadId":"terminal"}}`, ""},
 	} {
 		b.observe([]byte(step.event))
-		s := RequirementSession{ID: "terminal"}
+		s := WorkspaceSession{ID: "terminal"}
 		a.decorateSessionActivity(&s)
 		if s.ChatStatus != step.want {
 			t.Fatalf("status = %q, want %q", s.ChatStatus, step.want)
@@ -182,46 +182,46 @@ func TestSessionsDiscoverPageAndManualLaunchesAndPersistLinks(t *testing.T) {
 	_, q, _ := create(t, a, front, []string{back}, "sessions")
 	_, other, _ := create(t, a, front, nil, "another")
 	var plan model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
-	if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/launch", nil); code != 200 {
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
+	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/launch", nil); code != 200 {
 		t.Fatalf("launch %d %s", code, raw)
 	}
 	sessions := map[string]codex.Session{
 		"page":    {ID: "page", Cwd: plan.Cwd, Name: "页面启动", UpdatedAt: 100},
 		"shell":   {ID: "shell", Cwd: plan.AdditionalDirectories[0], Preview: "终端启动", UpdatedAt: 200},
 		"outside": {ID: "outside", Cwd: t.TempDir(), Name: "外部对话", UpdatedAt: 300},
-		"other":   {ID: "other", Cwd: other.Members[0].Path, Name: "其他任务"},
+		"other":   {ID: "other", Cwd: other.Members[0].Path, Name: "其他工作区"},
 	}
 	fakeSessions(a, sessions)
-	got := getRequirementSessions(t, a, q.ID)
+	got := getWorkspaceSessions(t, a, q.ID)
 	if len(got) != 2 || got[0].ID != "shell" || got[1].ID != "page" || !got[0].Available || got[0].Source != "workspace" {
 		t.Fatalf("discovery %+v", got)
 	}
 	for i := 0; i < 2; i++ {
-		if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions", map[string]string{"session_id": "outside"}); code != 200 {
+		if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions", map[string]string{"session_id": "outside"}); code != 200 {
 			t.Fatalf("link %d %s", code, raw)
 		}
 	}
-	got = getRequirementSessions(t, a, q.ID)
+	got = getWorkspaceSessions(t, a, q.ID)
 	if len(got) != 3 || got[0].ID != "outside" || got[0].Source != "manual" {
 		t.Fatalf("manual link %+v", got)
 	}
-	// An unrelated requirement must not inherit these associations.
-	if got := getRequirementSessions(t, a, other.ID); len(got) != 1 || got[0].ID != "other" {
-		t.Fatalf("cross-requirement association %+v", got)
+	// An unrelated workspace must not inherit these associations.
+	if got := getWorkspaceSessions(t, a, other.ID); len(got) != 1 || got[0].ID != "other" {
+		t.Fatalf("cross-workspace association %+v", got)
 	}
-	reopened, err := openApp(a.Workspace.DataDir, a.Workspace.Root)
+	reopened, err := openApp(a.Execution.DataDir, a.Execution.Root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Workspace.Store.DB.Close()
+	defer reopened.Execution.Store.DB.Close()
 	fakeSessions(reopened, sessions)
-	got = getRequirementSessions(t, reopened, q.ID)
+	got = getWorkspaceSessions(t, reopened, q.ID)
 	if len(got) != 3 || got[0].Source != "manual" {
 		t.Fatalf("links lost on restart %+v", got)
 	}
 	delete(sessions, "outside")
-	got = getRequirementSessions(t, reopened, q.ID)
+	got = getWorkspaceSessions(t, reopened, q.ID)
 	if len(got) != 3 || got[0].Available || got[0].Error == "" {
 		t.Fatalf("missing session not retained %+v", got)
 	}
@@ -238,12 +238,12 @@ func TestSessionResumePreservesOriginalDirectoryAndGuardsWorkspace(t *testing.T)
 	fakeSessions(a, sessions)
 	launches := 0
 	var plan model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { launches++; plan = p; return nil }
-	endpoint := "/api/requirements/" + q.ID + "/sessions/" + strings.ReplaceAll(strings.ReplaceAll(id, " ", "%20"), "'", "%27") + "/resume"
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { launches++; plan = p; return nil }
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/" + strings.ReplaceAll(strings.ReplaceAll(id, " ", "%20"), "'", "%27") + "/resume"
 	if code, _ := call(t, a, "POST", endpoint, nil); code != 404 {
 		t.Fatalf("unlinked session accepted %d", code)
 	}
-	if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions", map[string]string{"session_id": id}); code != 200 {
+	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions", map[string]string{"session_id": id}); code != 200 {
 		t.Fatalf("link %d %s", code, raw)
 	}
 	if code, raw := call(t, a, "POST", endpoint, nil); code != 200 {
@@ -320,7 +320,7 @@ func TestSessionPaginationAndPickerSearch(t *testing.T) {
 			return codex.SessionPage{Data: []codex.Session{{ID: "two", Cwd: q.Path}, {ID: "foreign", Cwd: q.Path + "-other"}}}, nil
 		}}, nil
 	}
-	if got := getRequirementSessions(t, a, q.ID); len(got) != 2 || requests != 2 {
+	if got := getWorkspaceSessions(t, a, q.ID); len(got) != 2 || requests != 2 {
 		t.Fatalf("pagination %+v %d", got, requests)
 	}
 	code, raw := call(t, a, "GET", "/api/codex/sessions?cursor=opaque&search=test%20title", nil)
@@ -340,13 +340,13 @@ func TestSessionErrorsAreVisibleAndDoNotLaunch(t *testing.T) {
 	if err := a.SaveSession(q.ID, codex.Session{ID: "cached", Cwd: q.Path, Name: "Saved session"}, "manual"); err != nil {
 		t.Fatal(err)
 	}
-	if code, raw := call(t, a, "GET", "/api/requirements/"+q.ID+"/sessions", nil); code != 200 || !strings.Contains(string(raw), "Codex unavailable") || !strings.Contains(string(raw), "Saved session") || !strings.Contains(string(raw), `"available":false`) {
+	if code, raw := call(t, a, "GET", "/api/workspaces/"+q.ID+"/sessions", nil); code != 200 || !strings.Contains(string(raw), "Codex unavailable") || !strings.Contains(string(raw), "Saved session") || !strings.Contains(string(raw), `"available":false`) {
 		t.Fatalf("%d %s", code, raw)
 	}
-	if code, _ := call(t, a, "GET", "/api/requirements/missing/sessions", nil); code != 404 {
+	if code, _ := call(t, a, "GET", "/api/workspaces/missing/sessions", nil); code != 404 {
 		t.Fatal(code)
 	}
-	if code, _ := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions", map[string]string{"session_id": ""}); code != 400 {
+	if code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions", map[string]string{"session_id": ""}); code != 400 {
 		t.Fatal(code)
 	}
 }

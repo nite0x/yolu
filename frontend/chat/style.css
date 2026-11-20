@@ -19,7 +19,7 @@
 }
 
 /* The official registry components expect Preflight. Keep its essential reset
-   local to this panel so the existing project/task pages retain their CSS. */
+   local to this panel so the existing project/workspace pages retain their CSS. */
 .assistant-chat-scope :where(*, ::before, ::after) { border-width: 0; border-style: solid; border-color: var(--border); }
 .assistant-chat-scope :where(h1, h2, h3, h4, h5, h6, p, pre, blockquote, ul, ol, figure) { margin: 0; }
 .assistant-chat-scope :where(button, input, select, textarea) { margin: 0; color: inherit; font: inherit; }
@@ -36,7 +36,7 @@
 .chat-panel-directory { flex: 1; display: flex; gap: 8px; min-width: 0; color: var(--muted-foreground); font-size: 11px; }
 .chat-panel-directory > span:last-child { font-family: var(--font-mono); }
 .chat-workspace-kind { padding: 2px 6px; border-radius: 4px; background: var(--muted); white-space: nowrap; }
-.chat-workspace-task { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-workspace-link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-workspace-context > dl { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); }
 .chat-workspace-resume { margin-top: 8px; }
 .chat-context-trigger { max-width: min(100%, 340px); min-width: 0; height: 28px; flex-shrink: 1; padding: 0 6px; font-size: 11px; color: var(--muted-foreground); }
@@ -97,7 +97,7 @@
   .chat-menu-secondary-action { display: flex; }
 }
 
-/* Composer footer follows the task flow: attachments and permissions on the
+/* Composer footer follows the workspace flow: attachments and permissions on the
    left, model settings and send/stop actions on the right. */
 .assistant-chat-scope [data-slot="aui_composer-shell"] { border-radius: 22px; background: var(--background); box-shadow: 0 2px 10px #00000005; padding: 12px; gap: 12px; }
 .assistant-chat-scope .aui-composer-input { min-height: 58px; padding: 4px 8px; }

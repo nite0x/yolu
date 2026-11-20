@@ -12,7 +12,7 @@ export function mountTerminalSurface(command: (command: string) => void) {
     <div id="terminalKind"><ConversationKindSwitch kind="terminal" uiID="terminalKindUI" /></div>
     <div id="terminalDirectoryChoicesField" className="terminal-directory-choices"><span id="terminalDirectoryChoicesLabel">{uiText("工作目录")}</span><div id="terminalDirectoryChoices" className="creation-choices" role="group" aria-labelledby="terminalDirectoryChoicesLabel" /><select id="terminalDirectory" form="terminalForm" hidden aria-label={uiText("工作目录")} /></div>
     <ConversationHeader title={uiText("新建对话")} titleID="terminalTitle"
-      tasks={<nav className="chat-workspace-tasks" aria-label={uiText("关联任务详情")}><span>{uiText("任务")}</span><button id="terminalContext" className="chat-workspace-link" type="button">{uiText("请选择任务")}</button></nav>}
+      workspaces={<nav className="chat-workspace-links" aria-label={uiText("关联工作区详情")}><span>{uiText("关联工作区")}</span><button id="terminalContext" className="chat-workspace-link" type="button">{uiText("请选择工作区")}</button></nav>}
       actions={<>
         <ConversationStatusBadge id="terminalStatusBadge" hidden><span className="chat-status-dot" aria-hidden="true" /><span id="terminalStatus">{uiText("正在连接…")}</span></ConversationStatusBadge>
         <span id="terminalRuntimeActions" className="terminal-runtime-actions" hidden>
@@ -34,10 +34,10 @@ export function mountTerminalSurface(command: (command: string) => void) {
         </span>
         <ConversationPaneButtons split canZoom zoomed={false} command={command} zoomID="zoomTerminal" closeID="closeTerminalView" />
       </>}>
-      <details id="terminalWorkspace" className="chat-workspace-context">
+      <details id="terminalDirectoryContext" className="chat-workspace-context">
         <summary><span className="chat-workspace-project"><Folder aria-hidden="true" /><span id="terminalDirectoryName">{uiText("工作目录")}</span></span><span id="terminalBranch" className="chat-workspace-branch" hidden><GitBranch aria-hidden="true" /><span id="terminalBranchName" /></span></summary>
         <div className="terminal-workspace-fields">
-          <label>{uiText("任务")}<select id="terminalTask" form="terminalForm" required /></label>
+          <label>{uiText("选择工作区")}<select id="terminalWorkspace" form="terminalForm" required /></label>
           <small id="terminalDirectoryPath" />
         </div>
       </details>

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Check, Feedback, NativeSelect, Option } from "./workspace/shared"
-import { ProjectForm, TaskForm, TaskProjectsForm, TaskEditForm, TaskDirectoryForm, WorktreeForm, GitDialog } from "./workspace/forms"
+import { ProjectForm, WorkspaceForm, WorkspaceProjectsForm, WorkspaceEditForm, WorkspaceDirectoryForm, WorktreeForm, GitDialog } from "./workspace/forms"
 import { workspaceUI } from "./workspace/renderers"
 import { SettingsPage, EnvironmentForm } from "./workspace/settings"
 import { SessionPickerDialog, CommandOutputDialog } from "./workspace/sessions"
@@ -16,11 +16,11 @@ import "./styles.css"
 // Load notification CSS only through the browser entry, not Node-rendered components.
 import "sonner/dist/styles.css"
 import "./workspace/interactions.css"
-import { TaskReviewDialog, ChangesDialog } from "./workspace/task-review"
+import { WorkspaceReviewDialog, ChangesDialog } from "./workspace/workspace-review"
 import { setupWorkspaceInteractions, mountWorkspaceToaster } from "./workspace/interactions"
 import { mountWorkspaceSidebar } from "./workspace/sidebar"
 import { setupWorkspacePanels } from "./workspace/resizable"
-import { ListCreateButton, ListFilter, ListSearch } from "./workspace/list-controls"
+import { ListCreateButton, ListFilter, ListSearch, ResourceSwitcherTrigger, ResourceSwitcherDialog } from "./workspace/list-controls"
 
 function CommandDialog() {
   return (
@@ -56,26 +56,28 @@ function mount(id: string, content: ReactNode) {
 }
 
 window.WorkHubUI = workspaceUI
-mount("searchField", <ListSearch input="search" label={uiText("搜索")} placeholder={uiText("搜索任务名称、说明…")} clear={{ id:"clearListSearch" }} filter={
-  <ListFilter id="taskListFilters" label={uiText("筛选")}>
-    <div id="archiveFilterWrap" /><div id="taskStatusFilterWrap" />
-    <div id="desktopProjectFilters" hidden><div id="projectEnvironmentSlot" /><div id="projectListFilterSlot" /></div>
+mount("searchField", <ListSearch input="search" label={uiText("搜索")} placeholder={uiText("搜索工作区名称、说明…")} clear={{ id:"clearListSearch" }} filter={
+  <ListFilter id="workspaceListFilters" label={uiText("筛选")}>
+    <div id="archiveFilterWrap" /><div id="workspaceStatusFilterWrap" />
+    <div id="projectListFilters" hidden><div id="projectEnvironmentSlot" /><div id="projectListFilterSlot" /></div>
   </ListFilter>
 } />)
 mount("commandDialog", <CommandDialog />)
 mount("toast", <ToastContent />)
-mount("newTaskButton", <ListCreateButton id="newButton" label={uiText("创建任务")} />)
-mount("projectAddButton", <ListCreateButton data-action="new-project" label={uiText("添加项目")} />)
+mount("workspaceSwitcherTrigger", <ResourceSwitcherTrigger kind="workspace" />)
+mount("resourceSwitcher", <ResourceSwitcherDialog />)
+mount("newWorkspaceButton", <ListCreateButton id="newButton" showLabel label={uiText("创建工作区")} />)
+mount("projectAddButton", <ListCreateButton data-action="new-project" showLabel label={uiText("添加项目")} />)
 mount("refreshControl", <Button type="button" id="refreshButton" variant="ghost" size="icon-sm" title={uiText("刷新 Git 状态")} aria-label={uiText("刷新 Git 状态")}><RotateCw aria-hidden="true" /></Button>)
 mount("archiveFilterWrap", <Check id="archiveFilter" label={uiText("显示归档")} />)
-mount("taskStatusFilterWrap", <label className="flex items-center gap-2 text-sm"><span className="sr-only">{uiText("筛选工作目录状态")}</span><NativeSelect id="taskStatusFilter" aria-label={uiText("筛选工作目录状态")}><Option value="all">{uiText("全部状态")}</Option><Option value="issues">{uiText("目录异常")}</Option><Option value="dirty">{uiText("有改动")}</Option><Option value="push">{uiText("待推送")}</Option><Option value="conflicts">{uiText("Git 操作待处理")}</Option></NativeSelect></label>)
+mount("workspaceStatusFilterWrap", <label className="flex items-center gap-2 text-sm"><span className="sr-only">{uiText("筛选工作目录状态")}</span><NativeSelect id="workspaceStatusFilter" aria-label={uiText("筛选工作目录状态")}><Option value="all">{uiText("全部状态")}</Option><Option value="issues">{uiText("目录异常")}</Option><Option value="dirty">{uiText("有改动")}</Option><Option value="push">{uiText("待推送")}</Option><Option value="conflicts">{uiText("Git 操作待处理")}</Option></NativeSelect></label>)
 mount("projectEnvironmentWrap", <label className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground"><span className="shrink-0 whitespace-nowrap">{uiText("项目环境")}</span><NativeSelect id="projectEnvironment" aria-label={uiText("项目环境")}><Option value="local">{uiText("本机")}</Option></NativeSelect></label>)
 mount("offlineFeedback", <Feedback id="offlineBanner" variant="destructive" className="mb-4" hidden />)
 mount("projectDialog", <ProjectForm />)
-mount("requirementDialog", <TaskForm />)
-mount("requirementProjectsDialog", <TaskProjectsForm />)
-mount("taskEditDialog", <TaskEditForm />)
-mount("taskDirectoryDialog", <TaskDirectoryForm />)
+mount("workspaceDialog", <WorkspaceForm />)
+mount("workspaceProjectsDialog", <WorkspaceProjectsForm />)
+mount("workspaceEditDialog", <WorkspaceEditForm />)
+mount("workspaceDirectoryDialog", <WorkspaceDirectoryForm />)
 mount("worktreeDialog", <WorktreeForm />)
 mount("gitDialog", <GitDialog />)
 mount("settingsPage", <SettingsPage />)
@@ -83,7 +85,7 @@ mount("environmentDialog", <EnvironmentForm />)
 mount("sessionDialog", <SessionPickerDialog />)
 mount("sessionCommandOutputDialog", <CommandOutputDialog />)
 mount("sessionPageMount", <SessionBrowser />)
-mount("taskReviewDialog", <TaskReviewDialog />)
+mount("workspaceReviewDialog", <WorkspaceReviewDialog />)
 mount("changesDialog", <ChangesDialog />)
 setupWorkspaceInteractions()
 mountWorkspaceToaster()

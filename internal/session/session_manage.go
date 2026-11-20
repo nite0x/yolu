@@ -8,6 +8,7 @@ import (
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 )
 
 func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +30,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	switch input.Action {
 	case "pin", "unpin":
-		if err := a.Workspace.Store.OrganizeSession(record.ID, input.Action == "pin", record.Archived); err != nil {
+		if err := a.Execution.Store.OrganizeSession(record.ID, input.Action == "pin", record.Archived); err != nil {
 			httpx.DbError(w, err)
 			return
 		}
@@ -38,6 +39,32 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 		if input.Action == "rename" && (input.Name == "" || len([]rune(input.Name)) > 160) {
 			httpx.WriteError(w, 400, "请输入 1–160 字的对话名称")
 			return
+		}
+		if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
+			if input.Action == "fork" {
+				httpx.WriteError(w, 400, "Antigravity 对话暂不支持从历史分叉")
+				return
+			}
+			if input.Action == "archive" && a.ChatBusy(record.ID) {
+				httpx.WriteError(w, 409, "请等待本轮完成后再归档")
+				return
+			}
+			if input.Action == "rename" {
+				if err := a.Execution.Store.SetSessionTitle(record.ID, input.Name, "manual"); err != nil {
+					httpx.DbError(w, err)
+					return
+				}
+				if run := a.ChatFor(record.ID); run != nil {
+					run.change(func(s *ChatState) { s.SessionName = input.Name })
+				}
+			}
+			if input.Action == "archive" || input.Action == "restore" {
+				if err := a.Execution.Store.OrganizeSession(record.ID, record.Pinned, input.Action == "archive"); err != nil {
+					httpx.DbError(w, err)
+					return
+				}
+			}
+			break
 		}
 		if input.Action == "archive" || input.Action == "fork" {
 			if a.ChatBusy(record.ID) {
@@ -78,7 +105,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			key := "fork:" + record.ID + ":" + input.RequestID
 			var existing, fingerprint string
-			err := a.Workspace.Store.DB.QueryRow(`SELECT session_id,fingerprint FROM conversation_create_requests WHERE request_id=?`, key).Scan(&existing, &fingerprint)
+			err := a.Execution.Store.DB.QueryRow(`SELECT session_id,fingerprint FROM conversation_create_requests WHERE request_id=?`, key).Scan(&existing, &fingerprint)
 			if err == nil {
 				if fingerprint != input.TurnID {
 					httpx.WriteError(w, 409, "分叉请求已用于其他轮次")
@@ -95,7 +122,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 				httpx.DbError(w, err)
 				return
 			}
-			if _, err := a.Workspace.Store.DB.Exec(`INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, input.TurnID); err != nil {
+			if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, input.TurnID); err != nil {
 				httpx.DbError(w, err)
 				return
 			}
@@ -127,11 +154,11 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 				httpx.DbError(w, err)
 				return
 			}
-			if err := a.Workspace.Store.SaveSessionDirectories(result.Thread.ID, record.AdditionalDirectories); err != nil {
+			if err := a.Execution.Store.SaveSessionDirectories(result.Thread.ID, record.AdditionalDirectories); err != nil {
 				httpx.DbError(w, err)
 				return
 			}
-			if _, err := a.Workspace.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, result.Thread.ID, key); err != nil {
+			if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, result.Thread.ID, key); err != nil {
 				httpx.DbError(w, err)
 				return
 			}
@@ -143,7 +170,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if input.Action == "rename" {
-			if err := a.Workspace.Store.SetSessionTitle(record.ID, input.Name, "manual"); err != nil {
+			if err := a.Execution.Store.SetSessionTitle(record.ID, input.Name, "manual"); err != nil {
 				httpx.DbError(w, err)
 				return
 			}
@@ -152,7 +179,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if input.Action == "archive" || input.Action == "restore" {
-			if err := a.Workspace.Store.OrganizeSession(record.ID, record.Pinned, input.Action == "archive"); err != nil {
+			if err := a.Execution.Store.OrganizeSession(record.ID, record.Pinned, input.Action == "archive"); err != nil {
 				httpx.DbError(w, err)
 				return
 			}
@@ -161,7 +188,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 400, "不支持的对话操作")
 		return
 	}
-	result, err := a.Workspace.Store.Session(record.ID)
+	result, err := a.Execution.Store.Session(record.ID)
 	if err != nil {
 		httpx.DbError(w, err)
 		return

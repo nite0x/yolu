@@ -11,27 +11,27 @@ import (
 	"testing"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/project"
-	"worktree-hub/internal/task"
 	"worktree-hub/internal/testutil"
 	"worktree-hub/internal/workspace"
 )
 
 type App struct {
 	*Service
-	Projects *project.Service
-	Tasks    *task.Service
-	token    string
+	Projects   *project.Service
+	Workspaces *workspace.Service
+	token      string
 }
 
 func openApp(dataDir, root string) (*App, error) {
-	env, err := workspace.Open(dataDir, root, nil)
+	env, err := execution.Open(dataDir, root, nil)
 	if err != nil {
 		return nil, err
 	}
-	tasks := task.New(env)
-	return &App{Service: New(env, tasks), Projects: project.New(env), Tasks: tasks, token: model.NewID()}, nil
+	workspaces := workspace.New(env)
+	return &App{Service: New(env, workspaces), Projects: project.New(env), Workspaces: workspaces, token: model.NewID()}, nil
 }
 
 func testApp(t *testing.T) *App {
@@ -45,12 +45,12 @@ func testApp(t *testing.T) *App {
 	a.openTitleLive = func(context.Context) (codex.LiveClient, error) {
 		return nil, fmt.Errorf("title generation is mocked in tests")
 	}
-	t.Cleanup(func() { a.CloseChats(); a.CloseBridges(); a.Projects.Close(); a.Workspace.Close() })
+	t.Cleanup(func() { a.CloseChats(); a.CloseBridges(); a.Projects.Close(); a.Execution.Close() })
 	return a
 }
 
 func (a *App) handler() http.Handler {
-	return testutil.Handler(a.Workspace, a.token, a.Projects, a.Projects.RegisterRoutes, func(mux *http.ServeMux) { a.Tasks.RegisterRoutes(mux, a.Projects.InvalidateStateAfter) }, a.RegisterRoutes)
+	return testutil.Handler(a.Execution, a.token, a.Projects, a.Projects.RegisterRoutes, func(mux *http.ServeMux) { a.Workspaces.RegisterRoutes(mux, a.Projects.InvalidateStateAfter) }, a.RegisterRoutes)
 }
 func gitView(t *testing.T, a *App, id string) project.GitOverview {
 	t.Helper()
@@ -74,17 +74,17 @@ func TestWorkspaceAgentProcess(t *testing.T) {
 	if os.Getenv("WORKTREE_HUB_AGENT_TEST") != "1" {
 		return
 	}
-	err := workspace.RunAgent(os.Stdin, os.Stdout, workspace.AgentHooks{WatchHistory: WatchCodexHistoryRaw})
+	err := execution.RunAgent(os.Stdin, os.Stdout, execution.AgentHooks{WatchHistory: WatchCodexHistoryRaw})
 	if err != nil {
 		os.Exit(2)
 	}
 	os.Exit(0)
 }
-func testWorkspaceClient(t *testing.T) *workspace.Client {
+func testWorkspaceClient(t *testing.T) *execution.Client {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestWorkspaceAgentProcess$")
 	cmd.Env = append(os.Environ(), "WORKTREE_HUB_AGENT_TEST=1")
-	c, err := workspace.StartClient(cmd)
+	c, err := execution.StartClient(cmd)
 	if err != nil {
 		t.Fatal(err)
 	}

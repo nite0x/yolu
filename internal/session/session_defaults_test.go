@@ -28,7 +28,7 @@ func (c *nativeDefaultsClient) Call(ctx context.Context, method string, params, 
 func TestNewConversationInheritsNativeModelEffortAndPermissions(t *testing.T) {
 	a, q, base, _ := chatFixture(t)
 	a.openLive = func(context.Context) (codex.LiveClient, error) { return &nativeDefaultsClient{base}, nil }
-	if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", map[string]string{"text": "Use the environment configuration", "request_id": "native-defaults"}); code != 202 {
+	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "Use the environment configuration", "request_id": "native-defaults"}); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	state := awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
@@ -69,7 +69,7 @@ func TestConversationPreferencesPersistValidateAndResetOffline(t *testing.T) {
 	if code, raw := call(t, a, "PUT", endpoint, desired); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
-	restored := New(a.Workspace, a.Tasks)
+	restored := New(a.Execution, a.Workspaces)
 	t.Cleanup(restored.Close)
 	got, err := restored.conversationPreferences(context.Background())
 	if err != nil || got.Model != "model" || got.Permission != "ask" {
@@ -122,7 +122,7 @@ func TestNewConversationPreferencesPreserveExplicitChoices(t *testing.T) {
 			if explicit {
 				body["settings"] = TurnSettings{Model: "model", Permission: "ask", Effort: "high"}
 			}
-			if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", body); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", body); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			state := awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
@@ -144,7 +144,7 @@ func TestNewConversationPreferencesPreserveExplicitChoices(t *testing.T) {
 
 func TestConversationDefaultsNeverOverrideExistingSession(t *testing.T) {
 	a, _, base, endpoint := chatFixture(t)
-	if _, err := a.Workspace.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('conversation_defaults:v1','{"model":"missing","permission":"full"}')`); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('conversation_defaults:v1','{"model":"missing","permission":"full"}')`); err != nil {
 		t.Fatal(err)
 	}
 	startFakeChat(t, a, endpoint)
@@ -159,16 +159,16 @@ func TestConversationDefaultsNeverOverrideExistingSession(t *testing.T) {
 
 func TestUnavailableDefaultModelDoesNotLeaveCreationReceipt(t *testing.T) {
 	a, q, base, _ := chatFixture(t)
-	if _, err := a.Workspace.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('conversation_defaults:v1','{"model":"missing"}')`); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('conversation_defaults:v1','{"model":"missing"}')`); err != nil {
 		t.Fatal(err)
 	}
-	endpoint := "/api/requirements/" + q.ID + "/sessions/new"
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
 	body := map[string]string{"text": "Check unavailable model", "request_id": "missing-model"}
 	if code, raw := call(t, a, "POST", endpoint, body); code != 400 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	var count int
-	if err := a.Workspace.Store.DB.QueryRow(`SELECT count(*) FROM conversation_create_requests`).Scan(&count); err != nil || count != 0 {
+	if err := a.Execution.Store.DB.QueryRow(`SELECT count(*) FROM conversation_create_requests`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("creation receipt persisted before validation", count, err)
 	}
 	base.mu.Lock()
@@ -177,7 +177,7 @@ func TestUnavailableDefaultModelDoesNotLeaveCreationReceipt(t *testing.T) {
 	if started {
 		t.Fatal("created a thread with an unavailable default")
 	}
-	if _, err := a.Workspace.Store.DB.Exec(`DELETE FROM settings WHERE key='conversation_defaults:v1'`); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`DELETE FROM settings WHERE key='conversation_defaults:v1'`); err != nil {
 		t.Fatal(err)
 	}
 	if code, raw := call(t, a, "POST", endpoint, body); code != 202 {

@@ -231,7 +231,7 @@ func TestManageSessionsRenamesPinsArchivesAndRestores(t *testing.T) {
 	if !archived || name != "新名称" {
 		t.Fatal(name, archived)
 	}
-	record, _ := a.Workspace.Store.Session("session")
+	record, _ := a.Execution.Store.Session("session")
 	if !record.Pinned || !record.Archived {
 		t.Fatal(record)
 	}
@@ -246,7 +246,7 @@ func TestManageSessionsRenamesPinsArchivesAndRestores(t *testing.T) {
 	if code, raw := call(t, a, "POST", "/api/sessions/session/manage", map[string]any{"action": "restore"}); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
-	record, _ = a.Workspace.Store.Session("session")
+	record, _ = a.Execution.Store.Session("session")
 	if record.Archived || !record.Pinned {
 		t.Fatal(record)
 	}
@@ -258,7 +258,7 @@ func TestManageSessionsRenamesPinsArchivesAndRestores(t *testing.T) {
 func TestForkPreservesDirectorySnapshotAndIsIdempotent(t *testing.T) {
 	a, _, _, _ := chatFixture(t)
 	forks := 0
-	if err := a.Workspace.Store.SaveSessionDirectories("session", []string{"/extra"}); err != nil {
+	if err := a.Execution.Store.SaveSessionDirectories("session", []string{"/extra"}); err != nil {
 		t.Fatal(err)
 	}
 	a.openSessions = func(context.Context) (codex.SessionClient, error) {
@@ -288,7 +288,7 @@ func TestForkPreservesDirectorySnapshotAndIsIdempotent(t *testing.T) {
 	if forks != 1 {
 		t.Fatal("duplicate fork", forks)
 	}
-	forked, _ := a.Workspace.Store.Session("forked")
+	forked, _ := a.Execution.Store.Session("forked")
 	if !reflect.DeepEqual(forked.AdditionalDirectories, []string{"/extra"}) {
 		t.Fatal(forked)
 	}

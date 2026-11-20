@@ -12,10 +12,11 @@ import (
 	"time"
 
 	"worktree-hub/internal/assistant"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/project"
+	"worktree-hub/internal/session"
 	"worktree-hub/internal/store"
-	"worktree-hub/internal/task"
 	"worktree-hub/internal/workspace"
 )
 
@@ -35,13 +36,13 @@ func (a *App) withAssistantEnvironment(ctx context.Context, id string, connect b
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if a.Workspace.Closing.Load() {
+	if a.Execution.Closing.Load() {
 		return assistantFailure("environment_unavailable", "执行环境正在退出，请稍后重新打开应用。")
 	}
 	if id == "" || id == "local" {
 		a.assistantUse.RLock()
 		defer a.assistantUse.RUnlock()
-		if a.Workspace.Closing.Load() {
+		if a.Execution.Closing.Load() {
 			return assistantFailure("environment_unavailable", "执行环境正在退出，请稍后重新打开应用。")
 		}
 		return call(ctx, a)
@@ -51,7 +52,7 @@ func (a *App) withAssistantEnvironment(ctx context.Context, id string, connect b
 		return assistantFailure("environment_unavailable", "执行环境不存在，请重新选择。")
 	}
 	h.mu.Lock()
-	if h.local.Workspace.Closing.Load() {
+	if h.local.Execution.Closing.Load() {
 		h.mu.Unlock()
 		return assistantFailure("environment_unavailable", "执行环境正在退出，请稍后重新打开应用。")
 	}
@@ -81,7 +82,7 @@ func (a *App) withAssistantEnvironment(ctx context.Context, id string, connect b
 	}
 	// Capture a lifetime lease while the hub still owns this app. Never wait
 	// for teardown with the hub mutex held: active callbacks can query the hub.
-	if env.Workspace.Closing.Load() || !env.assistantUse.TryRLock() {
+	if env.Execution.Closing.Load() || !env.assistantUse.TryRLock() {
 		h.mu.Unlock()
 		return assistantFailure("environment_unavailable", "执行环境正在退出，请稍后重新连接。")
 	}
@@ -90,15 +91,15 @@ func (a *App) withAssistantEnvironment(ctx context.Context, id string, connect b
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if env.Workspace.Closing.Load() {
+	if env.Execution.Closing.Load() {
 		return assistantFailure("environment_unavailable", "执行环境正在退出，请稍后重新连接。")
 	}
-	if env.Workspace.Remote != nil {
+	if env.Execution.Remote != nil {
 		select {
-		case <-env.Workspace.Remote.Done():
+		case <-env.Execution.Remote.Done():
 			return assistantFailure("environment_unavailable", "执行环境已断开，请重新连接。")
 		default:
-			ctx = workspace.WithClient(ctx, env.Workspace.Remote)
+			ctx = execution.WithClient(ctx, env.Execution.Remote)
 		}
 	}
 	return call(ctx, env)
@@ -126,6 +127,20 @@ type assistantQuery struct {
 	Kind          string `json:"kind"`
 }
 
+func (q assistantQuery) page(total int) (start, end int, next string) {
+	start, _ = strconv.Atoi(q.Cursor)
+	start = min(start, total)
+	limit := q.Limit
+	if limit == 0 {
+		limit = 15
+	}
+	end = min(start+limit, total)
+	if end < total {
+		next = strconv.Itoa(end)
+	}
+	return
+}
+
 func assistantResource(kind, env, id, name, path string) assistant.Resource {
 	return assistant.Resource{Kind: kind, EnvironmentID: env, ID: id, Name: name, Path: path}
 }
@@ -138,7 +153,7 @@ func (a *App) assistantTarget(ctx context.Context, q assistantQuery) (assistant.
 	err := a.withAssistantEnvironment(ctx, q.EnvironmentID, true, func(ctx context.Context, env *App) error {
 		switch q.Kind {
 		case "project":
-			projects, err := env.Workspace.Store.ProjectMap()
+			projects, err := env.Execution.Store.ProjectMap()
 			if err != nil {
 				return err
 			}
@@ -148,13 +163,13 @@ func (a *App) assistantTarget(ctx context.Context, q assistantQuery) (assistant.
 			}
 			resource = assistantResource(q.Kind, q.EnvironmentID, p.ID, p.Name, p.Path)
 		case "workspace":
-			w, err := env.Workspace.Store.Requirement(q.ID)
+			w, err := env.Execution.Store.Workspace(q.ID)
 			if err != nil {
 				return err
 			}
 			resource = assistantResource(q.Kind, q.EnvironmentID, w.ID, w.Name, w.Path)
 		case "conversation":
-			s, err := env.Workspace.Store.Session(q.ID)
+			s, err := env.Execution.Store.Session(q.ID)
 			if err != nil {
 				return err
 			}
@@ -192,7 +207,7 @@ func (a *App) assistantContext(ctx context.Context, raw json.RawMessage) (any, e
 		resources = append(resources, resource)
 	}
 	var root string
-	err := a.withAssistantEnvironment(ctx, selection.EnvironmentID, true, func(_ context.Context, env *App) error { root = env.Workspace.Root; return nil })
+	err := a.withAssistantEnvironment(ctx, selection.EnvironmentID, true, func(_ context.Context, env *App) error { root = env.Execution.Root; return nil })
 	return map[string]any{"selection": selection, "root": root, "resources": resources, "environments": a.assistantEnvironmentIDs()}, err
 }
 
@@ -226,7 +241,7 @@ func (a *App) assistantList(ctx context.Context, kind string, raw json.RawMessag
 			}
 			switch kind {
 			case "project":
-				projects, err := env.Workspace.Store.Projects()
+				projects, err := env.Execution.Store.Projects()
 				if err != nil {
 					return err
 				}
@@ -234,7 +249,7 @@ func (a *App) assistantList(ctx context.Context, kind string, raw json.RawMessag
 					appendItem(assistantResource(kind, id, p.ID, p.Name, p.Path), map[string]any{"id": p.ID, "name": p.Name, "path": p.Path, "environment_id": id})
 				}
 			case "workspace":
-				workspaces, err := env.Workspace.Store.Requirements()
+				workspaces, err := env.Execution.Store.Workspaces()
 				if err != nil {
 					return err
 				}
@@ -245,7 +260,7 @@ func (a *App) assistantList(ctx context.Context, kind string, raw json.RawMessag
 				if err := env.Sessions.RefreshConversationCatalog(queryCtx); err != nil {
 					problems = append(problems, map[string]string{"environment_id": id, "code": "catalog_unavailable", "message": "对话发现暂时失败，当前结果使用已保存的索引，请检查记录的同步时间。"})
 				}
-				sessions, err := env.Workspace.Store.Sessions()
+				sessions, err := env.Execution.Store.Sessions()
 				if err != nil {
 					return err
 				}
@@ -259,22 +274,40 @@ func (a *App) assistantList(ctx context.Context, kind string, raw json.RawMessag
 			problems = append(problems, map[string]string{"environment_id": id, "code": "environment_unavailable", "message": "该环境的资源读取失败，请检查连接后重试。"})
 		}
 	}
-	start, _ := strconv.Atoi(q.Cursor)
-	start = min(start, len(resources))
-	limit := q.Limit
-	if limit == 0 {
-		limit = 15
-	}
-	end := min(start+limit, len(resources))
-	next := ""
-	if end < len(resources) {
-		next = strconv.Itoa(end)
-	}
+	start, end, next := q.page(len(resources))
 	choices := []assistant.Resource{}
 	if q.Query != "" && len(resources) > 1 {
 		choices = resources[start:end]
 	}
 	return map[string]any{"resources": resources[start:end], "data": items[start:end], "choices": choices, "errors": problems, "next_cursor": next, "total": len(resources)}, nil
+}
+
+func (a *App) assistantScanProjects(ctx context.Context, raw json.RawMessage) (any, error) {
+	var input struct {
+		assistantQuery
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	err := a.withAssistantEnvironment(ctx, input.EnvironmentID, true, func(ctx context.Context, env *App) error {
+		scan, err := env.Projects.ScanProjects(ctx, input.Path)
+		if err != nil {
+			return assistantOperationError(err, false)
+		}
+		matches := []execution.DiscoveredRepository{}
+		needle := strings.ToLower(input.Query)
+		for _, repo := range scan.Repositories {
+			if strings.Contains(strings.ToLower(repo.Name+" "+repo.Path), needle) {
+				matches = append(matches, repo)
+			}
+		}
+		start, end, next := input.page(len(matches))
+		result = map[string]any{"data": matches[start:end], "total": len(matches), "next_cursor": next, "truncated": scan.Truncated, "warning_count": len(scan.Warnings)}
+		return nil
+	})
+	return result, err
 }
 
 func (a *App) assistantDetail(ctx context.Context, kind string, raw json.RawMessage) (any, error) {
@@ -291,7 +324,7 @@ func (a *App) assistantDetail(ctx context.Context, kind string, raw json.RawMess
 	err = a.withAssistantEnvironment(ctx, resource.EnvironmentID, true, func(ctx context.Context, env *App) error {
 		var err error
 		if kind == "workspace" {
-			data, err = env.Workspace.Store.Requirement(q.ID)
+			data, err = env.Execution.Store.Workspace(q.ID)
 		} else {
 			data, err = env.Projects.RegisteredProject(ctx, q.ID)
 		}
@@ -325,17 +358,7 @@ func (a *App) assistantGit(ctx context.Context, raw json.RawMessage) (any, error
 		if err != nil {
 			return assistantFailure("git_unavailable", "无法读取项目 Git 状态，请打开项目检查仓库。")
 		}
-		start, _ := strconv.Atoi(q.Cursor)
-		start = min(start, len(view.Project.Worktrees))
-		limit := q.Limit
-		if limit == 0 {
-			limit = 15
-		}
-		end := min(start+limit, len(view.Project.Worktrees))
-		next := ""
-		if end < len(view.Project.Worktrees) {
-			next = strconv.Itoa(end)
-		}
+		start, end, next := q.page(len(view.Project.Worktrees))
 		// Remote URLs may contain credentials. Return bounded branch/worktree
 		// summaries and omit remotes/configuration from assistant context.
 		data = map[string]any{"project_id": p.ID, "worktrees": view.Project.Worktrees[start:end], "branches": view.Branches[:min(len(view.Branches), 50)], "branch_total": len(view.Branches), "next_cursor": next, "refreshed_at": time.Now().UnixMilli()}
@@ -357,9 +380,14 @@ func (a *App) configureAssistant() error {
 		return err
 	}
 	for _, kind := range []string{"project", "workspace", "conversation"} {
-		if err := add(kind+"_list", "Find "+kind+" resources by name, path or ID. Use query, cursor, limit and environment_id (local, all or a known environment). Show choices for ambiguous names.", querySchema(), func(ctx context.Context, raw json.RawMessage) (any, error) { return a.assistantList(ctx, kind, raw) }); err != nil {
+		if err := add(kind+"_list", "Find registered "+kind+" resources by name, path or ID. Use query (text), cursor (string returned by a previous page), limit (integer 1–30) and environment_id (local, all or a known environment). Show choices for ambiguous names.", querySchema(), func(ctx context.Context, raw json.RawMessage) (any, error) { return a.assistantList(ctx, kind, raw) }); err != nil {
 			return err
 		}
+	}
+	scanProperties := querySchema()["properties"].(map[string]any)
+	scanProperties["path"] = assistantString()
+	if err := add("project_scan", "Discover Git repositories under a user-specified absolute directory or ~/path in one execution environment. If a directory name alone is ambiguous, ask for the path. Filter by query (name or path), page with cursor and limit (1–30). A project_id identifies a registered repository. For other matches, propose project_register with the returned name and path, then use approved project IDs for workspace_create. Truncated scans or warnings can omit repositories.", assistantSchema(scanProperties, "environment_id", "path"), a.assistantScanProjects); err != nil {
+		return err
 	}
 	idSchema := assistantSchema(map[string]any{"environment_id": assistantString(), "id": assistantString()}, "id")
 	for _, kind := range []string{"project", "workspace"} {
@@ -397,7 +425,7 @@ func (a *App) configureAssistant() error {
 	if err := a.registerAssistantMutations(r); err != nil {
 		return err
 	}
-	return a.Assistant.Configure(r, func() bool { return a.Workspace.ReadOnlySessions || a.Workspace.Closing.Load() })
+	return a.Assistant.Configure(r, func() bool { return a.Execution.ReadOnlySessions || a.Execution.Closing.Load() })
 }
 
 type assistantReview struct {
@@ -417,13 +445,13 @@ func assistantOperationError(err error, executing bool) error {
 	if err == nil {
 		return nil
 	}
-	var taskErr *task.OperationError
+	var workspaceErr *workspace.OperationError
 	var projectErr *project.OperationError
 	status, message := 0, ""
 	var details []string
-	if errors.As(err, &taskErr) {
-		status, message = taskErr.Status, taskErr.Message
-		details = taskErr.Details
+	if errors.As(err, &workspaceErr) {
+		status, message = workspaceErr.Status, workspaceErr.Message
+		details = workspaceErr.Details
 	}
 	if errors.As(err, &projectErr) {
 		status, message = projectErr.Status, projectErr.Message
@@ -455,7 +483,7 @@ func assistantOperationError(err error, executing bool) error {
 	return assistantFailure("operation_failed", "应用操作未完成，请检查已记录的资源状态。")
 }
 
-func workspaceExecution(env string, q model.Requirement) assistant.ExecutionResult {
+func workspaceExecution(env string, q model.Workspace) assistant.ExecutionResult {
 	status := "succeeded"
 	if q.State != "ready" || q.ContextWarning != "" {
 		status = "partial"
@@ -474,7 +502,7 @@ func workspaceExecution(env string, q model.Requirement) assistant.ExecutionResu
 	return assistant.ExecutionResult{Status: status, Data: q, Resources: []assistant.Resource{assistantResource("workspace", env, q.ID, q.Name, q.Path)}, Steps: steps}
 }
 
-func attachmentExecution(env string, q model.Requirement, added []model.Member) assistant.ExecutionResult {
+func attachmentExecution(env string, q model.Workspace, added []model.Member) assistant.ExecutionResult {
 	result := workspaceExecution(env, q)
 	selected := map[string]bool{}
 	for _, member := range added {
@@ -495,6 +523,14 @@ func (a *App) registerAssistantMutations(r *assistant.Registry) error {
 	properties := map[string]any{"environment_id": assistantString(), "name": assistantString(), "slug": assistantString(), "description": map[string]any{"type": "string", "maxLength": 20000}, "branch": assistantString(), "primary_project_id": assistantString(), "project_ids": map[string]any{"type": "array", "items": assistantString(), "maxItems": 30}, "members": map[string]any{"type": "array", "items": member, "maxItems": 30}}
 	for _, name := range []string{"project_register", "workspace_create", "workspace_attach_project"} {
 		schema := assistantSchema(properties, "environment_id", "name")
+		if name == "workspace_create" {
+			fields := make(map[string]any, len(properties)+1)
+			for key, value := range properties {
+				fields[key] = value
+			}
+			fields["first_instruction"] = map[string]any{"type": "string", "minLength": 1, "maxLength": 64000, "description": "The first Codex message. Include it when the user specifies concrete work to carry out in the new workspace. Omit it when the user only wants to prepare the workspace or asks to defer execution."}
+			schema = assistantSchema(fields, "environment_id", "name")
+		}
 		if name == "project_register" {
 			schema = assistantSchema(map[string]any{"environment_id": assistantString(), "name": assistantString(), "path": assistantString()}, "environment_id", "path")
 		}
@@ -502,6 +538,9 @@ func (a *App) registerAssistantMutations(r *assistant.Registry) error {
 			schema = assistantSchema(map[string]any{"environment_id": assistantString(), "workspace_id": assistantString(), "project_ids": properties["project_ids"], "members": properties["members"]}, "environment_id", "workspace_id")
 		}
 		c := assistant.Capability{Name: name, Mutation: true, Description: "Prepare a reviewable " + strings.ReplaceAll(name, "_", " ") + " plan using resolved execution-side paths, commits and member modes. This only proposes a plan. Execution requires the user's UI approval. Use registered resource IDs and ask about ambiguous targets.", InputSchema: schema}
+		if name == "workspace_create" {
+			c.Description += " An optional first_instruction adds a reviewed Codex launch after all participating working directories are ready. Use it for concrete work requested by the user. A workspace name or description alone does not start Codex."
+		}
 		c.Review = func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var input struct {
 				EnvironmentID string `json:"environment_id"`
@@ -514,7 +553,7 @@ func (a *App) registerAssistantMutations(r *assistant.Registry) error {
 			}
 			var review assistantReview
 			err := a.withAssistantEnvironment(ctx, input.EnvironmentID, true, func(ctx context.Context, env *App) error {
-				if env.Workspace.ReadOnlySessions {
+				if env.Execution.ReadOnlySessions {
 					return assistantFailure("permission_denied", "目标环境处于只读模式。")
 				}
 				var operation any
@@ -523,13 +562,27 @@ func (a *App) registerAssistantMutations(r *assistant.Registry) error {
 				case "project_register":
 					operation, err = env.Projects.ReviewRegistration(ctx, input.Name, input.Path)
 				case "workspace_create":
-					var in task.CreateRequirement
-					_ = json.Unmarshal(raw, &in)
-					operation, err = env.Tasks.ReviewWorkspace(ctx, in)
+					var in struct {
+						workspace.CreateWorkspaceInput
+						FirstInstruction string `json:"first_instruction"`
+					}
+					if err := json.Unmarshal(raw, &in); err != nil {
+						return err
+					}
+					var reviewed assistantWorkspaceReview
+					reviewed.WorkspaceReview, err = env.Workspaces.ReviewWorkspace(ctx, in.CreateWorkspaceInput)
+					if err == nil && in.FirstInstruction != "" {
+						launch, launchErr := env.Sessions.ReviewWorkspaceCodexLaunch(ctx, reviewed.Workspace, in.FirstInstruction)
+						if launchErr != nil {
+							return assistantFailure("invalid_input", "无法准备 Codex 启动，请检查首条指令和对话默认设置。")
+						}
+						reviewed.Codex = &launch
+					}
+					operation = reviewed
 				case "workspace_attach_project":
-					var in task.AttachProjectsInput
+					var in workspace.AttachProjectsInput
 					_ = json.Unmarshal(raw, &in)
-					operation, err = env.Tasks.ReviewAttachProjects(ctx, input.WorkspaceID, in)
+					operation, err = env.Workspaces.ReviewAttachProjects(ctx, input.WorkspaceID, in)
 				}
 				if err != nil {
 					return assistantOperationError(err, false)
@@ -553,19 +606,27 @@ func (a *App) registerAssistantMutations(r *assistant.Registry) error {
 					return assistant.ExecutionResult{}, false, err
 				}
 				var operation struct {
-					Requirement model.Requirement `json:"requirement"`
-					Added       []model.Member    `json:"added"`
+					Workspace model.Workspace               `json:"workspace"`
+					Added     []model.Member                `json:"added"`
+					Codex     *session.WorkspaceCodexLaunch `json:"codex"`
 				}
 				if err := json.Unmarshal(review.Operation, &operation); err != nil {
 					return assistant.ExecutionResult{}, false, err
 				}
 				var result assistant.ExecutionResult
 				err := a.withAssistantEnvironment(ctx, review.EnvironmentID, false, func(_ context.Context, env *App) error {
-					q, err := env.Workspace.Store.Requirement(operation.Requirement.ID)
+					q, err := env.Execution.Store.Workspace(operation.Workspace.ID)
 					if err != nil {
 						return err
 					}
 					result = workspaceExecution(review.EnvironmentID, q)
+					if operation.Codex != nil {
+						step := store.AssistantStep{ID: "codex", Label: "conversation.start_codex", Status: "pending"}
+						if q.State == "ready" {
+							step.Status = "running"
+						}
+						result.Steps = append(result.Steps, step)
+					}
 					if name == "workspace_attach_project" {
 						result = attachmentExecution(review.EnvironmentID, q, operation.Added)
 					}
@@ -588,7 +649,7 @@ func (a *App) executeAssistantOperation(ctx context.Context, name string, raw js
 		return result, err
 	}
 	err := a.withAssistantEnvironment(ctx, review.EnvironmentID, true, func(ctx context.Context, env *App) error {
-		if !reconcile && (env.Workspace.ReadOnlySessions || env.Workspace.Closing.Load()) {
+		if !reconcile && (env.Execution.ReadOnlySessions || env.Execution.Closing.Load()) {
 			return assistantFailure("permission_denied", "目标环境当前无法执行写入操作。")
 		}
 		var err error
@@ -609,31 +670,34 @@ func (a *App) executeAssistantOperation(ctx context.Context, name string, raw js
 				result = assistant.ExecutionResult{Status: "succeeded", Data: p, Resources: []assistant.Resource{assistantResource("project", review.EnvironmentID, p.ID, p.Name, p.Path)}}
 			}
 		case "workspace_create":
-			var input task.WorkspaceReview
+			var input assistantWorkspaceReview
 			if err := json.Unmarshal(review.Operation, &input); err != nil {
 				return err
 			}
-			var q model.Requirement
+			var q model.Workspace
 			found := true
 			if reconcile {
-				q, found, err = env.Tasks.ReconcileWorkspace(ctx, input)
+				q, found, err = env.Workspaces.ReconcileWorkspace(ctx, input.WorkspaceReview)
 			} else {
-				q, err = env.Tasks.ExecuteWorkspace(ctx, input)
+				q, err = env.Workspaces.ExecuteWorkspace(ctx, input.WorkspaceReview)
 			}
 			if err == nil && found {
 				result = workspaceExecution(review.EnvironmentID, q)
+				if input.Codex != nil {
+					err = env.executeAssistantCodexLaunch(ctx, review.EnvironmentID, q, *input.Codex, reconcile, &result)
+				}
 			}
 		case "workspace_attach_project":
-			var input task.AttachmentReview
+			var input workspace.AttachmentReview
 			if err := json.Unmarshal(review.Operation, &input); err != nil {
 				return err
 			}
-			var q model.Requirement
+			var q model.Workspace
 			found := true
 			if reconcile {
-				q, found, err = env.Tasks.ReconcileAttachProjects(ctx, input)
+				q, found, err = env.Workspaces.ReconcileAttachProjects(ctx, input)
 			} else {
-				q, err = env.Tasks.ExecuteAttachProjects(ctx, input)
+				q, err = env.Workspaces.ExecuteAttachProjects(ctx, input)
 			}
 			if err == nil && found {
 				result = attachmentExecution(review.EnvironmentID, q, input.Added)

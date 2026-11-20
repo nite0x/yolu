@@ -17,16 +17,16 @@ const conversationHost = $('#sessionBrowser');
 let conversationTerminals = [], conversationTerminalLoad = null, conversationTerminalsCheckedAt = 0;
 const conversationTerminalKey = id => JSON.stringify(['terminal','local',id]);
 function conversationTerminalSnapshot(row) {
-  return {route:'/terminals',environment:'local',title:row.name,terminal:{id:row.id,taskID:row.task_id,projectID:row.project_id}};
+  return {route:'/terminals',environment:'local',title:row.name,terminal:{id:row.id,workspaceID:row.workspace_id,projectID:row.project_id}};
 }
 function conversationTerminalItems(view) {
   if (view.archived || view.environmentFilter && view.environmentFilter !== 'local' || conversationScopeEnvironment(view.scope) && conversationScopeEnvironment(view.scope) !== 'local') return [];
   return conversationTerminals.filter(row => row.state === 'running'
-    && (view.scope.kind !== 'task' || row.task_id === view.scope.id)
+    && (view.scope.kind !== 'workspace' || row.workspace_id === view.scope.id)
     && (view.scope.kind !== 'project' || row.project_id === view.scope.id)
     && (view.scope.kind !== 'directory' || conversationPathKey(row.cwd) === conversationPathKey(view.scope.cwd))
     && (!view.directory || conversationEnvironmentKey('local',conversationPathKey(row.cwd)) === view.directory || conversationPathKey(row.cwd) === conversationPathKey(view.directory)))
-    .map(row => ({id:row.id,browser_key:conversationTerminalKey(row.id),environment_id:'local',environment_name:environmentName('local'),name:row.name,cwd:row.cwd,updated_at:row.created_at,chat_status:'running',terminal:{taskID:row.task_id,projectID:row.project_id,attached:row.attached}}));
+    .map(row => ({id:row.id,browser_key:conversationTerminalKey(row.id),environment_id:'local',environment_name:environmentName('local'),name:row.name,cwd:row.cwd,updated_at:row.created_at,chat_status:'running',terminal:{workspaceID:row.workspace_id,projectID:row.project_id,attached:row.attached}}));
 }
 function refreshConversationTerminals(force = false) {
   if (sessionReadOnly || !conversationVisible() || document.documentElement.hasAttribute('data-workspace-conversation')) return;
@@ -66,7 +66,7 @@ function restoreConversationSelection(saved, title) {
 }
 function followConversationSelection(target, fallback = false) {
   if (target.route === '/terminals' && conversationState.current) {
-    const scope = target.terminal?.taskID ? {kind:'task',id:target.terminal.taskID,environment:'local'} : {kind:'all'};
+    const scope = target.terminal?.workspaceID ? {kind:'workspace',id:target.terminal.workspaceID,environment:'local'} : {kind:'all'};
     if (conversationScopeKey(scope) !== conversationScopeKey(conversationState.current.scope)) selectConversationScope(scope);
     const key = target.terminal?.id ? conversationTerminalKey(target.terminal.id) : '';
     conversationState.current.selected = key; conversationState.current.locateSelection = key;
@@ -85,11 +85,11 @@ function followConversationSelection(target, fallback = false) {
   try {const pair = JSON.parse(selected); if (Array.isArray(pair) && pair.length === 2) [environment,id] = pair;} catch {}
   const session = target.conversation.session || conversationItems(environment).find(session => session.id === id);
   const workspace = conversationWorkspace(environment);
-  const context = session?.cwd ? window.WorkHubUI.conversationContext(session.cwd,{tasks:workspace.requirements,projects:workspace.projects}) : null;
+  const context = session?.cwd ? window.WorkHubUI.conversationContext(session.cwd,{workspaces:workspace.workspaces,projects:workspace.projects}) : null;
   let scope = target.conversation.scope || {kind:'all'};
   if (scope.kind === 'all' && !fallback) {
     if (context?.projectID) scope = {kind:'project',id:context.projectID,environment};
-    else if (context?.tasks.length) scope = {kind:'task',id:context.tasks[0].id,environment};
+    else if (context?.workspaces.length) scope = {kind:'workspace',id:context.workspaces[0].id,environment};
   } else scope = {...scope,environment:scope.environment || environment};
   const sameScope = conversationScopeKey(scope) === conversationScopeKey(view.scope);
   const filtered = !!(view.search || view.directory || view.environmentFilter || view.archived !== !!session?.archived || view.statusFilter !== 'all');
@@ -99,9 +99,9 @@ function followConversationSelection(target, fallback = false) {
     conversationState.rememberPageScope(activeEnvironment,scope);
   }
   Object.assign(view,{selected,requestedSession:selected,locateSelection:selected,creating:false,pane:'list'});
-  // Directory context does not imply an explicit task link. If that task no
+  // Directory context does not imply an explicit workspace link. If that workspace no
   // longer lists the conversation, try its project and then the environment.
-  view.followTarget = scope.kind === 'all' ? null : {...target,conversation:{...target.conversation,session,scope:scope.kind === 'task' && context?.projectID ? {kind:'project',id:context.projectID,environment} : {kind:'all',environment}}};
+  view.followTarget = scope.kind === 'all' ? null : {...target,conversation:{...target.conversation,session,scope:scope.kind === 'workspace' && context?.projectID ? {kind:'project',id:context.projectID,environment} : {kind:'all',environment}}};
   if (!sameScope || filtered) {
     Object.assign(view,{search:'',directory:'',environmentFilter:'',archived:!!session?.archived,statusFilter:'all',requestID:(view.requestID || 0) + 1,requestKey:null,loading:false,checkedAt:0});
     resetConversationListWindow(view);
@@ -112,15 +112,15 @@ function followConversationSelection(target, fallback = false) {
   rememberConversationView();
 }
 function conversationEnvironments() {
-  const entries = [...taskInventory.environments, ...(typeof environmentInventory === 'undefined' ? [] : environmentInventory)];
+  const entries = [...workspaceInventory.environments, ...(typeof environmentInventory === 'undefined' ? [] : environmentInventory)];
   return [...new Map([{id: 'local', name: environmentName('local')}, ...entries].map(e => [e.id, e])).values()];
 }
 function conversationWorkspace(environment) {
-  return environment === activeEnvironment ? state : conversationState.workspace(environment) || {projects: [], requirements: []};
+  return environment === activeEnvironment ? state : conversationState.workspace(environment) || {projects: [], workspaces: []};
 }
 function conversationScopeEnvironment(scope) {
   if (scope.environment) return scope.environment;
-  if (scope.kind === 'task') return (taskInventory.loaded ? taskInventory.requirements : state.requirements).find(t => t.id === scope.id)?.environment_id || activeEnvironment;
+  if (scope.kind === 'workspace') return (workspaceInventory.loaded ? workspaceInventory.workspaces : state.workspaces).find(t => t.id === scope.id)?.environment_id || activeEnvironment;
   return scope.kind === 'all' ? '' : activeEnvironment;
 }
 function conversationTaggedSession(session, environment) {
@@ -129,9 +129,9 @@ function conversationTaggedSession(session, environment) {
 function conversationListedSessions(result, environment) {
   return (Array.isArray(result.sessions) ? result.sessions : []).map(session => {
     const tagged = conversationTaggedSession(session, environment);
-    if (result.task_sessions) {
-      const tasks = result.task_sessions[session.id];
-      tagged.task_ids = Array.isArray(tasks) ? tasks : [];
+    if (result.workspace_sessions) {
+      const workspaces = result.workspace_sessions[session.id];
+      tagged.workspace_ids = Array.isArray(workspaces) ? workspaces : [];
     }
     return tagged;
   });
@@ -148,7 +148,7 @@ const shortcutPins = window.WorkHubUI.createShortcutPins({
   changed: () => { renderConversationShortcuts(); updateDirectoryPinButton(); },
   failed: message => toast(message, true),
 });
-function pinnedTaskIDs(environment = activeEnvironment) { return shortcutPins.tasks(environment); }
+function pinnedWorkspaceIDs(environment = activeEnvironment) { return shortcutPins.workspaces(environment); }
 function pinnedDirectoryPaths(environment = activeEnvironment) { return shortcutPins.directories(environment); }
 function loadShortcutPins(environment) { return shortcutPins.load(environment); }
 function saveShortcutPins(environment) { return shortcutPins.save(environment); }
@@ -158,14 +158,14 @@ function shortcutPickerState() {
   return shortcutPickerStates.get(key);
 }
 function closeShortcutPicker(restoreFocus = false) {
-  const picker = $('#taskShortcutPicker');
+  const picker = $('#workspaceShortcutPicker');
   if (!picker?.open) return;
   picker.open = false;
   syncShortcutPickerPanel();
   if (restoreFocus) picker.querySelector('summary').focus({preventScroll:true});
 }
 function syncShortcutPickerPanel() {
-  const picker = $('#taskShortcutPicker');
+  const picker = $('#workspaceShortcutPicker');
   const panel = $('#shortcutPickerPanel');
   // The native top layer escapes the sidebar's scrolling and clipping boundary.
   if (!panel) return;
@@ -187,11 +187,11 @@ function syncShortcutPickerPanel() {
 function syncConversationScopePanel() {
   window.WorkHubUI.syncListFilter($('#sessionScopePicker'), conversationVisible());
 }
-function shortcutTasks(includeArchived = false) {
-  const tasks = taskInventory.loaded ? taskInventory.requirements : state.requirements;
-  return tasks.filter(task => includeArchived || task.state !== 'archived');
+function shortcutWorkspaces(includeArchived = false) {
+  const workspaces = workspaceInventory.loaded ? workspaceInventory.workspaces : state.workspaces;
+  return workspaces.filter(workspace => includeArchived || workspace.state !== 'archived');
 }
-function shortcutTaskKey(task) { return conversationEnvironmentKey(task.environment_id || activeEnvironment, task.id); }
+function shortcutWorkspaceKey(workspace) { return conversationEnvironmentKey(workspace.environment_id || activeEnvironment, workspace.id); }
 function shortcutDirectories() {
   const paths = conversationDirectories({kind: 'all'}, '').filter(d => d.target).map(d => ({cwd: d.cwd, environment: d.environment}));
   for (const entry of conversationEnvironments()) for (const cwd of pinnedDirectoryPaths(entry.id)) paths.push({cwd, environment: entry.id});
@@ -205,37 +205,37 @@ function shortcutDirectories() {
 function renderConversationShortcuts() {
   if (!window.document) return;
   const host = $('#conversationShortcuts');
-  const tasks = shortcutTasks(true);
+  const workspaces = shortcutWorkspaces(true);
   const directories = shortcutDirectories();
   const selectedScope = conversationVisible() && conversationState.current?.environment === activeEnvironment ? conversationState.current.scope : null;
   const markup = window.WorkHubUI.conversationShortcuts({
-    tasks: tasks.map(task => ({id:shortcutTaskKey(task), name:task.name, appearance:shortcutPins.icons(task.environment_id || activeEnvironment)?.["task:" + task.id], projects:[...new Set(task.members.map(m => m.project_name))].join(' · '), environment: environmentName(task.environment_id || activeEnvironment), pinned:pinnedTaskIDs(task.environment_id || activeEnvironment).includes(task.id), archived:task.state === 'archived'})),
+    workspaces: workspaces.map(workspace => ({id:shortcutWorkspaceKey(workspace), name:workspace.name, appearance:shortcutPins.icons(workspace.environment_id || activeEnvironment)?.["workspace:" + workspace.id], projects:[...new Set(workspace.members.map(m => m.project_name))].join(' · '), environment: environmentName(workspace.environment_id || activeEnvironment), pinned:pinnedWorkspaceIDs(workspace.environment_id || activeEnvironment).includes(workspace.id), archived:workspace.state === 'archived'})),
     directories,
     pinnedDirectories: directories.filter(d => d.pinned),
     kind: host.dataset.shortcutKind,
     desktopRail: document.documentElement.hasAttribute('data-workhub-desktop'),
-    selected: selectedScope?.kind === 'task' ? conversationEnvironmentKey(selectedScope.environment, selectedScope.id) : null,
+    selected: selectedScope?.kind === 'workspace' ? conversationEnvironmentKey(selectedScope.environment, selectedScope.id) : null,
     selectedDirectory: selectedScope?.kind === 'directory' ? directories.find(directory => directory.environment === selectedScope.environment && conversationPathKey(directory.cwd) === conversationPathKey(selectedScope.cwd))?.key : null,
     ...shortcutPickerState(), environment: uiText("全部环境"),
   });
   if (host.dataset.markup !== markup) {
-    const expanded = host.querySelector('#taskShortcutPicker')?.open;
+    const expanded = host.querySelector('#workspaceShortcutPicker')?.open;
     const focused = host.contains(document.activeElement) ? document.activeElement : null;
     const focusID = focused?.id;
-    const focusAttribute = ['data-task-shortcut', 'data-task-shortcut-pin', 'data-directory-shortcut', 'data-directory-shortcut-pin'].find(attribute => focused?.hasAttribute(attribute));
+    const focusAttribute = ['data-workspace-shortcut', 'data-workspace-shortcut-pin', 'data-directory-shortcut', 'data-directory-shortcut-pin'].find(attribute => focused?.hasAttribute(attribute));
     const focusValue = focusAttribute && focused.getAttribute(focusAttribute);
     const selection = focused?.id === 'shortcutSearch' ? [focused.selectionStart, focused.selectionEnd] : null;
     const top = (host.querySelector('.sidebar-shortcut-list') || host).scrollTop;
     const resultsTop = host.querySelector('.shortcut-picker-results')?.scrollTop || 0;
     host.innerHTML = markup; host.dataset.markup = markup;
-    if (expanded) { const picker = host.querySelector('#taskShortcutPicker'); picker.dataset.restored = 'true'; picker.open = true; }
+    if (expanded) { const picker = host.querySelector('#workspaceShortcutPicker'); picker.dataset.restored = 'true'; picker.open = true; }
     syncShortcutPickerPanel();
     const list = host.querySelector('.sidebar-shortcut-list') || host;
     list.scrollTop = top;
     host.querySelector('.shortcut-picker-results').scrollTop = resultsTop;
     if (focused) {
       const button = focusID ? host.querySelector('#' + focusID) : focusAttribute ? [...host.querySelectorAll('[' + focusAttribute + ']')].find(button => button.getAttribute(focusAttribute) === focusValue && (!button.closest('details') || button.closest('details').open)) : null;
-      (button || host.querySelector('#taskShortcutPicker summary')).focus({preventScroll:true});
+      (button || host.querySelector('#workspaceShortcutPicker summary')).focus({preventScroll:true});
       if (selection && button) button.setSelectionRange(...selection);
     }
   }
@@ -248,12 +248,12 @@ window.addEventListener('storage', event => {
 });
 window.addEventListener('workhub:shortcut-icon-save', async event => {
   const [kind, key] = JSON.parse(event.detail.key);
-  const task = kind === 'task' && shortcutTasks().find(task => shortcutTaskKey(task) === key);
+  const workspace = kind === 'workspace' && shortcutWorkspaces().find(workspace => shortcutWorkspaceKey(workspace) === key);
   const directory = kind === 'directory' && shortcutDirectories().find(directory => directory.key === key);
-  const environment = task ? task.environment_id || activeEnvironment : directory?.environment;
+  const environment = workspace ? workspace.environment_id || activeEnvironment : directory?.environment;
   if (!environment || state.busy) return;
   try { await loadShortcutPins(environment); } catch { return; }
-  const id = task ? 'task:' + task.id : 'directory:' + conversationPathKey(directory.cwd);
+  const id = workspace ? 'workspace:' + workspace.id : 'directory:' + conversationPathKey(directory.cwd);
   shortcutPins.setIcon(environment, id, event.detail.value);
   renderConversationShortcuts();
   await saveShortcutPins(environment);
@@ -286,10 +286,10 @@ function refreshConversationEnvironment(environment, force = false) {
   })();
   return load.pending;
 }
-function openTaskShortcut(id) {
-  const task = shortcutTasks().find(task => shortcutTaskKey(task) === id);
-  if (state.busy || !task) return;
-  openConversationShortcut({kind:'task', id:task.id, environment:task.environment_id || activeEnvironment, name:task.name});
+function openWorkspaceShortcut(id) {
+  const workspace = shortcutWorkspaces().find(workspace => shortcutWorkspaceKey(workspace) === id);
+  if (state.busy || !workspace) return;
+  openConversationShortcut({kind:'workspace', id:workspace.id, environment:workspace.environment_id || activeEnvironment, name:workspace.name});
 }
 function openConversationShortcut(scope) {
   if (state.busy) return;
@@ -298,15 +298,15 @@ function openConversationShortcut(scope) {
   Object.assign(view, {directory:'', search:'', statusFilter:'all', archived:false, requestedSession:null, creating:false, target:null, pane:'detail', sessions:view.sessions.filter(s => !s.archived), requestID:(view.requestID || 0) + 1, requestKey:null, loading:false, checkedAt:0});
   openConversationWorkspace(scope);
 }
-function toggleTaskShortcutPin(key) {
-  const task = shortcutTasks(true).find(task => shortcutTaskKey(task) === key);
-  if (state.busy || !task) return;
-  const environment = task.environment_id || activeEnvironment;
-  if (!shortcutPins.loaded(environment)) return loadShortcutPins(environment).then(() => toggleTaskShortcutPin(key)).catch(() => {});
-  const ids = pinnedTaskIDs(environment), id = task.id;
-  if (!ids.includes(id) && task.state === 'archived') return;
+function toggleWorkspaceShortcutPin(key) {
+  const workspace = shortcutWorkspaces(true).find(workspace => shortcutWorkspaceKey(workspace) === key);
+  if (state.busy || !workspace) return;
+  const environment = workspace.environment_id || activeEnvironment;
+  if (!shortcutPins.loaded(environment)) return loadShortcutPins(environment).then(() => toggleWorkspaceShortcutPin(key)).catch(() => {});
+  const ids = pinnedWorkspaceIDs(environment), id = workspace.id;
+  if (!ids.includes(id) && workspace.state === 'archived') return;
   const next = ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id];
-  shortcutPins.setTasks(environment, next);
+  shortcutPins.setWorkspaces(environment, next);
   renderConversationShortcuts();
   return saveShortcutPins(environment);
 }
@@ -352,22 +352,22 @@ function conversationDirectories(scope = conversationState.current?.scope, envir
     if (!existing) result.push({ cwd, key, environment, label: label + ' · ' + environmentName(environment), target, disabled });
     else if (existing.disabled && !disabled) Object.assign(existing, { target, disabled });
   };
-  const taskDirs = task => {
-    if (task.has_workspace !== false) add(task.path, uiText("任务目录（包含其中的 Worktree）· ") + task.name, { task_id: task.id, cwd: task.path }, task.state === 'archived');
-    for (const m of task.members) add(m.path, m.project_name, { task_id: task.id, project_id: m.project_id, cwd: m.path }, task.state === 'archived' || m.state !== 'ready' || !canOpenMember(m));
+  const workspaceDirs = workspace => {
+    if (workspace.has_directory !== false) add(workspace.path, uiText("工作区目录（包含其中的 Worktree）· ") + workspace.name, { workspace_id: workspace.id, cwd: workspace.path }, workspace.state === 'archived');
+    for (const m of workspace.members) add(m.path, m.project_name, { workspace_id: workspace.id, project_id: m.project_id, cwd: m.path }, workspace.state === 'archived' || m.state !== 'ready' || !canOpenMember(m));
   };
   const projectDirs = project => {
     for (const tree of project.worktrees || []) add(tree.path, project.name + ' · ' + (tree.branch || 'detached HEAD'), { project_id: project.id, cwd: tree.path }, !!(project.error || tree.bare || tree.missing || tree.prunable || tree.error));
     if (!(project.worktrees || []).some(t => conversationPathKey(t.path) === conversationPathKey(project.path))) add(project.path, project.name, { project_id: project.id, cwd: project.path }, true);
   };
-  const workspace = conversationWorkspace(environment);
+  const overview = conversationWorkspace(environment);
   if (environmentFilter && environment && environment !== environmentFilter) return [];
-  if (scope.kind === 'task') {
-    const task = workspace.requirements.find(q => q.id === scope.id) || taskInventory.requirements.find(q => q.id === scope.id && (q.environment_id || 'local') === environment);
-    if (task) taskDirs(task);
+  if (scope.kind === 'workspace') {
+    const workspace = overview.workspaces.find(q => q.id === scope.id) || workspaceInventory.workspaces.find(q => q.id === scope.id && (q.environment_id || 'local') === environment);
+    if (workspace) workspaceDirs(workspace);
     for (const session of conversationState.current?.scope.id === scope.id ? conversationState.current.sessions : []) add(session.cwd, session.cwd, null, true);
   } else if (scope.kind === 'project') {
-    const project = workspace.projects.find(p => p.id === scope.id);
+    const project = overview.projects.find(p => p.id === scope.id);
     if (project) projectDirs(project);
   } else {
     for (const entry of conversationEnvironments()) {
@@ -375,8 +375,8 @@ function conversationDirectories(scope = conversationState.current?.scope, envir
       environment = entry.id;
       const data = conversationWorkspace(environment);
       data.projects.forEach(projectDirs);
-      const tasks = taskInventory.loaded ? taskInventory.requirements.filter(q => (q.environment_id || 'local') === environment) : data.requirements;
-      tasks.forEach(taskDirs);
+      const workspaces = workspaceInventory.loaded ? workspaceInventory.workspaces.filter(q => (q.environment_id || 'local') === environment) : data.workspaces;
+      workspaces.forEach(workspaceDirs);
       for (const session of conversationItems(environment)) add(session.cwd, session.cwd, null, true);
     }
     if (scope.kind === 'directory') {
@@ -393,16 +393,16 @@ function conversationFilteredDirectories(view = conversationState.current) {
 function conversationScopeName(scope) {
   if (scope.kind === 'all') return uiText("全部对话");
   const data = conversationWorkspace(conversationScopeEnvironment(scope));
-  if (scope.kind === 'task') return uiText("任务 · ") + (data.requirements.find(q => q.id === scope.id)?.name || scope.name || scope.id);
+  if (scope.kind === 'workspace') return uiText("工作区 · ") + (data.workspaces.find(q => q.id === scope.id)?.name || scope.name || scope.id);
   if (scope.kind === 'project') return uiText("项目 · ") + (data.projects.find(p => p.id === scope.id)?.name || scope.name || scope.id);
   return uiText("目录 · ") + scope.cwd;
 }
 function renderConversationScopes() {
-  const tasks = taskInventory.loaded ? taskInventory.requirements : state.requirements;
+  const workspaces = workspaceInventory.loaded ? workspaceInventory.workspaces : state.workspaces;
   const showEnvironments = conversationEnvironments().length > 1;
   const scopes = [
     {kind:'all', name:uiText("全部对话")},
-    ...tasks.map(q => ({kind:'task', id:q.id, environment:q.environment_id || activeEnvironment, name:q.name, environmentName:showEnvironments ? environmentName(q.environment_id || activeEnvironment) : ''})),
+    ...workspaces.map(q => ({kind:'workspace', id:q.id, environment:q.environment_id || activeEnvironment, name:q.name, environmentName:showEnvironments ? environmentName(q.environment_id || activeEnvironment) : ''})),
     ...conversationEnvironments().flatMap(e => conversationWorkspace(e.id).projects.map(p => ({kind:'project', id:p.id, environment:e.id, name:p.name, environmentName:showEnvironments ? environmentName(e.id) : ''}))),
     ...conversationDirectories({kind:'all'}, '').map(d => ({kind:'directory', cwd:d.cwd, environment:d.environment, name:d.cwd, environmentName:showEnvironments ? environmentName(d.environment) : ''})),
   ];
@@ -467,12 +467,12 @@ function renderConversationList() {
     return;
   }
   const text = view.search.trim().toLowerCase();
-  const matching = items.map(s => { const data = conversationWorkspace(s.environment_id || activeEnvironment); return {...(s.terminal ? s : sessionWithUnread(s)), context: window.WorkHubUI.conversationContext(s.cwd, {tasks: data.requirements, projects: data.projects}, view.scope.kind === 'task' ? view.scope.id : undefined)}; }).filter(s => !text || [s.name, s.terminal ? uiText("终端") : '', s.cwd, s.environment_name, s.context.project, s.context.branch, ...s.context.tasks.map(t => t.name)].join(' ').toLowerCase().includes(text));
+  const matching = items.map(s => { const data = conversationWorkspace(s.environment_id || activeEnvironment); return {...(s.terminal ? s : sessionWithUnread(s)), context: window.WorkHubUI.conversationContext(s.cwd, {workspaces: data.workspaces, projects: data.projects}, view.scope.kind === 'workspace' ? view.scope.id : undefined)}; }).filter(s => !text || [s.name, s.terminal ? uiText("终端") : '', s.cwd, s.environment_name, s.context.project, s.context.branch, ...s.context.workspaces.map(t => t.name)].join(' ').toLowerCase().includes(text));
   const statusFilter = view.statusFilter || 'all';
   const sessions = matching.filter(s => conversationStatusMatches(s, statusFilter)).sort((a,b) => Number(!!b.pinned)-Number(!!a.pinned) || (b.updated_at||0)-(a.updated_at||0));
   view.listItems = sessions;
   view.listRows = window.WorkHubUI.conversationTree(sessions, {
-    tasks: shortcutTasks(true).map(task => ({...task,environment_id:task.environment_id || activeEnvironment})), scope: view.scope,
+    workspaces: shortcutWorkspaces(true).map(workspace => ({...workspace,environment_id:workspace.environment_id || activeEnvironment})), scope: view.scope,
     selected: window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected,
     reveal: view.locateSelection, limits: view.groupLimits, collapsed: view.collapsedGroups,
     filtered: !!text || statusFilter !== 'all' || view.archived,
@@ -503,7 +503,7 @@ function renderConversationList() {
   const list = $('#sessionBrowserList');
   list.setAttribute('aria-busy',String(initialLoading || view.loading));
   const rows = view.listRows.slice(start, end);
-  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, parallel:!!window.WorkHubPage?.navigationOnly, parallelSessions:window.WorkHubPage?.parallelSessions || [], parallelFull:!!window.WorkHubPage?.parallelFull, selected: window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected, showDirectory: showContext, showContext, loading: initialLoading, taskID: view.scope.kind === 'task' ? view.scope.id : undefined, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
+  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, parallel:!!window.WorkHubPage?.navigationOnly, parallelSessions:window.WorkHubPage?.parallelSessions || [], parallelFull:!!window.WorkHubPage?.parallelFull, selected: window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected, showDirectory: showContext, showContext, loading: initialLoading, workspaceID: view.scope.kind === 'workspace' ? view.scope.id : undefined, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
   const emptyError = !!view.error && !items.length && !view.loading;
   const renderKey = JSON.stringify([new Date().toDateString(), emptyError, props, before, after, loaded, sessions.length]);
   if (conversationListRenderKeys.get(list) !== renderKey) {
@@ -575,7 +575,7 @@ function renderConversationBrowser() {
   // The host owns the only list; a conversation surface always renders its detail.
   if (document.documentElement.hasAttribute('data-workspace-conversation')) view.pane = 'detail';
   const panelWorkspace = conversationWorkspace(sessionHistoryState?.environment || activeEnvironment);
-  window.WorkHubAssistant?.updateWorkspace?.({tasks: panelWorkspace.requirements, projects: panelWorkspace.projects});
+  window.WorkHubAssistant?.updateOverview?.({workspaces: panelWorkspace.workspaces, projects: panelWorkspace.projects});
   conversationHost.hidden = conversationState.mode === 'hidden';
   conversationHost.dataset.pane = view.pane;
   $('#sessionScopeLabel').textContent = conversationScopeName(view.scope);
@@ -583,9 +583,9 @@ function renderConversationBrowser() {
   $('#sessionsEnvironment').value = view.environmentFilter;
   $('#sessionEnvironmentField').hidden = conversationEnvironments().length < 2 || !!conversationScopeEnvironment(view.scope);
   $('#sessionScopeAll').hidden = view.scope.kind === 'all';
-  $('#taskConversationTools').hidden = view.scope.kind !== 'task';
-  $('#linkTaskConversation').dataset.requirement = view.scope.kind === 'task' ? view.scope.id : '';
-  $('#linkTaskConversation').dataset.environment = conversationScopeEnvironment(view.scope);
+  $('#workspaceConversationTools').hidden = view.scope.kind !== 'workspace';
+  $('#linkWorkspaceConversation').dataset.workspace = view.scope.kind === 'workspace' ? view.scope.id : '';
+  $('#linkWorkspaceConversation').dataset.environment = conversationScopeEnvironment(view.scope);
   updateDirectoryPinButton();
   $('#sessionBrowserSearch').value = view.search;
   $('#sessionBrowserArchived').checked = !!view.archived;
@@ -600,17 +600,17 @@ function renderConversationBrowser() {
   terminalKind.title = terminalKind.disabled ? uiText("终端目前仅支持本机环境，且需等待当前操作完成") : uiText("在当前栏切换为终端");
   $('#sessionBrowserNewDirectoryField').hidden = !view.creating || creationDirectories.length < 2;
   if (view.creating) {
-    $('#sessionBrowserNewDirectory').innerHTML = creationDirectories.map(d => `<option value="${esc(d.key)}" title="${esc(d.cwd)}">${esc(d.target.task_id && !d.target.project_id ? uiText("任务根目录") : d.label)}</option>`).join('');
+    $('#sessionBrowserNewDirectory').innerHTML = creationDirectories.map(d => `<option value="${esc(d.key)}" title="${esc(d.cwd)}">${esc(d.target.workspace_id && !d.target.project_id ? uiText("工作区根目录") : d.label)}</option>`).join('');
     $('#sessionBrowserNewDirectory').value = view.target ? conversationEnvironmentKey(view.targetEnvironment, conversationPathKey(view.target.cwd)) : '';
     $('#sessionBrowserNewDirectory').title = view.target?.cwd || '';
     window.WorkHubUI.renderCreationChoices($('#sessionBrowserNewDirectory'), $('#sessionBrowserDirectoryChoices'));
   }
   const extraField = $('#sessionBrowserAdditionalField');
-  const extraDirs = view.creating && view.target?.task_id ? creationDirectories.filter(d => d.environment === view.targetEnvironment && d.target?.project_id && d.cwd !== view.target.cwd) : [];
+  const extraDirs = view.creating && view.target?.workspace_id ? creationDirectories.filter(d => d.environment === view.targetEnvironment && d.target?.project_id && d.cwd !== view.target.cwd) : [];
   extraField.hidden = !extraDirs.length;
   if (extraDirs.length) {
     $('#sessionBrowserAdditionalCount').textContent = uiText(" · {0} 个已选", view.target.additional_directories?.length || 0);
-    const markup = extraDirs.map(d => `<label class="task-additional-directory"><input type="checkbox" data-additional-directory="${esc(d.cwd)}" ${view.target.additional_directories?.includes(d.cwd) ? 'checked' : ''} />${esc(d.label)}<small>${esc(d.cwd)}</small></label>`).join('');
+    const markup = extraDirs.map(d => `<label class="workspace-additional-directory"><input type="checkbox" data-additional-directory="${esc(d.cwd)}" ${view.target.additional_directories?.includes(d.cwd) ? 'checked' : ''} />${esc(d.label)}<small>${esc(d.cwd)}</small></label>`).join('');
     if ($('#sessionBrowserAdditionalDirectories').innerHTML !== markup) $('#sessionBrowserAdditionalDirectories').innerHTML = markup;
   }
   renderConversationList();
@@ -641,7 +641,7 @@ async function refreshSessionWorkspace(force = false) {
   const environments = candidates.filter(e => (!scopeEnvironment || e.id === scopeEnvironment) && (!view.environmentFilter || e.id === view.environmentFilter) && (!selectedDirectory || e.id === selectedDirectory.environment));
   const params = new URLSearchParams();
   if (view.archived) params.set('archived', 'true');
-  if (view.scope.kind === 'task') { params.set('task_id', view.scope.id); params.set('linked', 'true'); }
+  if (view.scope.kind === 'workspace') { params.set('workspace_id', view.scope.id); params.set('linked', 'true'); }
   if (view.scope.kind === 'project') params.set('project_id', view.scope.id);
   const cwd = selectedDirectory?.cwd || directory || (view.scope.kind === 'directory' ? view.scope.cwd : '');
   if (cwd) params.set('cwd', cwd);
@@ -692,7 +692,7 @@ function showConversationSelection() {
   const view = conversationState.current;
   if (!view || !conversationVisible() || window.WorkHubPage?.navigationOnly) return;
   const session = view.creating ? null : conversationSelectedSession(view);
-  const fileContext = session?.cwd ? window.WorkHubUI.conversationContext(session.cwd, {tasks: conversationWorkspace(session.environment_id || activeEnvironment).requirements, projects: conversationWorkspace(session.environment_id || activeEnvironment).projects}) : null;
+  const fileContext = session?.cwd ? window.WorkHubUI.conversationContext(session.cwd, {workspaces: conversationWorkspace(session.environment_id || activeEnvironment).workspaces, projects: conversationWorkspace(session.environment_id || activeEnvironment).projects}) : null;
   conversationFiles.setContext(session?.cwd ? {session: session.id, path: session.cwd, environment: session.environment_id || activeEnvironment, project: fileContext?.projectID, additionalDirectories: session.additional_directories} : undefined);
   if (view.creating && !view.target || !view.creating && !session) {
     closeSessionHistory(false);
@@ -713,12 +713,12 @@ function showConversationSelection() {
   const selection = ++conversationState.selection;
   const tools = conversationHost.querySelector('.session-browser-list-tools');
   const focusedControl = tools.contains(document.activeElement) ? document.activeElement : null;
-  openSessionHistoryPanel(view.scope.kind === 'task' ? view.scope.id : null, session?.id || null, {
-    session, environment, workspace: conversationWorkspace(environment), target: view.target, browserTarget: targetKey, focusComposer:!!view.focusComposer,
+  openSessionHistoryPanel(view.scope.kind === 'workspace' ? view.scope.id : null, session?.id || null, {
+    session, environment, overview: conversationWorkspace(environment), target: view.target, browserTarget: targetKey, focusComposer:!!view.focusComposer,
     loaded(loaded) {
       if (conversationState.current !== view || selection !== conversationState.selection || loaded.id !== session?.id) return;
       const activity = conversationState.session(environment, loaded.id);
-      const tagged = conversationTaggedSession({...loaded, task_ids:activity?.task_ids ?? session?.task_ids, chat_status:activity?.chat_status ?? loaded.chat_status, completed_run:activity?.completed_run ?? loaded.completed_run},environment);
+      const tagged = conversationTaggedSession({...loaded, workspace_ids:activity?.workspace_ids ?? session?.workspace_ids, chat_status:activity?.chat_status ?? loaded.chat_status, completed_run:activity?.completed_run ?? loaded.completed_run},environment);
       view.directSession = tagged;
       conversationState.record(environment, [tagged]);
       const position = view.sessions.findIndex(item => conversationSessionKey(item) === conversationSessionKey(tagged));
@@ -728,7 +728,7 @@ function showConversationSelection() {
     },
     created(created) {
       conversationRequests.invalidate(environment);
-      created = conversationTaggedSession({...created,task_ids:created.task_ids || (view.target?.task_id ? [view.target.task_id] : [])}, environment);
+      created = conversationTaggedSession({...created,workspace_ids:created.workspace_ids || (view.target?.workspace_id ? [view.target.workspace_id] : [])}, environment);
       conversationState.record(environment, [created]);
       if (!view.sessions.some(s => conversationSessionKey(s) === conversationSessionKey(created))) view.sessions.unshift(created);
       if (conversationState.current !== view || selection !== conversationState.selection) return;
@@ -761,7 +761,7 @@ function openConversationWorkspace(scope, session) {
   selectConversationScope(scope);
   if (session) {
     const environment = conversationScopeEnvironment(conversationState.current.scope) || activeEnvironment;
-    const cached = conversationItems(environment).find(s => s.id === session) || requirementSessions.get(scope.id)?.sessions.find(s => s.id === session);
+    const cached = conversationItems(environment).find(s => s.id === session) || workspaceSessions.get(scope.id)?.sessions.find(s => s.id === session);
     if (cached && !conversationState.current.sessions.some(s => conversationSessionKey(s) === conversationEnvironmentKey(environment, session))) conversationState.current.sessions.unshift(conversationTaggedSession(cached, environment));
     conversationState.current.selected = conversationEnvironmentKey(environment, session);
     conversationState.current.locateSelection = conversationState.current.selected;
@@ -773,18 +773,10 @@ function openConversationWorkspace(scope, session) {
   window.dispatchEvent(new CustomEvent('workhub:chat-layout', {detail:{visible:true}}));
 }
 async function openConversationWorkspaceDetail(kind, id, environment) {
-  if (state.busy || !['task', 'project'].includes(kind)) return;
+  if (state.busy || !['workspace', 'project'].includes(kind)) return;
   try {
-    await selectEnvironment(environment, kind === 'task' ? '/requirements/' + id : '/projects');
-    if (activeEnvironment !== environment) return;
-    if (kind === 'project' && state.view === 'projects') {
-      if (!state.projects.some(project => project.id === id)) { toast(uiText("这个项目已不存在，请重新选择项目"), true); return; }
-      state.selectedProject = id;
-      projectFilter = 'all';
-      projectDetailOpen = true;
-      render();
-      $('#projectDetail h2')?.focus({preventScroll:true});
-    } else if (kind === 'task' && state.selectedRequirement === id) $('#pageTitle').focus({preventScroll:true});
+    await selectEnvironment(environment, (kind === 'workspace' ? '/workspaces/' : '/projects/') + id);
+    if (activeEnvironment === environment) focusResourcePage();
   } catch (error) { toast(error.message, true); }
 }
 function closeConversationWorkspace() {
@@ -819,8 +811,8 @@ function syncSessionWorkspace() {
   updateConversationNavigation();
   refreshConversationShortcuts();
 }
-function openSessionWorkspaceHistory(requirement, session) {
-  openConversationWorkspace(requirement ? { kind: 'task', id: requirement } : { kind: 'all', name: uiText("全部对话") }, session);
+function openSessionWorkspaceHistory(workspace, session) {
+  openConversationWorkspace(workspace ? { kind: 'workspace', id: workspace } : { kind: 'all', name: uiText("全部对话") }, session);
   if (!session && !sessionReadOnly) startBrowserConversation();
 }
 function updateConversationCreationActions() {
@@ -874,7 +866,7 @@ function browserSessionActivity(id, chat, environment = activeEnvironment) {
 }
 // Dismiss before the page bridge can consume a navigation click.
 document.addEventListener('click', event => {
-  if (!event.target.closest('#taskShortcutPicker')) closeShortcutPicker();
+  if (!event.target.closest('#workspaceShortcutPicker')) closeShortcutPicker();
 }, true);
 document.addEventListener('click', event => {
   const directoryShortcut = event.target.closest('[data-directory-shortcut]');
@@ -885,12 +877,12 @@ document.addEventListener('click', event => {
   }
   const directoryPin = event.target.closest('[data-directory-shortcut-pin]');
   if (directoryPin && !directoryPin.disabled) return toggleDirectoryShortcutPin(directoryPin.dataset.directoryShortcutPin);
-  const shortcut = event.target.closest('[data-task-shortcut]');
-  if (shortcut) return openTaskShortcut(shortcut.dataset.taskShortcut);
-  const pin = event.target.closest('[data-task-shortcut-pin]');
-  if (pin && !pin.disabled) return toggleTaskShortcutPin(pin.dataset.taskShortcutPin);
-  const entry = event.target.closest('[data-action="task-conversations"], [data-action="project-conversations"]');
-  if (entry) return openConversationWorkspace({ kind: entry.dataset.action === 'task-conversations' ? 'task' : 'project', id: entry.dataset.id });
+  const shortcut = event.target.closest('[data-workspace-shortcut]');
+  if (shortcut) return openWorkspaceShortcut(shortcut.dataset.workspaceShortcut);
+  const pin = event.target.closest('[data-workspace-shortcut-pin]');
+  if (pin && !pin.disabled) return toggleWorkspaceShortcutPin(pin.dataset.workspaceShortcutPin);
+  const entry = event.target.closest('[data-action="workspace-conversations"], [data-action="project-conversations"]');
+  if (entry) return openConversationWorkspace({ kind: entry.dataset.action === 'workspace-conversations' ? 'workspace' : 'project', id: entry.dataset.id });
   const groupControl = event.target.closest('[data-conversation-group-toggle], [data-conversation-group-more]');
   if (groupControl && conversationState.current) {
     const view = conversationState.current;
@@ -927,7 +919,7 @@ document.addEventListener('click', event => {
   if (!button || button.disabled || state.busy) return;
   switch (button.dataset.conversationAction) {
     case 'new': startBrowserConversation(); break;
-    case 'link-task': $('#linkTaskConversation').click(); break;
+    case 'link-workspace': $('#linkWorkspaceConversation').click(); break;
     case 'pin-directory': toggleDirectoryShortcutPin(selectedConversationDirectoryKey()); break;
     case 'refresh': refreshSessionWorkspace(true); break;
     case 'refresh-shortcuts': refreshConversationShortcuts(true); break;
@@ -990,7 +982,7 @@ document.addEventListener('change', event => {
   renderConversationShortcuts();
 });
 document.addEventListener('toggle', event => {
-  if (event.target.id !== 'taskShortcutPicker') return;
+  if (event.target.id !== 'workspaceShortcutPicker') return;
   syncShortcutPickerPanel();
   if (!event.target.open) return;
   if (event.target.dataset.restored) { delete event.target.dataset.restored; return; }
@@ -1019,7 +1011,7 @@ $('#sessionBrowserNewDirectory').addEventListener('change', event => {
 document.addEventListener('keydown', event => {
   const itemMenu = document.activeElement?.closest('.session-item-menu[open]');
   if (event.key === 'Escape' && itemMenu) { itemMenu.open = false; itemMenu.querySelector('summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
-  if (event.key === 'Escape' && $('#taskShortcutPicker')?.open) { closeShortcutPicker(true); event.preventDefault(); event.stopPropagation(); return; }
+  if (event.key === 'Escape' && $('#workspaceShortcutPicker')?.open) { closeShortcutPicker(true); event.preventDefault(); event.stopPropagation(); return; }
   if (event.key === 'Escape' && $('#sessionScopePicker').open) { $('#sessionScopePicker').open = false; $('#sessionScopePicker summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
   if (event.key === 'Escape' && event.target.id === 'sessionBrowserSearch' && conversationState.current?.search) {
     conversationState.current.search = ''; resetConversationListWindow(); event.target.value = ''; $('#sessionBrowserList').scrollTop = 0; renderConversationList(); event.preventDefault(); event.stopPropagation(); return;
@@ -1036,7 +1028,7 @@ document.addEventListener('keydown', event => {
   focusConversationListIndex(positions[Math.max(0,Math.min(next,positions.length - 1))]); event.preventDefault();
 }, true);
 document.addEventListener('click', event => { if (!event.target.closest('#sessionScopePicker')) $('#sessionScopePicker').open = false; });
-$('#linkTaskConversation').addEventListener('click', () => { $('#sessionScopePicker').open = false; });
+$('#linkWorkspaceConversation').addEventListener('click', () => { $('#sessionScopePicker').open = false; });
 document.addEventListener('click', event => { for (const menu of document.querySelectorAll('.session-item-menu[open]')) if (!menu.contains(event.target)) menu.open = false; });
 window.addEventListener('pagehide', suspendSessionWorkspace);
 
@@ -1072,7 +1064,7 @@ window.addEventListener('workhub:session-managed', event => {
 
 function browserCreationTarget(directory) {
   const target = {...directory.target};
-  if (target.task_id) target.additional_directories = conversationDirectories(conversationState.current.scope).filter(d => d.environment === directory.environment && !d.disabled && d.target?.project_id && conversationPathKey(d.cwd) !== conversationPathKey(target.cwd)).map(d => d.cwd);
+  if (target.workspace_id) target.additional_directories = conversationDirectories(conversationState.current.scope).filter(d => d.environment === directory.environment && !d.disabled && d.target?.project_id && conversationPathKey(d.cwd) !== conversationPathKey(target.cwd)).map(d => d.cwd);
   return target;
 }
 $('#sessionBrowserAdditionalDirectories').addEventListener('change', event => {
@@ -1080,11 +1072,11 @@ $('#sessionBrowserAdditionalDirectories').addEventListener('change', event => {
   conversationState.current.target = {...conversationState.current.target, additional_directories: [...$('#sessionBrowserAdditionalDirectories').querySelectorAll('input:checked')].map(input => input.dataset.additionalDirectory)};
   conversationState.selection++; closeSessionHistory(false); renderConversationBrowser(); showConversationSelection();
 });
-window.addEventListener('workhub:task-sessions', event => {
-  const {task, environment} = event.detail;
+window.addEventListener('workhub:workspace-sessions', event => {
+  const {workspace, environment} = event.detail;
   for (const view of conversationState.views()) {
     const scopedEnvironment = conversationScopeEnvironment(view.scope);
-    if (scopedEnvironment && scopedEnvironment !== environment || view.scope.kind === 'task' && view.scope.id !== task) continue;
+    if (scopedEnvironment && scopedEnvironment !== environment || view.scope.kind === 'workspace' && view.scope.id !== workspace) continue;
     view.checkedAt = 0; view.requestID = (view.requestID || 0) + 1; view.loading = false;
   }
   if (conversationVisible()) refreshSessionWorkspace(true);
@@ -1092,10 +1084,10 @@ window.addEventListener('workhub:task-sessions', event => {
 document.addEventListener('click', event => {
   const button = event.target.closest('[data-conversation-unlink]');
   if (!button || state.busy) return;
-  const environment = button.dataset.environment || activeEnvironment, task = button.dataset.task, session = button.dataset.conversationUnlink;
+  const environment = button.dataset.environment || activeEnvironment, workspace = button.dataset.workspace, session = button.dataset.conversationUnlink;
   mutation(uiText("正在取消对话关联"), async () => {
-    const result = await api(`/api/requirements/${encodeURIComponent(task)}/sessions/${encodeURIComponent(session)}`, {environment, method: 'DELETE'});
-    window.dispatchEvent(new CustomEvent('workhub:task-sessions', {detail:{task, environment}}));
+    const result = await api(`/api/workspaces/${encodeURIComponent(workspace)}/sessions/${encodeURIComponent(session)}`, {environment, method: 'DELETE'});
+    window.dispatchEvent(new CustomEvent('workhub:workspace-sessions', {detail:{workspace, environment}}));
     toast(result.message);
   });
 });

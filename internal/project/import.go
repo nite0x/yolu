@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/workspace"
 )
 
 func (a *Service) ScanProjectsHandler(w http.ResponseWriter, r *http.Request) {
@@ -21,21 +21,29 @@ func (a *Service) ScanProjectsHandler(w http.ResponseWriter, r *http.Request) {
 	if !httpx.Decode(w, r, &input) {
 		return
 	}
-	if strings.TrimSpace(input.Path) == "" {
-		httpx.WriteError(w, 400, "请选择要扫描的目录")
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	result, err := workspace.ScanRepositories(ctx, input.Path)
+	result, err := a.ScanProjects(ctx, input.Path)
 	if err != nil {
-		httpx.WriteJSON(w, 422, map[string]any{"error": "扫描目录失败", "details": []string{err.Error()}})
+		writeOperationError(w, err)
 		return
 	}
-	projects, err := a.Workspace.Store.ProjectMap()
+	httpx.WriteJSON(w, 200, result)
+}
+
+// ScanProjects discovers repositories and resolves their existing registrations
+// and suggested names in the same execution environment.
+func (a *Service) ScanProjects(ctx context.Context, path string) (execution.RepositoryScan, error) {
+	if strings.TrimSpace(path) == "" {
+		return execution.RepositoryScan{}, &OperationError{Status: 400, Message: "请选择要扫描的目录"}
+	}
+	result, err := execution.ScanRepositories(ctx, path)
 	if err != nil {
-		httpx.DbError(w, err)
-		return
+		return result, &OperationError{Status: 422, Message: "扫描目录失败", Details: []string{err.Error()}}
+	}
+	projects, err := a.Execution.Store.ProjectMap()
+	if err != nil {
+		return result, err
 	}
 	registered := make(map[string]model.Project)
 	names, folders := make(map[string]bool), make(map[string]bool)
@@ -56,13 +64,13 @@ func (a *Service) ScanProjectsHandler(w http.ResponseWriter, r *http.Request) {
 			base = base[:70]
 		}
 		repository.Name = string(base)
-		for suffix := 2; names[strings.ToLower(repository.Name)] || workspace.Slugify(repository.Name) != "" && folders[strings.ToLower(workspace.Slugify(repository.Name))]; suffix++ {
+		for suffix := 2; names[strings.ToLower(repository.Name)] || execution.Slugify(repository.Name) != "" && folders[strings.ToLower(execution.Slugify(repository.Name))]; suffix++ {
 			repository.Name = fmt.Sprintf("%s (%d)", string(base[:min(len(base), 45)]), suffix)
 		}
 		names[strings.ToLower(repository.Name)] = true
-		folders[strings.ToLower(workspace.Slugify(repository.Name))] = true
+		folders[strings.ToLower(execution.Slugify(repository.Name))] = true
 	}
-	httpx.WriteJSON(w, 200, result)
+	return result, nil
 }
 
 type projectImportInput struct {
@@ -81,16 +89,16 @@ type projectImportResult struct {
 // Each item is committed independently. Retrying a partial batch returns the
 // existing registration for the same canonical Git directory.
 func (a *Service) importProject(ctx context.Context, input projectImportInput) (string, bool, error) {
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
 	if input.Path == "" || input.CommonDir == "" {
 		return "", false, fmt.Errorf("仓库扫描结果无效，请重新扫描")
 	}
-	common, err := workspace.Git(ctx, input.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	common, err := execution.Git(ctx, input.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
 		return "", false, err
 	}
-	common, err = workspace.Eval(ctx, strings.TrimSpace(common))
+	common, err = execution.Eval(ctx, strings.TrimSpace(common))
 	if err != nil {
 		return "", false, err
 	}
@@ -98,7 +106,7 @@ func (a *Service) importProject(ctx context.Context, input projectImportInput) (
 		return "", false, fmt.Errorf("仓库位置已变化，请重新扫描")
 	}
 	var id string
-	err = a.Workspace.Store.DB.QueryRowContext(ctx, `SELECT id FROM projects WHERE common_dir=?`, common).Scan(&id)
+	err = a.Execution.Store.DB.QueryRowContext(ctx, `SELECT id FROM projects WHERE common_dir=?`, common).Scan(&id)
 	if err == nil {
 		return id, true, nil
 	}
@@ -123,7 +131,7 @@ func (a *Service) ImportProjectsHandler(w http.ResponseWriter, r *http.Request) 
 	if !httpx.Decode(w, r, &input) {
 		return
 	}
-	if len(input.Repositories) == 0 || len(input.Repositories) > workspace.RepositoryScanLimit {
+	if len(input.Repositories) == 0 || len(input.Repositories) > execution.RepositoryScanLimit {
 		httpx.WriteError(w, 400, "请选择 1 到 1000 个仓库")
 		return
 	}

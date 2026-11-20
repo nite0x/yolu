@@ -3,8 +3,8 @@ package project
 import (
 	"context"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/workspace"
 )
 
 func (a *Service) fetchGit(ctx context.Context, p model.Project, v GitOverview, in GitAction) (map[string]any, error) {
@@ -42,7 +42,7 @@ func (a *Service) pullGit(ctx context.Context, p model.Project, v GitOverview, i
 	if t.Dirty > 0 || t.Detached || t.Operation != "" {
 		return nil, gitIssue(gitConflict, "快进拉取需要干净且已检出分支的工作目录")
 	}
-	if _, e := workspace.Git(ctx, t.Path, "rev-parse", "--verify", "@{upstream}"); e != nil {
+	if _, e := execution.Git(ctx, t.Path, "rev-parse", "--verify", "@{upstream}"); e != nil {
 		return nil, gitIssue(gitConflict, "当前分支尚未设置远端跟踪，请先创建跟踪分支或在 Git 终端配置 upstream")
 	}
 	output, err = a.GitNetwork(ctx, t.Path, "pull", "--ff-only", "--no-rebase", "--no-autostash")

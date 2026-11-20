@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 func historyImageURL(value string) (string, error) {
@@ -32,11 +32,11 @@ func decodeHistoryImage(value string) ([]byte, string, error) {
 		}
 		payload, declared = data, strings.TrimSuffix(strings.TrimPrefix(header, "data:"), ";base64")
 	}
-	if payload == "" || len(payload) > base64.StdEncoding.EncodedLen(workspace.ImageLimit) {
+	if payload == "" || len(payload) > base64.StdEncoding.EncodedLen(execution.ImageLimit) {
 		return nil, "", fmt.Errorf("图片为空或超过 10 MiB")
 	}
 	raw, err := base64.StdEncoding.Strict().DecodeString(payload)
-	if err != nil || len(raw) == 0 || len(raw) > workspace.ImageLimit {
+	if err != nil || len(raw) == 0 || len(raw) > execution.ImageLimit {
 		return nil, "", fmt.Errorf("图片编码无效或超过 10 MiB")
 	}
 	mime := http.DetectContentType(raw)
@@ -57,7 +57,7 @@ func (a *Service) generatedImagePath(key string) (string, error) {
 	if _, err := hex.DecodeString(key); err != nil {
 		return "", fmt.Errorf("图片引用无效")
 	}
-	return filepath.Join(a.Workspace.DataDir, "history-images", key), nil
+	return filepath.Join(a.Execution.DataDir, "history-images", key), nil
 }
 
 // Cache on the Yolu host, including for remote sessions. Content addressing

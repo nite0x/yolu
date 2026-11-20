@@ -8,14 +8,14 @@ import (
 	"sync"
 	"testing"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/testutil"
-	"worktree-hub/internal/workspace"
 )
 
-func scanProjects(t *testing.T, a *App, path string) workspace.RepositoryScan {
+func scanProjects(t *testing.T, a *App, path string) execution.RepositoryScan {
 	t.Helper()
 	code, raw := call(t, a, "POST", "/api/projects/scan", map[string]string{"path": path})
-	var result workspace.RepositoryScan
+	var result execution.RepositoryScan
 	if code != 200 || json.Unmarshal(raw, &result) != nil {
 		t.Fatalf("scan: %d %s", code, raw)
 	}
@@ -57,7 +57,7 @@ func TestScanProjectsFindsNestedRepositoriesAndDeduplicatesWorktrees(t *testing.
 	if len(result.Repositories) != 5 || result.Truncated || len(result.Warnings) != 1 {
 		t.Fatalf("unexpected scan: %+v", result)
 	}
-	found := make(map[string]workspace.DiscoveredRepository)
+	found := make(map[string]execution.DiscoveredRepository)
 	for _, repository := range result.Repositories {
 		found[repository.Path] = repository
 	}
@@ -84,7 +84,7 @@ func TestScanProjectsSuggestsDistinctNamesAndBatchRetryPreservesSuccesses(t *tes
 		testGit(t, root, "clone", seed, filepath.Join(root, directory, longName))
 	}
 	result := scanProjects(t, a, root)
-	if len(result.Repositories) != 2 || result.Repositories[0].Name == result.Repositories[1].Name || workspace.Slugify(result.Repositories[0].Name) == workspace.Slugify(result.Repositories[1].Name) {
+	if len(result.Repositories) != 2 || result.Repositories[0].Name == result.Repositories[1].Name || execution.Slugify(result.Repositories[0].Name) == execution.Slugify(result.Repositories[1].Name) {
 		t.Fatalf("colliding suggestions: %+v", result.Repositories)
 	}
 	inputs := make([]projectImportInput, 0, 2)
@@ -111,7 +111,7 @@ func TestScanProjectsSuggestsDistinctNamesAndBatchRetryPreservesSuccesses(t *tes
 		})
 	}
 	wg.Wait()
-	projects, err := a.Workspace.Store.ProjectMap()
+	projects, err := a.Execution.Store.ProjectMap()
 	if err != nil || len(projects) != 2 {
 		t.Fatalf("registrations: %+v %v", projects, err)
 	}

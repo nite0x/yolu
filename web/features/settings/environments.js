@@ -3,7 +3,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 
 let environmentInventory = [];
 function environmentOptions() {
-  const entries = environmentInventory.length ? environmentInventory : taskInventory.environments.length ? taskInventory.environments : [{ id: 'local', name: uiText("本机") }];
+  const entries = environmentInventory.length ? environmentInventory : workspaceInventory.environments.length ? workspaceInventory.environments : [{ id: 'local', name: uiText("本机") }];
   return entries.map(e => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('');
 }
 async function loadEnvironments() {
@@ -28,30 +28,30 @@ async function loadEnvironments() {
   $('#environmentStatus').textContent = environmentInventory.find(e => e.id === activeEnvironment)?.name || uiText("执行环境未登记");
   renderSettings();
 }
-async function selectEnvironment(id, route = '/requirements', updateHistory = true, { refreshState = true } = {}) {
+async function selectEnvironment(id, route = '/workspaces', updateHistory = true, { refreshState = true } = {}) {
   if (state.busy || blockingMutationDialog()) { $('#environmentSelect').value = activeEnvironment; $('#projectEnvironment').value = activeEnvironment; toast(uiText("请等待当前操作完成后切换环境")); return; }
   route = route.replace(/^#/, '');
   const changed = activeEnvironment !== id;
   if (changed && typeof suspendSessionWorkspace === 'function') suspendSessionWorkspace();
-  if (typeof suspendTaskWorkspace === 'function') suspendTaskWorkspace();
+  if (typeof suspendWorkspaceDetail === 'function') suspendWorkspaceDetail();
   if (changed) closeSessionHistory(false);
   document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-  if (changed) requirementSessions.clear();
+  if (changed) workspaceSessions.clear();
   if (changed) environmentRevision++;
   activeEnvironment = id;
   const url = new URL(location.href);
   if (id === 'local') url.searchParams.delete('environment'); else url.searchParams.set('environment', id);
   url.hash = route;
   if (updateHistory && url.href !== location.href) history[updateHistory === 'replace' ? 'replaceState' : 'pushState'](null, '', url);
-  if (changed) Object.assign(state, { projects: [], requirements: [], selectedProject: null, selectedRequirement: null, view: 'requirements', root: '', terminal: {}, loaded: false, refreshing: false });
+  if (changed) Object.assign(state, { projects: [], workspaces: [], selectedProject: null, selectedWorkspace: null, view: 'workspaces', root: '', terminal: {}, loaded: false, refreshing: false });
   readRoute();
-  $('#search').value = '';
-  if (changed && !$('#content').contains($('#panelToolbar'))) $('#content').textContent = uiText("正在连接任务所属环境…");
+  if (changed && !$('#content').contains($('#panelToolbar'))) $('#content').textContent = uiText("正在连接工作区所属环境…");
   $('#reconnectEnvironment').hidden = id === 'local';
   $('#environmentSelect').value = id;
   $('#projectEnvironment').value = id;
   $('#environmentStatus').textContent = environmentName(id);
   render();
+  if (refreshState) focusResourcePage();
   if (refreshState) await refresh();
 }
 $('#environmentSelect').addEventListener('change', event => selectEnvironment(event.target.value, '/settings'));
@@ -65,7 +65,7 @@ window.addEventListener('popstate', () => {
     toast(uiText("请等待当前操作完成后切换环境"));
     return;
   }
-  selectEnvironment(id, location.hash || '#/requirements', false);
+  selectEnvironment(id, location.hash || '#/workspaces', false);
 });
 $('#addEnvironment').addEventListener('click', async () => {
   if (state.busy) return;

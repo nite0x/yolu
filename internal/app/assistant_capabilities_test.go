@@ -18,7 +18,7 @@ import (
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/project"
 	"worktree-hub/internal/store"
-	"worktree-hub/internal/task"
+	"worktree-hub/internal/workspace"
 )
 
 func assistantTestJSON(t *testing.T, value any) json.RawMessage {
@@ -114,11 +114,11 @@ func TestAssistantCapabilitiesValidateEnvironmentScopedTargetsAndContext(t *test
 	assistantTestHub(a, remote)
 	localID := register(t, a, "Local", repo(t, "local", "main"))
 	remoteID := register(t, remote, "Remote", repo(t, "remote", "main"))
-	q, err := a.Tasks.CreateWorkspace(context.Background(), task.CreateRequirement{Name: "Context", Slug: "context", Members: []task.MemberSelection{{ProjectID: localID, Mode: "project"}}})
+	q, err := a.Workspaces.CreateWorkspace(context.Background(), workspace.CreateWorkspaceInput{Name: "Context", Slug: "context", Members: []workspace.MemberSelection{{ProjectID: localID, Mode: "project"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Workspace.Store.SaveSession(model.Session{ID: "native-conversation", Name: "Existing native session", Cwd: q.Members[0].Path, Source: "codex"}); err != nil {
+	if err := a.Execution.Store.SaveSession(model.Session{ID: "native-conversation", Name: "Existing native session", Cwd: q.Members[0].Path, Source: "codex"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -148,7 +148,7 @@ func TestAssistantCapabilitiesValidateEnvironmentScopedTargetsAndContext(t *test
 		Root      string               `json:"root"`
 		Resources []assistant.Resource `json:"resources"`
 	}](t, value)
-	if selection.Root != a.Workspace.Root || selection.Selection.ProjectID != localID || len(selection.Resources) != 2 {
+	if selection.Root != a.Execution.Root || selection.Selection.ProjectID != localID || len(selection.Resources) != 2 {
 		t.Fatalf("selected context: %+v", selection)
 	}
 	_, err = a.assistantContext(context.Background(), assistantTestJSON(t, assistant.Selection{EnvironmentID: "remote", ProjectID: localID}))
@@ -259,19 +259,19 @@ func TestAssistantReviewedOperationsUseRealDomainServicesAndStableResources(t *t
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		t.Fatal(err)
 	}
-	var workspaceReview task.WorkspaceReview
+	var workspaceReview workspace.WorkspaceReview
 	if err := json.Unmarshal(envelope.Operation, &workspaceReview); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(workspaceReview.Requirement.Path); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(workspaceReview.Workspace.Path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("creation review wrote filesystem: %v", err)
 	}
 	result, err = creation.Execute(context.Background(), raw)
 	if err != nil || result.Status != "succeeded" || len(result.Resources) != 1 {
 		t.Fatalf("workspace execution: %+v %v", result, err)
 	}
-	q := assistantTestDecode[model.Requirement](t, result.Data)
-	if q.ID != workspaceReview.Requirement.ID || q.State != "ready" || len(q.Members) != 2 {
+	q := assistantTestDecode[model.Workspace](t, result.Data)
+	if q.ID != workspaceReview.Workspace.ID || q.State != "ready" || len(q.Members) != 2 {
 		t.Fatalf("workspace result: %+v", q)
 	}
 	if reconciled, found, err := creation.Reconcile(context.Background(), raw); err != nil || !found || reconciled.Resources[0].ID != q.ID {
@@ -282,12 +282,12 @@ func TestAssistantReviewedOperationsUseRealDomainServicesAndStableResources(t *t
 	}
 
 	thirdID := register(t, a, "Third", repo(t, "third", "main"))
-	attachment, raw := assistantTestMutation(t, a, "workspace_attach_project", map[string]any{"environment_id": "local", "workspace_id": q.ID, "members": []task.MemberSelection{{ProjectID: thirdID, Mode: "project"}}})
+	attachment, raw := assistantTestMutation(t, a, "workspace_attach_project", map[string]any{"environment_id": "local", "workspace_id": q.ID, "members": []workspace.MemberSelection{{ProjectID: thirdID, Mode: "project"}}})
 	result, err = attachment.Execute(context.Background(), raw)
 	if err != nil || result.Status != "succeeded" {
 		t.Fatalf("attachment execution: %+v %v", result, err)
 	}
-	attached := assistantTestDecode[model.Requirement](t, result.Data)
+	attached := assistantTestDecode[model.Workspace](t, result.Data)
 	if attached.ID != q.ID || len(attached.Members) != 3 {
 		t.Fatalf("attachment resource identity: %+v", attached)
 	}
@@ -311,10 +311,10 @@ func TestAssistantReviewedOperationRejectsStaleSourceAndReadOnlyEnvironment(t *t
 	if len(result.Resources) != 0 {
 		t.Fatalf("stale source returned created resources: %+v", result)
 	}
-	if _, err := os.Stat(filepath.Join(a.Workspace.Root, "assistant-stale")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(a.Execution.Root, "assistant-stale")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("stale plan materialized workspace: %v", err)
 	}
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	_, err = creation.Execute(context.Background(), raw)
 	assistantTestError(t, err, "permission_denied")
 	_, err = creation.Review(context.Background(), json.RawMessage(`{"environment_id":"local","name":"Read only","project_ids":[]}`))
@@ -328,12 +328,12 @@ func TestAssistantReviewedOperationTreatsRemovedBranchAsStale(t *testing.T) {
 	testGit(t, path, "branch", "selected")
 	creation, raw := assistantTestMutation(t, a, "workspace_create", map[string]any{
 		"environment_id": "local", "name": "Removed source", "slug": "removed-source",
-		"members": []task.MemberSelection{{ProjectID: id, Mode: "existing", Branch: "selected"}},
+		"members": []workspace.MemberSelection{{ProjectID: id, Mode: "existing", Branch: "selected"}},
 	})
 	testGit(t, path, "branch", "-D", "selected")
 	_, err := creation.Execute(context.Background(), raw)
 	assistantTestError(t, err, "stale_plan")
-	if _, err := os.Stat(filepath.Join(a.Workspace.Root, "removed-source")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(a.Execution.Root, "removed-source")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("stale branch created workspace: %v", err)
 	}
 }
@@ -358,7 +358,7 @@ func TestAssistantRemoteOperationKeepsStopServiceResponsive(t *testing.T) {
 		<-finished
 		t.Fatal("stop request waited for an active remote operation instead of returning busy")
 	}
-	if response.Code != http.StatusConflict || a.Workspace.Closing.Load() {
+	if response.Code != http.StatusConflict || a.Execution.Closing.Load() {
 		t.Fatalf("stop interrupted a busy environment: %d %s", response.Code, response.Body.String())
 	}
 }
@@ -402,7 +402,7 @@ func TestAssistantEnvironmentShutdownCancelsRemotePlanBeforeClosingApps(t *testi
 		t.Fatal(err)
 	}
 	a.Assistant.Configure(registry, func() bool { return false })
-	if err := a.Workspace.Store.CreateAssistant("shutdown-conversation"); err != nil {
+	if err := a.Execution.Store.CreateAssistant("shutdown-conversation"); err != nil {
 		t.Fatal(err)
 	}
 	p := store.AssistantPlan{
@@ -411,7 +411,7 @@ func TestAssistantEnvironmentShutdownCancelsRemotePlanBeforeClosingApps(t *testi
 		Status: "pending", Steps: []store.AssistantStep{{ID: "execute", Label: "Remote operation", Status: "pending"}}, Resources: []store.AssistantResource{},
 	}
 	p.Digest = assistantTestPlanDigest(t, p)
-	if err := a.Workspace.Store.CreateAssistantPlan(p); err != nil {
+	if err := a.Execution.Store.CreateAssistantPlan(p); err != nil {
 		t.Fatal(err)
 	}
 	code, body := call(t, a, "POST", "/api/assistant/conversations/shutdown-conversation/plans/shutdown-plan/decision", map[string]any{
@@ -440,7 +440,7 @@ func TestAssistantEnvironmentShutdownCancelsRemotePlanBeforeClosingApps(t *testi
 	default:
 		t.Fatal("remote app closed before the assistant plan was cancelled")
 	}
-	result, err := a.Workspace.Store.AssistantPlan(p.ConversationID, p.ID)
+	result, err := a.Execution.Store.AssistantPlan(p.ConversationID, p.ID)
 	if err != nil || result.Status != "unknown" || result.ErrorCode != "cancelled" {
 		t.Fatalf("cancelled remote plan lost its durable outcome: %+v %v", result, err)
 	}
@@ -482,7 +482,7 @@ func TestAssistantRemoteProgressReadsWhileMutationHoldsDomainLocks(t *testing.T)
 	projectID := register(t, remote, "Progress", repo(t, "remote-progress", "main"))
 	creation, raw := assistantTestMutation(t, a, "workspace_create", map[string]any{
 		"environment_id": "remote", "name": "Remote progress", "slug": "remote-progress",
-		"members": []task.MemberSelection{{ProjectID: projectID, Mode: "project"}},
+		"members": []workspace.MemberSelection{{ProjectID: projectID, Mode: "project"}},
 	})
 	result, err := creation.Execute(context.Background(), raw)
 	if err != nil {
@@ -498,14 +498,14 @@ func TestAssistantRemoteProgressReadsWhileMutationHoldsDomainLocks(t *testing.T)
 				return err
 			}
 			defer unlock()
-			env.Workspace.Mu.Lock()
-			defer env.Workspace.Mu.Unlock()
-			if _, err := env.Workspace.Store.DB.Exec(`UPDATE requirements SET state='creating' WHERE id=?; UPDATE members SET state='creating' WHERE requirement_id=?`, workspaceID, workspaceID); err != nil {
+			env.Execution.Mu.Lock()
+			defer env.Execution.Mu.Unlock()
+			if _, err := env.Execution.Store.DB.Exec(`UPDATE workspaces SET state='creating' WHERE id=?; UPDATE members SET state='creating' WHERE workspace_id=?`, workspaceID, workspaceID); err != nil {
 				return err
 			}
 			close(started)
 			<-release
-			_, err = env.Workspace.Store.DB.Exec(`UPDATE requirements SET state='ready' WHERE id=?; UPDATE members SET state='ready' WHERE requirement_id=?`, workspaceID, workspaceID)
+			_, err = env.Execution.Store.DB.Exec(`UPDATE workspaces SET state='ready' WHERE id=?; UPDATE members SET state='ready' WHERE workspace_id=?`, workspaceID, workspaceID)
 			return err
 		})
 	}()
@@ -568,7 +568,7 @@ func TestAssistantEnvironmentLeaseProtectsStoreThroughReconnectAndClose(t *testi
 					close(started)
 					<-ctx.Done()
 					// Teardown must preserve the leased store until this callback exits.
-					storeUsable <- env.Workspace.Store.DB.PingContext(context.Background())
+					storeUsable <- env.Execution.Store.DB.PingContext(context.Background())
 					return ctx.Err()
 				})
 			}()
@@ -582,21 +582,21 @@ func TestAssistantEnvironmentLeaseProtectsStoreThroughReconnectAndClose(t *testi
 				request.SetPathValue("environment", "remote")
 				response := httptest.NewRecorder()
 				a.environments.reconnectHandler(response, request)
-				if response.Code != http.StatusConflict || target.Workspace.Closing.Load() {
+				if response.Code != http.StatusConflict || target.Execution.Closing.Load() {
 					t.Fatalf("reconnect disposed a leased environment: %d %s", response.Code, response.Body.String())
 				}
 			}
 			closeDone := make(chan error, 1)
 			go func() { closeDone <- target.Close() }()
 			deadline := time.Now().Add(2 * time.Second)
-			for !target.Workspace.Closing.Load() && time.Now().Before(deadline) {
+			for !target.Execution.Closing.Load() && time.Now().Before(deadline) {
 				time.Sleep(time.Millisecond)
 			}
-			if !target.Workspace.Closing.Load() {
+			if !target.Execution.Closing.Load() {
 				cancel()
 				t.Fatal("environment close did not start")
 			}
-			if err := target.Workspace.Store.DB.PingContext(context.Background()); err != nil {
+			if err := target.Execution.Store.DB.PingContext(context.Background()); err != nil {
 				cancel()
 				t.Fatalf("close disposed leased store: %v", err)
 			}
@@ -623,9 +623,93 @@ func TestAssistantEnvironmentLeaseProtectsStoreThroughReconnectAndClose(t *testi
 			case <-time.After(2 * time.Second):
 				t.Fatal("environment close did not finish after lease cancellation")
 			}
-			if err := target.Workspace.Store.DB.PingContext(context.Background()); err == nil {
+			if err := target.Execution.Store.DB.PingContext(context.Background()); err == nil {
 				t.Fatal("environment store remained open after close")
 			}
 		})
+	}
+}
+
+func TestAssistantCodexLaunchReviewAndPartialWorkspaceRecovery(t *testing.T) {
+	a := testApp(t)
+	id := register(t, a, "Backend", repo(t, "handoff-backend", "main"))
+	capability, raw := assistantTestMutation(t, a, "workspace_create", map[string]any{
+		"environment_id": "local", "name": "Payment fix", "project_ids": []string{id},
+		"first_instruction": "Fix the duplicate payment retry.",
+	})
+	operation := assistantTestDecode[assistantReview](t, raw).Operation
+	review := assistantTestDecode[assistantWorkspaceReview](t, operation)
+	if review.Codex == nil || review.Codex.Instruction != "Fix the duplicate payment retry." || review.Codex.Cwd != review.Workspace.Members[0].Path {
+		t.Fatalf("missing reviewed Codex launch: %+v", review.Codex)
+	}
+	ctx := context.Background()
+	q, err := a.Workspaces.ExecuteWorkspace(ctx, review.WorkspaceReview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate the persisted state after a member failed during preparation.
+	if _, err := a.Execution.Store.DB.Exec(`UPDATE workspaces SET state='partial' WHERE id=?`, q.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Execution.Store.DB.Exec(`UPDATE members SET state='failed' WHERE workspace_id=?`, q.ID); err != nil {
+		t.Fatal(err)
+	}
+	result, err := capability.Execute(ctx, raw)
+	if err != nil || result.Status != "partial" || len(result.Resources) != 1 || len(result.Steps) != 2 || result.Steps[1].ID != "codex" || result.Steps[1].Status != "failed" {
+		t.Fatalf("partial preparation launched Codex or lost its workspace: %+v %v", result, err)
+	}
+	recovered, found, err := capability.Reconcile(ctx, raw)
+	if err != nil || !found || recovered.Status != "partial" || len(recovered.Resources) != 1 || recovered.Resources[0].ID != q.ID {
+		t.Fatalf("recovery lost the workspace: %+v %v %v", recovered, found, err)
+	}
+	var receipts int
+	if err := a.Execution.Store.DB.QueryRow(`SELECT count(*) FROM conversation_create_requests`).Scan(&receipts); err != nil || receipts != 0 {
+		t.Fatalf("unexpected Codex creation receipts: %d %v", receipts, err)
+	}
+}
+
+func TestAssistantScanFindsUnregisteredRepositoriesBeforeReview(t *testing.T) {
+	a := testApp(t)
+	registered := repo(t, "sample-one", "main")
+	root := filepath.Dir(registered)
+	id := register(t, a, "Existing", registered)
+	second := filepath.Join(root, "sample-two")
+	other := filepath.Join(root, "unrelated")
+	for _, path := range []string{second, other} {
+		testGit(t, root, "clone", "--", registered, path)
+	}
+	scan := func(cursor string) (string, string) {
+		value, err := a.assistantScanProjects(context.Background(), assistantTestJSON(t, map[string]any{"path": root, "query": "sample-", "cursor": cursor, "limit": 1, "environment_id": "local"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := assistantTestDecode[struct {
+			Data []struct {
+				Path      string
+				ProjectID string `json:"project_id"`
+			}
+			Total int
+			Next  string `json:"next_cursor"`
+		}](t, value)
+		if page.Total != 2 || len(page.Data) != 1 {
+			t.Fatalf("scan page: %+v", page)
+		}
+		got := page.Data[0]
+		if got.Path == registered && got.ProjectID != id || got.Path == second && got.ProjectID != "" {
+			t.Fatalf("registration status: %+v", got)
+		}
+		return got.Path, page.Next
+	}
+	first, next := scan("")
+	if first != registered || next == "" {
+		t.Fatal(first, next)
+	}
+	last, next := scan(next)
+	if last != second || next != "" {
+		t.Fatal(last, next)
+	}
+	projects, err := a.Execution.Store.Projects()
+	if err != nil || len(projects) != 1 {
+		t.Fatalf("scan changed registrations: %d, %v", len(projects), err)
 	}
 }

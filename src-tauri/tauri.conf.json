@@ -27,8 +27,8 @@
     "license": "Apache-2.0",
     "licenseFile": "../LICENSE",
     "homepage": "https://github.com/nite0x/yolu",
-    "shortDescription": "A task-centered workspace for cross-project development",
-    "longDescription": "Yolu brings repositories, Git worktrees, terminals and Codex conversations together around each development task. A local desktop workspace built with Tauri and Go.",
+    "shortDescription": "A personal development workspace for multiple repositories",
+    "longDescription": "Yolu brings repositories, Git worktrees, terminals and Codex conversations together around each development workspace. A local desktop workspace built with Tauri and Go.",
     "resources": { "notices/": "notices/", "../LICENSE": "notices/LICENSE" },
     "externalBin": ["binaries/yolu-backend"],
     "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"]

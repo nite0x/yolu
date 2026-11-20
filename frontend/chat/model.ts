@@ -20,9 +20,9 @@ export function pendingAsyncQuestion(entries: Entry[], resolved: ReadonlySet<str
 }
 export interface ChatState { id?: string; revision?: number; turn_id?: string; status: string; busy: boolean; external?: boolean; entries: Entry[]; approvals: Approval[]; error?: string; retrying?: string; blocked?: string; can_handoff?: boolean; notice?: string; accepted_inputs?: string[]; context?: ChatContext; session_name?: string }
 export interface HistoryPush { connected: boolean; entries: Entry[]; sync: number; message?: string; waiting?: boolean; confirmations?: {id: string; title: string; details?: string; questions?: Question[]}[] }
-export interface Session { id: string; name: string; cwd: string; available?: boolean; pinned?: boolean; archived?: boolean; model?: string; reasoningEffort?: string }
-export interface Task { id: string; name: string; state: string; primary_project_id: string; members: {project_id: string; project_name: string; path: string}[] }
-export {newConversationSettings, type PermissionMode, type TurnSettings} from "./settings";
+export interface Session { id: string; provider?: import("./settings").AgentProvider; name: string; cwd: string; available?: boolean; pinned?: boolean; archived?: boolean; model?: string; reasoningEffort?: string }
+export interface Workspace { id: string; name: string; state: string; primary_project_id: string; members: {project_id: string; project_name: string; path: string}[] }
+export {defaultCapabilities, newConversationSettings, normalizeProvider, type AgentProvider, type PermissionMode, type ProviderCapabilities, type TurnSettings} from "./settings";
 export interface ChatContext {model?:string;reasoningEffort?:string;mode?:string;cwd?:string;approvalPolicy?:unknown;approvalsReviewer?:string;sandbox?:{type?:string;writableRoots?:string[];networkAccess?:boolean};additional_directories?:string[]}
 export interface ChatModel {id:string;model:string;displayName:string;isDefault:boolean;defaultReasoningEffort:string;supportedReasoningEfforts:{reasoningEffort:string}[]}
 export const entryKey = (e: Entry) => JSON.stringify([e.turn_id, e.id]);

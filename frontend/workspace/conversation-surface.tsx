@@ -9,10 +9,10 @@ export function ConversationKindSwitch({kind, id, uiID, terminalID}: {kind: "ui"
   </div>
 }
 
-export function ConversationHeader({title, titleID, titleHint, tasks, actions, children}: {title: string; titleID: string; titleHint?: string; tasks?: ReactNode; actions?: ReactNode; children?: ReactNode}) {
+export function ConversationHeader({title, titleID, titleHint, workspaces, actions, children}: {title: string; titleID: string; titleHint?: string; workspaces?: ReactNode; actions?: ReactNode; children?: ReactNode}) {
   return <header className="chat-panel-header conversation-surface-header">
     <div className="chat-panel-toolbar">
-      <div className="chat-panel-heading">{tasks}<h2 id={titleID} tabIndex={-1} className="chat-panel-title" title={titleHint}>{title}</h2></div>
+      <div className="chat-panel-heading">{workspaces}<h2 id={titleID} tabIndex={-1} className="chat-panel-title" title={titleHint}>{title}</h2></div>
       <div className="chat-panel-actions">{actions}</div>
     </div>
     {children}

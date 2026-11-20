@@ -56,7 +56,7 @@ type browserAccess struct {
 
 func newBrowserAccess(a *App) *browserAccess {
 	b := &browserAccess{app: a, config: browserConfig{Port: 4318}, sessionKey: rand.Text()}
-	raw, err := os.ReadFile(filepath.Join(a.Workspace.DataDir, "browser-access.json"))
+	raw, err := os.ReadFile(filepath.Join(a.Execution.DataDir, "browser-access.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return b
 	}
@@ -171,7 +171,7 @@ func (b *browserAccess) configure(ctx context.Context, enabled bool, port int, r
 }
 
 func (b *browserAccess) saveConfig(raw []byte) error {
-	f, err := os.CreateTemp(b.app.Workspace.DataDir, ".browser-access-*.json")
+	f, err := os.CreateTemp(b.app.Execution.DataDir, ".browser-access-*.json")
 	if err != nil {
 		return err
 	}
@@ -184,7 +184,7 @@ func (b *browserAccess) saveConfig(raw []byte) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return os.Rename(f.Name(), filepath.Join(b.app.Workspace.DataDir, "browser-access.json"))
+	return os.Rename(f.Name(), filepath.Join(b.app.Execution.DataDir, "browser-access.json"))
 }
 
 func (b *browserAccess) close() {

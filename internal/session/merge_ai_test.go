@@ -7,14 +7,14 @@ import (
 	"strings"
 	"testing"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/workspace"
 )
 
-func conflictForAI(t *testing.T, a *App, q model.Requirement) string {
+func conflictForAI(t *testing.T, a *App, q model.Workspace) string {
 	t.Helper()
 	path := q.Members[0].Path
-	ps, _ := a.Workspace.Store.ProjectMap()
+	ps, _ := a.Execution.Store.ProjectMap()
 	root := ps[q.PrimaryProjectID].Path
 	testGit(t, root, "switch", "-c", "source")
 	_ = os.WriteFile(filepath.Join(root, "README.md"), []byte("source\n"), 0644)
@@ -23,7 +23,7 @@ func conflictForAI(t *testing.T, a *App, q model.Requirement) string {
 	_ = os.WriteFile(filepath.Join(path, "README.md"), []byte("target\n"), 0644)
 	testGit(t, path, "add", "README.md")
 	testGit(t, path, "commit", "-m", "target")
-	if _, err := workspace.Git(context.Background(), path, "merge", "source"); err == nil {
+	if _, err := execution.Git(context.Background(), path, "merge", "source"); err == nil {
 		t.Fatal("expected conflict")
 	}
 	return testGit(t, path, "rev-parse", "MERGE_HEAD")
@@ -37,7 +37,7 @@ func TestMergeAIStartsScopedSidebarWithServerGeneratedContext(t *testing.T) {
 		t.Fatalf("%+v %s %v", plan, prompt, err)
 	}
 	input := map[string]string{"purpose": "merge_conflict", "project_id": q.PrimaryProjectID, "merge_head": head, "request_id": "merge-sidebar"}
-	endpoint := "/api/requirements/" + q.ID + "/sessions/new"
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
 	if code, raw := call(t, a, "POST", endpoint, input); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
@@ -58,12 +58,12 @@ func TestMergeAIStartsScopedSidebarWithServerGeneratedContext(t *testing.T) {
 func TestReadOnlyMergeAIOpensCorrectTerminalOnce(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
 	head := conflictForAI(t, a, q)
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	var plan model.LaunchPlan
 	launches := 0
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; launches++; return nil }
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; launches++; return nil }
 	input := map[string]string{"project_id": q.PrimaryProjectID, "merge_head": head, "request_id": "merge-terminal"}
-	endpoint := "/api/requirements/" + q.ID + "/merge-ai"
+	endpoint := "/api/workspaces/" + q.ID + "/merge-ai"
 	for range 2 {
 		if code, raw := call(t, a, "POST", endpoint, input); code != 200 {
 			t.Fatalf("%d %s", code, raw)

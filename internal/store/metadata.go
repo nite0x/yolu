@@ -24,12 +24,12 @@ var metadataTables = []struct{ Name, Columns string }{
 	{"assistant_run_contexts", "conversation_id,run_id,context"},
 	{"projects", "id,name,path,common_dir,folder,created_at"},
 	{"settings", "key,value"},
-	{"requirements", "id,name,slug,description,branch,path,primary_project_id,state,created_at,has_workspace"},
-	{"members", "requirement_id,project_id,path,base_commit,state,error,mode,base_ref,branch"},
-	{"requirement_sessions", "requirement_id,session_id,name,cwd,created_at,updated_at,source"},
-	{"session_create_requests", "requirement_id,request_id,session_id"},
-	{"sessions", "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,title_source,title_changed_at"},
-	{"task_session_pins", "requirement_id,session_id"},
+	{"workspaces", "id,name,slug,description,branch,path,primary_project_id,state,created_at,has_directory"},
+	{"members", "workspace_id,project_id,path,base_commit,state,error,mode,base_ref,branch"},
+	{"workspace_sessions", "workspace_id,session_id,name,cwd,created_at,updated_at,source"},
+	{"session_create_requests", "workspace_id,request_id,session_id"},
+	{"sessions", "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,title_source,title_changed_at,provider"},
+	{"workspace_session_pins", "workspace_id,session_id"},
 	{"session_organization", "session_id,pinned,archived,updated_at"},
 	{"conversation_input_requests", "session_id,request_id,fingerprint,status"},
 	{"conversation_async_answers", "session_id,item_id,turn_id,fingerprint,status,request_id"},
@@ -75,9 +75,9 @@ func ExportMetadata(ctx context.Context, file string) (MetadataSnapshot, error) 
 			continue
 		}
 		selectColumns := table.Columns
-		if table.Name == "requirements" {
+		if table.Name == "workspaces" {
 			var columns int
-			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('requirements') WHERE name='has_workspace'`).Scan(&columns); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('workspaces') WHERE name='has_directory'`).Scan(&columns); err != nil {
 				return snapshot, err
 			}
 			if columns == 0 {
@@ -85,13 +85,22 @@ func ExportMetadata(ctx context.Context, file string) (MetadataSnapshot, error) 
 			}
 		}
 		if table.Name == "sessions" {
-			var titleColumns int
+			var titleColumns, providerColumns int
 			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('sessions') WHERE name='title_source'`).Scan(&titleColumns); err != nil {
 				return snapshot, err
 			}
-			if titleColumns == 0 {
-				selectColumns = "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,CASE WHEN name='' THEN '' ELSE 'legacy' END,0"
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('sessions') WHERE name='provider'`).Scan(&providerColumns); err != nil {
+				return snapshot, err
 			}
+			titleExpr := "title_source,title_changed_at"
+			if titleColumns == 0 {
+				titleExpr = "CASE WHEN name='' THEN '' ELSE 'legacy' END,0"
+			}
+			providerExpr := "provider"
+			if providerColumns == 0 {
+				providerExpr = "'codex'"
+			}
+			selectColumns = "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories," + titleExpr + "," + providerExpr
 		}
 		if table.Name == "members" {
 			// Export legacy databases without modifying the source environment.
@@ -105,7 +114,7 @@ func ExportMetadata(ctx context.Context, file string) (MetadataSnapshot, error) 
 				return snapshot, err
 			}
 			if len(columns) == 6 {
-				selectColumns = "requirement_id,project_id,path,base_commit,state,error,'new','refs/heads/master',''"
+				selectColumns = "workspace_id,project_id,path,base_commit,state,error,'new','refs/heads/master',''"
 			}
 		}
 		rows, err := tx.QueryContext(ctx, "SELECT "+selectColumns+" FROM "+table.Name)
@@ -144,20 +153,20 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, name := range []string{"projects", "requirements", "sessions", "assistant_conversations"} {
+	for _, name := range []string{"projects", "workspaces", "sessions", "assistant_conversations"} {
 		var count int
 		if err := tx.QueryRow("SELECT count(*) FROM " + name).Scan(&count); err != nil {
 			return err
 		}
 		if count > 0 {
-			return fmt.Errorf("目标环境已有项目、任务或对话索引，不能覆盖导入")
+			return fmt.Errorf("目标环境已有项目、工作区或对话索引，不能覆盖导入")
 		}
 	}
 	for _, table := range metadataTables {
 		count := len(strings.Split(table.Columns, ","))
 		placeholders := strings.TrimSuffix(strings.Repeat("?,", count), ",")
 		for _, row := range snapshot.Tables[table.Name] {
-			if table.Name == "requirements" && len(row) == 9 {
+			if table.Name == "workspaces" && len(row) == 9 {
 				row = append(append([]any{}, row...), int64(1))
 			}
 			if table.Name == "sessions" && len(row) == 8 {
@@ -165,7 +174,10 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 				if row[1] == "" {
 					source = ""
 				}
-				row = append(append([]any{}, row...), source, int64(0))
+				row = append(append([]any{}, row...), source, int64(0), "codex")
+			}
+			if table.Name == "sessions" && len(row) == 10 {
+				row = append(append([]any{}, row...), "codex")
 			}
 			if table.Name == "members" && len(row) == 6 {
 				row = append(append([]any{}, row...), "new", "refs/heads/master", "")
@@ -173,7 +185,7 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 			if len(row) != count {
 				return fmt.Errorf("导入数据结构不匹配：%s", table.Name)
 			}
-			if table.Name == "requirements" && row[6] == "" {
+			if table.Name == "workspaces" && row[6] == "" {
 				row = append([]any{}, row...)
 				row[6] = nil
 			}
@@ -182,7 +194,7 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 			}
 		}
 	}
-	if _, err := tx.Exec(`UPDATE requirements SET state='partial' WHERE state='creating'; UPDATE members SET state='failed',error='导入时操作尚未完成，请检查后重试' WHERE state IN ('creating','pending')`); err != nil {
+	if _, err := tx.Exec(`UPDATE workspaces SET state='partial' WHERE state='creating'; UPDATE members SET state='failed',error='导入时操作尚未完成，请检查后重试' WHERE state IN ('creating','pending')`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE assistant_runs SET status='interrupted',error_code='interrupted' WHERE status='running'`); err != nil {
@@ -191,7 +203,7 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 	if err := interruptAssistantPlans(tx); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(repairTaskPrimary); err != nil {
+	if _, err := tx.Exec(repairWorkspacePrimary); err != nil {
 		return err
 	}
 	if err := backfillSessions(tx); err != nil {

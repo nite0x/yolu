@@ -22,7 +22,7 @@ func TestCleanupProtectsEmbeddedTerminalsAndRechecksOldPreview(t *testing.T) {
 	}
 	// Exercise Git-only cleanup without reading the installed Codex's sessions.
 	t.Setenv("PATH", "/usr/bin:/bin")
-	for _, directory := range []string{"project", "task-root"} {
+	for _, directory := range []string{"project", "workspace-root"} {
 		t.Run(directory, func(t *testing.T) {
 			a := testApp(t)
 			p := register(t, a, "Repo", repo(t, "repo", "main"))
@@ -30,7 +30,7 @@ func TestCleanupProtectsEmbeddedTerminalsAndRechecksOldPreview(t *testing.T) {
 			path := q.Members[0].Path
 			review := func() project.CleanupCandidate {
 				t.Helper()
-				code, raw := call(t, a, "GET", "/api/requirements/"+q.ID+"/review", nil)
+				code, raw := call(t, a, "GET", "/api/workspaces/"+q.ID+"/review", nil)
 				var result struct {
 					Items []project.CleanupCandidate `json:"items"`
 				}
@@ -39,26 +39,26 @@ func TestCleanupProtectsEmbeddedTerminalsAndRechecksOldPreview(t *testing.T) {
 				}
 				return result.Items[0]
 			}
-			call(t, a, "POST", "/api/requirements/"+q.ID+"/archive", map[string]bool{"archived": true})
+			call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": true})
 			preview := review()
 			if !preview.Cleanable {
 				t.Fatalf("initially not cleanable: %+v", preview)
 			}
-			call(t, a, "POST", "/api/requirements/"+q.ID+"/archive", map[string]bool{"archived": false})
+			call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": false})
 			projectID := p
-			if directory == "task-root" {
+			if directory == "workspace-root" {
 				projectID = ""
 			}
-			code, raw := call(t, a, "POST", "/api/terminals", map[string]any{"task_id": q.ID, "project_id": projectID, "profile_id": "custom", "executable": "/bin/sh", "args": []string{"-i"}})
+			code, raw := call(t, a, "POST", "/api/terminals", map[string]any{"workspace_id": q.ID, "project_id": projectID, "profile_id": "custom", "executable": "/bin/sh", "args": []string{"-i"}})
 			var info terminal.Info
 			if code != 201 || json.Unmarshal(raw, &info) != nil {
 				t.Fatalf("start %d %s", code, raw)
 			}
-			call(t, a, "POST", "/api/requirements/"+q.ID+"/archive", map[string]bool{"archived": true})
+			call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": true})
 			if current := review(); current.Cleanable || !strings.Contains(strings.Join(current.Reasons, " "), "运行中的终端") {
 				t.Fatalf("active terminal not shown in review: %+v", current)
 			}
-			endpoint := "/api/requirements/" + q.ID + "/cleanup/" + p
+			endpoint := "/api/workspaces/" + q.ID + "/cleanup/" + p
 			input := map[string]string{"path": path, "fingerprint": preview.Fingerprint}
 			if code, raw := call(t, a, "POST", endpoint, input); code != 409 || !strings.Contains(string(raw), "运行中的终端") {
 				t.Fatalf("old preview bypassed terminal guard: %d %s", code, raw)
@@ -101,7 +101,7 @@ func TestTerminalStartWaitsForDirectoryRemovalReservation(t *testing.T) {
 	}()
 	done := make(chan int, 1)
 	go func() {
-		code, _ := call(t, a, "POST", "/api/terminals", map[string]any{"task_id": q.ID, "project_id": p, "profile_id": "custom", "executable": "/bin/sh"})
+		code, _ := call(t, a, "POST", "/api/terminals", map[string]any{"workspace_id": q.ID, "project_id": p, "profile_id": "custom", "executable": "/bin/sh"})
 		done <- code
 	}()
 	select {
@@ -124,28 +124,28 @@ func TestTerminalStartWaitsForDirectoryRemovalReservation(t *testing.T) {
 	}
 }
 
-func TestTerminalTaskScopeAndAuthenticatedLifecycle(t *testing.T) {
+func TestTerminalWorkspaceScopeAndAuthenticatedLifecycle(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix shell integration")
 	}
 	a := testApp(t)
 	p := testutil.Register(t, a, "terminal", testutil.Repo(t, "terminal", "master"))
-	code, q, raw := testutil.Create(t, a, p, nil, "terminal-task")
+	code, q, raw := testutil.Create(t, a, p, nil, "terminal-workspace")
 	if code != 201 || q.State != "ready" {
 		t.Fatalf("create %d %s", code, raw)
 	}
-	for _, body := range []map[string]any{{"task_id": "missing", "profile_id": "shell"}, {"task_id": q.ID, "project_id": "unrelated", "profile_id": "shell"}, {"task_id": q.ID, "profile_id": "custom", "executable": "./relative"}} {
+	for _, body := range []map[string]any{{"workspace_id": "missing", "profile_id": "shell"}, {"workspace_id": q.ID, "project_id": "unrelated", "profile_id": "shell"}, {"workspace_id": q.ID, "profile_id": "custom", "executable": "./relative"}} {
 		code, _ = testutil.Call(t, a, "POST", "/api/terminals", body)
 		if code < 400 {
 			t.Fatalf("invalid scope accepted: %+v", body)
 		}
 	}
-	code, raw = testutil.Call(t, a, "POST", "/api/terminals", map[string]any{"task_id": q.ID, "project_id": p, "profile_id": "shell", "cwd": "/untrusted-client-directory"})
+	code, raw = testutil.Call(t, a, "POST", "/api/terminals", map[string]any{"workspace_id": q.ID, "project_id": p, "profile_id": "shell", "cwd": "/untrusted-client-directory"})
 	// Decode rejects unknown fields rather than trusting a cwd supplied by a client.
 	if code < 400 {
 		t.Fatalf("client cwd accepted: %s", raw)
 	}
-	code, raw = testutil.Call(t, a, "POST", "/api/terminals", map[string]any{"task_id": q.ID, "project_id": p, "profile_id": "shell"})
+	code, raw = testutil.Call(t, a, "POST", "/api/terminals", map[string]any{"workspace_id": q.ID, "project_id": p, "profile_id": "shell"})
 	if code != 201 {
 		t.Fatalf("start %d %s", code, raw)
 	}
@@ -154,7 +154,7 @@ func TestTerminalTaskScopeAndAuthenticatedLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if info.Cwd != q.Members[0].Path {
-		t.Fatalf("incorrect task directory %s", info.Cwd)
+		t.Fatalf("incorrect workspace directory %s", info.Cwd)
 	}
 	code, raw = testutil.Call(t, a, "POST", "/api/terminals/"+info.ID+"/ticket", nil)
 	if code != 200 || !strings.Contains(string(raw), "ticket") {
@@ -201,7 +201,7 @@ func TestTerminalProfilesPersistWithoutEnvironmentSecrets(t *testing.T) {
 		t.Fatalf("profiles %d %s", code, raw)
 	}
 	// Another App reads the same data directory: settings do not depend on a browser origin/port.
-	b, err := openApp(a.Workspace.DataDir, a.Workspace.Root)
+	b, err := openApp(a.Execution.DataDir, a.Execution.Root)
 	if err != nil {
 		t.Fatal(err)
 	}

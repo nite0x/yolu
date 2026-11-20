@@ -105,7 +105,7 @@ func (a *Service) scanSessionCatalog(ctx context.Context, scope sessionScope, ar
 			if err := a.SaveSession("", s, "workspace", observed); err != nil {
 				return nil, err
 			}
-			if err := a.Workspace.Store.ObserveSessionArchive(s.ID, archived, started); err != nil {
+			if err := a.Execution.Store.ObserveSessionArchive(s.ID, archived, started); err != nil {
 				return nil, err
 			}
 		}

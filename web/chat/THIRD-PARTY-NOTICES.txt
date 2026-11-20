@@ -1,4 +1,4 @@
-Yolu task chat — browser dependency licenses
+Yolu workspace chat — browser dependency licenses
 
 Official assistant-ui registry sources
 MIT License

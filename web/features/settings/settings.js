@@ -12,6 +12,8 @@ let conversationDefaultsEnvironment = null;
 let conversationDefaultsRevision = 0;
 let conversationDefaultsLoading = false;
 const codexDiagnostics = new Map();
+const agyDiagnostics = new Map();
+const codexInstallationMonitors = new Set();
 let codexDiagnosticsBatch = false;
 let codexUnregisteredDistros = [];
 
@@ -29,26 +31,116 @@ function renderCodexDiagnostics() {
 }
 
 function updateCodexDiagnostics() {
-  $('#codexDiagnosticsResults').innerHTML = window.WorkHubUI.codexDiagnostics([...codexDiagnostics.values()]);
+  const container = $('#codexDiagnosticsResults');
+  const openDetails = new Set([...container.querySelectorAll('details[open]')].map(details => details.closest('[data-codex-environment]').dataset.codexEnvironment));
+  container.innerHTML = window.WorkHubUI.codexDiagnostics([...codexDiagnostics.values()].map(result => ({ ...result, readOnly: sessionReadOnly })));
+  for (const section of container.querySelectorAll('[data-codex-environment]')) {
+    if (openDetails.has(section.dataset.codexEnvironment)) section.querySelector('details')?.setAttribute('open', '');
+  }
   $('#codexDiagnosticsCopy').hidden = true;
   renderCodexDiagnostics();
 }
 
-async function checkCodexEnvironment(id) {
-  if (codexDiagnostics.get(id)?.loading) return;
-  codexDiagnostics.set(id, { id, name: environmentName(id), report: codexDiagnostics.get(id)?.report, loading: true });
-  updateCodexDiagnostics();
-  try {
-    const report = await api('/api/settings/codex', { environment: id, cache: 'no-store' });
-    if (!report || !Array.isArray(report.checks) || !Array.isArray(report.candidates)) throw new Error(uiText("后台未返回有效检测报告，请确认 Yolu 后台版本"));
-    codexDiagnostics.set(id, { id, name: environmentName(id), report });
-  } catch (error) {
-    codexDiagnostics.set(id, { id, name: environmentName(id), report: codexDiagnostics.get(id)?.report, error: error.message });
-  }
+function setCodexDiagnostic(id, changes) {
+  codexDiagnostics.set(id, { ...codexDiagnostics.get(id), id, name: environmentName(id), ...changes });
   updateCodexDiagnostics();
 }
 
+async function checkCodexEnvironment(id) {
+  const current = codexDiagnostics.get(id);
+  if (current?.loading || current?.install?.status === 'running') return;
+  setCodexDiagnostic(id, { loading: true, error: null });
+  try {
+    const report = await api('/api/settings/codex', { environment: id, cache: 'no-store' });
+    if (!report || !Array.isArray(report.checks) || !Array.isArray(report.candidates)) throw new Error(uiText("后台未返回有效检测报告，请确认 Yolu 后台版本"));
+    setCodexDiagnostic(id, { report, install: report.install_state, loading: false });
+    if (report.install_state?.status === 'running') void monitorCodexInstallation(id);
+  } catch (error) {
+    setCodexDiagnostic(id, { loading: false, error: error.message });
+  }
+}
+
+async function monitorCodexInstallation(id) {
+  if (codexInstallationMonitors.has(id)) return;
+  codexInstallationMonitors.add(id);
+  try {
+    let failures = 0;
+    while (true) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        const install = await api('/api/settings/codex/install', { environment: id, cache: 'no-store' });
+        if (install?.status === 'running') {
+          failures = 0;
+          if (install.stage !== codexDiagnostics.get(id)?.install?.stage) setCodexDiagnostic(id, { install });
+          continue;
+        }
+        const installError = !install?.status ? uiText("未找到安装记录，请重新检测当前版本。") : null;
+        setCodexDiagnostic(id, { install, installError });
+        break;
+      } catch (error) {
+        if (++failures < 3) continue;
+        setCodexDiagnostic(id, { install: null, installError: error.message });
+        break;
+      }
+    }
+  } finally {
+    codexInstallationMonitors.delete(id);
+  }
+  await checkCodexEnvironment(id);
+}
+
+$('#codexDiagnosticsResults').addEventListener('click', async event => {
+  const button = event.target.closest('button[data-codex-install]');
+  if (!button || button.disabled || sessionReadOnly) return;
+  const id = button.closest('[data-codex-environment]').dataset.codexEnvironment;
+  const result = codexDiagnostics.get(id);
+  const plan = result?.report?.install_plan;
+  if (!plan?.action || result.loading || result.error || result.install?.status === 'running') return;
+  setCodexDiagnostic(id, { install: { status: 'running', action: plan.action }, installError: null });
+  try {
+    const install = await api('/api/settings/codex/install', { method: 'POST', environment: id, body: JSON.stringify(plan) });
+    if (install?.status !== 'running') throw new Error(uiText("后台未返回有效的 Codex 安装状态，请重新检测。"));
+    setCodexDiagnostic(id, { install });
+    void monitorCodexInstallation(id);
+  } catch (error) {
+    setCodexDiagnostic(id, { install: null, installError: error.message });
+    await checkCodexEnvironment(id);
+  }
+});
+
 $('#checkCodex').addEventListener('click', () => checkCodexEnvironment(activeEnvironment));
+function renderAgyDiagnostics() {
+  const results = [...agyDiagnostics.values()];
+  const loading = results.some(result => result.loading);
+  const button = $('#checkAgy');
+  if (button) button.disabled = loading;
+  const status = $('#agyDiagnosticsStatus');
+  if (status) status.textContent = loading ? uiText("正在检测执行环境，请稍候…") : results.length ? uiText("已检测 {0} 个环境；当前配置：{1}", results.length, environmentName()) : uiText("尚未检测");
+}
+function updateAgyDiagnostics() {
+  const container = $('#agyDiagnosticsResults');
+  if (container && window.WorkHubUI.agyDiagnostics) {
+    container.innerHTML = window.WorkHubUI.agyDiagnostics([...agyDiagnostics.values()]);
+  }
+  renderAgyDiagnostics();
+}
+function setAgyDiagnostic(id, changes) {
+  agyDiagnostics.set(id, { ...agyDiagnostics.get(id), id, name: environmentName(id), ...changes });
+  updateAgyDiagnostics();
+}
+async function checkAgyEnvironment(id) {
+  const current = agyDiagnostics.get(id);
+  if (current?.loading) return;
+  setAgyDiagnostic(id, { loading: true, error: null });
+  try {
+    const report = await api('/api/settings/agy', { environment: id, cache: 'no-store' });
+    if (!report || !Array.isArray(report.checks)) throw new Error(uiText("后台未返回有效检测报告，请确认 Yolu 后台版本"));
+    setAgyDiagnostic(id, { report, loading: false });
+  } catch (error) {
+    setAgyDiagnostic(id, { loading: false, error: error.message });
+  }
+}
+$('#checkAgy')?.addEventListener('click', () => checkAgyEnvironment(activeEnvironment));
 $('#checkAllCodex').addEventListener('click', async () => {
   if (codexDiagnosticsBatch || [...codexDiagnostics.values()].some(result => result.loading)) return;
   codexDiagnosticsBatch = true;
@@ -204,7 +296,9 @@ $('#conversationDefaultsForm').addEventListener('submit', event => {
 function renderSettings() {
   if (state.view === 'settings' && !browserAccessState && !browserAccessLoading) void loadBrowserAccess();
   renderCodexDiagnostics();
+  renderAgyDiagnostics();
   if (state.view === 'settings' && !codexDiagnosticsBatch && !codexDiagnostics.has(activeEnvironment)) void checkCodexEnvironment(activeEnvironment);
+  if (state.view === 'settings' && !agyDiagnostics.has(activeEnvironment)) void checkAgyEnvironment(activeEnvironment);
   const environment = environmentInventory.find(e => e.id === activeEnvironment);
   $('#settingsEnvironment').textContent = environment?.name || (activeEnvironment === 'local' ? uiText("本机") : activeEnvironment);
   $('#settingsRoot').textContent = state.root || uiText("等待执行环境连接后读取");

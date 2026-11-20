@@ -20,11 +20,11 @@ html[data-workhub-desktop]:not([data-workhub-platform]) .sidebar .brand span { d
 html[data-workhub-desktop] .sidebar nav { grid-template-columns: 1fr; justify-items: center; margin: 0; gap: var(--yolu-rail-gap); }
 html[data-workhub-desktop] .sidebar nav .nav-item { position: relative; justify-content: center; gap: 0; }
 html[data-workhub-desktop] .sidebar .nav-icon { display: flex; flex: none; align-items: center; justify-content: center; }
-html[data-workhub-desktop] .sidebar :is(.nav-item,.task-shortcut-picker > summary,#refreshButton,.codex-quota-trigger,.conversation-shortcut-open) {
+html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,#refreshButton,.codex-quota-trigger,.conversation-shortcut-open) {
   width: var(--yolu-rail-control-size);
   height: var(--yolu-rail-control-size);
 }
-html[data-workhub-desktop] .sidebar :is(.nav-icon,.task-shortcut-picker > summary,.sidebar-settings,#openYoluAssistant,#refreshButton,.codex-quota-trigger) > svg {
+html[data-workhub-desktop] .sidebar :is(.nav-icon,.workspace-shortcut-picker > summary,.sidebar-settings,#openYoluAssistant,#refreshButton,.codex-quota-trigger) > svg {
   width: var(--yolu-rail-icon-size);
   height: var(--yolu-rail-icon-size);
   stroke-width: 1.8;
@@ -61,7 +61,7 @@ html[data-workhub-desktop] .sidebar .codex-quota-trigger :is(.codex-quota-copy,.
 
 html[data-workhub-desktop] .shell { margin: var(--workspace-pane-top-inset) var(--workspace-pane-inset) var(--workspace-pane-inset) var(--workspace-navigation-left,52px); border: 1px solid var(--yolu-border,#e0e5ef); background: var(--yolu-surface,#fff); }
 html[data-workhub-desktop] .shell main { background: var(--yolu-surface,#fff); }
-html[data-workhub-desktop] :is(.tasks-page,.projects-page,.sessions-page-open) main { padding: 0; }
+html[data-workhub-desktop] :is(.workspaces-page,.projects-page,.sessions-page-open) main { padding: 0; }
 html[data-workhub-desktop] :is(#workContent,.session-browser) { border: 0; border-radius: 0; }
 html[data-workhub-desktop][data-workspace-conversation] body .shell { margin: 0; }
 html[data-workhub-desktop][data-workspace-navigation] body .shell {
@@ -70,61 +70,10 @@ html[data-workhub-desktop][data-workspace-navigation] body .shell {
   width: var(--workspace-shared-list-width,280px);
 }
 
-/* Lay out the task and project panes on the same canvas as conversations. */
-html[data-workhub-desktop] :is(.tasks-page,.projects-page:not(.project-tool-page)) .shell {
-  border: 0;
-  overflow: visible;
-}
-html[data-workhub-desktop] :is(.tasks-page,.projects-page:not(.project-tool-page)) :is(main,#workContent,.project-workspace) {
-  background: transparent;
-  overflow: visible;
-}
-html[data-workhub-desktop] :is(.tasks-page #workContent,.project-workspace) {
-  grid-template-columns: var(--workspace-list-width, 280px) var(--workspace-pane-gap) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-}
-html[data-workhub-desktop] .tasks-page :is(.task-browser,.task-detail-pane) {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-html[data-workhub-desktop] .tasks-page #taskHeadingSlot { flex-shrink: 0; }
-html[data-workhub-desktop] .tasks-page .task-detail-pane { overflow: hidden; }
-html[data-workhub-desktop] .tasks-page .task-browser-header { border-bottom: 0; }
-html[data-workhub-desktop] .tasks-page .task-browser-heading { min-height: calc(16px + var(--workspace-list-heading-height) + var(--workspace-list-tools-gap)); padding: 16px 12px var(--workspace-list-tools-gap); }
-html[data-workhub-desktop] .tasks-page :is(#taskCreateSlot,#newTaskButton) { display: flex; }
-html[data-workhub-desktop] .tasks-page #panelToolbar { padding: 0 12px 8px; }
-html[data-workhub-desktop] .tasks-page #panelTitle { display: none; }
-
-html[data-workhub-desktop] .projects-page:not(.project-tool-page) :is(#taskProjectsView,#content) { overflow: visible; }
-html[data-workhub-desktop] .projects-page #panelToolbar {
-  display: grid;
-  grid-template-columns: minmax(0,1fr) auto;
-  grid-template-rows: minmax(var(--workspace-list-heading-height),auto) auto;
-  grid-template-areas: "title add" "search search";
-  align-items: center;
-  gap: var(--workspace-list-tools-gap);
-  padding: 16px 12px 8px;
-  border: 0;
-}
-html[data-workhub-desktop] .projects-page .toolbar-actions { display: contents; }
-html[data-workhub-desktop] .projects-page #panelTitle { grid-area: title; display: block; }
-html[data-workhub-desktop] .projects-page #projectAddButton { grid-area: add; display: flex; }
-html[data-workhub-desktop] .projects-page #searchField { grid-area: search; min-width: 0; }
-
+/* Resource routes display one raised list or detail surface. */
+html[data-workhub-desktop] :is(.workspaces-page,.projects-page:not(.project-tool-page)) .shell { border: 0; }
+html[data-workhub-desktop] :is(.workspaces-page,.projects-page:not(.project-tool-page)) :is(main,#workContent,.project-workspace) { background: transparent; }
 @media (max-width: 760px) {
-  html[data-workhub-desktop] .tasks-page #workContent { grid-template-columns: minmax(0, 1fr); }
-  html[data-workhub-desktop] .tasks-page:not(.task-selection-open) .task-detail-pane,
-  html[data-workhub-desktop] .tasks-page.task-selection-open .task-browser { display: none; }
-  html[data-workhub-desktop] .tasks-page .workspace-back { display: inline-block; margin: 0 0 10px; font-size: 13px; }
-  html[data-workhub-desktop] .project-workspace { display: flex; }
-  html[data-workhub-desktop] :is(.project-browser,.project-detail) { flex: 1; }
-  html[data-workhub-desktop] .project-workspace[data-pane="list"] > .project-detail,
-  html[data-workhub-desktop] .project-workspace[data-pane="detail"] > .project-browser,
-  html[data-workhub-desktop] .project-resize-handle { display: none; }
-  html[data-workhub-desktop] .project-list-enter { display: inline; }
-  html[data-workhub-desktop] .project-detail .project-list-back { display: inline-flex; margin: -4px 0 14px; padding-left: 0 !important; color: var(--muted-foreground); }
   html[data-workhub-desktop]:not([data-workspace-conversation]) .session-reading-toolbar { display: flex; }
   html[data-workhub-desktop]:not([data-workspace-conversation]) .session-browser-mobile-back { display: block; }
 }
@@ -138,13 +87,13 @@ html[data-workhub-desktop] #conversationShortcuts {
   overflow: visible;
 }
 .sidebar-shortcut-rail { display: flex; flex-direction: column; min-height: 0; width: 100%; }
-.sidebar-shortcut-rail .task-shortcuts-heading {
+.sidebar-shortcut-rail .workspace-shortcuts-heading {
   justify-content: center;
   margin: 0 0 var(--yolu-rail-gap);
   flex-shrink: 0;
 }
 .sidebar-shortcut-rail #shortcutPinnedTitle { display: none; }
-.sidebar-shortcut-rail .task-shortcut-options {
+.sidebar-shortcut-rail .workspace-shortcut-options {
   position: fixed;
   inset: auto;
   width: min(340px, calc(100vw - 80px));
@@ -176,9 +125,9 @@ html[data-workhub-desktop] .sidebar-shortcut-list .shortcut-badge {
   font-size: 10px;
 }
 
-html[data-workhub-desktop] .sidebar :is(.nav-item,.task-shortcut-picker > summary, #refreshButton,.codex-quota-trigger) { position: relative; }
-html[data-workhub-desktop] .sidebar :is(.nav-item,.task-shortcut-picker > summary,#refreshButton,.codex-quota-trigger):focus-visible { outline: 2px solid var(--yolu-ring,#818cf8); outline-offset: 1px; }
-html[data-workhub-desktop] .sidebar :is(.nav-item,.task-shortcut-picker > summary,#refreshButton,.codex-quota-trigger):focus-visible::after {
+html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary, #refreshButton,.codex-quota-trigger) { position: relative; }
+html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,#refreshButton,.codex-quota-trigger):focus-visible { outline: 2px solid var(--yolu-ring,#818cf8); outline-offset: 1px; }
+html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,#refreshButton,.codex-quota-trigger):focus-visible::after {
   content: attr(title);
   position: absolute;
   z-index: 1;

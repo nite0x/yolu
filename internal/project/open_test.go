@@ -27,7 +27,7 @@ func TestProjectOpenIsScopedToWorktreeAndRemoteCredentialsAreRemoved(t *testing.
 	a := testApp(t)
 	path := repo(t, "open", "master")
 	id := register(t, a, "App", path)
-	_, q, _ := create(t, a, id, nil, "open-task")
+	_, q, _ := create(t, a, id, nil, "open-workspace")
 	var tool, opened, distro, remote string
 	a.OpenEditor = func(t, p, d string) error { tool, opened, distro = t, p, d; return nil }
 	a.OpenExternal = func(u string) error { remote = u; return nil }

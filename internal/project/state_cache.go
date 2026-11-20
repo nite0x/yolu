@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/workspace"
 )
 
 // Full inventories include every registered repository and worktree. Keep this
@@ -59,11 +59,11 @@ func newStateCache() *stateCache {
 }
 
 func discoverProjectState(ctx context.Context, path string) ([]model.Worktree, bool, error) {
-	raw, err := workspace.Git(ctx, path, "worktree", "list", "--porcelain", "-z")
+	raw, err := execution.Git(ctx, path, "worktree", "list", "--porcelain", "-z")
 	if err != nil {
 		return nil, false, err
 	}
-	_, err = workspace.Git(ctx, path, "rev-parse", "--verify", "refs/heads/master^{commit}")
+	_, err = execution.Git(ctx, path, "rev-parse", "--verify", "refs/heads/master^{commit}")
 	return ParseWorktrees(raw), err == nil, nil
 }
 

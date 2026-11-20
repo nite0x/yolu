@@ -285,3 +285,65 @@ func TestInstalledCodexAssistantDynamicTool(t *testing.T) {
 	}
 	t.Logf("real provider called the application tool and returned its verification value (%d bytes)", len(output))
 }
+
+func TestAssistantCatalogNotificationsAndUnauthorizedTools(t *testing.T) {
+	for _, tc := range []struct {
+		server, tool string
+		blocked      bool
+	}{
+		{"codex", "list_mcp_resources", false},
+		{"codex", "list_mcp_resource_templates", false},
+		{"other", "list_mcp_resources", true},
+		{"codex", "read_mcp_resource", true},
+	} {
+		t.Run(tc.server+"_"+tc.tool, func(t *testing.T) {
+			params, _ := json.Marshal(map[string]any{"threadId": "ephemeral", "turnId": "turn", "item": map[string]string{"type": "mcpToolCall", "server": tc.server, "tool": tc.tool}})
+			f := newToolFixture(codex.Event{Method: "item/started", Params: params}, toolEvent("read", "yolu_context", "{}"))
+			calls := 0
+			out, err := runToolFixture(t, f, func(context.Context, string, json.RawMessage) (any, error) { calls++; return "ok", nil })
+			if tc.blocked {
+				if !errors.Is(err, errAssistantToolBlocked) || calls != 0 || f.calls["turn/interrupt"] == nil {
+					t.Fatalf("unsafe tool: calls=%d err=%v", calls, err)
+				}
+			} else if err != nil || out != "Ready" || calls != 1 || f.calls["turn/interrupt"] != nil {
+				t.Fatalf("catalog lookup interrupted turn: %q %v", out, err)
+			}
+			if f.calls["thread/unsubscribe"] == nil {
+				t.Fatal("thread subscription retained")
+			}
+		})
+	}
+}
+
+func TestAssistantProviderReportsCapabilityErrorsToCodex(t *testing.T) {
+	f := newToolFixture(toolEvent("bad", "yolu_context", "{}"), toolEvent("retry", "yolu_context", "{}"))
+	calls := 0
+	output, err := runToolFixture(t, f, func(context.Context, string, json.RawMessage) (any, error) {
+		calls++
+		if calls == 1 {
+			return map[string]any{"error": &CapabilityError{Code: "invalid_input", Message: "Use a valid limit."}}, nil
+		}
+		return "ok", nil
+	})
+	if err != nil || output != "Ready" || len(f.replies) != 2 || f.replies[0].Success || !strings.Contains(f.replies[0].ContentItems[0].Text, "invalid_input") || !f.replies[1].Success {
+		t.Fatalf("retry: %+v %v", f.replies, err)
+	}
+}
+
+func TestAssistantClassifiesFailedTurnsWithoutExposingProviderMessages(t *testing.T) {
+	for info, want := range map[string]runFailure{"unauthorized": "codex_unauthorized", "usageLimitExceeded": "codex_usage_limit", "rateLimitExceeded": "codex_usage_limit", "modelNotFound": errAssistantModelUnavailable, "other": ""} {
+		t.Run(info, func(t *testing.T) {
+			params, _ := json.Marshal(map[string]any{"threadId": "ephemeral", "turn": map[string]any{"id": "turn", "status": "failed", "error": map[string]string{"codexErrorInfo": info, "message": "PRIVATE"}}})
+			f := newToolFixture(codex.Event{Method: "turn/completed", Params: params})
+			_, err := runToolFixture(t, f, func(context.Context, string, json.RawMessage) (any, error) {
+				t.Fatal("unexpected tool")
+				return nil, nil
+			})
+			var classified runFailure
+			errors.As(err, &classified)
+			if err == nil || strings.Contains(err.Error(), "PRIVATE") || classified != want {
+				t.Fatalf("err=%v classified=%q want=%q", err, classified, want)
+			}
+		})
+	}
+}

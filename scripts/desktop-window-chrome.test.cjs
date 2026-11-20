@@ -49,7 +49,7 @@ test('page iframe header drags through the host bridge without creating duplicat
     frame.src = 'http://127.0.0.1:12345/';
     dom.window.document.body.append(frame);
     const child = frame.contentWindow;
-    child.document.write('<body><div class="page-heading"><span>任务</span><button>新建</button></div></body>');
+    child.document.write('<body><div class="page-heading"><span>工作区</span><button>新建</button></div></body>');
     child.eval(source('macos'));
     child.document.dispatchEvent(new child.Event('DOMContentLoaded'));
     child.document.querySelector('span').dispatchEvent(new child.MouseEvent('mousedown', {bubbles:true, button:0, detail:1}));
@@ -73,7 +73,7 @@ test('sidebar blank space drags while brand menus and resize handles keep their 
   const {dom,calls,mouse,doc} = setup();
   try {
     const sidebar = doc.createElement('aside'); sidebar.className = 'sidebar';
-    sidebar.innerHTML = '<span>空白</span><button>Yolu 菜单</button><summary>更多</summary><div role="menuitem">任务首页</div><div role="separator"></div>';
+    sidebar.innerHTML = '<span>空白</span><button>Yolu 菜单</button><summary>更多</summary><div role="menuitem">工作区首页</div><div role="separator"></div>';
     doc.body.append(sidebar);
     mouse(sidebar.querySelector('span'));
     assert.deepEqual(calls,['plugin:window|start_dragging']);

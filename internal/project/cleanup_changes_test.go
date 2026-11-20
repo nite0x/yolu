@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 func reviewItems(t *testing.T, a *App, id string) []CleanupCandidate {
 	t.Helper()
-	code, raw := call(t, a, "GET", "/api/requirements/"+id+"/review", nil)
+	code, raw := call(t, a, "GET", "/api/workspaces/"+id+"/review", nil)
 	var result struct {
 		Items []CleanupCandidate `json:"items"`
 	}
@@ -29,11 +29,11 @@ func TestCleanupChecksArchiveDirtySharedIgnoredAndExpiredPreview(t *testing.T) {
 	a := testApp(t)
 	id := register(t, a, "Repo", repo(t, "repo", "main"))
 	_, q, _ := create(t, a, id, nil, "cleanup")
-	endpoint := "/api/requirements/" + q.ID + "/cleanup/" + id
+	endpoint := "/api/workspaces/" + q.ID + "/cleanup/" + id
 	if items := reviewItems(t, a, q.ID); len(items) != 1 || items[0].Cleanable {
 		t.Fatal(items)
 	}
-	call(t, a, "POST", "/api/requirements/"+q.ID+"/archive", map[string]bool{"archived": true})
+	call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": true})
 	clean := reviewItems(t, a, q.ID)[0]
 	if !clean.Cleanable {
 		t.Fatal(clean)
@@ -55,8 +55,8 @@ func TestCleanupChecksArchiveDirtySharedIgnoredAndExpiredPreview(t *testing.T) {
 		t.Fatal(item)
 	}
 	os.Remove(filepath.Join(path, "ignored.txt"))
-	// Shared directories cannot be removed, including references from archived tasks.
-	code, raw := call(t, a, "POST", "/api/requirements", map[string]any{"name": "Shared", "slug": "shared", "members": []map[string]string{{"project_id": id, "mode": "worktree", "path": path}}})
+	// Shared directories cannot be removed, including references from archived workspaces.
+	code, raw := call(t, a, "POST", "/api/workspaces", map[string]any{"name": "Shared", "slug": "shared", "members": []map[string]string{{"project_id": id, "mode": "worktree", "path": path}}})
 	if code != 201 {
 		t.Fatalf("shared %d %s", code, raw)
 	}
@@ -67,7 +67,7 @@ func TestCleanupChecksArchiveDirtySharedIgnoredAndExpiredPreview(t *testing.T) {
 		ID string `json:"id"`
 	}
 	json.Unmarshal(raw, &shared)
-	call(t, a, "DELETE", "/api/requirements/"+shared.ID+"/projects/"+id, nil)
+	call(t, a, "DELETE", "/api/workspaces/"+shared.ID+"/projects/"+id, nil)
 	current := reviewItems(t, a, q.ID)[0]
 	if !current.Cleanable {
 		t.Fatal(current)
@@ -86,17 +86,17 @@ func TestCleanupChecksArchiveDirtySharedIgnoredAndExpiredPreview(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("directory retained", err)
 	}
-	ps, _ := a.Workspace.Store.ProjectMap()
+	ps, _ := a.Execution.Store.ProjectMap()
 	testGit(t, ps[id].Path, "show-ref", "--verify", "refs/heads/"+q.Branch)
-	saved, _ := a.Workspace.Store.Requirement(q.ID)
+	saved, _ := a.Execution.Store.Workspace(q.ID)
 	if saved.Members[0].State != "removed" {
 		t.Fatal(saved)
 	}
-	call(t, a, "POST", "/api/requirements/"+q.ID+"/archive", map[string]bool{"archived": false})
-	if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/retry", map[string]string{"project_id": id}); code != 200 {
+	call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": false})
+	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/retry", map[string]string{"project_id": id}); code != 200 {
 		t.Fatalf("restore %d %s", code, raw)
 	}
-	saved, _ = a.Workspace.Store.Requirement(q.ID)
+	saved, _ = a.Execution.Store.Workspace(q.ID)
 	if saved.State != "ready" {
 		t.Fatal(saved)
 	}
@@ -107,7 +107,7 @@ func TestCleanupFindsReplacedWorktreeAndRejectsUnpublishedCommit(t *testing.T) {
 	id := register(t, a, "Repo", repo(t, "repo", "main"))
 	_, q, _ := create(t, a, id, nil, "old-directory")
 	path := q.Members[0].Path
-	call(t, a, "PUT", "/api/requirements/"+q.ID+"/projects/"+id, map[string]string{"mode": "project"})
+	call(t, a, "PUT", "/api/workspaces/"+q.ID+"/projects/"+id, map[string]string{"mode": "project"})
 	items := reviewItems(t, a, q.ID)
 	var orphan CleanupCandidate
 	for _, item := range items {
@@ -151,7 +151,7 @@ func TestChangesPreviewIndexWorkingUntrackedAndTraversal(t *testing.T) {
 		}
 	}
 	code, raw = call(t, a, "GET", base+"&file="+url.QueryEscape("新文件.txt"), nil)
-	var text workspace.GitPreview
+	var text execution.GitPreview
 	json.Unmarshal(raw, &text)
 	if code != 200 || !strings.Contains(text.Text, "<script>inert</script>") {
 		t.Fatalf("text %d %s", code, raw)
@@ -179,7 +179,7 @@ func TestChangesPreviewWorkingImagesAndStagedBinaryDescription(t *testing.T) {
 	checkImage := func() {
 		t.Helper()
 		code, raw := call(t, a, "GET", base+"&mode=working", nil)
-		var preview workspace.FilePreview
+		var preview execution.FilePreview
 		if code != 200 || json.Unmarshal(raw, &preview) != nil || preview.Format != "image" || !strings.HasPrefix(preview.DataURL, "data:image/png;base64,") {
 			t.Fatalf("image %d %s", code, raw)
 		}

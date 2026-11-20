@@ -18,8 +18,8 @@
 .list-filter-menu:popover-open { position: fixed; inset: auto; margin: 0; color: var(--foreground); }
 .list-filter-menu > * { flex-shrink: 0; }
 .list-filter-menu > #sessionScopeOptions { flex-shrink: 1; }
-#desktopProjectFilters { display: grid; gap: 8px; }
-#desktopProjectFilters .project-filters { padding: 0; border: 0; }
-#desktopProjectFilters #projectEnvironmentWrap select { width: 100%; }
+#projectListFilters { display: grid; gap: 8px; }
+#projectListFilters .project-filters { padding: 0; border: 0; }
+#projectListFilters #projectEnvironmentWrap select { width: 100%; }
 :where(html:not([data-workhub-desktop])) .projects-page #searchField { width: min(14rem,100%); }
 .list-create-button { color: var(--muted-foreground); }

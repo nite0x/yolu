@@ -15,13 +15,7 @@ func Command(ctx context.Context, args ...string) *exec.Cmd {
 	// an older Homebrew CLI remains first on PATH. Use that runtime for daemon
 	// lifecycle commands so a cold start does not require the legacy installer.
 	if runtime.GOOS == "darwin" && len(args) >= 2 && args[0] == "app-server" && args[1] == "daemon" {
-		root := os.Getenv("CODEX_HOME")
-		if root == "" {
-			if home, err := os.UserHomeDir(); err == nil {
-				root = filepath.Join(home, ".codex")
-			}
-		}
-		if filepath.IsAbs(root) {
+		if root := codexHome(); filepath.IsAbs(root) {
 			managed := filepath.Join(root, "packages", "app-server-daemon", "current", "bin", "codex")
 			if info, err := os.Stat(managed); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0 {
 				return exec.CommandContext(ctx, managed, args...)
@@ -39,5 +33,13 @@ func Command(ctx context.Context, args ...string) *exec.Cmd {
 			}
 		}
 	}
-	return exec.CommandContext(ctx, "codex", args...)
+	cmd := exec.CommandContext(ctx, "codex", args...)
+	if cmd.Err != nil {
+		if path := standalonePath(); path != "" {
+			if installed, err := exec.LookPath(path); err == nil {
+				return exec.CommandContext(ctx, installed, args...)
+			}
+		}
+	}
+	return cmd
 }

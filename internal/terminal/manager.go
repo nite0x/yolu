@@ -16,6 +16,7 @@ import (
 
 	pty "github.com/aymanbagabas/go-pty"
 	"worktree-hub/internal/model"
+	"worktree-hub/internal/platform"
 )
 
 const bufferLimit = 1 << 20
@@ -30,29 +31,29 @@ type Profile struct {
 }
 
 type Info struct {
-	ID        string `json:"id"`
-	TaskID    string `json:"task_id"`
-	ProjectID string `json:"project_id"`
-	Cwd       string `json:"cwd"`
-	Name      string `json:"name"`
-	ProfileID string `json:"profile_id"`
-	CreatedAt int64  `json:"created_at"`
-	State     string `json:"state"`
-	ExitCode  *int   `json:"exit_code,omitempty"`
-	Attached  bool   `json:"attached"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+	ProjectID   string `json:"project_id"`
+	Cwd         string `json:"cwd"`
+	Name        string `json:"name"`
+	ProfileID   string `json:"profile_id"`
+	CreatedAt   int64  `json:"created_at"`
+	State       string `json:"state"`
+	ExitCode    *int   `json:"exit_code,omitempty"`
+	Attached    bool   `json:"attached"`
 }
 
 type Start struct {
-	TaskID     string            `json:"task_id"`
-	ProjectID  string            `json:"project_id"`
-	ProfileID  string            `json:"profile_id"`
-	Name       string            `json:"name"`
-	Executable string            `json:"executable"`
-	Args       []string          `json:"args"`
-	Env        map[string]string `json:"env"`
-	Cols       int               `json:"cols"`
-	Rows       int               `json:"rows"`
-	Cwd        string            `json:"-"`
+	WorkspaceID string            `json:"workspace_id"`
+	ProjectID   string            `json:"project_id"`
+	ProfileID   string            `json:"profile_id"`
+	Name        string            `json:"name"`
+	Executable  string            `json:"executable"`
+	Args        []string          `json:"args"`
+	Env         map[string]string `json:"env"`
+	Cols        int               `json:"cols"`
+	Rows        int               `json:"rows"`
+	Cwd         string            `json:"-"`
 }
 
 type Session struct {
@@ -91,6 +92,9 @@ func commandEnv(overrides map[string]string) []string {
 	env := map[string]string{}
 	for _, pair := range os.Environ() {
 		if k, v, ok := strings.Cut(pair, "="); ok {
+			if strings.EqualFold(k, "PATH") {
+				v = platform.PathWithCodexInstallDir(v)
+			}
 			env[k] = v
 		}
 	}
@@ -226,7 +230,7 @@ func (m *Manager) Start(input Start) (*Session, error) {
 	if unix, ok := p.(pty.UnixPty); ok {
 		_ = unix.Slave().Close()
 	}
-	s := &Session{info: Info{ID: model.NewID(), TaskID: input.TaskID, ProjectID: input.ProjectID, Cwd: input.Cwd, Name: filepath.Base(name), ProfileID: input.ProfileID, CreatedAt: time.Now().Unix(), State: "running"}, pty: p, cmd: cmd, changed: make(chan struct{}), done: make(chan struct{}), readDone: make(chan struct{})}
+	s := &Session{info: Info{ID: model.NewID(), WorkspaceID: input.WorkspaceID, ProjectID: input.ProjectID, Cwd: input.Cwd, Name: filepath.Base(name), ProfileID: input.ProfileID, CreatedAt: time.Now().Unix(), State: "running"}, pty: p, cmd: cmd, changed: make(chan struct{}), done: make(chan struct{}), readDone: make(chan struct{})}
 	m.sessions[s.info.ID] = s
 	go s.read()
 	go s.wait()

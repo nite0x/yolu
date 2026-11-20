@@ -7,7 +7,7 @@ export interface ConversationGroup {
   name: string
   environment: string
   environmentName?: string
-  taskID?: string
+  workspaceID?: string
   collapsed: boolean
   total: number
   shown: number
@@ -17,7 +17,7 @@ export type ConversationTreeRow = { key: string; group: ConversationGroup } & (
   { kind: "group" } | { kind: "session"; session: Session } | { kind: "more" }
 )
 interface TreeOptions {
-  tasks: { id: string; name: string; environment_id?: string }[]
+  workspaces: { id: string; name: string; environment_id?: string }[]
   scope: { kind: string; id?: string }
   selected?: string | null
   reveal?: string | null
@@ -29,22 +29,22 @@ interface TreeOptions {
 // Shared directories do not establish membership. A session can be explicitly
 // linked to several workspaces while keeping one environment-local runtime.
 export function conversationTree(sessions: Session[], options: TreeOptions): ConversationTreeRow[] {
-  const tasks = new Map(options.tasks.map(task => [JSON.stringify([task.environment_id || "local", task.id]), task]))
+  const workspaces = new Map(options.workspaces.map(workspace => [JSON.stringify([workspace.environment_id || "local", workspace.id]), workspace]))
   const groups = new Map<string, { group: ConversationGroup; sessions: Session[] }>()
   for (const session of sessions) {
     const environment = session.environment_id || "local"
-    let taskIDs = session.task_ids || []
-    if (options.scope.kind === "task" && options.scope.id) taskIDs = [options.scope.id]
-    else if (session.terminal) taskIDs = session.terminal.taskID ? [session.terminal.taskID] : []
-    for (const taskID of taskIDs.length ? new Set(taskIDs) : [undefined]) {
-      const key = JSON.stringify([environment, taskID || ""])
+    let workspaceIDs = session.workspace_ids || []
+    if (options.scope.kind === "workspace" && options.scope.id) workspaceIDs = [options.scope.id]
+    else if (session.terminal) workspaceIDs = session.terminal.workspaceID ? [session.terminal.workspaceID] : []
+    for (const workspaceID of workspaceIDs.length ? new Set(workspaceIDs) : [undefined]) {
+      const key = JSON.stringify([environment, workspaceID || ""])
       let entry = groups.get(key)
       if (!entry) {
-        const task = taskID ? tasks.get(key) || session.context?.tasks.find(task => task.id === taskID) : undefined
+        const workspace = workspaceID ? workspaces.get(key) || session.context?.workspaces.find(workspace => workspace.id === workspaceID) : undefined
         entry = {
           group: {
-            key, name: task?.name || taskID || uiText("其他对话"),
-            environment, environmentName: session.environment_name, taskID,
+            key, name: workspace?.name || workspaceID || uiText("其他对话"),
+            environment, environmentName: session.environment_name, workspaceID,
             collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
           },
           sessions: [],

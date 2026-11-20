@@ -70,11 +70,11 @@ Focused checks include `go test ./internal/assistant ./internal/store` and `node
 | Location | Responsibility |
 | --- | --- |
 | `main.go`, `internal/app/` | Entry point, service composition, routing, environments and process lifecycle |
-| `internal/task/` | Task preparation, members, context, archive and recovery |
+| `internal/workspace/` | Workspace preparation, members, context, archive and recovery |
 | `internal/project/` | Repository registration, Git operations, worktree status and cleanup |
 | `internal/session/` | Codex sessions, history, chat, approvals, questions, drafts and titles |
 | `internal/terminal/` | Managed embedded terminal processes |
-| `internal/workspace/` | Environment execution, files, Git transport, locks and WSL helper |
+| `internal/execution/` | Environment execution, files, Git transport, locks and WSL helper |
 | `internal/store/`, `internal/model/` | SQLite migrations, metadata import/export and shared models |
 | `internal/codex/` | Codex protocol clients, event dispatch and relay |
 | `internal/overview/` | Read-only composition of workspace state |
@@ -85,7 +85,7 @@ Focused checks include `go test ./internal/assistant ./internal/store` and `node
 | `desktop/`, `src-tauri/` | Startup page, Rust host and native bundle configuration |
 | `scripts/`, `.github/workflows/` | Build, packaging, verification and CI entry points |
 
-The application composes task, project, session and workspace services; lower-level packages do not depend on `app`. Each environment shares its workspace storage, root and write locks. Cross-module behavior uses small interfaces and injected callbacks rather than making sessions owned by tasks. Existing `Requirement` types, `requirements` tables and API paths are retained for compatibility.
+The application composes workspace, project, session and execution services. Lower-level packages do not depend on `app`. Each execution environment owns its workspace storage, root and write locks. The workspace domain uses the `Workspace` model, the `workspaces` table and the `/api/workspaces` route family. Sessions have an independent index and use explicit workspace associations.
 
 Most workspace components render static HTML through `renderToStaticMarkup` and `window.WorkHubUI`; existing controllers retain event handling, polling, forms and dialog lifecycles. The interactive chat UI mounts through its own React bridge. Avoid a global CSS reset that changes legacy pages. The page host keeps one workspace document for route-based navigation and independent same-origin conversation readers for up to three parallel Agents. Project details, Worktree creation and Git operations have addressable routes. Conversation pane groups live for the current window session. Conversation history and drafts use their own storage.
 
@@ -95,7 +95,7 @@ The chat controller delegates debounced, ordered draft persistence to `frontend/
 
 The page bridge, environment controls and legacy history controls access shared conversation state through `window.WorkHubConversations`. They must not depend on page-local variables for the selected view or page mode.
 
-Git HTTP handlers decode requests and translate errors. `internal/project/git_actions.go` coordinates repository serialization, task metadata changes and cache invalidation, with network, branch and merge operations in the corresponding `git_actions_*.go` files. Branch switching keeps its metadata lock through task-context publication.
+Git HTTP handlers decode requests and translate errors. `internal/project/git_actions.go` coordinates repository serialization, workspace metadata changes and cache invalidation, with network, branch and merge operations in the corresponding `git_actions_*.go` files. Branch switching keeps its metadata lock through workspace-context publication.
 
 New-conversation defaults are runtime preferences stored under `conversation_defaults:v1` in each execution environment’s settings table, exposed through `GET`/`PUT /api/settings/conversation-defaults`. Empty model and permission fields inherit the native Codex configuration. `chat-options` includes these preferences for the composer, while explicit draft settings remain separate. Creation merges explicit choices over saved preferences and leaves unspecified native fields out of the protocol request; existing sessions do not receive the creation defaults. The first turn uses the actual context returned by `thread/start`, including its sandbox and approval policy. See [session architecture](session-architecture.md) for runtime, storage and routing details.
 
@@ -121,13 +121,13 @@ npm run desktop:check
 
 Core CI and each native desktop packaging job run the pinned `govulncheck` command against the selected Go toolchain and the current vulnerability database. Reachable findings fail the job; module/package findings without a reachable call are still reported for review. Run the scan after building the embedded frontend assets.
 
-Core CI also runs the isolated task workflow and race checks:
+Core CI also runs the isolated workspace workflow and race checks:
 
 ```bash
 go build -o bin/yolu-backend .
 node scripts/desktop-workflow-smoke.mjs bin/yolu-backend
-go test -race ./internal/store ./internal/task ./internal/project \
-  ./internal/session ./internal/terminal ./internal/workspace ./internal/app
+go test -race ./internal/store ./internal/workspace ./internal/project \
+  ./internal/session ./internal/terminal ./internal/execution ./internal/app
 ```
 
 These checks use temporary repositories, local Git remotes, separate data directories and a deterministic Codex fixture. They do not establish that real model requests work. The exact Linux/macOS core matrix is in [.github/workflows/checks.yml](../.github/workflows/checks.yml).

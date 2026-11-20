@@ -3,8 +3,8 @@ package project
 import (
 	"context"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/workspace"
 )
 
 func (a *Service) mergeGit(ctx context.Context, p model.Project, v GitOverview, in GitAction) (map[string]any, error) {
@@ -22,7 +22,7 @@ func (a *Service) mergeGit(ctx context.Context, p model.Project, v GitOverview, 
 		return nil, gitIssue(gitConflict, e.Error())
 	}
 	if in.Action == "merge_preview" {
-		log, e := workspace.Git(ctx, t.Path, "log", "--format=%h %s", "-20", t.Head+".."+b.Commit)
+		log, e := execution.Git(ctx, t.Path, "log", "--format=%h %s", "-20", t.Head+".."+b.Commit)
 		if e != nil {
 			return nil, e
 		}
@@ -31,9 +31,9 @@ func (a *Service) mergeGit(ctx context.Context, p model.Project, v GitOverview, 
 	if in.ExpectedHead == "" || in.ExpectedHead != t.Head || in.SourceCommit != b.Commit {
 		return nil, gitIssue(gitConflict, "合并预览已过期，请重新预览")
 	}
-	output, err = workspace.GitOperation(ctx, t.Path, "-c", "merge.autoStash=false", "-c", "rerere.enabled=false", "merge", "--ff", "--commit", "--no-edit", "--no-autostash", "--no-overwrite-ignore", "--", b.Commit)
+	output, err = execution.GitOperation(ctx, t.Path, "-c", "merge.autoStash=false", "-c", "rerere.enabled=false", "merge", "--ff", "--commit", "--no-edit", "--no-autostash", "--no-overwrite-ignore", "--", b.Commit)
 	if err != nil {
-		after, inspectErr := workspace.ReadGitState(ctx, t.Path)
+		after, inspectErr := execution.ReadGitState(ctx, t.Path)
 		if inspectErr == nil && after.Operation == "merge" && len(after.Conflicts) > 0 {
 			return map[string]any{"message": "合并出现冲突，将打开 AI 对话完成合并", "conflict": true, "conflicts": after.Conflicts, "merge_head": after.MergeHead}, nil
 		}
@@ -52,7 +52,7 @@ func (a *Service) abortGitMerge(ctx context.Context, p model.Project, v GitOverv
 	if t.Operation != "merge" {
 		return nil, gitIssue(gitConflict, "当前没有进行中的合并")
 	}
-	output, err = workspace.GitOperation(ctx, t.Path, "merge", "--abort")
+	output, err = execution.GitOperation(ctx, t.Path, "merge", "--abort")
 	message = "已中止合并"
 	return gitCommandResult(message, output, err)
 }

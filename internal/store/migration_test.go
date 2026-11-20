@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestLegacyMembersMigrationAndMetadataPreserveTaskScope(t *testing.T) {
+func TestLegacyMembersMigrationAndMetadataPreserveWorkspaceScope(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "worktree-hub.db")
 	db, err := sql.Open("sqlite", file)
@@ -15,11 +15,11 @@ func TestLegacyMembersMigrationAndMetadataPreserveTaskScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = db.Exec(`CREATE TABLE projects (id TEXT PRIMARY KEY,name TEXT,path TEXT,common_dir TEXT,folder TEXT,created_at TEXT);
-CREATE TABLE requirements (id TEXT PRIMARY KEY,name TEXT,slug TEXT,description TEXT,branch TEXT,path TEXT,primary_project_id TEXT,state TEXT,created_at TEXT);
-CREATE TABLE members (requirement_id TEXT,project_id TEXT,path TEXT NOT NULL UNIQUE,base_commit TEXT,state TEXT,error TEXT,PRIMARY KEY(requirement_id,project_id));
+CREATE TABLE workspaces (id TEXT PRIMARY KEY,name TEXT,slug TEXT,description TEXT,branch TEXT,path TEXT,primary_project_id TEXT,state TEXT,created_at TEXT);
+CREATE TABLE members (workspace_id TEXT,project_id TEXT,path TEXT NOT NULL UNIQUE,base_commit TEXT,state TEXT,error TEXT,PRIMARY KEY(workspace_id,project_id));
 INSERT INTO projects VALUES('p','Repo','/repo','/repo/.git','repo','now');
-INSERT INTO requirements(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('r','Task','task','notes','feature/task','/workspace/task','p','ready','now');
-INSERT INTO members VALUES('r','p','/workspace/task/repo','baseline','ready','');`)
+INSERT INTO workspaces(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('r','Workspace','workspace','notes','feature/workspace','/workspace/workspace','p','ready','now');
+INSERT INTO members VALUES('r','p','/workspace/workspace/repo','baseline','ready','');`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,9 +29,9 @@ INSERT INTO members VALUES('r','p','/workspace/task/repo','baseline','ready','')
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, err := readonly.Requirement("r")
+	q, err := readonly.Workspace("r")
 	readonly.DB.Close()
-	if err != nil || q.Members[0].Mode != "new" || q.Members[0].Branch != "feature/task" {
+	if err != nil || q.Members[0].Mode != "new" || q.Members[0].Branch != "feature/workspace" {
 		t.Fatalf("legacy read: %+v %v", q, err)
 	}
 	snapshot, err := ExportMetadata(context.Background(), file)
@@ -47,7 +47,7 @@ INSERT INTO members VALUES('r','p','/workspace/task/repo','baseline','ready','')
 	if err := target.ImportMetadata(snapshot); err != nil {
 		t.Fatal(err)
 	}
-	q, err = target.Requirement("r")
+	q, err = target.Workspace("r")
 	if err != nil || q.Members[0].BaseRef != "refs/heads/master" || q.Members[0].BaseCommit != "baseline" {
 		t.Fatalf("legacy import: %+v %v", q, err)
 	}
@@ -56,12 +56,12 @@ INSERT INTO members VALUES('r','p','/workspace/task/repo','baseline','ready','')
 		t.Fatal(err)
 	}
 	defer s.DB.Close()
-	q, err = s.Requirement("r")
-	if err != nil || q.Members[0].Branch != "feature/task" || q.Path != "/workspace/task" {
+	q, err = s.Workspace("r")
+	if err != nil || q.Members[0].Branch != "feature/workspace" || q.Path != "/workspace/workspace" {
 		t.Fatalf("migration: %+v %v", q, err)
 	}
-	_, err = s.DB.Exec(`INSERT INTO requirements(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('r2','Other','other','notes','','/workspace/other','p','ready','now');
-INSERT INTO members(requirement_id,project_id,path,base_commit,state,mode,base_ref,branch) VALUES('r2','p','/workspace/task/repo','baseline','ready','worktree','','feature/task');`)
+	_, err = s.DB.Exec(`INSERT INTO workspaces(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('r2','Other','other','notes','','/workspace/other','p','ready','now');
+INSERT INTO members(workspace_id,project_id,path,base_commit,state,mode,base_ref,branch) VALUES('r2','p','/workspace/workspace/repo','baseline','ready','worktree','','feature/workspace');`)
 	if err != nil {
 		t.Fatalf("migrated worktree cannot be reused: %v", err)
 	}
@@ -77,20 +77,20 @@ INSERT INTO members(requirement_id,project_id,path,base_commit,state,mode,base_r
 	if err := target2.ImportMetadata(snapshot); err != nil {
 		t.Fatal(err)
 	}
-	q, err = target2.Requirement("r2")
-	if err != nil || q.Members[0].Mode != "worktree" || q.Members[0].Branch != "feature/task" {
+	q, err = target2.Workspace("r2")
+	if err != nil || q.Members[0].Mode != "worktree" || q.Members[0].Branch != "feature/workspace" {
 		t.Fatalf("new metadata lost selection: %+v %v", q, err)
 	}
 }
 
-func TestTaskWorkspacePresenceSurvivesMetadataTransfer(t *testing.T) {
+func TestWorkspaceDirectoryPresenceSurvivesMetadataTransfer(t *testing.T) {
 	source, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer source.DB.Close()
 	_, err = source.DB.Exec(`INSERT INTO projects(id,name,path,common_dir,folder,created_at) VALUES('p','Repo','/repo','/repo/.git','repo','now');
- INSERT INTO requirements(id,name,slug,description,branch,path,primary_project_id,state,created_at,has_workspace) VALUES('task','Task','task','','','/reserved/task','p','ready','now',0);`)
+ INSERT INTO workspaces(id,name,slug,description,branch,path,primary_project_id,state,created_at,has_directory) VALUES('workspace','Workspace','workspace','','','/reserved/workspace','p','ready','now',0);`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,21 +110,21 @@ func TestTaskWorkspacePresenceSurvivesMetadataTransfer(t *testing.T) {
 	if err := target.ImportMetadata(snapshot); err != nil {
 		t.Fatal(err)
 	}
-	q, err := target.Requirement("task")
-	if err != nil || q.HasWorkspace || q.Path != "/reserved/task" {
-		t.Fatalf("workspace-free task changed: %+v %v", q, err)
+	q, err := target.Workspace("workspace")
+	if err != nil || q.HasDirectory || q.Path != "/reserved/workspace" {
+		t.Fatalf("workspace-free workspace changed: %+v %v", q, err)
 	}
 	legacy, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer legacy.DB.Close()
-	snapshot.Tables["requirements"][0] = snapshot.Tables["requirements"][0][:9]
+	snapshot.Tables["workspaces"][0] = snapshot.Tables["workspaces"][0][:9]
 	if err := legacy.ImportMetadata(snapshot); err != nil {
 		t.Fatal(err)
 	}
-	q, err = legacy.Requirement("task")
-	if err != nil || !q.HasWorkspace {
-		t.Fatalf("legacy task lost its workspace: %+v %v", q, err)
+	q, err = legacy.Workspace("workspace")
+	if err != nil || !q.HasDirectory {
+		t.Fatalf("legacy workspace lost its workspace: %+v %v", q, err)
 	}
 }

@@ -10,6 +10,7 @@ import (
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 )
 
 // Only displayable, bounded snapshots cross the workspace and HTTP boundaries.
@@ -324,7 +325,8 @@ func (s *HistoryPush) apply(session string, event codex.Event) bool {
 }
 
 func (a *Service) SessionHistoryEventsHandler(w http.ResponseWriter, r *http.Request) {
-	if !a.HistorySessionAllowed(w, r) {
+	record, ok := a.requestSession(w, r)
+	if !ok {
 		return
 	}
 	if _, ok := w.(http.Flusher); !ok {
@@ -345,6 +347,10 @@ func (a *Service) SessionHistoryEventsHandler(w http.ResponseWriter, r *http.Req
 			return err
 		}
 		return controller.Flush()
+	}
+	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
+		_ = emit(HistoryPush{Connected: false, Entries: []HistoryEntry{}, Message: "Antigravity 暂不支持终端实时同步，请刷新历史查看进展"})
+		return
 	}
 	_ = emit(HistoryPush{Entries: []HistoryEntry{}, Message: "正在连接终端实时输出"})
 	if err := a.watchHistory(r.Context(), r.PathValue("session"), emit); err != nil && r.Context().Err() == nil {

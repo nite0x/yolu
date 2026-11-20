@@ -21,18 +21,18 @@ func readShortcutPins(t *testing.T, a *App, environment string) shortcutPins {
 
 func TestShortcutPinsSurviveRestartAndStayPartitionedOnHost(t *testing.T) {
 	a := testApp(t)
-	if pins := readShortcutPins(t, a, "local"); pins.Initialized || len(pins.Tasks) != 0 || len(pins.Directories) != 0 {
+	if pins := readShortcutPins(t, a, "local"); pins.Initialized || len(pins.Workspaces) != 0 || len(pins.Directories) != 0 {
 		t.Fatalf("initial pins: %+v", pins)
 	}
-	want := shortcutPins{Tasks: []string{"same-task"}, Directories: []string{`C:\Repos\App`, "/repo/app"}, Initialized: true}
-	if code, raw := call(t, a, "PUT", "/api/shortcut-pins", map[string]any{"tasks": []string{"same-task", "same-task", ""}, "directories": []string{`C:\Repos\App`, "c:/repos/app/", "/repo/app", "/repo/app/"}}); code != 200 {
+	want := shortcutPins{Workspaces: []string{"same-workspace"}, Directories: []string{`C:\Repos\App`, "/repo/app"}, Initialized: true}
+	if code, raw := call(t, a, "PUT", "/api/shortcut-pins", map[string]any{"workspaces": []string{"same-workspace", "same-workspace", ""}, "directories": []string{`C:\Repos\App`, "c:/repos/app/", "/repo/app", "/repo/app/"}}); code != 200 {
 		t.Fatalf("save pins: %d %s", code, raw)
 	}
 	if _, err := newEnvironmentHub(a); err != nil {
 		t.Fatal(err)
 	}
 	// Preferences for an offline environment must not start a workspace helper.
-	r := httptest.NewRequest("PUT", "http://localhost:58923/api/shortcut-pins?environment=wsl-offline", bytes.NewBufferString(`{"tasks":["same-task"],"directories":["/remote/app"]}`))
+	r := httptest.NewRequest("PUT", "http://localhost:58923/api/shortcut-pins?environment=wsl-offline", bytes.NewBufferString(`{"workspaces":["same-workspace"],"directories":["/remote/app"]}`))
 	r.Header.Set("X-CSRF-Token", a.token)
 	r.Header.Set("X-Environment-ID", "wsl-offline")
 	w := httptest.NewRecorder()
@@ -40,7 +40,7 @@ func TestShortcutPinsSurviveRestartAndStayPartitionedOnHost(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("offline pins: %d %s", w.Code, w.Body.String())
 	}
-	dataDir, root := a.Workspace.DataDir, a.Workspace.Root
+	dataDir, root := a.Execution.DataDir, a.Execution.Root
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -63,26 +63,26 @@ func TestShortcutPinsSurviveRestartAndStayPartitionedOnHost(t *testing.T) {
 func TestShortcutPinMigrationNeverOverwritesSavedOrRemovedPins(t *testing.T) {
 	a := testApp(t)
 	url := "/api/shortcut-pins?environment=local"
-	legacy := map[string]any{"tasks": []string{"legacy"}, "directories": []string{"/old"}, "initialize": true}
+	legacy := map[string]any{"workspaces": []string{"legacy"}, "directories": []string{"/old"}, "initialize": true}
 	if code, raw := call(t, a, "PUT", url, legacy); code != 200 {
 		t.Fatalf("import: %d %s", code, raw)
 	}
-	if got := readShortcutPins(t, a, "local"); !reflect.DeepEqual(got.Tasks, []string{"legacy"}) {
+	if got := readShortcutPins(t, a, "local"); !reflect.DeepEqual(got.Workspaces, []string{"legacy"}) {
 		t.Fatalf("missing imported pins: %+v", got)
 	}
-	for _, tasks := range [][]string{{"new"}, {}} {
-		if code, raw := call(t, a, "PUT", url, map[string]any{"tasks": tasks, "directories": []string{}}); code != 200 {
+	for _, workspaces := range [][]string{{"new"}, {}} {
+		if code, raw := call(t, a, "PUT", url, map[string]any{"workspaces": workspaces, "directories": []string{}}); code != 200 {
 			t.Fatalf("save: %d %s", code, raw)
 		}
 		if code, raw := call(t, a, "PUT", url, legacy); code != 200 {
 			t.Fatalf("repeat import: %d %s", code, raw)
 		}
-		if got := readShortcutPins(t, a, "local"); !got.Initialized || !reflect.DeepEqual(got.Tasks, tasks) || len(got.Directories) != 0 {
+		if got := readShortcutPins(t, a, "local"); !got.Initialized || !reflect.DeepEqual(got.Workspaces, workspaces) || len(got.Directories) != 0 {
 			t.Fatalf("stale origin resurrected pins: %+v", got)
 		}
 	}
 	for _, scenario := range []struct{ token, origin string }{{"", ""}, {a.token, "https://example.invalid"}} {
-		r := httptest.NewRequest("PUT", "http://localhost:4317"+url, bytes.NewBufferString(`{"tasks":["untrusted"]}`))
+		r := httptest.NewRequest("PUT", "http://localhost:4317"+url, bytes.NewBufferString(`{"workspaces":["untrusted"]}`))
 		r.Header.Set("X-CSRF-Token", scenario.token)
 		r.Header.Set("Origin", scenario.origin)
 		w := httptest.NewRecorder()
@@ -96,11 +96,11 @@ func TestShortcutPinMigrationNeverOverwritesSavedOrRemovedPins(t *testing.T) {
 func TestShortcutIconsPersistWithoutOriginAndLegacyUpdatesKeepThem(t *testing.T) {
 	a := testApp(t)
 	url := "/api/shortcut-pins?environment=local"
-	icons := map[string]shortcutIcon{"task:work": {Icon: "rocket", Color: "rose"}, "directory:/repo/app": {Icon: "code", Color: "blue"}}
-	if code, raw := call(t, a, "PUT", url, map[string]any{"tasks": []string{"work"}, "directories": []string{"/repo/app"}, "icons": icons}); code != 200 {
+	icons := map[string]shortcutIcon{"workspace:work": {Icon: "rocket", Color: "rose"}, "directory:/repo/app": {Icon: "code", Color: "blue"}}
+	if code, raw := call(t, a, "PUT", url, map[string]any{"workspaces": []string{"work"}, "directories": []string{"/repo/app"}, "icons": icons}); code != 200 {
 		t.Fatalf("save: %d %s", code, raw)
 	}
-	dataDir, root := a.Workspace.DataDir, a.Workspace.Root
+	dataDir, root := a.Execution.DataDir, a.Execution.Root
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -115,14 +115,14 @@ func TestShortcutIconsPersistWithoutOriginAndLegacyUpdatesKeepThem(t *testing.T)
 	if got := readShortcutPins(t, restarted, "remote"); len(got.Icons) != 0 {
 		t.Fatal("icons leaked between environments")
 	}
-	if code, raw := call(t, restarted, "PUT", url, map[string]any{"tasks": []string{"work", "other"}, "directories": []string{"/repo/app"}}); code != 200 {
+	if code, raw := call(t, restarted, "PUT", url, map[string]any{"workspaces": []string{"work", "other"}, "directories": []string{"/repo/app"}}); code != 200 {
 		t.Fatalf("legacy update: %d %s", code, raw)
 	}
 	if got := readShortcutPins(t, restarted, "local"); !reflect.DeepEqual(got.Icons, icons) {
 		t.Fatalf("legacy erased icons: %+v", got)
 	}
 	for _, invalid := range []shortcutIcon{{Icon: "<script>", Color: "blue"}, {Icon: "folder", Color: "url(https://bad)"}, {Icon: "auto|folder", Color: "blue"}} {
-		if code, raw := call(t, restarted, "PUT", url, map[string]any{"icons": map[string]shortcutIcon{"task:work": invalid}}); code != 400 {
+		if code, raw := call(t, restarted, "PUT", url, map[string]any{"icons": map[string]shortcutIcon{"workspace:work": invalid}}); code != 400 {
 			t.Fatalf("invalid icon accepted: %d %s", code, raw)
 		}
 	}

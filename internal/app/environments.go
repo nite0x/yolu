@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/store"
-	"worktree-hub/internal/workspace"
 )
 
 type Environment struct {
@@ -38,7 +38,7 @@ type environmentHub struct {
 
 func newEnvironmentHub(a *App) (*environmentHub, error) {
 	h := &environmentHub{local: a, apps: map[string]*App{}}
-	raw, err := os.ReadFile(filepath.Join(a.Workspace.DataDir, "environments.json"))
+	raw, err := os.ReadFile(filepath.Join(a.Execution.DataDir, "environments.json"))
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
@@ -60,14 +60,14 @@ func environmentID(distro, user string) string {
 	return "wsl-" + hex.EncodeToString(sum[:8])
 }
 func (h *environmentHub) Close() {
-	h.local.Workspace.Closing.Store(true)
+	h.local.Execution.Closing.Store(true)
 	if h.local.Assistant != nil {
 		h.local.Assistant.Close()
 	}
 	h.mu.Lock()
 	apps := make([]*App, 0, len(h.apps))
 	for _, app := range h.apps {
-		app.Workspace.Closing.Store(true)
+		app.Execution.Closing.Store(true)
 		apps = append(apps, app)
 	}
 	h.mu.Unlock()
@@ -82,11 +82,11 @@ func (h *environmentHub) get(id string) (*App, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if a := h.apps[id]; a != nil {
-		if a.Workspace.Closing.Load() {
+		if a.Execution.Closing.Load() {
 			return nil, fmt.Errorf("执行环境正在退出，请稍后重新连接")
 		}
 		select {
-		case <-a.Workspace.Remote.Done():
+		case <-a.Execution.Remote.Done():
 			return nil, fmt.Errorf("WSL 连接已断开，请在执行环境设置中重新连接")
 		default:
 			return a, nil
@@ -102,7 +102,7 @@ func (h *environmentHub) get(id string) (*App, error) {
 func (h *environmentHub) connectLocked(e Environment) (*App, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	c, err := workspace.StartWSL(ctx, e.Distro, e.User)
+	c, err := execution.StartWSL(ctx, e.Distro, e.User)
 	if err != nil {
 		return nil, err
 	}
@@ -114,24 +114,24 @@ func (h *environmentHub) connectLocked(e Environment) (*App, error) {
 		e.Root = platform.JoinWorkspacePath(c.Identity.Home, "workspaces")
 	}
 	// Metadata is partitioned by environment, but all databases live on the
-	// Windows host. The helper never stores project/task records.
-	a, err := openAppForWorkspace(filepath.Join(h.local.Workspace.DataDir, "environments", e.ID), e.Root, c)
+	// Windows host. The helper never stores project/workspace records.
+	a, err := openAppForExecution(filepath.Join(h.local.Execution.DataDir, "environments", e.ID), e.Root, c)
 	if err != nil {
 		c.Close()
 		return nil, err
 	}
 	a.token = h.local.token
-	a.Workspace.ReadOnlySessions = h.local.Workspace.ReadOnlySessions
+	a.Execution.ReadOnlySessions = h.local.Execution.ReadOnlySessions
 	h.apps[e.ID] = a
 	return a, nil
 }
 func (h *environmentHub) listHandler(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
-	entries := []Environment{{ID: "local", Name: "本机 · " + runtime.GOOS, Root: h.local.Workspace.Root, Connected: true}}
+	entries := []Environment{{ID: "local", Name: "本机 · " + runtime.GOOS, Root: h.local.Execution.Root, Connected: true}}
 	for _, e := range h.entries {
 		if a := h.apps[e.ID]; a != nil {
 			select {
-			case <-a.Workspace.Remote.Done():
+			case <-a.Execution.Remote.Done():
 			default:
 				e.Connected = true
 			}
@@ -139,7 +139,7 @@ func (h *environmentHub) listHandler(w http.ResponseWriter, r *http.Request) {
 		entries = append(entries, e)
 	}
 	h.mu.Unlock()
-	distros, err := workspace.ListWSLDistributions(r.Context())
+	distros, err := execution.ListWSLDistributions(r.Context())
 	message := ""
 	if err != nil {
 		message = err.Error()
@@ -153,7 +153,7 @@ func (h *environmentHub) addHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	e.Distro = strings.TrimSpace(e.Distro)
 	e.User = strings.TrimSpace(e.User)
-	distros, err := workspace.ListWSLDistributions(r.Context())
+	distros, err := execution.ListWSLDistributions(r.Context())
 	if err != nil {
 		httpx.WriteError(w, 422, err.Error())
 		return
@@ -174,7 +174,7 @@ func (h *environmentHub) addHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	c, err := workspace.StartWSL(ctx, e.Distro, e.User)
+	c, err := execution.StartWSL(ctx, e.Distro, e.User)
 	if err != nil {
 		httpx.WriteError(w, 503, err.Error())
 		return
@@ -194,7 +194,7 @@ func (h *environmentHub) addHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a, err := openAppForWorkspace(filepath.Join(h.local.Workspace.DataDir, "environments", e.ID), e.Root, c)
+	a, err := openAppForExecution(filepath.Join(h.local.Execution.DataDir, "environments", e.ID), e.Root, c)
 	if err != nil {
 		c.Close()
 		httpx.WriteError(w, 422, err.Error())
@@ -202,9 +202,9 @@ func (h *environmentHub) addHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if e.ImportExisting {
 		var snapshot store.MetadataSnapshot
-		err := c.Call(r.Context(), workspace.Request{Op: "export-metadata"}, &snapshot)
+		err := c.Call(r.Context(), execution.Request{Op: "export-metadata"}, &snapshot)
 		if err == nil {
-			err = a.Workspace.Store.ImportMetadata(snapshot)
+			err = a.Execution.Store.ImportMetadata(snapshot)
 		}
 		if err != nil {
 			_ = a.Close()
@@ -215,7 +215,7 @@ func (h *environmentHub) addHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	entries := append(append([]Environment{}, h.entries...), e)
 	raw, _ := json.MarshalIndent(entries, "", "  ")
-	config := filepath.Join(h.local.Workspace.DataDir, "environments.json")
+	config := filepath.Join(h.local.Execution.DataDir, "environments.json")
 	if err := os.WriteFile(config+".tmp", raw, 0600); err != nil {
 		_ = a.Close()
 		httpx.DbError(w, err)
@@ -228,10 +228,10 @@ func (h *environmentHub) addHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	h.entries = entries
 	a.token = h.local.token
-	a.Workspace.ReadOnlySessions = h.local.Workspace.ReadOnlySessions
+	a.Execution.ReadOnlySessions = h.local.Execution.ReadOnlySessions
 	h.apps[e.ID] = a
 	e.Connected = true
-	e.Root = a.Workspace.Root
+	e.Root = a.Execution.Root
 	httpx.WriteJSON(w, 201, e)
 }
 func (h *environmentHub) reconnectHandler(w http.ResponseWriter, r *http.Request) {
@@ -253,7 +253,7 @@ func (h *environmentHub) reconnectHandler(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, 404, "执行环境不存在")
 		return
 	}
-	if h.local.Workspace.Closing.Load() {
+	if h.local.Execution.Closing.Load() {
 		h.mu.Unlock()
 		httpx.WriteError(w, 503, "后台正在退出")
 		return
@@ -264,13 +264,13 @@ func (h *environmentHub) reconnectHandler(w http.ResponseWriter, r *http.Request
 			httpx.WriteError(w, 409, "有项目操作正在执行，请完成后重试")
 			return
 		}
-		if old.Workspace.Closing.Load() {
+		if old.Execution.Closing.Load() {
 			old.assistantUse.Unlock()
 			h.mu.Unlock()
 			httpx.WriteError(w, 409, "有项目操作正在执行，请完成后重试")
 			return
 		}
-		old.Workspace.Closing.Store(true)
+		old.Execution.Closing.Store(true)
 		old.assistantUse.Unlock()
 		// Retain the closing entry until disposal completes so concurrent
 		// lookups cannot start a replacement app against its still-open store.
@@ -280,7 +280,7 @@ func (h *environmentHub) reconnectHandler(w http.ResponseWriter, r *http.Request
 		if h.apps[id] == old {
 			delete(h.apps, id)
 		}
-		if h.local.Workspace.Closing.Load() {
+		if h.local.Execution.Closing.Load() {
 			h.mu.Unlock()
 			httpx.WriteError(w, 503, "后台正在退出")
 			return
@@ -292,5 +292,5 @@ func (h *environmentHub) reconnectHandler(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, 503, err.Error())
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]string{"id": id, "root": app.Workspace.Root})
+	httpx.WriteJSON(w, 200, map[string]string{"id": id, "root": app.Execution.Root})
 }

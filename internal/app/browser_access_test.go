@@ -119,7 +119,7 @@ func TestBrowserAccessAuthenticationAndSharedWorkspace(t *testing.T) {
 	var state struct {
 		Root string `json:"root"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&state); err != nil || response.StatusCode != 200 || state.Root != a.Workspace.Root {
+	if err := json.NewDecoder(response.Body).Decode(&state); err != nil || response.StatusCode != 200 || state.Root != a.Execution.Root {
 		t.Fatalf("browser did not use the host workspace: %d %v", response.StatusCode, err)
 	}
 	response = browserRequest(t, a, "GET", "/api/settings/browser-access", "", cookie, true)
@@ -214,7 +214,7 @@ func TestBrowserAccessPersistencePortConflictAndRevocation(t *testing.T) {
 	}
 	cookie := pairBrowser(t, a)
 	oldCode := a.browser.config.Code
-	occupied, err := net.Listen("tcp4", "127.0.0.1:0")
+	occupied, err := net.Listen("tcp4", "0.0.0.0:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestBrowserAccessPersistencePortConflictAndRevocation(t *testing.T) {
 	if response := browserRequest(t, a, "GET", "/api/state", "", cookie, true); response.StatusCode != 401 {
 		t.Fatal("old browser session survived code rotation")
 	}
-	data, root, code := a.Workspace.DataDir, a.Workspace.Root, a.browser.config.Code
+	data, root, code := a.Execution.DataDir, a.Execution.Root, a.browser.config.Code
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestBrowserAccessSaveFailurePreservesListener(t *testing.T) {
 	if err := a.browser.configure(context.Background(), true, port, false); err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(a.Workspace.DataDir, "browser-access.json")
+	file := filepath.Join(a.Execution.DataDir, "browser-access.json")
 	if err := os.Remove(file); err != nil {
 		t.Fatal(err)
 	}
@@ -332,12 +332,12 @@ func TestBrowserAccessTerminalRequiresPairingAndStreamTicket(t *testing.T) {
 	}
 	a := testApp(t)
 	project := register(t, a, "Repo", repo(t, "repo", "master"))
-	_, task, _ := create(t, a, project, nil, "lan-terminal")
+	_, workspace, _ := create(t, a, project, nil, "lan-terminal")
 	if err := a.browser.configure(context.Background(), true, freeBrowserPort(t), false); err != nil {
 		t.Fatal(err)
 	}
 	cookie := pairBrowser(t, a)
-	body, _ := json.Marshal(map[string]any{"task_id": task.ID, "project_id": project, "profile_id": "custom", "executable": "/bin/sh", "args": []string{"-i"}})
+	body, _ := json.Marshal(map[string]any{"workspace_id": workspace.ID, "project_id": project, "profile_id": "custom", "executable": "/bin/sh", "args": []string{"-i"}})
 	response := browserRequest(t, a, "POST", "/api/terminals", string(body), cookie, true)
 	var info terminal.Info
 	if err := json.NewDecoder(response.Body).Decode(&info); err != nil || response.StatusCode != 201 {

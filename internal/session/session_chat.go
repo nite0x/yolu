@@ -9,11 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"worktree-hub/internal/acp"
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 type ChatApproval struct {
@@ -59,20 +60,24 @@ type ChatState struct {
 	Context        *ChatContext   `json:"context,omitempty"`
 }
 type ChatRun struct {
-	mu             sync.Mutex
-	state          ChatState
-	session, cwd   string
-	client         codex.LiveClient
-	cancel         context.CancelFunc
-	notify         chan struct{}
-	finished       chan struct{}
-	ended          time.Time
-	created        *codex.Session
-	createdContext *ChatContext
-	handoff        bool
-	settings       TurnSettings
-	asyncRequest   string
-	started        chan struct{}
+	mu              sync.Mutex
+	provider        string
+	state           ChatState
+	session, cwd    string
+	client          codex.LiveClient
+	acpClient       acp.Client
+	acpSetup        *acp.SessionSetupResult
+	cancel          context.CancelFunc
+	notify          chan struct{}
+	finished        chan struct{}
+	ended           time.Time
+	created         *codex.Session
+	createdContext  *ChatContext
+	handoff         bool
+	settings        TurnSettings
+	asyncRequest    string
+	started         chan struct{}
+	recordFirstTurn func()
 }
 
 func (run *ChatRun) snapshot() ChatState {
@@ -105,7 +110,7 @@ func (a *Service) ChatStateHandler(w http.ResponseWriter, r *http.Request) {
 	if run := a.ChatFor(r.PathValue("session")); run != nil {
 		state = run.snapshot()
 	}
-	if !state.Busy {
+	if !state.Busy && model.NormalizeProvider(record.Provider) != model.ProviderAgy {
 		if external, ok := a.externalActivity(r.Context(), record.ID); ok && (state.ID == "" || external.TurnID != "" && external.TurnID != state.TurnID) {
 			state.Status = external.Status
 			state.ID = ""
@@ -125,11 +130,11 @@ func (a *Service) ChatStateHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if !state.Busy {
+	if !state.Busy && model.NormalizeProvider(record.Provider) != model.ProviderAgy {
 		state.Blocked = ""
 		// Passive polling retries uncertain probes without advertising a terminal
 		// owner. Sending still performs its own mandatory ownership checks.
-		if err := a.AppTerminalConflict(r.PathValue("session"), cwd); workspace.IsSessionConflict(err) {
+		if err := a.AppTerminalConflict(r.PathValue("session"), cwd); execution.IsSessionConflict(err) {
 			state.Blocked = err.Error()
 		}
 		a.DecorateHandoff(&state, r.PathValue("session"), cwd)
@@ -175,9 +180,11 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if external, ok := a.externalActivity(r.Context(), record.ID); ok && (external.Status == "running" || external.Status == "waiting") && !a.ChatBusy(record.ID) {
-		httpx.WriteError(w, 409, "此对话仍在原生 Codex 中运行，请在原窗口继续或等待完成")
-		return
+	if model.NormalizeProvider(record.Provider) != model.ProviderAgy {
+		if external, ok := a.externalActivity(r.Context(), record.ID); ok && (external.Status == "running" || external.Status == "waiting") && !a.ChatBusy(record.ID) {
+			httpx.WriteError(w, 409, "此对话仍在原生 Codex 中运行，请在原窗口继续或等待完成")
+			return
+		}
 	}
 	plan := savedSessionPlan(record)
 	if record.Archived {
@@ -203,7 +210,7 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &ChatRun{session: r.PathValue("session"), cwd: cwd, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
+	run := &ChatRun{provider: model.NormalizeProvider(record.Provider), session: r.PathValue("session"), cwd: cwd, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
 	run.settings = input.Settings
 	// Keep only recent finished snapshots; active turns are never evicted.
 	for id, old := range a.chats {
@@ -216,7 +223,11 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	a.chats[run.session] = run
 	a.chatMu.Unlock()
-	go a.DriveChat(ctx, run, plan, input.Text, input.Images...)
+	if run.provider == model.ProviderAgy {
+		go a.DriveAgyChat(ctx, run, plan, input.Text, input.Images...)
+	} else {
+		go a.DriveChat(ctx, run, plan, input.Text, input.Images...)
+	}
 	httpx.WriteJSON(w, 202, run.snapshot())
 }
 func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.LaunchPlan, text string, images ...string) {
@@ -283,8 +294,8 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		fail("对话工作目录不可用")
 		return
 	}
-	fileCtx := workspace.WithClient(ctx, a.Workspace.Remote)
-	if info, err := workspace.Stat(fileCtx, s.Cwd, true); err != nil || !info.IsDir() {
+	fileCtx := execution.WithClient(ctx, a.Execution.Remote)
+	if info, err := execution.Stat(fileCtx, s.Cwd, true); err != nil || !info.IsDir() {
 		fail("对话原工作目录不可用")
 		return
 	}
@@ -303,12 +314,12 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 			return err
 		}
 		if metadata.Thread.Status.Type == "active" {
-			return &workspace.SessionConflictError{Message: "此对话正在其他 Codex 客户端运行，请等待完成后重试"}
+			return &execution.SessionConflictError{Message: "此对话正在其他 Codex 客户端运行，请等待完成后重试"}
 		}
 		return nil
 	}
 	ownerFailure := func(err error) {
-		if workspace.IsSessionConflict(err) {
+		if execution.IsSessionConflict(err) {
 			run.change(func(s *ChatState) { s.Status = "conflict"; s.Error = err.Error() })
 		} else {
 			fail("无法完成对话占用检查，请稍后重试：" + err.Error())
@@ -383,7 +394,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	}
 	resumed.ChatContext.Mode = run.settings.Mode
 	// Preserve model, approval policy and the roots chosen at creation; opening
-	// the same session from another task never adds that task's directories.
+	// the same session from another workspace never adds that workspace's directories.
 	if resumed.Sandbox["type"] == "workspaceWrite" {
 		roots, _ := resumed.Sandbox["writableRoots"].([]any)
 		for _, dir := range uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...)) {
@@ -416,6 +427,10 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
+	if err := ctx.Err(); err != nil {
+		fail(err.Error())
+		return
+	}
 	if err := call("turn/start", params, &started); err != nil {
 		fail(err.Error())
 		return
@@ -425,9 +440,12 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		return
 	}
 	run.change(func(state *ChatState) { state.TurnID = started.Turn.ID; state.Status = "running" })
+	if run.recordFirstTurn != nil {
+		run.recordFirstTurn()
+	}
 	a.startSessionTitle(run, text)
 	if run.asyncRequest != "" {
-		if _, err := a.Workspace.Store.DB.Exec(`UPDATE conversation_async_answers SET status='accepted' WHERE session_id=? AND request_id=?`, run.session, run.asyncRequest); err != nil {
+		if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_async_answers SET status='accepted' WHERE session_id=? AND request_id=?`, run.session, run.asyncRequest); err != nil {
 			fail(err.Error())
 			return
 		}
@@ -453,7 +471,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 			if err := a.AppTerminalConflict(run.session, s.Cwd); err != nil {
 				// An unavailable check does not establish another owner. Retry on
 				// the next tick without interrupting the turn already in progress.
-				if !workspace.IsSessionConflict(err) {
+				if !execution.IsSessionConflict(err) {
 					continue
 				}
 				_ = run.interrupt()
@@ -472,6 +490,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 }
 func (run *ChatRun) interrupt() error {
 	run.mu.Lock()
+	provider := run.provider
 	client, id := run.client, run.state.TurnID
 	if run.handoff {
 		run.mu.Unlock()
@@ -479,6 +498,9 @@ func (run *ChatRun) interrupt() error {
 		return nil
 	}
 	run.mu.Unlock()
+	if provider == model.ProviderAgy {
+		return run.interruptAgy()
+	}
 	if client == nil || id == "" {
 		run.cancel()
 		return nil

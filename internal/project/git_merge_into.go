@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 // mergeIntoTarget revalidates both the branch and its checkout before publishing
@@ -51,7 +51,7 @@ func (a *Service) mergeInto(ctx context.Context, p model.Project, v GitOverview,
 		return nil, gitIssue(gitConflict, err.Error())
 	}
 	if in.Action == "merge_into_preview" {
-		log, err := workspace.Git(ctx, source.Path, "log", "--format=%h %s", "-20", target.Commit+".."+source.Head)
+		log, err := execution.Git(ctx, source.Path, "log", "--format=%h %s", "-20", target.Commit+".."+source.Head)
 		if err != nil {
 			return nil, err
 		}
@@ -81,10 +81,10 @@ func (a *Service) mergeInto(ctx context.Context, p model.Project, v GitOverview,
 	}
 	if err == nil {
 		if targetPath != "" {
-			_, err = workspace.GitOperation(ctx, targetPath, "-c", "merge.autoStash=false", "merge", "--ff-only", "--commit", "--no-squash", "--no-edit", "--no-autostash", "--no-overwrite-ignore", "--", commit)
+			_, err = execution.GitOperation(ctx, targetPath, "-c", "merge.autoStash=false", "merge", "--ff-only", "--commit", "--no-squash", "--no-edit", "--no-autostash", "--no-overwrite-ignore", "--", commit)
 		} else {
 			// Compare-and-swap protects an unoccupied branch from concurrent updates.
-			_, err = workspace.Git(ctx, p.Path, "update-ref", "-m", "worktree-hub: merge "+source.Branch+" into "+target.Name, target.Ref, commit, target.Commit)
+			_, err = execution.Git(ctx, p.Path, "update-ref", "-m", "worktree-hub: merge "+source.Branch+" into "+target.Name, target.Ref, commit, target.Commit)
 		}
 	}
 	if err != nil {
@@ -98,33 +98,33 @@ func (a *Service) mergeInto(ctx context.Context, p model.Project, v GitOverview,
 
 func (a *Service) prepareMergeInto(ctx context.Context, p model.Project, source model.Worktree, target GitBranch) (commit, output string, resultErr error) {
 	path := platform.JoinWorkspacePath(p.CommonDir, "yolu-merge-"+model.NewID())
-	if err := workspace.Mkdir(ctx, path, 0700, false); err != nil {
+	if err := execution.Mkdir(ctx, path, 0700, false); err != nil {
 		return "", "", err
 	}
 	defer func() {
 		// Keep the environment client, even if the HTTP request was canceled.
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		_, err := workspace.Git(cleanupCtx, p.Path, "worktree", "remove", "--force", "--", path)
+		_, err := execution.Git(cleanupCtx, p.Path, "worktree", "remove", "--force", "--", path)
 		if err != nil {
 			// An add failure can leave only the empty directory we reserved.
-			if removeErr := workspace.Remove(cleanupCtx, path); removeErr != nil {
+			if removeErr := execution.Remove(cleanupCtx, path); removeErr != nil {
 				resultErr = errors.Join(resultErr, fmt.Errorf("临时合并目录清理失败，请检查 %s：%w", path, err))
 			}
 		}
 	}()
-	if _, err := workspace.GitOperation(ctx, p.Path, "worktree", "add", "--detach", "--", path, target.Commit); err != nil {
+	if _, err := execution.GitOperation(ctx, p.Path, "worktree", "add", "--detach", "--", path, target.Commit); err != nil {
 		return "", "", err
 	}
 	message := "Merge branch '" + source.Branch + "' into " + target.Name
-	output, err := workspace.GitOperation(ctx, path, "-c", "merge.autoStash=false", "-c", "rerere.enabled=false", "merge", "--ff", "--commit", "--no-squash", "--no-edit", "--no-autostash", "--no-overwrite-ignore", "-m", message, "--", source.Head)
+	output, err := execution.GitOperation(ctx, path, "-c", "merge.autoStash=false", "-c", "rerere.enabled=false", "merge", "--ff", "--commit", "--no-squash", "--no-edit", "--no-autostash", "--no-overwrite-ignore", "-m", message, "--", source.Head)
 	if err != nil {
-		state, inspectErr := workspace.ReadGitState(ctx, path)
+		state, inspectErr := execution.ReadGitState(ctx, path)
 		if inspectErr == nil && len(state.Conflicts) > 0 {
 			return "", "", fmt.Errorf("合并存在冲突，目标分支未更新。请在终端处理后重试。冲突文件：\n%s", strings.Join(state.Conflicts, "\n"))
 		}
 		return "", "", err
 	}
-	head, err := workspace.Git(ctx, path, "rev-parse", "--verify", "HEAD^{commit}")
+	head, err := execution.Git(ctx, path, "rev-parse", "--verify", "HEAD^{commit}")
 	return strings.TrimSpace(head), output, err
 }

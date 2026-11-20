@@ -6,16 +6,18 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 
 	"worktree-hub/internal/codex"
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 func TestCodexDiagnosticsIsAvailableWithoutCLIAndInReadOnlyMode(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv("CODEX_INSTALL_DIR", t.TempDir())
 	a := testApp(t)
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "http://localhost:4317/api/settings/codex", nil)
 	r.Header.Set("X-CSRF-Token", a.token)
@@ -27,18 +29,26 @@ func TestCodexDiagnosticsIsAvailableWithoutCLIAndInReadOnlyMode(t *testing.T) {
 	if w.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("diagnostics may be cached")
 	}
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("POST", "http://localhost:4317/api/settings/codex/install", strings.NewReader("{}"))
+	r.Header.Set("X-CSRF-Token", a.token)
+	a.handler().ServeHTTP(w, r)
+	if w.Code != 405 {
+		t.Fatalf("read-only mode accepted an installation: %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestCodexDiagnosticsRemoteHelperProcess(t *testing.T) {
 	if os.Getenv("WORK_HUB_DIAGNOSTIC_REMOTE") != "1" {
 		return
 	}
-	_ = workspace.RunAgent(os.Stdin, os.Stdout, workspace.AgentHooks{})
+	_ = execution.RunAgent(os.Stdin, os.Stdout, execution.AgentHooks{})
 	os.Exit(0)
 }
 
 func TestCodexDiagnosticsUsesRemoteHelperEnvironment(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv("CODEX_INSTALL_DIR", t.TempDir())
 	t.Setenv("WORK_HUB_DIAGNOSTIC_REMOTE", "1")
 	executable, err := os.Executable()
 	if err != nil {
@@ -46,13 +56,13 @@ func TestCodexDiagnosticsUsesRemoteHelperEnvironment(t *testing.T) {
 	}
 	cmd := exec.Command(executable, "-test.run=^TestCodexDiagnosticsRemoteHelperProcess$")
 	cmd.Env = append(os.Environ(), "USER=remote-codex-user", "USERNAME=remote-codex-user", "CODEX_HOME=/remote/codex-home", "WSL_DISTRO_NAME=Test-WSL")
-	client, err := workspace.StartClient(cmd)
+	client, err := execution.StartClient(cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer client.Close()
 	a := testApp(t)
-	a.Workspace.Remote = client
+	a.Execution.Remote = client
 	w := httptest.NewRecorder()
 	a.CodexDiagnosticsHandler(w, httptest.NewRequest("GET", "/api/settings/codex", nil))
 	var report codex.Diagnostics

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/workspace"
 )
 
 type fakeLiveClient struct {
@@ -96,7 +96,7 @@ func (c *fakeLiveClient) Reply(id json.RawMessage, result any) error {
 	c.replies = append(c.replies, string(id)+":"+string(raw))
 	return nil
 }
-func chatFixture(t *testing.T) (*App, model.Requirement, *fakeLiveClient, string) {
+func chatFixture(t *testing.T) (*App, model.Workspace, *fakeLiveClient, string) {
 	t.Helper()
 	a := testApp(t)
 	p := register(t, a, "Repo", repo(t, "repo", "master"))
@@ -107,7 +107,7 @@ func chatFixture(t *testing.T) (*App, model.Requirement, *fakeLiveClient, string
 	c := &fakeLiveClient{updates: make(chan codex.Event, 256), cwd: q.Members[0].Path}
 	a.openLive = func(context.Context) (codex.LiveClient, error) { return c, nil }
 	a.terminalConflict = func(string, string) error { return nil }
-	return a, q, c, "/api/requirements/" + q.ID + "/sessions/session/chat"
+	return a, q, c, "/api/workspaces/" + q.ID + "/sessions/session/chat"
 }
 func awaitChat(t *testing.T, a *App, condition func(ChatState) bool) ChatState {
 	t.Helper()
@@ -140,7 +140,7 @@ func TestChatStreamsRecordsApprovalsAndPreventsDuplicates(t *testing.T) {
 	if code, _ := call(t, a, "POST", endpoint, map[string]string{"text": "another", "request_id": "request2"}); code != 409 {
 		t.Fatal("concurrent send accepted")
 	}
-	if code, _ := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/session/resume", nil); code != 409 {
+	if code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/session/resume", nil); code != 409 {
 		t.Fatal("terminal launched during page turn")
 	}
 	c.event("item/started", map[string]any{"turnId": "turn", "item": map[string]any{"type": "agentMessage", "id": "reply", "text": ""}})
@@ -214,7 +214,7 @@ func TestChatRejectsTerminalAndActiveRuntimeWithoutStarting(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			a, _, c, endpoint := chatFixture(t)
 			if mode == "terminal" {
-				a.terminalConflict = func(string, string) error { return &workspace.SessionConflictError{Message: "terminal busy"} }
+				a.terminalConflict = func(string, string) error { return &execution.SessionConflictError{Message: "terminal busy"} }
 			} else {
 				c.active = true
 			}
@@ -252,11 +252,11 @@ func TestChatScopeErrorsAndSSESnapshot(t *testing.T) {
 	if w.Code != 200 || !strings.HasPrefix(w.Body.String(), "data: ") || strings.Contains(w.Body.String(), "DO_NOT_SHOW") || !strings.Contains(w.Body.String(), "hello") {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if code, _ := call(t, a, "POST", "/api/requirements/"+q.ID+"/archive", map[string]bool{"archived": true}); code != 200 {
+	if code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": true}); code != 200 {
 		t.Fatal(code)
 	}
 	if code, _ := call(t, a, "POST", endpoint, map[string]string{"text": "x", "request_id": "archived"}); code != 409 {
-		t.Fatal("archived requirement started chat")
+		t.Fatal("archived workspace started chat")
 	}
 }
 func TestManualTerminalDetection(t *testing.T) {
@@ -290,7 +290,7 @@ func TestTerminalReappearingInterruptsOnlyPageTurn(t *testing.T) {
 	var occupied atomic.Bool
 	a.terminalConflict = func(string, string) error {
 		if occupied.Load() {
-			return &workspace.SessionConflictError{Message: "terminal appeared"}
+			return &execution.SessionConflictError{Message: "terminal appeared"}
 		}
 		return nil
 	}

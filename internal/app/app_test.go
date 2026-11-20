@@ -28,7 +28,7 @@ func testApp(t *testing.T) *App {
 }
 func TestLaunchUsesPrimaryAndAllWorktreesWithoutShellInjection(t *testing.T) {
 	a := testApp(t)
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	p1 := register(t, a, "Main", repo(t, "main", "master"))
 	p2 := register(t, a, "Other", repo(t, "other", "master"))
 	_, q, raw := create(t, a, p1, []string{p2}, "launch")
@@ -36,8 +36,8 @@ func TestLaunchUsesPrimaryAndAllWorktreesWithoutShellInjection(t *testing.T) {
 		t.Fatal(string(raw))
 	}
 	var captured model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { captured = p; return nil }
-	code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/launch", nil)
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { captured = p; return nil }
+	code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/launch", nil)
 	if code != 200 {
 		t.Fatalf("launch %d %s", code, raw)
 	}
@@ -60,7 +60,7 @@ func TestLaunchUsesPrimaryAndAllWorktreesWithoutShellInjection(t *testing.T) {
 		t.Fatalf("quoting failed %s %v", out, err)
 	}
 	testGit(t, captured.Cwd, "switch", "-c", "changed-branch")
-	if code, _ := call(t, a, "POST", "/api/requirements/"+q.ID+"/launch", nil); code != 409 {
+	if code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/launch", nil); code != 409 {
 		t.Fatal("launch allowed branch drift")
 	}
 }
@@ -69,7 +69,7 @@ func TestArchivePreservesFilesAndProtectsProjectReference(t *testing.T) {
 	a := testApp(t)
 	id := register(t, a, "Keep", repo(t, "keep", "master"))
 	_, q, _ := create(t, a, id, nil, "archive")
-	code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/archive", map[string]bool{"archived": true})
+	code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": true})
 	if code != 200 {
 		t.Fatal(string(raw))
 	}
@@ -81,8 +81,8 @@ func TestArchivePreservesFilesAndProtectsProjectReference(t *testing.T) {
 	if code, _ := call(t, a, "DELETE", "/api/projects/"+id, nil); code != 409 {
 		t.Fatal("removed referenced project")
 	}
-	if code, _ := call(t, a, "POST", "/api/requirements/"+q.ID+"/launch", nil); code != 409 {
-		t.Fatal("archived requirement launched")
+	if code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/launch", nil); code != 409 {
+		t.Fatal("archived workspace launched")
 	}
 }
 

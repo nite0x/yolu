@@ -8,7 +8,7 @@ This directory holds the logo reference approved on November 3, 2026, and the pr
 
 - Vector master: [web/yolu.svg](../../../web/yolu.svg), a continuous, solid-color antler-shaped Y based on the approved reference.
 - Web assets: `web/yolu.svg`, `web/yolu.png`, `web/yolu.ico`.
-- Desktop assets: `src-tauri/icons/icon.png`, `icon.ico`, `icon.icns`; the startup page uses `desktop/yolu.svg`.
+- Desktop assets: `src-tauri/icons/icon.png`, `icon.ico`, `icon.icns`. The macOS `.icns` centers the artwork in 81.25% of the canvas width to match neighboring launcher icons. The startup page uses `desktop/yolu.svg`.
 - After `npm ci`, run `npm run brand:icons` to regenerate platform assets with the locked Tauri CLI. Do not edit the bitmap exports independently.
 - Default colors: deep teal `#203F42` and mint `#9DD8CA`. A standalone icon contains only the symbol; the UI renders the English name as text.
 

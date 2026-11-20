@@ -290,7 +290,7 @@ function reviewedPlan() {
     id: "review-plan", conversation_id: "review", run_id: "run", revision: 3,
     digest: "immutable-review", environment_id: "local", capability: "workspace_create", status: "pending",
     arguments: {name: "Payment module"},
-    review: {environment_id: "local", operation: {input: {name: "Payment module"}, requirement: {path: "/tmp/workspaces/payments", members: [{project_name: "Frontend", mode: "new", branch: "codex/payments", base_ref: "main", base_commit: "reviewed-commit"}, {project_name: "Backend", mode: "project", path: "/tmp/backend"}]}}},
+    review: {environment_id: "local", operation: {input: {name: "Payment module"}, workspace: {path: "/tmp/workspaces/payments", members: [{project_name: "Frontend", mode: "new", branch: "codex/payments", base_ref: "main", base_commit: "reviewed-commit"}, {project_name: "Backend", mode: "project", path: "/tmp/backend"}]}}},
     steps: [{id: "create", label: "Prepare payment workspace", status: "pending"}], resources: [], created_at: 1, updated_at: 1,
   };
 }
@@ -302,10 +302,18 @@ const reviewMessages = [
 
 test("assistant renders reviewed operations and verified resource navigation in the shared panel", async (t) => {
   const {w, errors} = createAssistantWindow(t);
-  let plan = reviewedPlan();
+  const base = reviewedPlan();
+  const resources: Array<{kind: string; id: string; environment_id: string; name: string; path: string}> = [];
+  let plan = {...base, resources, review: {...base.review, operation: {...base.review.operation, codex: {
+    first_instruction: "Add payment validation.\nRun tests.",
+    cwd: "/tmp/workspaces/payments/frontend",
+    additional_directories: ["/tmp/backend"],
+    settings: {model: "gpt-6.1-sol", permission: "ask"},
+  }}}};
   const decisions: any[] = [];
   const opened: any[] = [];
   const resource = {kind: "workspace", id: "payments", environment_id: "local", name: "Payment workspace", path: "/tmp/workspaces/payments"};
+  const conversation = {kind: "conversation", id: "codex-thread", environment_id: "local", name: "Add payment validation", path: "/tmp/workspaces/payments/frontend"};
   const choice = {kind: "project", id: "backend", environment_id: "local", name: "Backend <img src=x>", path: "/tmp/backend"};
   const activities = [
     {id: 1, run_id: "run", capability: "project_list", status: "completed", result: {resources: [resource], choices: [choice], errors: [{environment_id: "offline", message: "Environment unavailable"}], refreshed_at: 1700000000000}, created_at: 1},
@@ -314,11 +322,11 @@ test("assistant renders reviewed operations and verified resource navigation in 
   (w as any).AssistantTest.openGlobalAssistant(async (path: string, options?: RequestInit) => {
     if (path === "/api/assistant/conversations") return [{id: "review", title: "Payment planning"}];
     if (path.startsWith("/api/conversation-drafts")) return null;
-    if (path.startsWith("/api/assistant/resources/")) return resource;
+    if (path.startsWith("/api/assistant/resources/")) return path.includes("/conversation/codex-thread?") ? conversation : resource;
     if (path.endsWith("/decision")) {
       decisions.push(JSON.parse(String(options?.body)));
-      plan = {...plan, status: "succeeded"};
-      return {...plan, resources: [resource]};
+      plan = {...plan, status: "succeeded", resources: [resource, conversation]};
+      return plan;
     }
     return {messages: reviewMessages, run: null, before: 0, activities, plans: [plan]};
   }, {openResource: (value: any) => {opened.push(value);}});
@@ -331,6 +339,12 @@ test("assistant renders reviewed operations and verified resource navigation in 
   assert.equal(card.querySelector(".assistant-plan-header strong")?.textContent, "Payment module");
   assert.equal(card.querySelectorAll(".assistant-plan-members > li").length, 2);
   assert.equal(card.querySelector(".assistant-plan-steps"), null, "pending plans keep the review focused on the proposed changes");
+  const launch = card.querySelector('[aria-label="启动 Codex 对话"]')!;
+  assert.match(launch.textContent || "", /Add payment validation\.\nRun tests\./);
+  assert.match(launch.textContent || "", /\/tmp\/workspaces\/payments\/frontend/);
+  assert.match(launch.textContent || "", /\/tmp\/backend/);
+  assert.match(launch.textContent || "", /gpt-6\.1-sol/);
+  assert.match(launch.textContent || "", /请求批准/);
   const technical = card.querySelector("details.assistant-action-details")!;
   assert.equal(technical.hasAttribute("open"), false);
   assert.match(technical.textContent || "", /reviewed-commit/);
@@ -349,10 +363,13 @@ test("assistant renders reviewed operations and verified resource navigation in 
   await until(() => opened.length === 1);
   assert.deepEqual(opened[0], resource);
   buttons().find((button) => button.textContent === "确认并执行")!.click();
-  await until(() => decisions.length === 1 && !buttons().some((button) => button.textContent === "确认并执行"));
+  await until(() => decisions.length === 1 && buttons().some((button) => button.getAttribute("aria-label") === "打开对话：Add payment validation"));
   assert.equal(decisions[0].revision, 3);
   assert.equal(decisions[0].digest, "immutable-review");
   assert.equal(decisions[0].decision, "approve");
+  buttons().find((button) => button.getAttribute("aria-label") === "打开对话：Add payment validation")!.click();
+  await until(() => opened.length === 2);
+  assert.deepEqual(opened[1], conversation);
   assert.deepEqual(errors, []);
 });
 

@@ -8,9 +8,9 @@ import (
 	"path"
 	"strings"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 func validCloneSource(source string) bool {
@@ -71,25 +71,25 @@ func (a *Service) CloneProjectHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 400, "新文件夹名必须是单个目录名，不能包含路径分隔符")
 		return
 	}
-	a.Workspace.GitActivity.RLock()
-	defer a.Workspace.GitActivity.RUnlock()
-	if a.Workspace.Closing.Load() {
+	a.Execution.GitActivity.RLock()
+	defer a.Execution.GitActivity.RUnlock()
+	if a.Execution.Closing.Load() {
 		httpx.WriteError(w, 409, "后台正在退出")
 		return
 	}
-	parent, err := workspace.Normalize(r.Context(), input.Parent)
+	parent, err := execution.Normalize(r.Context(), input.Parent)
 	if err != nil {
 		httpx.WriteError(w, 400, "请选择已存在的存放目录："+err.Error())
 		return
 	}
 	target := platform.JoinWorkspacePath(parent, folder)
-	if err := workspace.Mkdir(r.Context(), target, 0755, false); err != nil {
+	if err := execution.Mkdir(r.Context(), target, 0755, false); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			httpx.WriteError(w, 409, "目标目录已存在，请更换文件夹名，或登记已有仓库")
 			return
 		}
 		// Remote errors do not necessarily retain os.ErrExist identity.
-		if _, statErr := workspace.Stat(r.Context(), target, false); statErr == nil {
+		if _, statErr := execution.Stat(r.Context(), target, false); statErr == nil {
 			httpx.WriteError(w, 409, "目标目录已存在，请更换文件夹名，或登记已有仓库")
 			return
 		}
@@ -99,7 +99,7 @@ func (a *Service) CloneProjectHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err := a.GitNetwork(r.Context(), parent, "clone", "--", source, target); err != nil {
 		// Git normally removes its partial data. Remove only our empty reservation;
 		// keep any remaining files for inspection, including after cancellation.
-		_ = workspace.Remove(r.Context(), target)
+		_ = execution.Remove(r.Context(), target)
 		message := RedactGitOutput(err.Error())
 		message = strings.ReplaceAll(message, source, RedactRemote(source))
 		httpx.WriteError(w, 422, "克隆失败："+message)

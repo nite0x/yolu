@@ -38,8 +38,8 @@ type desktopServiceInfo struct {
 
 func (a *App) desktopInfo(address string) desktopServiceInfo {
 	return desktopServiceInfo{URL: address, Token: a.token, Name: "worktree-hub", PID: os.Getpid(),
-		Protocol: desktopProtocol, Version: BuildVersion, DataDir: a.Workspace.DataDir,
-		Root: a.Workspace.Root, ReadOnly: a.Workspace.ReadOnlySessions, Ready: !a.Workspace.Closing.Load()}
+		Protocol: desktopProtocol, Version: BuildVersion, DataDir: a.Execution.DataDir,
+		Root: a.Execution.Root, ReadOnly: a.Execution.ReadOnlySessions, Ready: !a.Execution.Closing.Load()}
 }
 
 func desktopHTTPClient(timeout time.Duration) *http.Client {
@@ -304,24 +304,24 @@ func (a *App) stopServiceHandler(w http.ResponseWriter, r *http.Request) {
 	locked := []*App{}
 	defer func() {
 		for _, app := range locked {
-			app.Workspace.Mu.Unlock()
-			app.Workspace.GitActivity.Unlock()
+			app.Execution.Mu.Unlock()
+			app.Execution.GitActivity.Unlock()
 		}
 	}()
 	for _, app := range apps {
-		if !app.Workspace.GitActivity.TryLock() {
+		if !app.Execution.GitActivity.TryLock() {
 			httpx.WriteError(w, 409, "有 Git 操作正在执行，请完成后重试")
 			return
 		}
-		if !app.Workspace.Mu.TryLock() {
-			app.Workspace.GitActivity.Unlock()
+		if !app.Execution.Mu.TryLock() {
+			app.Execution.GitActivity.Unlock()
 			httpx.WriteError(w, 409, "有项目操作正在执行，请完成后重试")
 			return
 		}
 		locked = append(locked, app)
 	}
 	for _, app := range apps {
-		app.Workspace.Closing.Store(true)
+		app.Execution.Closing.Store(true)
 	}
 	httpx.WriteJSON(w, 200, map[string]string{"message": "后台正在退出"})
 	time.AfterFunc(100*time.Millisecond, a.shutdown)

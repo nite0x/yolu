@@ -7,31 +7,66 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 )
+
+type newSessionInput struct {
+	Text                  string       `json:"text"`
+	Project               string       `json:"project_id"`
+	WorkspaceID           string       `json:"workspace_id"`
+	Cwd                   string       `json:"cwd"`
+	RequestID             string       `json:"request_id"`
+	Purpose               string       `json:"purpose"`
+	MergeHead             string       `json:"merge_head"`
+	Provider              string       `json:"provider"`
+	Images                []string     `json:"images"`
+	Settings              TurnSettings `json:"settings"`
+	AdditionalDirectories *[]string    `json:"additional_directories"`
+}
+
+var (
+	errCreationUncertain = errors.New("上次创建结果未确认，为避免重复创建请先刷新对话列表检查")
+	errCreationMismatch  = errors.New("创建标识已用于其他消息或工作目录")
+)
+
+func (in newSessionInput) fingerprint() string {
+	raw, _ := json.Marshal(in)
+	return fmt.Sprintf("%x", sha256.Sum256(raw))
+}
+
+func (a *Service) createdSessionID(ctx context.Context, key, fingerprint string) (string, error) {
+	var id, previous string
+	err := a.Execution.Store.DB.QueryRowContext(ctx, `SELECT session_id,fingerprint FROM conversation_create_requests WHERE request_id=?`, key).Scan(&id, &previous)
+	if err != nil {
+		return "", err
+	}
+	if previous != "" && previous != fingerprint {
+		return "", errCreationMismatch
+	}
+	if id == "" {
+		return "", errCreationUncertain
+	}
+	return id, nil
+}
 
 func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	defer a.invalidateSessionCatalog()
-	var input struct {
-		Text                  string       `json:"text"`
-		Project               string       `json:"project_id"`
-		TaskID                string       `json:"task_id"`
-		Cwd                   string       `json:"cwd"`
-		RequestID             string       `json:"request_id"`
-		Purpose               string       `json:"purpose"`
-		MergeHead             string       `json:"merge_head"`
-		Images                []string     `json:"images"`
-		Settings              TurnSettings `json:"settings"`
-		AdditionalDirectories *[]string    `json:"additional_directories"`
-	}
+	var input newSessionInput
 	if !httpx.DecodeLimit(w, r, &input, chatRequestLimit) {
 		return
 	}
+	if !model.SupportedProvider(input.Provider) {
+		httpx.WriteError(w, 400, "不支持的对话引擎")
+		return
+	}
+	provider := model.NormalizeProvider(input.Provider)
 	if err := validateChatImages(input.Images); err != nil {
 		httpx.WriteError(w, 400, err.Error())
 		return
@@ -47,36 +82,30 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Persist the idempotency key before making any remote mutation. An uncertain
 	// creation is never retried implicitly, including after a service restart.
-	taskID := input.TaskID
+	workspaceID := input.WorkspaceID
 	key := input.RequestID
 	if id := r.PathValue("id"); id != "" {
-		taskID = id
-		key = "task:" + id + ":" + key
+		workspaceID = id
+		key = "workspace:" + id + ":" + key
 	}
-	input.TaskID = taskID
+	input.WorkspaceID = workspaceID
 	releaseControl := a.lockControl("create:" + key)
 	defer releaseControl()
-	rawInput, _ := json.Marshal(input)
-	fingerprint := fmt.Sprintf("%x", sha256.Sum256(rawInput))
-	var existing, previousFingerprint string
-	err := a.Workspace.Store.DB.QueryRow(`SELECT session_id,fingerprint FROM conversation_create_requests WHERE request_id=?`, key).Scan(&existing, &previousFingerprint)
+	fingerprint := input.fingerprint()
+	existing, err := a.createdSessionID(r.Context(), key, fingerprint)
 	if err == nil {
-		if previousFingerprint != "" && previousFingerprint != fingerprint {
-			httpx.WriteError(w, 409, "创建标识已用于其他消息或工作目录")
-			return
-		}
-		if existing == "" {
-			httpx.WriteError(w, 409, "上次创建结果未确认，为避免重复创建请先刷新对话列表检查")
-			return
-		}
 		a.WriteCreatedSession(w, existing, 200)
+		return
+	}
+	if errors.Is(err, errCreationUncertain) || errors.Is(err, errCreationMismatch) {
+		httpx.WriteError(w, 409, err.Error())
 		return
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		httpx.DbError(w, err)
 		return
 	}
-	defaults, err := a.conversationPreferences(r.Context())
+	defaults, err := a.conversationPreferencesForProvider(r.Context(), provider)
 	if err != nil {
 		httpx.DbError(w, err)
 		return
@@ -84,13 +113,13 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	input.Settings = newConversationSettings(input.Settings, defaults)
 	var execution executionContext
 	if input.Purpose == "merge_conflict" {
-		if taskID == "" {
-			httpx.WriteError(w, 400, "合并处理需要任务上下文")
+		if workspaceID == "" {
+			httpx.WriteError(w, 400, "合并处理需要工作区上下文")
 			return
 		}
-		execution.plan, input.Text, err = a.mergeConflictPlan(r.Context(), taskID, input.Project, input.MergeHead)
+		execution.plan, input.Text, err = a.mergeConflictPlan(r.Context(), workspaceID, input.Project, input.MergeHead)
 	} else {
-		execution, err = a.resolveCreation(r.Context(), SessionTarget{TaskID: taskID, ProjectID: input.Project, Cwd: input.Cwd, AdditionalDirectories: input.AdditionalDirectories})
+		execution, err = a.resolveCreation(r.Context(), SessionTarget{WorkspaceID: workspaceID, ProjectID: input.Project, Cwd: input.Cwd, AdditionalDirectories: input.AdditionalDirectories})
 	}
 	if err != nil {
 		status := 409
@@ -104,13 +133,31 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, status, err.Error())
 		return
 	}
+	if provider == model.ProviderAgy {
+		a.createAgySession(w, r, key, fingerprint, workspaceID, input, execution)
+		return
+	}
+	run, status, err := a.startCodexSession(context.WithoutCancel(r.Context()), key, fingerprint, input, execution, false)
+	if err != nil {
+		if status == 500 {
+			httpx.DbError(w, err)
+		} else {
+			httpx.WriteError(w, status, err.Error())
+		}
+		return
+	}
+	a.WriteCreatedSession(w, run.session, status)
+}
+
+func (a *Service) startCodexSession(startup context.Context, key, fingerprint string, input newSessionInput, execution executionContext, recordFirstTurn bool) (*ChatRun, int, error) {
 	plan := execution.plan
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.WithoutCancel(startup))
+	stopStartupCancellation := context.AfterFunc(startup, cancel)
+	defer stopStartupCancellation()
 	c, err := a.openLive(ctx)
 	if err != nil {
 		cancel()
-		httpx.WriteError(w, 503, err.Error())
-		return
+		return nil, 503, err
 	}
 	keep := false
 	defer func() {
@@ -123,18 +170,15 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	defer end()
 	if input.Settings.Model != "" {
 		models, err := codex.ListModels(func(method string, params any, out any) error { return c.Call(requestCtx, method, params, out) })
-		if err != nil || !availableConversationModel(models, input.Settings.Model) {
-			if err != nil {
-				httpx.WriteError(w, 503, "无法核对默认模型："+err.Error())
-			} else {
-				httpx.WriteError(w, 400, "所选模型不可用，请更换模型或在设置中沿用 Codex 默认模型")
-			}
-			return
+		if err != nil {
+			return nil, 503, fmt.Errorf("无法核对默认模型：%w", err)
+		}
+		if !availableConversationModel(models, input.Settings.Model) {
+			return nil, 400, errors.New("所选模型不可用，请更换模型或在设置中沿用 Codex 默认模型")
 		}
 	}
-	if _, err := a.Workspace.Store.DB.Exec(`INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
-		httpx.DbError(w, err)
-		return
+	if _, err := a.Execution.Store.DB.ExecContext(requestCtx, `INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
+		return nil, 500, err
 	}
 	var result struct {
 		ChatContext
@@ -151,9 +195,11 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	if execution.instructions != "" {
 		params["developerInstructions"] = execution.instructions + "\n" + chatQuestionInstructions
 	}
+	if err := requestCtx.Err(); err != nil {
+		return nil, 503, err
+	}
 	if err := c.Call(requestCtx, "thread/start", params, &result); err != nil || result.Thread.ID == "" {
-		httpx.WriteError(w, 503, "Codex 创建结果未确认，请刷新对话列表检查后再操作")
-		return
+		return nil, 503, errors.New("Codex 创建结果未确认，请刷新对话列表检查后再操作")
 	}
 	s := result.Thread
 	// Publish a complete record before other controls can target this new ID.
@@ -183,44 +229,53 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 		s.CreatedAt = time.Now().Unix()
 	}
 	s.UpdatedAt = s.CreatedAt
-	a.Workspace.Mu.Lock()
+	a.Execution.Mu.Lock()
 	err = a.SaveSession("", s, "workbench")
-	if err == nil && taskID != "" {
-		_, err = a.Workspace.Store.DB.Exec(`INSERT OR IGNORE INTO task_session_pins(requirement_id,session_id) VALUES(?,?)`, taskID, s.ID)
+	if err == nil && input.WorkspaceID != "" {
+		_, err = a.Execution.Store.DB.Exec(`INSERT OR IGNORE INTO workspace_session_pins(workspace_id,session_id) VALUES(?,?)`, input.WorkspaceID, s.ID)
 	}
-	a.Workspace.Mu.Unlock()
+	a.Execution.Mu.Unlock()
 	if err != nil {
-		httpx.DbError(w, err)
-		return
+		return nil, 500, err
 	}
 	if initialTitle {
-		if err := a.Workspace.Store.SetSessionTitle(s.ID, s.Name, "initial"); err != nil {
-			httpx.DbError(w, err)
-			return
+		if err := a.Execution.Store.SetSessionTitle(s.ID, s.Name, "initial"); err != nil {
+			return nil, 500, err
 		}
 	}
-	if _, err := a.Workspace.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, s.ID, key); err != nil {
-		httpx.DbError(w, err)
-		return
+	if err := a.Execution.Store.SaveSessionDirectories(s.ID, plan.AdditionalDirectories); err != nil {
+		return nil, 500, err
 	}
-	if err := a.Workspace.Store.SaveSessionDirectories(s.ID, plan.AdditionalDirectories); err != nil {
-		httpx.DbError(w, err)
-		return
+	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, s.ID, key); err != nil {
+		return nil, 500, err
 	}
 	run := &ChatRun{session: s.ID, cwd: s.Cwd, created: &s, client: c, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}, Notice: titleNotice}}
 	run.settings = input.Settings
 	run.createdContext = &result.ChatContext
+	if recordFirstTurn {
+		run.started = make(chan struct{})
+		run.recordFirstTurn = func() {
+			if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_input_requests(session_id,request_id,fingerprint,status) VALUES(?,?,?,'accepted')`, s.ID, input.RequestID, fingerprint); err != nil {
+				log.Printf("Codex first turn receipt: %v", err)
+			}
+			close(run.started)
+		}
+	}
 	a.chatMu.Lock()
 	a.chats[s.ID] = run
 	a.chatMu.Unlock()
 	// Keep this exact connection through the first turn: a new thread has no
 	// resumable rollout until that turn has begun.
+	if !stopStartupCancellation() {
+		cancel()
+	}
 	keep = true
 	go a.DriveChat(ctx, run, plan, input.Text, input.Images...)
-	a.WriteCreatedSession(w, s.ID, 202)
+	return run, 202, nil
 }
+
 func (a *Service) WriteCreatedSession(w http.ResponseWriter, session string, status int) {
-	s, err := a.Workspace.Store.Session(session)
+	s, err := a.Execution.Store.Session(session)
 	if err != nil {
 		httpx.WriteError(w, 409, "已创建的对话记录不可用，请刷新后检查")
 		return

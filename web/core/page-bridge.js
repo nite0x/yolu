@@ -38,20 +38,20 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (signature !== chromeSignature) {chromeSignature = signature; post('workhub:page-chrome', {chrome});}
   }
   function snapshot() {
-    const route = location.hash.slice(1) || '/requirements';
+    const route = location.hash.slice(1) || '/workspaces';
     const view = state.view === 'sessions' ? window.WorkHubConversations.current : null;
     const session = view ? conversationSelectedSession(view) : null;
     const project = state.projects.find(item => item.id === state.selectedProject);
-    const task = state.requirements.find(item => item.id === state.selectedRequirement);
-    const title = state.view === 'assistant' ? uiText("Yolu 助手") : view ? view.creating ? uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'projects' ? uiText("项目") : task?.name || uiText("任务");
+    const workspace = state.workspaces.find(item => item.id === state.selectedWorkspace);
+    const title = state.view === 'assistant' ? uiText("Yolu 助手") : view ? view.creating ? uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'projects' ? uiText("项目") : workspace?.name || uiText("工作区");
     return {
       route, environment: activeEnvironment, title, kind: state.view,
       terminal:view?.creating ? creationHint : undefined,
       context: view ? (() => {
         const environment = session?.environment_id || activeEnvironment;
         const workspace = conversationWorkspace(environment);
-        const context = session ? window.WorkHubUI.conversationContext(session.cwd, {tasks:workspace.requirements,projects:workspace.projects}, view.scope.kind === 'task' ? view.scope.id : undefined) : null;
-        return (context?.tasks.map(task => task.name).join('、') || conversationScopeName(view.scope)) + ' · ' + environmentName(environment);
+        const context = session ? window.WorkHubUI.conversationContext(session.cwd, {workspaces:workspace.workspaces,projects:workspace.projects}, view.scope.kind === 'workspace' ? view.scope.id : undefined) : null;
+        return (context?.workspaces.map(workspace => workspace.name).join('、') || conversationScopeName(view.scope)) + ' · ' + environmentName(environment);
       })() : '',
       status:session?.chat_status || '',
       sessionEnvironment:session?.environment_id,
@@ -103,8 +103,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     closeShortcutPicker();
     const revision = ++restoreRevision;
     restoring = true;
+    const previousLocation = resourceLocation.key;
     try {
-      await selectEnvironment(saved.environment || 'local', saved.route || '/requirements', 'replace', {refreshState:false});
+      await selectEnvironment(saved.environment || 'local', saved.route || '/workspaces', 'replace', {refreshState:false});
       if (disposed || revision !== restoreRevision) return;
       if (state.view === 'sessions') {
         creationHint = {...saved.terminal};
@@ -143,7 +144,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         restoring = false;
         document.documentElement.removeAttribute('data-workspace-initial-route');
         performance.mark?.('workhub:selection-ready');
-        visibility(active); publish();
+        visibility(active);
+        if (active && !navigationOnly && previousLocation !== resourceLocation.key && ['projects','workspaces'].includes(state.view)) focusResourcePage();
+        publish();
         post('workhub:page-restored');
         selectInitialConversation();
       }
@@ -163,23 +166,25 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       return {...current, title:session?.name || uiText("对话"), conversation:{...current.conversation, selected:key, pane:'detail'}};
     }
     const sessionAction = target.closest('[data-session-action="details"]');
-    if (sessionAction) return {...current, route:'/sessions', title:uiText("对话"), conversation:{scope:sessionAction.dataset.requirement ? {kind:'task', id:sessionAction.dataset.requirement, environment:activeEnvironment} : {kind:'all'}, selected:conversationEnvironmentKey(activeEnvironment,sessionAction.dataset.session), pane:'detail'}};
-    const taskButton = target.closest('[data-action="open-requirement"], [data-action="jump-requirement"]');
-    if (taskButton) return {route:'/requirements/' + taskButton.dataset.id, environment:taskButton.dataset.environment || activeEnvironment, title:taskButton.textContent.trim()};
+    if (sessionAction) return {...current, route:'/sessions', title:uiText("对话"), conversation:{scope:sessionAction.dataset.workspace ? {kind:'workspace', id:sessionAction.dataset.workspace, environment:activeEnvironment} : {kind:'all'}, selected:conversationEnvironmentKey(activeEnvironment,sessionAction.dataset.session), pane:'detail'}};
+    const workspaceButton = target.closest('[data-action="open-workspace"], [data-action="jump-workspace"]');
+    if (workspaceButton) return {route:resourceDirectoryRoute('/workspaces/' + workspaceButton.dataset.id, workspaceButton.dataset.path), environment:workspaceButton.dataset.environment || activeEnvironment, title:workspaceButton.textContent.trim()};
+    const directoryProject = target.closest('[data-action="jump-project"]');
+    if (directoryProject) return {route:directoryProject.hash.slice(1), environment:activeEnvironment};
     const projectButton = target.closest('[data-action="select-project"]');
     if (projectButton) return {route:'/projects/' + projectButton.dataset.id, environment:activeEnvironment, title:state.projects.find(p => p.id === projectButton.dataset.id)?.name || uiText("项目")};
-    const taskShortcut = target.closest('[data-task-shortcut]');
-    if (taskShortcut) {
-      const task = shortcutTasks().find(item => shortcutTaskKey(item) === taskShortcut.dataset.taskShortcut);
-      if (task) return {route:'/sessions', environment:activeEnvironment, title:task.name, conversation:{scope:{kind:'task',id:task.id,environment:task.environment_id || activeEnvironment},pane:'detail'}};
+    const workspaceShortcut = target.closest('[data-workspace-shortcut]');
+    if (workspaceShortcut) {
+      const workspace = shortcutWorkspaces().find(item => shortcutWorkspaceKey(item) === workspaceShortcut.dataset.workspaceShortcut);
+      if (workspace) return {route:'/sessions', environment:activeEnvironment, title:workspace.name, conversation:{scope:{kind:'workspace',id:workspace.id,environment:workspace.environment_id || activeEnvironment},pane:'detail'}};
     }
     const directoryShortcut = target.closest('[data-directory-shortcut]');
     if (directoryShortcut) {
       const directory = shortcutDirectories().find(item => item.key === directoryShortcut.dataset.directoryShortcut);
       if (directory) return {route:'/sessions', environment:activeEnvironment, title:directory.name, conversation:{scope:{kind:'directory',cwd:directory.cwd,environment:directory.environment},pane:'detail'}};
     }
-    const conversations = target.closest('[data-action="task-conversations"], [data-action="project-conversations"]');
-    if (conversations) return {route:'/sessions',environment:activeEnvironment, title:uiText("对话"),conversation:{scope:{kind:conversations.dataset.action === 'task-conversations' ? 'task' : 'project', id:conversations.dataset.id, environment:activeEnvironment},pane:'detail'}};
+    const conversations = target.closest('[data-action="workspace-conversations"], [data-action="project-conversations"]');
+    if (conversations) return {route:'/sessions',environment:activeEnvironment, title:uiText("对话"),conversation:{scope:{kind:conversations.dataset.action === 'workspace-conversations' ? 'workspace' : 'project', id:conversations.dataset.id, environment:activeEnvironment},pane:'detail'}};
     const nav = target.closest('[data-view]');
     if (nav) return {route:'/' + nav.dataset.view, environment:activeEnvironment};
     const link = target.closest('a[href^="#/"]');
@@ -204,35 +209,35 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (formKind && !formKind.disabled && window.WorkHubConversations.current?.creating && !sessionHistoryState?.submitting) {
       event.preventDefault(); event.stopImmediatePropagation();
       const current = snapshot(), target = window.WorkHubConversations.current.target;
-      const terminal = {...creationHint,taskID:target ? target.task_id : creationHint.taskID || (window.WorkHubConversations.current.scope.kind === 'task' ? window.WorkHubConversations.current.scope.id : undefined),projectID:target ? target.project_id : creationHint.projectID};
+      const terminal = {...creationHint,workspaceID:target ? target.workspace_id : creationHint.workspaceID || (window.WorkHubConversations.current.scope.kind === 'workspace' ? window.WorkHubConversations.current.scope.id : undefined),projectID:target ? target.project_id : creationHint.projectID};
       post('workhub:conversation-kind',{kind:'terminal',snapshot:{...current,terminal,conversation:{...current.conversation,creationDirectory:target ? conversationEnvironmentKey(window.WorkHubConversations.current.targetEnvironment,conversationPathKey(target.cwd)) : current.conversation.creationDirectory}}}); return;
     }
     const projectCreate = event.target.closest('[data-action="workspace-conversation-new"]');
     if (projectCreate && !projectCreate.disabled && event.button === 0) {
       event.preventDefault(); event.stopImmediatePropagation();
-      const taskID = state.selectedRequirement || '';
+      const workspaceID = state.selectedWorkspace || '';
       const projectID = projectCreate.dataset.id || '';
       const path = projectCreate.dataset.path;
       const matches = q => q.members.some(m => m.project_id === projectID && m.path === path);
-      const task = state.requirements.find(q => q.id === taskID && matches(q)) || state.requirements.find(matches);
-      post('workhub:page-open',{create:true,snapshot:{route:'/sessions',environment:activeEnvironment,title:uiText("新建对话"),terminal:{taskID:task?.id,projectID},conversation:{scope:task ? {kind:'task',id:task.id,environment:activeEnvironment} : {kind:'project',id:projectID,environment:activeEnvironment},creationDirectory:path ? conversationEnvironmentKey(activeEnvironment,conversationPathKey(path)) : '',creating:true,selected:null,pane:'detail'}}}); return;
+      const workspace = state.workspaces.find(q => q.id === workspaceID && matches(q)) || state.workspaces.find(matches);
+      post('workhub:page-open',{create:true,snapshot:{route:'/sessions',environment:activeEnvironment,title:uiText("新建对话"),terminal:{workspaceID:workspace?.id,projectID},conversation:{scope:workspace ? {kind:'workspace',id:workspace.id,environment:activeEnvironment} : {kind:'project',id:projectID,environment:activeEnvironment},creationDirectory:path ? conversationEnvironmentKey(activeEnvironment,conversationPathKey(path)) : '',creating:true,selected:null,pane:'detail'}}}); return;
     }
     const create = event.target.closest('[data-conversation-action="new"], [data-session-action="new"]');
     if (create && event.button === 0 && !create.disabled && !state.busy) {
-      const taskAction = create.dataset.sessionAction === 'new';
-      const task = taskAction ? state.requirements.find(task => task.id === create.dataset.requirement) : null;
-      if (taskAction ? !task || task.state !== 'ready' || sessionReadOnly : $('#newBrowserSession').disabled) return;
+      const workspaceAction = create.dataset.sessionAction === 'new';
+      const workspace = workspaceAction ? state.workspaces.find(workspace => workspace.id === create.dataset.workspace) : null;
+      if (workspaceAction ? !workspace || workspace.state !== 'ready' || sessionReadOnly : $('#newBrowserSession').disabled) return;
       const placement = create.dataset.conversationPlacement || 'current';
       if (placement === 'split' && !canSplit) return;
       event.preventDefault(); event.stopImmediatePropagation();
       $('#sessionScopePicker').open = false;
-      const selectedSession = !task && window.WorkHubConversations.current ? conversationSelectedSession(window.WorkHubConversations.current) : null;
-      const scope = task ? {kind:'task',id:task.id,environment:activeEnvironment} : window.WorkHubConversations.current?.scope || {kind:'all'};
-      const directory = !task && window.WorkHubConversations.current ? defaultConversationDirectory(window.WorkHubConversations.current, conversationFilteredDirectories().filter(d => !d.disabled && d.target)) : null;
-      post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:selectedSession?.environment_id || activeEnvironment,title:uiText("新建对话"),terminal:{taskID:task?.id || directory?.target?.task_id || (scope.kind === 'task' ? scope.id : undefined),projectID:directory?.target?.project_id},conversation:{scope,directory:task ? '' : window.WorkHubConversations.current?.directory || '',creationDirectory:directory?.key || '',environmentFilter:task ? '' : window.WorkHubConversations.current?.environmentFilter || '',selected:null,creating:true,pane:'detail'}}}); return;
+      const selectedSession = !workspace && window.WorkHubConversations.current ? conversationSelectedSession(window.WorkHubConversations.current) : null;
+      const scope = workspace ? {kind:'workspace',id:workspace.id,environment:activeEnvironment} : window.WorkHubConversations.current?.scope || {kind:'all'};
+      const directory = !workspace && window.WorkHubConversations.current ? defaultConversationDirectory(window.WorkHubConversations.current, conversationFilteredDirectories().filter(d => !d.disabled && d.target)) : null;
+      post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:selectedSession?.environment_id || activeEnvironment,title:uiText("新建对话"),terminal:{workspaceID:workspace?.id || directory?.target?.workspace_id || (scope.kind === 'workspace' ? scope.id : undefined),projectID:directory?.target?.project_id},conversation:{scope,directory:workspace ? '' : window.WorkHubConversations.current?.directory || '',creationDirectory:directory?.key || '',environmentFilter:workspace ? '' : window.WorkHubConversations.current?.environmentFilter || '',selected:null,creating:true,pane:'detail'}}}); return;
     }
     if (event.target.closest('.brand[href="/"]') && !(event.metaKey || event.ctrlKey)) {
-      event.preventDefault(); event.stopImmediatePropagation(); open({route:'/requirements',environment:activeEnvironment}); return;
+      event.preventDefault(); event.stopImmediatePropagation(); open({route:'/workspaces',environment:activeEnvironment}); return;
     }
     if (!navigationOnly && !parallelPane && !document.documentElement.hasAttribute('data-workspace-conversation') && event.button === 0 && !(event.metaKey || event.ctrlKey)) {
       const saved = destination(event.target);
@@ -264,7 +269,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   // while its dialog or shortcut picker extends into the conversation panes.
   let navigationModal = false;
   const modalObserver = navigationOnly ? new MutationObserver(() => {
-    const open = !!document.querySelector('dialog[open], .sidebar-shortcut-rail #taskShortcutPicker[open]');
+    const open = !!document.querySelector('dialog[open], .sidebar-shortcut-rail #workspaceShortcutPicker[open]');
     if (open === navigationModal) return;
     navigationModal = open;
     post('workhub:navigation-modal', {open});

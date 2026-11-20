@@ -72,10 +72,10 @@ function ActionMenu({ source, label, iconOnly }: { source: HTMLDetailsElement; l
   const portal = source.closest("dialog") || document.body
   const trigger = source.querySelector("summary")
   const isSessionMenu = source.classList.contains("session-item-menu")
-  const isSplitMenu = source.classList.contains("task-action-menu")
+  const isSplitMenu = source.classList.contains("workspace-action-menu")
   return <DropdownMenu.Root modal={false} open={source.open} onOpenChange={open => { source.open = open }}>
     <DropdownMenu.Trigger asChild>
-      <Button type="button" variant={source.closest(".task-split-accent") ? "default" : isSessionMenu ? "ghost" : "outline"} size={iconOnly ? isSessionMenu ? "icon-xs" : "icon-sm" : "sm"} className={`ui-menu-trigger${isSplitMenu ? " rounded-l-none border-l-0" : ""}`} aria-label={label}
+      <Button type="button" variant={source.closest(".workspace-split-accent") ? "default" : isSessionMenu ? "ghost" : "outline"} size={iconOnly ? isSessionMenu ? "icon-xs" : "icon-sm" : "sm"} className={`ui-menu-trigger${isSplitMenu ? " rounded-l-none border-l-0" : ""}`} aria-label={label}
         title={trigger?.getAttribute("title") || label} onClick={event => event.stopPropagation()}>
         {iconOnly ? isSplitMenu ? <ChevronDown aria-hidden="true" /> : <Ellipsis aria-hidden="true" /> : <>{trigger?.textContent?.trim() || uiText("更多")}<ChevronDown aria-hidden="true" /></>}
       </Button>
@@ -129,11 +129,11 @@ export function setupWorkspaceInteractions() {
       const model = selectModel(source), signature = JSON.stringify(model)
       if (entry.signature !== signature) { entry.signature = signature; entry.root.render(<SearchableSelect source={source} model={model} />) }
     }
-    for (const source of document.querySelectorAll<HTMLDetailsElement>("details.task-more, details.task-action-menu, details.project-more, details.session-item-menu, details.task-filter-more")) {
+    for (const source of document.querySelectorAll<HTMLDetailsElement>("details.workspace-more, details.workspace-action-menu, details.project-more, details.session-item-menu, details.workspace-filter-more")) {
       if (!source.querySelector("button") || source.querySelector("input,select,textarea")) continue
       let entry = menus.get(source)
       if (!entry) {
-        const host = document.createElement("span"); host.className = `ui-action-host ${source.classList.contains("task-action-menu") ? "ui-split-menu" : ""}`
+        const host = document.createElement("span"); host.className = `ui-action-host ${source.classList.contains("workspace-action-menu") ? "ui-split-menu" : ""}`
         if (source.classList.contains("session-item-menu")) host.classList.add("ui-session-menu")
         source.before(host); source.classList.add("ui-native-menu")
         entry = { host, root: createRoot(host), signature: "" }; menus.set(source, entry)

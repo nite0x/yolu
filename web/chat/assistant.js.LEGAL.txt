@@ -83,6 +83,7 @@ lucide-react/dist/esm/icons/arrow-up-right.mjs:
 lucide-react/dist/esm/icons/arrow-up.mjs:
 lucide-react/dist/esm/icons/atom.mjs:
 lucide-react/dist/esm/icons/audio-lines.mjs:
+lucide-react/dist/esm/icons/bot.mjs:
 lucide-react/dist/esm/icons/braces.mjs:
 lucide-react/dist/esm/icons/brain.mjs:
 lucide-react/dist/esm/icons/check.mjs:

@@ -19,7 +19,7 @@ func (a *Service) startSessionTitle(run *ChatRun, text string) {
 	if run.created == nil || initialSessionTitle(text) == "" {
 		return
 	}
-	record, err := a.Workspace.Store.Session(run.session)
+	record, err := a.Execution.Store.Session(run.session)
 	if err != nil || record.Archived || (record.TitleSource != "initial" && record.TitleSource != "") {
 		return
 	}
@@ -47,7 +47,7 @@ func (a *Service) startSessionTitle(run *ChatRun, text string) {
 }
 
 func (a *Service) generateSessionTitle(ctx context.Context, run *ChatRun, record model.Session, text string) {
-	// The background task has its own lifetime: completing or interrupting the
+	// The background workspace has its own lifetime: completing or interrupting the
 	// main turn must not cancel naming based only on the accepted first input.
 	c, err := a.openTitleLive(ctx)
 	if err != nil {
@@ -81,7 +81,7 @@ func (a *Service) generateSessionTitle(ctx context.Context, run *ChatRun, record
 	// Never hold this lock during inference.
 	releaseControl := a.lockSessionControl(run.session)
 	defer releaseControl()
-	current, err := a.Workspace.Store.Session(run.session)
+	current, err := a.Execution.Store.Session(run.session)
 	if err != nil || current.Archived || current.TitleChangedAt != record.TitleChangedAt || current.TitleSource != record.TitleSource || current.Name != record.Name {
 		return
 	}
@@ -95,7 +95,7 @@ func (a *Service) generateSessionTitle(ctx context.Context, run *ChatRun, record
 		run.change(func(s *ChatState) { s.Notice = "主题标题同步未确认，请刷新核对或手动重命名。" })
 		return
 	}
-	if err := a.Workspace.Store.SetSessionTitle(run.session, name, "generated"); err != nil {
+	if err := a.Execution.Store.SetSessionTitle(run.session, name, "generated"); err != nil {
 		run.change(func(s *ChatState) { s.Notice = "主题标题已写入 Codex，请刷新同步名称。" })
 		return
 	}

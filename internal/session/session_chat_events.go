@@ -23,7 +23,7 @@ func (a *Service) syncSessionName(run *ChatRun, event codex.Event) {
 	name := sessionName(codex.Session{Name: p.Name})
 	releaseControl := a.lockSessionControl(run.session)
 	defer releaseControl()
-	if updated, err := a.Workspace.Store.ObserveSessionTitle(run.session, name); err != nil || !updated {
+	if updated, err := a.Execution.Store.ObserveSessionTitle(run.session, name); err != nil || !updated {
 		return
 	}
 	run.change(func(s *ChatState) { s.SessionName = name })
@@ -314,6 +314,12 @@ func (a *Service) ChatApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var result any
 	switch pending.Kind {
+	case "acp_permission":
+		if choice.ID == "cancel" {
+			result = map[string]any{"outcome": map[string]any{"outcome": "cancelled"}}
+		} else {
+			result = map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": choice.ID}}
+		}
 	case "elicitation":
 		result, err = elicitationReply(pending, choice, input.Content)
 	case "permissions":
@@ -342,7 +348,11 @@ func (a *Service) ChatApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Keep this mutex through the short write so duplicate clicks cannot reply
 	// twice to one RPC request, and a completed turn cannot consume an old reply.
-	err = run.client.Reply(pending.rpcID, result)
+	if pending.Kind == "acp_permission" && run.acpClient != nil {
+		err = run.acpClient.Reply(pending.rpcID, result)
+	} else {
+		err = run.client.Reply(pending.rpcID, result)
+	}
 	if err == nil {
 		left := []ChatApproval{}
 		for _, p := range run.state.Approvals {

@@ -9,10 +9,10 @@ import (
 	"sort"
 	"strings"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 // OperationError preserves the manual API's status while exposing domain errors
@@ -33,23 +33,23 @@ type RegistrationReview struct {
 
 func (a *Service) registration(ctx context.Context, name, path, id string) (RegistrationReview, error) {
 	var review RegistrationReview
-	path, err := workspace.Normalize(ctx, path)
+	path, err := execution.Normalize(ctx, path)
 	if err != nil {
 		return review, &OperationError{Status: 400, Message: err.Error()}
 	}
-	root, err := workspace.Git(ctx, path, "rev-parse", "--show-toplevel")
+	root, err := execution.Git(ctx, path, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return review, &OperationError{Status: 422, Message: "该目录不是可用的 Git 工作目录：" + err.Error()}
 	}
-	root, err = workspace.Eval(ctx, strings.TrimSpace(root))
+	root, err = execution.Eval(ctx, strings.TrimSpace(root))
 	if err != nil {
 		return review, &OperationError{Status: 422, Message: err.Error()}
 	}
-	common, err := workspace.Git(ctx, root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	common, err := execution.Git(ctx, root, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
 		return review, &OperationError{Status: 422, Message: err.Error()}
 	}
-	common, err = workspace.Eval(ctx, strings.TrimSpace(common))
+	common, err = execution.Eval(ctx, strings.TrimSpace(common))
 	if err != nil {
 		return review, &OperationError{Status: 422, Message: err.Error()}
 	}
@@ -60,12 +60,12 @@ func (a *Service) registration(ctx context.Context, name, path, id string) (Regi
 	if len([]rune(name)) > 80 {
 		return review, &OperationError{Status: 400, Message: "项目名称不能超过 80 字"}
 	}
-	folder := workspace.Slugify(name)
+	folder := execution.Slugify(name)
 	if folder == "" {
 		folder = "project-" + id[:6]
 	}
 	var exists int
-	err = a.Workspace.Store.DB.QueryRowContext(ctx, `SELECT count(*) FROM projects WHERE common_dir=? OR name=? COLLATE NOCASE OR folder=? COLLATE NOCASE`, common, name, folder).Scan(&exists)
+	err = a.Execution.Store.DB.QueryRowContext(ctx, `SELECT count(*) FROM projects WHERE common_dir=? OR name=? COLLATE NOCASE OR folder=? COLLATE NOCASE`, common, name, folder).Scan(&exists)
 	if err != nil {
 		return review, err
 	}
@@ -77,15 +77,15 @@ func (a *Service) registration(ctx context.Context, name, path, id string) (Regi
 }
 
 func (a *Service) ReviewRegistration(ctx context.Context, name, path string) (RegistrationReview, error) {
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
 	return a.registration(ctx, name, path, model.NewID())
 }
 
 func (a *Service) insertRegistration(ctx context.Context, review RegistrationReview) (model.Project, error) {
 	p := review.Project
 	p.CreatedAt = model.Now()
-	_, err := a.Workspace.Store.DB.ExecContext(ctx, `INSERT INTO projects(id,name,path,common_dir,folder,created_at) VALUES(?,?,?,?,?,?)`, p.ID, p.Name, p.Path, p.CommonDir, p.Folder, p.CreatedAt)
+	_, err := a.Execution.Store.DB.ExecContext(ctx, `INSERT INTO projects(id,name,path,common_dir,folder,created_at) VALUES(?,?,?,?,?,?)`, p.ID, p.Name, p.Path, p.CommonDir, p.Folder, p.CreatedAt)
 	return p, err
 }
 
@@ -93,8 +93,8 @@ func (a *Service) insertRegistration(ctx context.Context, review RegistrationRev
 // handlers. Reviewed execution uses the same validation and persistence below.
 func (a *Service) RegisterProject(ctx context.Context, name, path string) (model.Project, error) {
 	defer a.cache.invalidate()
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
 	review, err := a.registration(ctx, name, path, model.NewID())
 	if err != nil {
 		return model.Project{}, err
@@ -104,7 +104,7 @@ func (a *Service) RegisterProject(ctx context.Context, name, path string) (model
 
 func (a *Service) reconcileRegistration(ctx context.Context, review RegistrationReview) (model.Project, bool, error) {
 	var p model.Project
-	err := a.Workspace.Store.DB.QueryRowContext(ctx, `SELECT id,name,path,common_dir,folder,created_at FROM projects WHERE id=?`, review.Project.ID).Scan(&p.ID, &p.Name, &p.Path, &p.CommonDir, &p.Folder, &p.CreatedAt)
+	err := a.Execution.Store.DB.QueryRowContext(ctx, `SELECT id,name,path,common_dir,folder,created_at FROM projects WHERE id=?`, review.Project.ID).Scan(&p.ID, &p.Name, &p.Path, &p.CommonDir, &p.Folder, &p.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, false, nil
 	}
@@ -121,15 +121,15 @@ func (a *Service) reconcileRegistration(ctx context.Context, review Registration
 
 // ReconcileRegistration reads the stable proposed ID without repeating a write.
 func (a *Service) ReconcileRegistration(ctx context.Context, review RegistrationReview) (model.Project, bool, error) {
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
 	return a.reconcileRegistration(ctx, review)
 }
 
 func (a *Service) ExecuteRegistration(ctx context.Context, review RegistrationReview) (model.Project, error) {
 	defer a.cache.invalidate()
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
 	if p, found, err := a.reconcileRegistration(ctx, review); err != nil || found {
 		return p, err
 	}
@@ -164,14 +164,14 @@ func writeOperationError(w http.ResponseWriter, err error) {
 // Callers acquire this before the environment metadata mutex, matching the
 // repository -> metadata order used by branch switching.
 func (a *Service) LockRepositories(ctx context.Context, ids []string) (func(), error) {
-	a.Workspace.GitActivity.RLock()
-	if a.Workspace.Closing.Load() {
-		a.Workspace.GitActivity.RUnlock()
+	a.Execution.GitActivity.RLock()
+	if a.Execution.Closing.Load() {
+		a.Execution.GitActivity.RUnlock()
 		return nil, &OperationError{Status: 503, Message: "后台正在退出"}
 	}
-	projects, err := a.Workspace.Store.ProjectMap()
+	projects, err := a.Execution.Store.ProjectMap()
 	if err != nil {
-		a.Workspace.GitActivity.RUnlock()
+		a.Execution.GitActivity.RUnlock()
 		return nil, err
 	}
 	common := make(map[string]bool)
@@ -190,7 +190,7 @@ func (a *Service) LockRepositories(ctx context.Context, ids []string) (func(), e
 		for i := len(unlocks) - 1; i >= 0; i-- {
 			unlocks[i]()
 		}
-		a.Workspace.GitActivity.RUnlock()
+		a.Execution.GitActivity.RUnlock()
 	}
 	for _, key := range keys {
 		if err := ctx.Err(); err != nil {

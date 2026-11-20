@@ -40,6 +40,8 @@ type Diagnostics struct {
 	CheckedAt     time.Time         `json:"checked_at"`
 	Status        string            `json:"status"`
 	Checks        []DiagnosticCheck `json:"checks"`
+	InstallPlan   *InstallPlan      `json:"install_plan,omitempty"`
+	InstallState  *InstallState     `json:"install_state,omitempty"`
 }
 
 // Diagnose runs bounded local checks using the same resolver and metadata
@@ -48,17 +50,23 @@ func Diagnose(ctx context.Context, openSessions func(context.Context) (SessionCl
 	return diagnose(ctx, openSessions, Command)
 }
 
+func (i *Installer) Diagnose(ctx context.Context, openSessions func(context.Context) (SessionClient, error)) Diagnostics {
+	before := i.State()
+	report := Diagnose(ctx, openSessions)
+	plan, _ := installationPlan(ctx)
+	report.InstallPlan = &plan
+	// Publish the state observed before the check so the UI checks again
+	// if an installation finished while the CLI was being probed.
+	report.InstallState = &before
+	return report
+}
+
 func diagnose(parent context.Context, openSessions func(context.Context) (SessionClient, error), command func(context.Context, ...string) *exec.Cmd) Diagnostics {
 	ctx, cancel := context.WithTimeout(parent, 25*time.Second)
 	defer cancel()
-	report := Diagnostics{Platform: runtime.GOOS, User: os.Getenv("USER"), CodexHome: os.Getenv("CODEX_HOME"), CheckedAt: time.Now(), Status: "ok", Candidates: codexCandidates(), Checks: []DiagnosticCheck{}}
+	report := Diagnostics{Platform: runtime.GOOS, User: os.Getenv("USER"), CodexHome: codexHome(), CheckedAt: time.Now(), Status: "ok", Candidates: codexCandidates(), Checks: []DiagnosticCheck{}}
 	if report.User == "" {
 		report.User = os.Getenv("USERNAME")
-	}
-	if report.CodexHome == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			report.CodexHome = filepath.Join(home, ".codex")
-		}
 	}
 	add := func(id, name, status, message, advice string) {
 		report.Checks = append(report.Checks, DiagnosticCheck{id, name, status, diagnosticText(message), advice})
@@ -78,7 +86,7 @@ func diagnose(parent context.Context, openSessions func(context.Context) (Sessio
 	}
 	endVersion()
 	if err != nil {
-		add("cli", "CLI 安装与版本", "error", err.Error(), "在此执行环境安装 Codex CLI，并确认 PATH 可找到它；安装后退出并停止 Yolu 后台再打开。WSL 需在对应发行版和用户下安装。")
+		add("cli", "CLI 安装与版本", "error", err.Error(), "")
 		for _, item := range []struct{ id, name string }{{"sessions", "对话接口"}, {"auth", "登录状态"}, {"daemon", "共享后台"}} {
 			add(item.id, item.name, "skipped", "CLI 无法执行，未继续检测", "")
 		}
@@ -156,16 +164,10 @@ func diagnose(parent context.Context, openSessions func(context.Context) (Sessio
 	}
 	conn, err := dialDaemonSocket(daemonCtx, daemon.SocketPath)
 	if err == nil {
-		var live LiveClient
-		live, err = StartWebSocket(daemonCtx, conn)
-		if err == nil {
-			var page SessionPage
-			err = live.Call(daemonCtx, "thread/list", map[string]any{"limit": 1}, &page)
-			live.Close()
-		}
+		err = verifyDaemonSessions(daemonCtx, conn)
 	}
 	if err != nil {
-		add("daemon", "共享后台", "error", err.Error(), "后台报告已运行但连接失败。请检查此环境的 Codex 后台；处理前先确认没有正在运行的 Codex 任务。")
+		add("daemon", "共享后台", "error", err.Error(), "后台报告已运行但连接失败。请检查此环境的 Codex 后台；处理前先确认没有正在运行的 Codex 对话。")
 	} else {
 		add("daemon", "共享后台", "ok", "已连接共享后台并成功读取对话列表", "")
 	}
@@ -179,7 +181,7 @@ func codexCandidates() []string {
 	if runtime.GOOS == "windows" {
 		names = []string{"codex.exe", "codex.cmd"}
 	}
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+	for _, dir := range append(filepath.SplitList(os.Getenv("PATH")), platform.CodexInstallDir()) {
 		if !filepath.IsAbs(dir) {
 			continue
 		}

@@ -44,7 +44,7 @@ func (a *Service) decorateAsyncQuestions(session string, entries []HistoryEntry)
 			continue
 		}
 		var status string
-		err := a.Workspace.Store.DB.QueryRow(`SELECT status FROM conversation_async_answers WHERE session_id=? AND item_id=? AND turn_id=?`, session, e.ID, e.TurnID).Scan(&status)
+		err := a.Execution.Store.DB.QueryRow(`SELECT status FROM conversation_async_answers WHERE session_id=? AND item_id=? AND turn_id=?`, session, e.ID, e.TurnID).Scan(&status)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
@@ -131,7 +131,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		return ChatState{Status: "idle", Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}
 	}
 	var previous, status string
-	err := a.Workspace.Store.DB.QueryRow(`SELECT fingerprint,status FROM conversation_async_answers WHERE session_id=? AND item_id=? AND turn_id=?`, record.ID, input.ItemID, input.TurnID).Scan(&previous, &status)
+	err := a.Execution.Store.DB.QueryRow(`SELECT fingerprint,status FROM conversation_async_answers WHERE session_id=? AND item_id=? AND turn_id=?`, record.ID, input.ItemID, input.TurnID).Scan(&previous, &status)
 	if err == nil {
 		if previous != fingerprint {
 			httpx.WriteError(w, 409, "此问询已提交其他回答，请刷新历史")
@@ -183,7 +183,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	if input.Decision == "decline" {
 		status = "skipped"
 	}
-	if _, err := a.Workspace.Store.DB.Exec(`INSERT INTO conversation_async_answers(session_id,item_id,turn_id,fingerprint,status,request_id) VALUES(?,?,?,?,?,?)`, record.ID, input.ItemID, input.TurnID, fingerprint, status, requestID); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_async_answers(session_id,item_id,turn_id,fingerprint,status,request_id) VALUES(?,?,?,?,?,?)`, record.ID, input.ItemID, input.TurnID, fingerprint, status, requestID); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
@@ -210,7 +210,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, 409, "回答未确认，请检查历史后再操作；已保留你的选择")
 			return
 		}
-		if _, err := a.Workspace.Store.DB.Exec(`UPDATE conversation_async_answers SET status='accepted' WHERE session_id=? AND request_id=?`, record.ID, requestID); err != nil {
+		if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_async_answers SET status='accepted' WHERE session_id=? AND request_id=?`, record.ID, requestID); err != nil {
 			httpx.DbError(w, err)
 			return
 		}
@@ -227,7 +227,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			// Completion may race with the start acknowledgement. The durable
 			// receipt, rather than select ordering, determines delivery success.
 			var delivered string
-			if err := a.Workspace.Store.DB.QueryRow(`SELECT status FROM conversation_async_answers WHERE session_id=? AND request_id=?`, record.ID, requestID).Scan(&delivered); err != nil || delivered != "accepted" {
+			if err := a.Execution.Store.DB.QueryRow(`SELECT status FROM conversation_async_answers WHERE session_id=? AND request_id=?`, record.ID, requestID).Scan(&delivered); err != nil || delivered != "accepted" {
 				httpx.WriteError(w, 409, "回答未确认："+run.snapshot().Error)
 				return
 			}

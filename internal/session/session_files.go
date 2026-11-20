@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 func (a *Service) SessionExternalLinkHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,8 +47,8 @@ func (a *Service) SessionFileHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ctx := workspace.WithClient(r.Context(), a.Workspace.Remote)
-	file, err := workspace.ReadFilePreview(ctx, r.URL.Query().Get("path"), append([]string{record.Cwd}, record.AdditionalDirectories...))
+	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
+	file, err := execution.ReadFilePreview(ctx, r.URL.Query().Get("path"), append([]string{record.Cwd}, record.AdditionalDirectories...))
 	if err != nil {
 		httpx.WriteError(w, 400, err.Error())
 		return
@@ -73,8 +73,8 @@ func (a *Service) SessionFilesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if file := r.URL.Query().Get("file"); platform.AbsoluteWorkspacePath(file) {
-		ctx := workspace.WithClient(r.Context(), a.Workspace.Remote)
-		result, err := workspace.ReadFilePreview(ctx, file, append([]string{record.Cwd}, record.AdditionalDirectories...))
+		ctx := execution.WithClient(r.Context(), a.Execution.Remote)
+		result, err := execution.ReadFilePreview(ctx, file, append([]string{record.Cwd}, record.AdditionalDirectories...))
 		if err != nil {
 			httpx.WriteError(w, 422, err.Error())
 			return
@@ -102,8 +102,8 @@ func (a *Service) SessionFilesHandler(w http.ResponseWriter, r *http.Request) {
 	if file {
 		relative = r.URL.Query().Get("file")
 	}
-	ctx := workspace.WithClient(r.Context(), a.Workspace.Remote)
-	result, err := workspace.BrowseWorkspace(ctx, root, relative, file)
+	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
+	result, err := execution.BrowseWorkspace(ctx, root, relative, file)
 	if err != nil {
 		httpx.WriteError(w, 422, err.Error())
 		return

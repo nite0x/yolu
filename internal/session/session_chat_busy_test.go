@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"worktree-hub/internal/codex"
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 func TestChatStatePollingOnlyBlocksConfirmedTerminalOwners(t *testing.T) {
@@ -19,9 +19,9 @@ func TestChatStatePollingOnlyBlocksConfirmedTerminalOwners(t *testing.T) {
 	for _, probeErr := range []error{
 		errors.New("无法读取 Codex 终端参数：invalid argument"),
 		nil,
-		workspace.ErrBusy,
+		execution.ErrBusy,
 		nil,
-		fmt.Errorf("ownership probe: %w", &workspace.SessionConflictError{Message: "terminal owns session"}),
+		fmt.Errorf("ownership probe: %w", &execution.SessionConflictError{Message: "terminal owns session"}),
 		nil,
 	} {
 		a.terminalConflict = func(string, string) error { return probeErr }
@@ -30,7 +30,7 @@ func TestChatStatePollingOnlyBlocksConfirmedTerminalOwners(t *testing.T) {
 		if code != 200 || json.Unmarshal(raw, &state) != nil {
 			t.Fatalf("cannot poll chat: %d %s", code, raw)
 		}
-		if workspace.IsSessionConflict(probeErr) {
+		if execution.IsSessionConflict(probeErr) {
 			if state.Blocked != probeErr.Error() || state.Notice == "" {
 				t.Fatalf("confirmed terminal ownership was lost: %+v", state)
 			}
@@ -45,7 +45,7 @@ func TestChatRetriesOwnershipCheckFailures(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"helper busy", fmt.Errorf("ownership probe: %w", workspace.ErrBusy)},
+		{"helper busy", fmt.Errorf("ownership probe: %w", execution.ErrBusy)},
 		{"probe timeout", fmt.Errorf("ownership probe: %w", context.DeadlineExceeded)},
 		{"invalid process arguments", errors.New("无法读取 Codex 终端参数：invalid argument")},
 		{"permission denied", errors.New("无法读取 Codex 终端参数：permission denied")},
@@ -62,7 +62,7 @@ func TestChatRetriesOwnershipCheckFailures(t *testing.T) {
 				case 2:
 					recovered.Add(1)
 				case 3:
-					return fmt.Errorf("ownership probe: %w", &workspace.SessionConflictError{Message: "terminal appeared"})
+					return fmt.Errorf("ownership probe: %w", &execution.SessionConflictError{Message: "terminal appeared"})
 				}
 				return nil
 			}
@@ -104,7 +104,7 @@ func TestChatRetriesOwnershipCheckFailures(t *testing.T) {
 }
 
 func TestChatDoesNotMisclassifyFailedOwnershipCheckBeforeStart(t *testing.T) {
-	for _, probeErr := range []error{workspace.ErrBusy, errors.New("无法读取 Codex 终端参数：invalid argument")} {
+	for _, probeErr := range []error{execution.ErrBusy, errors.New("无法读取 Codex 终端参数：invalid argument")} {
 		for _, failAt := range []int{1, 2} {
 			t.Run(fmt.Sprintf("%s/check-%d", probeErr, failAt), func(t *testing.T) {
 				a, _, c, endpoint := chatFixture(t)

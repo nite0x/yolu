@@ -32,7 +32,7 @@ func TestAssistantAuthenticationAndLocalStorageRouting(t *testing.T) {
 	if status := call("POST", "/api/assistant/conversations", `{"id":"local-assistant"}`, app.token, "", "offline-environment"); status != 201 {
 		t.Fatalf("local assistant routing: %d", status)
 	}
-	app.Workspace.ReadOnlySessions = true
+	app.Execution.ReadOnlySessions = true
 	if status := call("GET", "/api/assistant/conversations/local-assistant", "", app.token, "", "local"); status != 200 {
 		t.Fatalf("read-only history: %d", status)
 	}

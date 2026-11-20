@@ -35,11 +35,11 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - run: go test ./...
       - run: go vet ./...
-      - name: Isolated task workflow
+      - name: Isolated workspace workflow
         run: |
           go build -o "$RUNNER_TEMP/yolu-backend" .
           node scripts/desktop-workflow-smoke.mjs "$RUNNER_TEMP/yolu-backend"
-      - run: go test -race ./internal/store ./internal/task ./internal/project ./internal/session ./internal/terminal ./internal/workspace ./internal/app
+      - run: go test -race ./internal/store ./internal/workspace ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
 
   core:
     runs-on: ubuntu-22.04
@@ -62,9 +62,9 @@ jobs:
       - run: npm run chat:test && npm run workspace:test
       - run: go test ./...
       - run: go vet ./...
-      - name: Isolated task workflow
+      - name: Isolated workspace workflow
         run: |
           go build -o "$RUNNER_TEMP/yolu-backend" .
           node scripts/desktop-workflow-smoke.mjs "$RUNNER_TEMP/yolu-backend"
-      - run: go test -race ./internal/store ./internal/task ./internal/project ./internal/session ./internal/terminal ./internal/workspace ./internal/app
+      - run: go test -race ./internal/store ./internal/workspace ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
       - run: npm run desktop:check

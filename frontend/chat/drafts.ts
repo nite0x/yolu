@@ -1,10 +1,11 @@
 import type {Attachment} from "@assistant-ui/react";
-import type {TurnSettings, QuestionDraft} from "./model";
+import type {AgentProvider, TurnSettings, QuestionDraft} from "./model";
 import type {AssistantTurnSettings} from "./settings";
 
 export interface DraftRecord {
  text: string; images: {id:string;name:string;contentType:string;url:string}[];
  files?: {id:string;name:string;contentType:string;text:string}[];
+ provider?: AgentProvider;
  settings: TurnSettings; project: string;
  reading: {top:number;bottom:boolean;anchor:string;offset:number;latest?:string}; updated: number;
  assistant_settings?: AssistantTurnSettings;

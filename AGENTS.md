@@ -12,7 +12,7 @@ This project is a personal development workspace with workspaces as its primary 
 
 The workspace root defaults to `~/workspaces` in the execution environment. Use `--root` to explicitly select another location; do not automatically switch to a Windows-mounted directory merely because one exists. Existing workspaces keep their saved paths and are not moved automatically.
 
-Internal identifiers, stored data and protocols still use `task` for compatibility; the user-facing name is workspace. Migrate them deliberately, following `docs/brand/yolu/migration.md`.
+Use workspace consistently in the interface, documentation, domain models, routes and storage. A workspace can have its own directory or reuse existing project directories.
 
 Complete this minimal workflow first, then add capabilities incrementally to address concrete problems encountered in use. Previously discussed directions such as session management, service operation, notifications and complex state transitions are candidates, not established development commitments.
 

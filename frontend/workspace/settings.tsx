@@ -67,17 +67,24 @@ export function SettingsPage() {
       <Heading id="environmentSettingsTitle" title={uiText("执行环境与工作区")} actions={<div className="detail-actions"><Button type="button" variant="outline" size="sm" id="reconnectEnvironment" hidden>{uiText("重新连接")}</Button><Button type="button" size="sm" id="addEnvironment">{uiText("连接 WSL")}</Button></div>}>{uiText("为当前环境配置工作目录与工具。")}</Heading>
       <Field id="environmentSelect" label={uiText("配置环境")}><NativeSelect id="environmentSelect" aria-label={uiText("配置环境")}><Option value="local">{uiText("本机")}</Option></NativeSelect><small id="environmentStatus" role="status" className="text-muted-foreground" /></Field>
       <span id="settingsEnvironment" hidden />
-      <dl className="settings-facts"><div><dt>{uiText("新任务工作区")}</dt><dd><code id="settingsRoot">{uiText("正在读取…")}</code></dd></div></dl>
-      <details className="settings-help-details"><summary>{uiText("工作区与环境规则")}</summary><Help>{uiText("任务创建后环境固定，项目、终端和对话在此环境执行。工作区默认使用 ~/workspaces，可通过 --root 指定；已有任务沿用保存路径。")}</Help></details>
+      <dl className="settings-facts"><div><dt>{uiText("新工作区根目录")}</dt><dd><code id="settingsRoot">{uiText("正在读取…")}</code></dd></div></dl>
+      <details className="settings-help-details"><summary>{uiText("工作区与环境规则")}</summary><Help>{uiText("工作区创建后环境固定，项目、终端和对话在此环境执行。工作区根目录默认为 ~/workspaces，可通过 --root 指定；已有工作区沿用保存路径。")}</Help></details>
     </Card>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="codexDiagnosticsTitle">
-      <Heading id="codexDiagnosticsTitle" title={uiText("Codex 安装检测")}>{uiText("检查应用实际使用的 CLI、对话接口、登录配置和共享后台。Windows 本机与每个 WSL 用户分别检测。")}</Heading>
+      <Heading id="codexDiagnosticsTitle" title={uiText("Codex 安装检测")}>{uiText("安装或升级 Codex CLI 后，Yolu 会自动启动共享后台并重新检测当前环境。")}</Heading>
       <div className="detail-actions codex-diagnostic-actions"><Button type="button" id="checkCodex">{uiText("检测当前环境")}</Button><Button type="button" variant="outline" id="checkAllCodex">{uiText("检测全部已登记环境")}</Button><Button type="button" variant="outline" id="copyCodexDiagnostics" disabled>{uiText("复制检测报告")}</Button></div>
       <p id="codexDiagnosticsStatus" className="settings-help" role="status">{uiText("尚未检测")}</p>
       <p id="codexUnregistered" className="settings-help" hidden />
       <div id="codexDiagnosticsResults" />
       <textarea id="codexDiagnosticsCopy" className="codex-report-copy" aria-label={uiText("检测报告（可全选复制）")} readOnly hidden />
-      <Help>{uiText("只读检测，不发送模型请求，不启动或重启共享后台。检测结果反映当前应用后台的环境；安装或切换 CLI 后，请退出并停止 Yolu 后台再打开。")}</Help>
+      <Help>{uiText("检测不会发送模型请求。升级后，如有对话仍在使用旧版本，请在相关操作结束后退出并停止 Yolu 后台，再重新打开。")}</Help>
+    </Card>
+    <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="agyDiagnosticsTitle">
+      <Heading id="agyDiagnosticsTitle" title={uiText("Antigravity (AGY) 检测")}>{uiText("检测当前环境的 agy CLI 与 ACP 协议握手状态。新建对话时可选择 Antigravity 引擎。")}</Heading>
+      <div className="detail-actions codex-diagnostic-actions"><Button type="button" id="checkAgy">{uiText("检测 Antigravity")}</Button></div>
+      <p id="agyDiagnosticsStatus" className="settings-help" role="status">{uiText("尚未检测")}</p>
+      <div id="agyDiagnosticsResults" />
+      <Help>{uiText("检测仅执行 ACP 初始化与只读列表探活，不会发送模型请求。如提示未登录，请在终端执行 agy 或 agy acp --login。")}</Help>
     </Card>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="terminalTitle"><form id="terminalForm">
       <Heading id="terminalTitle" title={uiText("终端工具")}>{uiText("Codex、Git 终端和在终端获取分支共用此设置，保存后立即生效。")}</Heading>
@@ -124,12 +131,39 @@ export function SettingsPage() {
 }
 
 type DiagnosticCheck = { id: string; name: string; status: string; message: string; advice?: string }
+type InstallPlan = { action?: "install" | "upgrade"; manager?: "standalone" | "brew" | "npm"; path?: string; reason?: string }
+type InstallState = { status: string; action?: "install" | "upgrade"; stage?: "daemon"; version?: string; error?: string }
 type DiagnosticReport = {
   platform: string; user: string; codex_home: string; cli_path: string; cli_entry?: string; candidates: string[];
   version?: string; daemon_path?: string; daemon_version?: string; daemon_status?: string; checked_at: string;
   status: string; checks: DiagnosticCheck[];
+  install_plan?: InstallPlan;
 }
-type DiagnosticResult = { id: string; name: string; loading?: boolean; error?: string; report?: DiagnosticReport }
+type DiagnosticResult = { id: string; name: string; loading?: boolean; error?: string; report?: DiagnosticReport; install?: InstallState; installError?: string; readOnly?: boolean }
+
+function CodexInstallAction({ result }: { result: DiagnosticResult }) {
+  const plan = result.report?.install_plan
+  const install = result.install
+  const running = install?.status === "running"
+  const upgrade = (running ? install.action : plan?.action) === "upgrade"
+  const label = upgrade ? uiText("升级 Codex CLI") : uiText("安装 Codex CLI")
+  const manager = { standalone: uiText("OpenAI 官方安装程序"), brew: "Homebrew", npm: "npm" }[plan?.manager || "standalone"]
+  const progress = install?.stage === "daemon" ? uiText("正在启动并检测 Codex 共享后台…")
+    : upgrade ? uiText("正在升级 Codex CLI…") : uiText("正在安装 Codex CLI…")
+  const error = result.installError || install?.error
+  return <>
+    {(plan?.action || running) && !result.readOnly && <div className="codex-install-actions">
+      <Button type="button" size="sm" variant="outline" data-codex-install disabled={running || result.loading || !!result.error} aria-label={uiText("{0} · {1}", label, result.name)}>{label}</Button>
+      {plan?.action && <span className="settings-help">{manager}</span>}
+    </div>}
+    {plan?.reason && !result.readOnly && <p className="settings-help">{uiText(plan.reason)}</p>}
+    {running && <p role="status" className="settings-help">{progress}</p>}
+    {install?.status === "succeeded" && <p role="status" className="settings-help">{install.action === "upgrade" ? uiText("Codex CLI 已升级到最新版本 · {0}", install.version) : uiText("Codex CLI 安装完成 · {0}", install.version)}</p>}
+    {error && <p role="alert" className="codex-diagnostic-error">{install?.stage === "daemon"
+      ? uiText("{0} 已就绪。共享后台启动或检测失败。{1}", install.version, uiText(error))
+      : uiText("Codex 安装或升级失败：{0}", uiText(error))}</p>}
+  </>
+}
 
 export function CodexDiagnosticsResults({ results }: { results: DiagnosticResult[] }) {
   const statusLabel = (status: string) => ({ok: uiText("通过"), warning: uiText("需留意"), error: uiText("异常"), skipped: uiText("未检测")})[status] || uiText("未知")
@@ -139,7 +173,7 @@ export function CodexDiagnosticsResults({ results }: { results: DiagnosticResult
     {result.error && <p role="alert" className="codex-diagnostic-error">{result.error}{result.report ? uiText("；以下保留上次检测结果。") : uiText("。请确认环境连接正常后重试；WSL 可使用上方的重新连接。")}</p>}
     {result.report && <>
       <p className="settings-help">{({darwin: "macOS", windows: "Windows", linux: "Linux"})[result.report.platform] || result.report.platform}{" "}{uiText("· 用户")}{" "}{result.report.user || uiText("未报告")}{" "}{uiText("· 检测于")}{" "}<time dateTime={result.report.checked_at}>{result.report.checked_at}</time></p>
-      <ul className="codex-diagnostic-checks">{result.report.checks.map(check => <li key={check.id}><div className="codex-diagnostic-heading"><strong>{uiText(check.name)}</strong><StatusBadge kind={statusKind(check.status)}>{statusLabel(check.status)}</StatusBadge></div><p>{uiText(check.message)}</p>{check.advice && <p className="settings-help">{uiText(check.advice)}</p>}</li>)}</ul>
+      <ul className="codex-diagnostic-checks">{result.report.checks.map(check => <li key={check.id}><div className="codex-diagnostic-heading"><strong>{uiText(check.name)}</strong><StatusBadge kind={statusKind(check.status)}>{statusLabel(check.status)}</StatusBadge></div><p>{uiText(check.message)}</p>{check.advice && <p className="settings-help">{uiText(check.advice)}</p>}{check.id === "cli" && <CodexInstallAction result={result} />}</li>)}</ul>
       <details className="settings-help-details"><summary>{uiText("安装路径与版本详情")}</summary><dl className="settings-facts codex-diagnostic-facts">{[
         [uiText("CLI 程序"), result.report.cli_path], [uiText("CLI 启动入口"), result.report.cli_entry], [uiText("CLI 版本"), result.report.version],
         ["CODEX_HOME", result.report.codex_home], [uiText("共享后台程序"), result.report.daemon_path], [uiText("运行中后台版本"), result.report.daemon_version], [uiText("后台状态"), result.report.daemon_status],
@@ -148,13 +182,36 @@ export function CodexDiagnosticsResults({ results }: { results: DiagnosticResult
     </>}
   </section>)}</>
 }
+type AgyDiagnosticReport = {
+  platform: string; user: string; cli_path: string; candidates: string[];
+  version?: string; agent_name?: string; checked_at: string;
+  status: string; checks: DiagnosticCheck[];
+}
+type AgyDiagnosticResult = { id: string; name: string; loading?: boolean; error?: string; report?: AgyDiagnosticReport }
+
+export function AgyDiagnosticsResults({ results }: { results: AgyDiagnosticResult[] }) {
+  const statusLabel = (status: string) => ({ok: uiText("通过"), warning: uiText("需留意"), error: uiText("异常"), skipped: uiText("未检测")})[status] || uiText("未知")
+  const statusKind = (status: string) => ({ok: "ready", warning: "warning", error: "failed"})[status] || "neutral"
+  return <>{results.map(result => <section className="codex-diagnostic-result" key={result.id} data-agy-environment={result.id} aria-label={uiText("{0} Antigravity 检测", result.name)} aria-busy={!!result.loading}>
+    <div className="codex-diagnostic-heading"><h3>{result.name}</h3><StatusBadge kind={result.loading ? "neutral" : result.error ? "failed" : statusKind(result.report?.status || "")}>{result.loading ? uiText("正在检测") : result.error ? uiText("检测失败") : statusLabel(result.report?.status || "")}</StatusBadge></div>
+    {result.error && <p role="alert" className="codex-diagnostic-error">{result.error}</p>}
+    {result.report && <>
+      <p className="settings-help">{({darwin: "macOS", windows: "Windows", linux: "Linux"})[result.report.platform] || result.report.platform}{" "}{uiText("· 用户")}{" "}{result.report.user || uiText("未报告")}{" "}{uiText("· 检测于")}{" "}<time dateTime={result.report.checked_at}>{result.report.checked_at}</time></p>
+      <ul className="codex-diagnostic-checks">{result.report.checks.map(check => <li key={check.id}><div className="codex-diagnostic-heading"><strong>{uiText(check.name)}</strong><StatusBadge kind={statusKind(check.status)}>{statusLabel(check.status)}</StatusBadge></div><p>{uiText(check.message)}</p>{check.advice && <p className="settings-help">{uiText(check.advice)}</p>}</li>)}</ul>
+      <details className="settings-help-details"><summary>{uiText("安装路径与版本详情")}</summary><dl className="settings-facts codex-diagnostic-facts">{[
+        [uiText("CLI 程序"), result.report.cli_path], [uiText("ACP 服务"), result.report.agent_name], [uiText("ACP 版本"), result.report.version],
+      ].filter(([, value]) => value).map(([name, value]) => <div key={name}><dt>{name}</dt><dd><code>{value}</code></dd></div>)}</dl>
+      <p>{uiText("PATH 中找到的 agy：")}{result.report.candidates.length ? result.report.candidates.map(path => <code className="block" key={path}>{path}</code>) : uiText("未找到")}</p></details>
+    </>}
+  </section>)}</>
+}
 export function EnvironmentForm() {
-  return <form id="environmentForm"><ModalHeader id="environmentTitle" title={uiText("连接 WSL 环境")} /><p className="dialog-description">{uiText("应用自动部署并启动辅助程序。Git 和文件操作在所选 WSL 用户内执行，任务记录保存在本机。")}</p>
+  return <form id="environmentForm"><ModalHeader id="environmentTitle" title={uiText("连接 WSL 环境")} /><p className="dialog-description">{uiText("应用自动部署并启动辅助程序。Git 和文件操作在所选 WSL 用户内执行，工作区记录保存在本机。")}</p>
     <Field id="environmentDistro" label={uiText("发行版")}><NativeSelect id="environmentDistro" required /></Field>
     <Field id="environmentUser" label={uiText("Linux 用户")}><Input id="environmentUser" autoComplete="off" placeholder={uiText("留空使用发行版默认用户")} /></Field>
-    <Field id="environmentRoot" label={uiText("新任务的工作区根目录")}><Input id="environmentRoot" autoComplete="off" placeholder={uiText("留空使用该用户的 ~/workspaces")} /></Field>
-    <Check id="environmentImport" label={uiText("导入该用户原有的 Yolu 项目与任务记录")} />
-    <p className="dialog-description">{uiText("导入会复制一份当前记录到 Windows；项目和 Worktree 保留原路径。之后请通过桌面端维护这些任务。")}</p><Feedback id="environmentError" variant="destructive" hidden />
+    <Field id="environmentRoot" label={uiText("新工作区根目录")}><Input id="environmentRoot" autoComplete="off" placeholder={uiText("留空使用该用户的 ~/workspaces")} /></Field>
+    <Check id="environmentImport" label={uiText("导入该用户原有的 Yolu 项目与工作区记录")} />
+    <p className="dialog-description">{uiText("导入会复制一份当前记录到 Windows；项目和 Worktree 保留原路径。之后请通过桌面端维护这些工作区。")}</p><Feedback id="environmentError" variant="destructive" hidden />
     <ModalFooter><Button type="submit" id="connectEnvironment">{uiText("连接并准备环境")}</Button></ModalFooter>
   </form>
 }

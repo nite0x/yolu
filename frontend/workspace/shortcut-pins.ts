@@ -3,14 +3,14 @@ import {conversationPathKey} from "./conversation-runtime"
 import type {ShortcutIcon} from "./shortcut-icons"
 
 interface ShortcutPins {
-  tasks: string[]
+  workspaces: string[]
   directories: string[]
   icons?: Record<string, ShortcutIcon>
   initialized?: boolean
 }
 type Request = <T>(path: string, options: {environment: string; method?: string; body?: string}) => Promise<T>
 interface PinState {
-  tasks?: string[]
+  workspaces?: string[]
   directories?: string[]
   icons: Record<string, ShortcutIcon>
   loaded: boolean
@@ -48,13 +48,13 @@ export function createShortcutPins({request, storage, changed, failed}: {
       if (!onlyExisting || values.length || store.getItem(name) !== null) store.setItem(name, JSON.stringify(values))
     } catch { /* Storage is optional, including when its getter throws. */ }
   }
-  function tasks(environment: string): string[] {
+  function workspaces(environment: string): string[] {
     const state = stateFor(environment)
-    if (!state.tasks) {
-      const saved = read("tasks", environment)
-      state.tasks = Array.isArray(saved) ? [...new Set(saved.filter((id): id is string => typeof id === "string"))] : []
+    if (!state.workspaces) {
+      const saved = read("workspaces", environment)
+      state.workspaces = Array.isArray(saved) ? [...new Set(saved.filter((id): id is string => typeof id === "string"))] : []
     }
-    return state.tasks
+    return state.workspaces
   }
   function directories(environment: string): string[] {
     const state = stateFor(environment)
@@ -67,8 +67,8 @@ export function createShortcutPins({request, storage, changed, failed}: {
     return state.directories
   }
   function apply(environment: string, pins: ShortcutPins) {
-    Object.assign(stateFor(environment), {tasks: pins.tasks, directories: pins.directories, icons: pins.icons || {}})
-    cache("tasks", environment, pins.tasks, true)
+    Object.assign(stateFor(environment), {workspaces: pins.workspaces, directories: pins.directories, icons: pins.icons || {}})
+    cache("workspaces", environment, pins.workspaces, true)
     cache("directories", environment, pins.directories, true)
   }
   const url = (environment: string) => "/api/shortcut-pins?environment=" + encodeURIComponent(environment)
@@ -80,7 +80,7 @@ export function createShortcutPins({request, storage, changed, failed}: {
       try {
         let pins = await request<ShortcutPins>(url(environment), {environment: "local"})
         if (!pins.initialized) {
-          pins = await request<ShortcutPins>(url(environment), {environment: "local", method: "PUT", body: JSON.stringify({tasks: tasks(environment), directories: directories(environment), initialize: true})})
+          pins = await request<ShortcutPins>(url(environment), {environment: "local", method: "PUT", body: JSON.stringify({workspaces: workspaces(environment), directories: directories(environment), initialize: true})})
         }
         apply(environment, pins)
         state.saved = pins
@@ -98,7 +98,7 @@ export function createShortcutPins({request, storage, changed, failed}: {
   }
   function save(environment: string): Promise<void> {
     const state = stateFor(environment)
-    const pins = {tasks: [...tasks(environment)], directories: [...directories(environment)], icons: {...state.icons}}
+    const pins = {workspaces: [...workspaces(environment)], directories: [...directories(environment)], icons: {...state.icons}}
     const revision = ++state.revision
     // A failed older write must never roll back a newer optimistic selection.
     state.write = state.write.then(async () => {
@@ -114,10 +114,10 @@ export function createShortcutPins({request, storage, changed, failed}: {
     return state.write
   }
   return {
-    tasks, directories, load, save,
+    workspaces, directories, load, save,
     loaded: (environment: string) => stateFor(environment).loaded,
     icons: (environment: string) => stateFor(environment).icons,
-    setTasks(environment: string, values: string[]) { stateFor(environment).tasks = values; cache("tasks", environment, values) },
+    setWorkspaces(environment: string, values: string[]) { stateFor(environment).workspaces = values; cache("workspaces", environment, values) },
     setDirectories(environment: string, values: string[]) { stateFor(environment).directories = values; cache("directories", environment, values) },
     setIcon(environment: string, id: string, value: ShortcutIcon) {
       const state = stateFor(environment)

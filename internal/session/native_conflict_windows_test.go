@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 func TestWindowsTerminalCommandConflict(t *testing.T) {
@@ -31,12 +31,12 @@ func TestWindowsTerminalCommandConflict(t *testing.T) {
 		{"server", []string{"codex.exe", "app-server", "session"}, false},
 		{"tool worker", []string{"codex.exe", "exec-server", "session"}, false},
 		{"exec", []string{"codex.exe", "exec", "session"}, false},
-		{"quoted path", []string{`C:\开发 工具\codex.exe`, "resume", "session", "--cd", `C:\任务 目录`}, true},
-		{"directory only", []string{"codex.exe", "--cd", `C:\任务 目录`}, false},
+		{"quoted path", []string{`C:\开发 工具\codex.exe`, "resume", "session", "--cd", `C:\工作区 目录`}, true},
+		{"directory only", []string{"codex.exe", "--cd", `C:\工作区 目录`}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := windowsTerminalCommandConflict("session", windows.ComposeCommandLine(tc.args))
-			if (err != nil) != tc.conflict || workspace.IsSessionConflict(err) != tc.conflict {
+			if (err != nil) != tc.conflict || execution.IsSessionConflict(err) != tc.conflict {
 				t.Fatalf("conflict = %t: %v", tc.conflict, err)
 			}
 		})

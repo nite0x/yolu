@@ -28,7 +28,7 @@ func TestAssistantDiscoveryReusesNativeCatalogAndPreservesSavedIndexOnFailure(t 
 	if opens != 1 {
 		t.Fatalf("catalog requests were duplicated: %d", opens)
 	}
-	saved, err := a.Workspace.Store.Session("native-discovered")
+	saved, err := a.Execution.Store.Session("native-discovered")
 	if err != nil || saved.Name != "Existing native conversation" || saved.LastSyncedAt == 0 {
 		t.Fatalf("native discovery index missing: %+v %v", saved, err)
 	}
@@ -37,7 +37,7 @@ func TestAssistantDiscoveryReusesNativeCatalogAndPreservesSavedIndexOnFailure(t 
 	if err := a.RefreshConversationCatalog(context.Background()); err == nil {
 		t.Fatal("discovery failure was hidden")
 	}
-	if _, err := a.Workspace.Store.Session("native-discovered"); err != nil {
+	if _, err := a.Execution.Store.Session("native-discovered"); err != nil {
 		t.Fatal("saved native history was lost", err)
 	}
 }

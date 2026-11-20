@@ -5,28 +5,28 @@ import (
 	"context"
 	"sync"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 type Service struct {
-	Workspace          *workspace.Service
-	cache              *stateCache
-	CredentialHelper   string
-	gitLocks           sync.Map // common Git directory -> *sync.Mutex
-	OpenEditor         func(tool, path, distro string) error
-	OpenExternal       func(string) error
-	ReserveWorktree    func(context.Context, string) (func(), error)
-	CheckWorktreeIdle  func(string) error
-	TaskContextUpdated func(context.Context, model.Requirement) error
+	Execution               *execution.Service
+	cache                   *stateCache
+	CredentialHelper        string
+	gitLocks                sync.Map // common Git directory -> *sync.Mutex
+	OpenEditor              func(tool, path, distro string) error
+	OpenExternal            func(string) error
+	ReserveWorktree         func(context.Context, string) (func(), error)
+	CheckWorktreeIdle       func(string) error
+	WorkspaceContextUpdated func(context.Context, model.Workspace) error
 }
 
-func New(environment *workspace.Service) *Service {
-	s := &Service{Workspace: environment, cache: newStateCache(), CredentialHelper: workspace.CredentialHelperCommand(), OpenEditor: platform.OpenEditor, OpenExternal: platform.OpenExternal}
+func New(environment *execution.Service) *Service {
+	s := &Service{Execution: environment, cache: newStateCache(), CredentialHelper: execution.CredentialHelperCommand(), OpenEditor: platform.OpenEditor, OpenExternal: platform.OpenExternal}
 	if environment.Remote != nil {
 		s.CredentialHelper = environment.Remote.Identity.CredentialHelper
-		s.cache.ctx = workspace.WithClient(s.cache.ctx, environment.Remote)
+		s.cache.ctx = execution.WithClient(s.cache.ctx, environment.Remote)
 	}
 	return s
 }

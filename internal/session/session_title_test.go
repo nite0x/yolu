@@ -131,12 +131,12 @@ func awaitTitleFinished(t *testing.T, a *App) {
 
 func TestFirstInputGeneratesTitleWhileReplyIsRunning(t *testing.T) {
 	a, q, base, endpoint := chatFixture(t)
-	if _, err := a.Workspace.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('session_title','{"model":"title-model"}')`); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('session_title','{"model":"title-model"}')`); err != nil {
 		t.Fatal(err)
 	}
 	c := &titleLiveClient{fakeLiveClient: base, summary: `{"title":"修复对话标题自动更新"}`}
 	useTitleClient(a, c)
-	create := "/api/requirements/" + q.ID + "/sessions/new"
+	create := "/api/workspaces/" + q.ID + "/sessions/new"
 	input := map[string]string{"text": "检查一下标题", "request_id": "summary-create"}
 	if code, raw := call(t, a, "POST", create, input); code != 202 {
 		t.Fatalf("%d %s", code, raw)
@@ -152,7 +152,7 @@ func TestFirstInputGeneratesTitleWhileReplyIsRunning(t *testing.T) {
 	awaitChat(t, a, func(s ChatState) bool { return len(s.Entries) == 1 && s.Entries[0].Text == "正文继续运行" })
 	finishTitleChat(t, base)
 	awaitTitleFinished(t, a)
-	stored, _ := a.Workspace.Store.Session("session")
+	stored, _ := a.Execution.Store.Session("session")
 	state = a.ChatFor("session").snapshot()
 	if stored.Name != "修复对话标题自动更新" || stored.TitleSource != "generated" || state.SessionName != stored.Name || state.Busy || state.Status != "completed" || len(state.Entries) != 1 {
 		t.Fatal(stored, state)
@@ -192,7 +192,7 @@ func TestManualRenameDuringTitleGenerationWins(t *testing.T) {
 	a, q, base, _ := chatFixture(t)
 	c := &titleLiveClient{fakeLiveClient: base, summary: `{"title":"自动主题"}`, summaryStarted: make(chan struct{}), summaryRelease: make(chan struct{})}
 	useTitleClient(a, c)
-	if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", map[string]string{"text": "检查标题", "request_id": "manual-summary"}); code != 202 {
+	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "检查标题", "request_id": "manual-summary"}); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
@@ -213,7 +213,7 @@ func TestManualRenameDuringTitleGenerationWins(t *testing.T) {
 	close(c.summaryRelease)
 	finishTitleChat(t, base)
 	awaitTitleFinished(t, a)
-	stored, _ := a.Workspace.Store.Session("session")
+	stored, _ := a.Execution.Store.Session("session")
 	if stored.Name != "我的标题" || stored.TitleSource != "manual" || a.ChatFor("session").snapshot().SessionName != "我的标题" {
 		t.Fatal(stored)
 	}
@@ -230,7 +230,7 @@ func TestTitleGenerationContinuesAcrossFirstTurnCompletion(t *testing.T) {
 			a, q, base, endpoint := chatFixture(t)
 			c := &titleLiveClient{fakeLiveClient: base, summary: `{"title":"首次输入的主题"}`, summaryStarted: make(chan struct{}), summaryRelease: make(chan struct{})}
 			useTitleClient(a, c)
-			if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", map[string]string{"text": "首次输入", "request_id": "first"}); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "首次输入", "request_id": "first"}); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			select {
@@ -269,7 +269,7 @@ func TestCloseChatsCancelsIndependentTitleGeneration(t *testing.T) {
 	a, q, base, _ := chatFixture(t)
 	c := &titleLiveClient{fakeLiveClient: base, summary: `{"title":"不应写入"}`, summaryStarted: make(chan struct{}), summaryRelease: make(chan struct{})}
 	useTitleClient(a, c)
-	if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", map[string]string{"text": "初始标题", "request_id": "closing"}); code != 202 {
+	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "初始标题", "request_id": "closing"}); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	select {
@@ -292,7 +292,7 @@ func TestCloseChatsCancelsIndependentTitleGeneration(t *testing.T) {
 	a.chatMu.Lock()
 	pending := len(a.titleRuns)
 	a.chatMu.Unlock()
-	stored, _ := a.Workspace.Store.Session("session")
+	stored, _ := a.Execution.Store.Session("session")
 	if pending != 0 || stored.Name != "初始标题" {
 		t.Fatal("shutdown did not clean up naming", pending, stored)
 	}
@@ -304,13 +304,13 @@ func TestTitleGenerationFailureKeepsInitialNameAndCompletedReply(t *testing.T) {
 			a, q, base, _ := chatFixture(t)
 			c := &titleLiveClient{fakeLiveClient: base, summary: summary}
 			useTitleClient(a, c)
-			if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", map[string]string{"text": "初始标题", "request_id": "failed-summary"}); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "初始标题", "request_id": "failed-summary"}); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
 			finishTitleChat(t, base)
 			awaitTitleFinished(t, a)
-			stored, _ := a.Workspace.Store.Session("session")
+			stored, _ := a.Execution.Store.Session("session")
 			state := a.ChatFor("session").snapshot()
 			if stored.Name != "初始标题" || stored.TitleSource != "initial" || state.Status != "completed" || state.Error != "" || state.Notice == "" {
 				t.Fatal(stored, state)
@@ -326,14 +326,14 @@ func TestTitleGenerationFailureKeepsInitialNameAndCompletedReply(t *testing.T) {
 
 func TestCodexTitleUpdatesInitialNameAndPreservesItWithoutName(t *testing.T) {
 	a, q, c, _ := chatFixture(t)
-	endpoint := "/api/requirements/" + q.ID + "/sessions/new"
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
 	text := "这是一条很长的第一条消息，后面还有详细的背景说明和更多处理步骤。"
 	code, raw := call(t, a, "POST", endpoint, map[string]string{"text": text, "request_id": "title-create"})
 	if code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	var result struct {
-		Session RequirementSession `json:"session"`
+		Session WorkspaceSession `json:"session"`
 	}
 	_ = json.Unmarshal(raw, &result)
 	if result.Session.Name != initialSessionTitle(text) || result.Session.Name == text {
@@ -342,14 +342,14 @@ func TestCodexTitleUpdatesInitialNameAndPreservesItWithoutName(t *testing.T) {
 	awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
 	c.event("thread/name/updated", map[string]any{"threadName": "修复消息回显"})
 	awaitChat(t, a, func(s ChatState) bool { return s.SessionName == "修复消息回显" })
-	stored, err := a.Workspace.Store.Session("session")
+	stored, err := a.Execution.Store.Session("session")
 	if err != nil || stored.Name != "修复消息回显" {
 		t.Fatalf("%+v %v", stored, err)
 	}
 	if err := a.SaveSession("", codex.Session{ID: stored.ID, Cwd: stored.Cwd, Preview: "第一条消息仍在 preview 中"}, "codex"); err != nil {
 		t.Fatal(err)
 	}
-	stored, _ = a.Workspace.Store.Session("session")
+	stored, _ = a.Execution.Store.Session("session")
 	if stored.Name != "修复消息回显" {
 		t.Fatal(stored.Name)
 	}
@@ -402,12 +402,12 @@ func TestNewSessionTitleSyncedOnceAndNeverRecomputed(t *testing.T) {
 	// A failed generation is attempted once; later messages never retry it.
 	c.summary = "error"
 	input := map[string]string{"text": "## **修复标题同步**\n后面是很长的具体说明", "request_id": "short-title"}
-	create := "/api/requirements/" + q.ID + "/sessions/new"
+	create := "/api/workspaces/" + q.ID + "/sessions/new"
 	if code, raw := call(t, a, "POST", create, input); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
-	stored, _ := a.Workspace.Store.Session("session")
+	stored, _ := a.Execution.Store.Session("session")
 	if stored.Name != "修复标题同步" || stored.TitleSource != "initial" {
 		t.Fatal(stored)
 	}
@@ -443,11 +443,11 @@ func TestNewSessionKeepsCodexNameAndTitleFailureDoesNotBlockChat(t *testing.T) {
 				input["text"] = ""
 				input["images"] = []string{testChatPNG}
 			}
-			if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", input); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", input); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			state := awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
-			stored, _ := a.Workspace.Store.Session("session")
+			stored, _ := a.Execution.Store.Session("session")
 			if mode == "existing" && stored.Name != c.name || mode != "existing" && stored.Name != "" {
 				t.Fatal(stored)
 			}
@@ -483,7 +483,7 @@ func TestManualRenameSurvivesDelayedEventsAndEmptyMetadata(t *testing.T) {
 	if err := a.SaveSession("", codex.Session{ID: "session", Cwd: c.cwd}, "codex"); err != nil {
 		t.Fatal(err)
 	}
-	stored, _ := a.Workspace.Store.Session("session")
+	stored, _ := a.Execution.Store.Session("session")
 	if stored.Name != "我的名称" || stored.TitleSource != "manual" || a.ChatFor("session").snapshot().SessionName != "我的名称" {
 		t.Fatal(stored)
 	}
@@ -508,12 +508,12 @@ func TestTitleGenerationSkipsProtectedNamesAndInputsWithoutProse(t *testing.T) {
 			if mode == "context" {
 				input["text"] = "<environment_context>\n上下文\n</environment_context>"
 			}
-			if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", input); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", input); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
 			if mode == "manual" {
-				if err := a.Workspace.Store.SetSessionTitle("session", "用户标题", "manual"); err != nil {
+				if err := a.Execution.Store.SetSessionTitle("session", "用户标题", "manual"); err != nil {
 					t.Fatal(err)
 				}
 			}

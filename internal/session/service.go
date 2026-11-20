@@ -1,5 +1,5 @@
 // Package session indexes Codex threads and owns history, chat runs and terminal
-// handoff. Task/project scopes are adapters, never session owners.
+// handoff. Workspace/project scopes are adapters, never session owners.
 package session
 
 import (
@@ -8,10 +8,12 @@ import (
 	"sync"
 	"time"
 
+	"worktree-hub/internal/acp"
+	"worktree-hub/internal/agy"
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 type LaunchPlanner interface {
@@ -24,12 +26,17 @@ func savedSessionPlan(s model.Session) model.LaunchPlan {
 
 type Service struct {
 	chatRuntime
-	Workspace        *workspace.Service
+	Execution        *execution.Service
 	plans            LaunchPlanner
 	openSessions     func(context.Context) (codex.SessionClient, error)
 	sessionPool      *codex.SessionPool
+	codexInstaller   codex.Installer
 	openLive         func(context.Context) (codex.LiveClient, error)
 	openTitleLive    func(context.Context) (codex.LiveClient, error)
+	openAgy          func(context.Context, ...string) (acp.Client, acp.InitializeResult, error)
+	diagnoseAgy      func(context.Context) agy.Diagnostics
+	agyCatalogMu     sync.Mutex
+	agyCatalog       *agy.OptionCatalog
 	watchHistory     func(context.Context, string, func(HistoryPush) error) error
 	terminalConflict func(string, string) error
 	openExternal     func(string) error
@@ -46,17 +53,18 @@ type Service struct {
 	mediaKey         [32]byte
 }
 
-func New(environment *workspace.Service, plans LaunchPlanner) *Service {
-	s := &Service{Workspace: environment, plans: plans, openSessions: codex.OpenSessionClient, openLive: codex.OpenLive, watchHistory: WatchCodexHistory, terminalConflict: terminalSessionConflict, openExternal: platform.OpenExternal, chatRuntime: chatRuntime{chats: map[string]*ChatRun{}}, bridges: map[string]*terminalBridge{}}
+func New(environment *execution.Service, plans LaunchPlanner) *Service {
+	s := &Service{Execution: environment, plans: plans, openSessions: codex.OpenSessionClient, openLive: codex.OpenLive, openAgy: agy.OpenACP, watchHistory: WatchCodexHistory, terminalConflict: terminalSessionConflict, openExternal: platform.OpenExternal, chatRuntime: chatRuntime{chats: map[string]*ChatRun{}}, bridges: map[string]*terminalBridge{}}
+	s.diagnoseAgy = func(ctx context.Context) agy.Diagnostics { return agy.Diagnose(ctx, s.openAgy) }
 	if environment.Remote != nil {
 		s.openLive = environment.Remote.OpenCodex
 		s.terminalConflict = func(id, cwd string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			return environment.Remote.Call(ctx, workspace.Request{Op: "session-conflict", Path: cwd, Method: id}, nil)
+			return environment.Remote.Call(ctx, execution.Request{Op: "session-conflict", Path: cwd, Method: id}, nil)
 		}
 		s.openSessions = func(ctx context.Context) (codex.SessionClient, error) {
-			return &workspace.Sessions{Context: ctx, Client: environment.Remote}, nil
+			return &execution.Sessions{Context: ctx, Client: environment.Remote}, nil
 		}
 		s.watchHistory = func(ctx context.Context, id string, emit func(HistoryPush) error) error {
 			return watchRemoteHistory(ctx, environment.Remote, id, emit)
@@ -93,6 +101,7 @@ func (s *Service) releaseUnconnectedBridge(plan model.LaunchPlan) {
 }
 
 func (s *Service) Close() {
+	s.codexInstaller.Close()
 	s.CloseChats()
 	s.CloseBridges()
 	if s.sessionPool != nil {

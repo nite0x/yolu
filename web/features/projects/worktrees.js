@@ -6,7 +6,7 @@ let worktreeRequest = 0;
 
 function openWorktree(id) {
   if (state.busy) return;
-  navigate('/projects/' + id + '/worktrees');
+  navigate(projectResourceRoute(id, 'worktrees'));
   return syncProjectPage();
 }
 async function loadWorktree(id) {

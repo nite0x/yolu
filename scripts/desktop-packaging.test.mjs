@@ -98,7 +98,7 @@ test('version drift is rejected and every exported installer has integrity metad
 test('signed release packaging requires committed source and an optimized build', () => {
   const plan = { requireSigning: true, debug: false };
   assert.doesNotThrow(() => validateReleaseSource(plan, ''));
-  assert.throws(() => validateReleaseSource(plan, ' M internal/task/member_selection.go'), /clean Git working tree/);
+  assert.throws(() => validateReleaseSource(plan, ' M internal/workspace/member_selection.go'), /clean Git working tree/);
   assert.throws(() => validateReleaseSource(plan, '?? unexpected.go'), /clean Git working tree/);
   assert.throws(() => validateReleaseSource({ ...plan, debug: true }, ''), /cannot use --debug/);
   assert.doesNotThrow(() => validateReleaseSource({ requireSigning: false, debug: true }, ' M README.md'));

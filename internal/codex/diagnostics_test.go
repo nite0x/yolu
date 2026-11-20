@@ -186,13 +186,14 @@ func TestDiagnosticsRejectsInvalidDaemonResponses(t *testing.T) {
 	}
 }
 
-func TestDiagnosticsConnectsExistingDaemonWithoutLoadingThreads(t *testing.T) {
+func testDaemonSocket(t *testing.T) (string, <-chan string) {
+	t.Helper()
 	// Keep the socket below Unix path length limits on macOS CI.
 	dir, err := os.MkdirTemp("", "wh-diag-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	socket := filepath.Join(dir, "s")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
@@ -221,7 +222,12 @@ func TestDiagnosticsConnectsExistingDaemonWithoutLoadingThreads(t *testing.T) {
 		}
 	})}
 	go server.Serve(listener)
-	defer server.Close()
+	t.Cleanup(func() { _ = server.Close() })
+	return socket, methods
+}
+
+func TestDiagnosticsConnectsExistingDaemonWithoutLoadingThreads(t *testing.T) {
+	socket, methods := testDaemonSocket(t)
 	raw, _ := json.Marshal(map[string]string{"status": "running", "socketPath": socket, "appServerVersion": "daemon-test-version"})
 	t.Setenv("WORK_HUB_DIAGNOSTIC_DAEMON", string(raw))
 	var commands [][]string

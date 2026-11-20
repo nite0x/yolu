@@ -13,7 +13,7 @@ type Project struct {
 	StatusUpdatedAt string     `json:"status_updated_at,omitempty"`
 	Refreshing      bool       `json:"refreshing"`
 }
-type Requirement struct {
+type Workspace struct {
 	ID               string   `json:"id"`
 	Name             string   `json:"name"`
 	Slug             string   `json:"slug"`
@@ -24,7 +24,7 @@ type Requirement struct {
 	State            string   `json:"state"`
 	CreatedAt        string   `json:"created_at"`
 	Members          []Member `json:"members"`
-	HasWorkspace     bool     `json:"has_workspace"`
+	HasDirectory     bool     `json:"has_directory"`
 	ContextWarning   string   `json:"context_warning,omitempty"`
 }
 type Member struct {
@@ -41,36 +41,36 @@ type Member struct {
 }
 
 type Worktree struct {
-	Path             string     `json:"path"`
-	Branch           string     `json:"branch"`
-	Head             string     `json:"head"`
-	Bare             bool       `json:"bare"`
-	Detached         bool       `json:"detached"`
-	Locked           bool       `json:"locked"`
-	Prunable         bool       `json:"prunable"`
-	Missing          bool       `json:"missing"`
-	Dirty            int        `json:"dirty"`
-	Ahead            int        `json:"ahead"`
-	Behind           int        `json:"behind"`
-	CompareAvailable bool       `json:"compare_available"`
-	ComparisonRef    string     `json:"comparison_ref,omitempty"`
-	Upstream         string     `json:"upstream,omitempty"`
-	SyncAvailable    bool       `json:"sync_available"`
-	SyncAhead        int        `json:"sync_ahead"`
-	SyncBehind       int        `json:"sync_behind"`
-	Operation        string     `json:"operation,omitempty"`
-	MergeHead        string     `json:"merge_head,omitempty"`
-	Conflicts        []string   `json:"conflicts,omitempty"`
-	Error            string     `json:"error,omitempty"`
-	RequirementID    string     `json:"requirement_id,omitempty"`
-	RequirementName  string     `json:"requirement_name,omitempty"`
-	Requirements     []TaskLink `json:"requirements,omitempty"`
-	ExpectedBranch   string     `json:"expected_branch,omitempty"`
-	StatusUpdatedAt  string     `json:"status_updated_at,omitempty"`
-	Refreshing       bool       `json:"refreshing"`
+	Path             string          `json:"path"`
+	Branch           string          `json:"branch"`
+	Head             string          `json:"head"`
+	Bare             bool            `json:"bare"`
+	Detached         bool            `json:"detached"`
+	Locked           bool            `json:"locked"`
+	Prunable         bool            `json:"prunable"`
+	Missing          bool            `json:"missing"`
+	Dirty            int             `json:"dirty"`
+	Ahead            int             `json:"ahead"`
+	Behind           int             `json:"behind"`
+	CompareAvailable bool            `json:"compare_available"`
+	ComparisonRef    string          `json:"comparison_ref,omitempty"`
+	Upstream         string          `json:"upstream,omitempty"`
+	SyncAvailable    bool            `json:"sync_available"`
+	SyncAhead        int             `json:"sync_ahead"`
+	SyncBehind       int             `json:"sync_behind"`
+	Operation        string          `json:"operation,omitempty"`
+	MergeHead        string          `json:"merge_head,omitempty"`
+	Conflicts        []string        `json:"conflicts,omitempty"`
+	Error            string          `json:"error,omitempty"`
+	WorkspaceID      string          `json:"workspace_id,omitempty"`
+	WorkspaceName    string          `json:"workspace_name,omitempty"`
+	Workspaces       []WorkspaceLink `json:"workspaces,omitempty"`
+	ExpectedBranch   string          `json:"expected_branch,omitempty"`
+	StatusUpdatedAt  string          `json:"status_updated_at,omitempty"`
+	Refreshing       bool            `json:"refreshing"`
 }
 
-type TaskLink struct {
+type WorkspaceLink struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }

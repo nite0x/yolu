@@ -72,7 +72,7 @@ func TestInstalledCodexSidebarTurn(t *testing.T) {
 	if err := a.SaveSession(q.ID, thread.Thread, "manual"); err != nil {
 		t.Fatal(err)
 	}
-	endpoint := "/api/requirements/" + q.ID + "/sessions/" + thread.Thread.ID + "/chat"
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/" + thread.Thread.ID + "/chat"
 	if code, raw := call(t, a, "POST", endpoint, map[string]string{"text": "这是侧栏连通性测试。只回复 WORKTREE_HUB_SIDEBAR_OK，不调用工具，不读取文件。", "request_id": "sidebar-smoke"}); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}

@@ -3,8 +3,8 @@ package project
 import (
 	"net/http"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
-	"worktree-hub/internal/workspace"
 )
 
 func (a *Service) FilesHandler(w http.ResponseWriter, r *http.Request) {
@@ -25,7 +25,7 @@ func (a *Service) FilesHandler(w http.ResponseWriter, r *http.Request) {
 	if file {
 		relative = r.URL.Query().Get("file")
 	}
-	result, err := workspace.BrowseWorkspace(r.Context(), tree.Path, relative, file)
+	result, err := execution.BrowseWorkspace(r.Context(), tree.Path, relative, file)
 	if err != nil {
 		httpx.WriteError(w, 422, err.Error())
 		return

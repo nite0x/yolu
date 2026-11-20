@@ -45,7 +45,7 @@ func TestSlowCreationAllowsOtherSessionControlsAndIndependentCreation(t *testing
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			code, _ := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", map[string]string{"text": "check", "request_id": key})
+			code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "check", "request_id": key})
 			result <- code
 		}()
 		return result
@@ -100,7 +100,7 @@ func TestConcurrentCreationRetriesShareOneDurableRequest(t *testing.T) {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			code, _ := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", map[string]string{"text": "check", "request_id": "same"})
+			code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "check", "request_id": "same"})
 			results <- code
 		}()
 	}

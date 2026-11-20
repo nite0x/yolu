@@ -407,10 +407,16 @@ export function assistantRunError(code?: string) {
   switch (code) {
     case "model_unavailable":
       return uiText("所选助手模型已不可用，请更换模型或使用 Codex 默认模型。");
+    case "codex_unauthorized":
+      return uiText("Codex 登录已失效，请在运行 Yolu 的本机账户下执行 codex login 后重新发送。");
+    case "assistant_tool_blocked":
+      return uiText("本轮已停止，Codex 请求了全局助手未开放的工具。请查看已有操作记录后重新发送。");
+    case "assistant_tool_limit":
+      return uiText("本轮已达到助手工具调用上限。请查看已有操作记录，再继续剩余任务。");
+    case "codex_usage_limit":
+      return uiText("Codex 已达到用量或速率限制，请稍后重试。");
     case "codex_unavailable":
-      return uiText(
-        "无法完成 Codex 请求。请在本机终端运行 codex login，检查 Codex 模型配置及网络，然后重新发送消息。",
-      );
+      return uiText("Codex 未能完成本轮请求。请查看已有操作记录后重试。");
     case "timeout":
       return uiText("助手请求超时，消息已保存。请检查网络后重新发送。");
     case "interrupted":

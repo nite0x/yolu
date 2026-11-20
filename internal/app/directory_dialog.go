@@ -9,7 +9,7 @@ import (
 )
 
 func (a *App) pickDirectoryHandler(w http.ResponseWriter, r *http.Request) {
-	if id := r.Header.Get("X-Environment-ID"); (id != "" && id != "local") || a.Workspace.Remote != nil {
+	if id := r.Header.Get("X-Environment-ID"); (id != "" && id != "local") || a.Execution.Remote != nil {
 		httpx.WriteError(w, 422, "文件夹选择仅支持本机；WSL 项目请手动填写 Linux 绝对路径。")
 		return
 	}

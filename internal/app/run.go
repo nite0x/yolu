@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 // Run starts the desktop host, HTTP service, or workspace helper.
@@ -50,7 +50,7 @@ func Run() {
 			fmt.Fprintln(os.Stderr, "凭证助手需要 get/store/erase 操作")
 			os.Exit(1)
 		}
-		if err := workspace.CredentialBridge(workspace.WindowsCredentialManager(), os.Args[2], os.Stdin, os.Stdout, os.Stderr); err != nil {
+		if err := execution.CredentialBridge(execution.WindowsCredentialManager(), os.Args[2], os.Stdin, os.Stdout, os.Stderr); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -66,8 +66,8 @@ func Run() {
 	data := flag.String("data", platform.DefaultDataDir(), "SQLite and launcher directory")
 	root := flag.String("root", defaultRoot, "parent directory for workspaces")
 	headless := flag.Bool("headless", runtime.GOOS != "windows", "run without the desktop window")
-	interactive := flag.Bool("interactive-sessions", false, "enable task chat (enabled by default; retained for compatibility)")
-	readOnly := flag.Bool("read-only-sessions", false, "disable task chat and show session history only")
+	interactive := flag.Bool("interactive-sessions", false, "enable workspace chat (enabled by default; retained for compatibility)")
+	readOnly := flag.Bool("read-only-sessions", false, "disable workspace chat and show session history only")
 	stopService := flag.Bool("stop", false, "stop the background service when no Git operation is running")
 	prepareUpgrade := flag.Bool("prepare-upgrade", false, "safely stop an existing backend before replacing installed files; succeed when already stopped")
 	desktopStart := flag.Bool("desktop-start", false, "start or reuse the desktop backend and print its JSON handshake")
@@ -140,7 +140,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	defer a.Close()
-	a.Workspace.ReadOnlySessions = *readOnly
+	a.Execution.ReadOnlySessions = *readOnly
 	hub, err := newEnvironmentHub(a)
 	if err != nil {
 		log.Fatal(err)
@@ -165,7 +165,7 @@ func Run() {
 	if err := a.browser.restore(); err != nil {
 		log.Printf("Browser access: %v", err)
 	}
-	log.Printf("Yolu: %s | SQLite: %s | worktrees: %s", address, *data, a.Workspace.Root)
+	log.Printf("Yolu: %s | SQLite: %s | worktrees: %s", address, *data, a.Execution.Root)
 	go func() {
 		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Print(err)

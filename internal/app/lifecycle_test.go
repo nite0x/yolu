@@ -21,7 +21,7 @@ func TestConcurrentCloseRejectsRequestsAndReleasesStorage(t *testing.T) {
 	if code, _ := call(t, a, "GET", "/api/state", nil); code != 503 {
 		t.Fatalf("request accepted after close: %d", code)
 	}
-	if err := a.Workspace.Store.DB.Ping(); err == nil {
+	if err := a.Execution.Store.DB.Ping(); err == nil {
 		t.Fatal("database remains open after close")
 	}
 }

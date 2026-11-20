@@ -14,7 +14,7 @@ func TestSessionFilePreviewResolvesLinesAndRemoteEnvironment(t *testing.T) {
 		t.Run(map[bool]string{false: "local", true: "remote"}[remote], func(t *testing.T) {
 			a, _, c, _ := chatFixture(t)
 			if remote {
-				a.Workspace.Remote = testWorkspaceClient(t)
+				a.Execution.Remote = testWorkspaceClient(t)
 			}
 			file := filepath.Join(c.cwd, "预览 file.go")
 			if err := os.WriteFile(file, []byte(strings.Repeat("正文\r\n", 600)+"末行"), 0600); err != nil {
@@ -48,7 +48,7 @@ func TestSessionFilePreviewAllowsExplicitOutsideFilesAndRestrictsFileTypes(t *te
 	a, _, c, _ := chatFixture(t)
 	extra := t.TempDir()
 	outside := t.TempDir()
-	if err := a.Workspace.Store.SaveSessionDirectories("session", []string{extra}); err != nil {
+	if err := a.Execution.Store.SaveSessionDirectories("session", []string{extra}); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{filepath.Join(extra, "allowed.txt"), filepath.Join(outside, "secret.txt")} {
@@ -83,7 +83,7 @@ func TestSessionFileBrowserPreviewsOutsideTextAndTreeImages(t *testing.T) {
 		t.Run(map[bool]string{false: "local", true: "remote"}[remote], func(t *testing.T) {
 			a, _, c, _ := chatFixture(t)
 			if remote {
-				a.Workspace.Remote = testWorkspaceClient(t)
+				a.Execution.Remote = testWorkspaceClient(t)
 			}
 			outside := filepath.Join(t.TempDir(), "external notes.md")
 			if err := os.WriteFile(outside, []byte("外部文件全文\n<script>inert</script>"), 0600); err != nil {
@@ -136,13 +136,13 @@ func TestSessionDirectoryBrowserUsesOnlySavedRoots(t *testing.T) {
 		t.Run(map[bool]string{false: "local", true: "remote"}[remote], func(t *testing.T) {
 			a, _, c, _ := chatFixture(t)
 			if remote {
-				a.Workspace.Remote = testWorkspaceClient(t)
+				a.Execution.Remote = testWorkspaceClient(t)
 			}
 			os.MkdirAll(filepath.Join(c.cwd, "src"), 0700)
 			os.WriteFile(filepath.Join(c.cwd, "src", "read.go"), []byte("package reference\n"), 0600)
 			extra := t.TempDir()
 			os.WriteFile(filepath.Join(extra, "extra.txt"), []byte("approved root"), 0600)
-			a.Workspace.Store.SaveSessionDirectories("session", []string{extra})
+			a.Execution.Store.SaveSessionDirectories("session", []string{extra})
 			base := "/api/sessions/session/files?"
 			for _, q := range []string{"dir=src", "file=src/read.go", "path=" + url.QueryEscape(extra) + "&file=extra.txt"} {
 				code, raw := call(t, a, "GET", base+q, nil)

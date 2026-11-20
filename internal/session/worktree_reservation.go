@@ -42,7 +42,7 @@ func (a *Service) ReserveWorktree(ctx context.Context, path string) (func(), err
 		}
 	}
 	a.bridgeMu.Unlock()
-	records, err := a.Workspace.Store.Sessions()
+	records, err := a.Execution.Store.Sessions()
 	if err != nil {
 		return nil, err
 	}

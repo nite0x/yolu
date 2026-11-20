@@ -44,7 +44,7 @@ func settledState(t *testing.T, a *App) (int, []byte) {
 
 func cachedTestProject(t *testing.T, a *App) {
 	t.Helper()
-	_, err := a.Workspace.Store.DB.Exec(`INSERT INTO projects VALUES('project','Project','/project','/project/.git','project','2026-01-01T00:00:00Z')`)
+	_, err := a.Execution.Store.DB.Exec(`INSERT INTO projects VALUES('project','Project','/project','/project/.git','project','2026-01-01T00:00:00Z')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestStatePublishesFastWorktreesWithoutWaitingForSlowScanOrGlobalLock(t *tes
 		return slow.Refreshing && slow.StatusUpdatedAt == "" && fast.Dirty == 3 && fast.StatusUpdatedAt != ""
 	})
 	// Simulate a long mutation holding App.mu and eight browsers reading state.
-	a.Workspace.Mu.Lock()
+	a.Execution.Mu.Lock()
 	responses := make(chan int, 8)
 	for i := 0; i < cap(responses); i++ {
 		go func() { code, _ := call(t, a, "GET", "/api/state", nil); responses <- code }()
@@ -103,15 +103,15 @@ func TestStatePublishesFastWorktreesWithoutWaitingForSlowScanOrGlobalLock(t *tes
 		select {
 		case code := <-responses:
 			if code != 200 {
-				a.Workspace.Mu.Unlock()
+				a.Execution.Mu.Unlock()
 				t.Fatalf("state: %d", code)
 			}
 		case <-time.After(time.Second):
-			a.Workspace.Mu.Unlock()
+			a.Execution.Mu.Unlock()
 			t.Fatal("state waited for the global lock or slow scanner")
 		}
 	}
-	a.Workspace.Mu.Unlock()
+	a.Execution.Mu.Unlock()
 	if slowScans.Load() != 1 {
 		t.Fatalf("duplicate slow scans: %d", slowScans.Load())
 	}

@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="/core/style.css">
   <link rel="stylesheet" href="/features/projects/git.css">
   <link rel="stylesheet" href="/features/projects/projects.css">
-  <link rel="stylesheet" href="/features/tasks/workspace.css">
+  <link rel="stylesheet" href="/features/workspaces/workspace.css">
   <link rel="stylesheet" href="/features/sessions/sessions.css">
   <link rel="stylesheet" href="/features/sessions/session-workspace.css">
   <link rel="stylesheet" href="/core/list-search.css">
@@ -34,10 +34,10 @@
   <script src="/chat/loader.js" defer></script>
   <script src="/core/core.js" defer></script>
   <script src="/features/projects/projects.js" defer></script>
-  <script src="/features/tasks/requirements.js" defer></script>
+  <script src="/features/workspaces/workspaces.js" defer></script>
   <script src="/core/app.js" defer></script>
   <script src="/features/settings/environments.js" defer></script>
-  <script src="/features/tasks/requirement-projects.js" defer></script>
+  <script src="/features/workspaces/workspace-projects.js" defer></script>
   <script src="/features/projects/git.js" defer></script>
   <script src="/features/projects/worktrees.js" defer></script>
   <script src="/features/settings/terminal.js" defer></script>
@@ -47,21 +47,23 @@
   <script src="/features/sessions/session-history-live.js" defer></script>
   <script src="/features/sessions/session-chat.js" defer></script>
   <script src="/features/sessions/session-create.js" defer></script>
-  <script src="/features/tasks/task-layout.js" defer></script>
-  <script src="/features/tasks/task-review.js" defer></script>
+  <script src="/features/workspaces/workspace-layout.js" defer></script>
+  <script src="/features/workspaces/workspace-review.js" defer></script>
   <script src="/features/sessions/session-workspace.js" defer></script>
+  <script src="/core/resource-navigation.js" defer></script>
   <script src="/core/page-bridge.js" defer></script>
   <link rel="stylesheet" href="/core/shortcut-icons.css">
   <link rel="stylesheet" href="/core/typography.css">
   <link rel="stylesheet" href="/core/appearance.css">
   <link rel="stylesheet" href="/core/chrome.css">
+  <link rel="stylesheet" href="/core/resource-pages.css">
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="Yolu 首页" data-i18n-aria-label="Yolu 首页"><img class="brand-mark" src="/yolu.svg" alt="" width="36" height="36"><span>Yolu<small data-i18n="让每一份工作，各就其位。">让每一份工作，各就其位。</small></span></a>
     <div class="nav-label" data-i18n="工作台">工作台</div>
     <nav aria-label="主导航" data-i18n-aria-label="主导航">
-      <button class="nav-item active" data-view="requirements" aria-label="任务" title="任务" data-i18n-title="任务" data-i18n-aria-label="任务"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-text" data-i18n="任务">任务</span><span class="nav-count" id="reqCount">0</span></button>
+      <button class="nav-item active" data-view="workspaces" aria-label="工作区" title="工作区" data-i18n-title="工作区" data-i18n-aria-label="工作区"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-text" data-i18n="工作区">工作区</span><span class="nav-count" id="workspaceCount">0</span></button>
       <button class="nav-item" data-view="projects" aria-label="项目" title="项目" data-i18n-title="项目" data-i18n-aria-label="项目"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-text" data-i18n="项目">项目</span><span class="nav-count" id="projectCount">0</span></button>
       <button class="nav-item" data-view="sessions" aria-label="对话" title="对话" data-i18n-title="对话" data-i18n-aria-label="对话"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="对话">对话</span><span id="sessionNavigationStatus" class="session-navigation-status" role="status"></span></button>
     </nav>
@@ -83,27 +85,26 @@
   </aside>
   <div class="shell">
     <main>
-      <a href="#/requirements" class="workspace-back" id="backToRequirements" hidden data-i18n="← 返回任务列表">← 返回任务列表</a>
-      <div class="page-heading"><div><div class="eyebrow" id="eyebrow">TASKS</div><h1 id="pageTitle" tabindex="-1" data-i18n="任务">任务</h1><p id="pageSubtitle" data-i18n="围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。">围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。</p></div><span id="newTaskButton" class="shadcn-scope"></span><div id="taskPageActions" hidden></div></div>
+      <div class="page-heading"><div><div class="eyebrow" id="eyebrow">WORKSPACES</div><div class="resource-detail-title"><a href="#/workspaces" id="backToWorkspaces" class="resource-breadcrumb-link" aria-label="返回工作区列表" data-i18n-aria-label="返回工作区列表" data-i18n="工作区" hidden>工作区</a><span id="workspaceBreadcrumbSeparator" class="resource-breadcrumb-divider" aria-hidden="true" hidden>/</span><h1 id="pageTitle" tabindex="-1" data-i18n="工作区">工作区</h1><span id="workspaceSwitcherTrigger" class="shadcn-scope" hidden></span></div><p id="pageSubtitle" data-i18n="围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。">围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。</p></div><span id="newWorkspaceButton" class="shadcn-scope"></span><div id="workspacePageActions" hidden></div></div>
       <div id="offlineFeedback" class="shadcn-scope"></div>
       <section id="stats" class="stats" aria-label="工作台统计" data-i18n-aria-label="工作台统计"></section>
       <section id="settingsPage" class="settings-page shadcn-scope" aria-label="设置" hidden data-i18n-aria-label="设置"></section>
       <section class="content-panel" id="workContent">
-        <aside id="taskBrowser" class="task-browser workspace-pane shadcn-scope" aria-label="任务列表" hidden data-i18n-aria-label="任务列表">
-          <div class="task-browser-header">
-            <div class="task-browser-heading"><h2 data-i18n="任务">任务</h2><span id="taskCreateSlot"></span></div>
-            <div id="taskToolbarSlot"></div>
+        <section id="workspaceBrowser" class="workspace-browser resource-list-page workspace-pane shadcn-scope" aria-label="工作区列表" hidden data-i18n-aria-label="工作区列表">
+          <div class="workspace-browser-header">
+            <div class="workspace-browser-heading"><h1 id="workspaceListTitle" tabindex="-1" data-i18n="工作区">工作区</h1></div>
+            <div id="workspaceToolbarSlot"></div><span id="workspaceCreateSlot"></span>
           </div>
-          <div id="taskListContent" class="task-list-scroll" aria-label="全部任务" data-i18n-aria-label="全部任务"></div>
-        </aside>
-        <div class="panel-toolbar" id="panelToolbar"><div class="panel-title" id="panelTitle" tabindex="-1" data-i18n="全部任务">全部任务</div><div class="toolbar-actions"><div class="shadcn-scope" id="projectEnvironmentWrap" hidden></div><div id="searchField" class="shadcn-scope"></div><span id="projectAddButton" class="shadcn-scope" hidden></span></div></div>
-        <div id="taskListResize" class="task-resize-handle" role="separator" tabindex="0" aria-label="调整任务列表宽度" aria-orientation="vertical" aria-controls="taskBrowser taskDetailPane" aria-valuemin="240" aria-valuemax="640" aria-valuenow="300" hidden data-i18n-aria-label="调整任务列表宽度"></div>
-        <section id="taskDetailPane" class="task-detail-pane workspace-pane"><div id="taskHeadingSlot"></div><section id="taskProjectsView" class="task-projects-view" aria-label="项目工作区" data-i18n-aria-label="项目工作区"><div id="content" aria-live="polite"><div class="loading" data-i18n="正在读取本地状态…">正在读取本地状态…</div></div></section></section>
+          <div id="workspaceListContent" class="workspace-list-scroll resource-list-scroll" aria-label="全部工作区" data-i18n-aria-label="全部工作区"></div>
+        </section>
+        <div class="panel-toolbar" id="panelToolbar"><div class="panel-title" id="panelTitle" role="heading" aria-level="1" tabindex="-1" data-i18n="全部工作区">全部工作区</div><div class="toolbar-actions"><div class="shadcn-scope" id="projectEnvironmentWrap" hidden></div><div id="searchField" class="shadcn-scope"></div><span id="projectAddButton" class="shadcn-scope" hidden></span></div></div>
+        <section id="workspaceDetailPane" class="workspace-detail-pane workspace-pane"><div id="workspaceHeadingSlot"></div><section id="workspaceProjectsView" class="workspace-projects-view" aria-label="项目工作区" data-i18n-aria-label="项目工作区"><div id="content" aria-live="polite"><div class="loading" data-i18n="正在读取本地状态…">正在读取本地状态…</div></div></section></section>
       </section>
       <section id="globalAssistantPage" aria-label="Yolu 助手" tabindex="-1" hidden data-i18n-aria-label="Yolu 助手"><div id="globalAssistantRoot"></div></section>
       <section id="sessionsPage" class="sessions-page" aria-label="对话" hidden data-i18n-aria-label="对话"><div id="sessionPageMount"></div></section>
     </main>
   </div>
+  <dialog id="resourceSwitcher" class="shadcn-scope" aria-labelledby="resourceSwitcherTitle"></dialog>
   <dialog id="removalDialog" aria-labelledby="removalTitle" aria-describedby="removalDescription">
     <form id="removalForm">
       <div class="dialog-header"><h2 id="removalTitle"></h2><button type="button" class="icon-button close-dialog" aria-label="关闭" data-i18n-aria-label="关闭">×</button></div>
@@ -116,16 +117,16 @@
   </dialog>
   <dialog id="environmentDialog" class="shadcn-scope" aria-labelledby="environmentTitle"></dialog>
   <dialog id="projectDialog" class="shadcn-scope" aria-labelledby="projectDialogTitle"></dialog>
-  <dialog id="requirementDialog" class="wide-dialog shadcn-scope" aria-labelledby="requirementDialogTitle"></dialog>
-  <dialog id="requirementProjectsDialog" class="wide-dialog shadcn-scope" aria-labelledby="requirementProjectsTitle"></dialog>
-  <dialog id="taskReviewDialog" class="wide-dialog shadcn-scope" aria-labelledby="taskReviewTitle"></dialog>
+  <dialog id="workspaceDialog" class="wide-dialog shadcn-scope" aria-labelledby="workspaceDialogTitle"></dialog>
+  <dialog id="workspaceProjectsDialog" class="wide-dialog shadcn-scope" aria-labelledby="workspaceProjectsTitle"></dialog>
+  <dialog id="workspaceReviewDialog" class="wide-dialog shadcn-scope" aria-labelledby="workspaceReviewTitle"></dialog>
   <dialog id="changesDialog" class="changes-dialog shadcn-scope" aria-labelledby="changesTitle"></dialog>
-  <dialog id="taskEditDialog" aria-labelledby="taskEditTitle" class="shadcn-scope"></dialog>
-  <dialog id="taskDirectoryDialog" aria-labelledby="taskDirectoryTitle" class="shadcn-scope"></dialog>
+  <dialog id="workspaceEditDialog" aria-labelledby="workspaceEditTitle" class="shadcn-scope"></dialog>
+  <dialog id="workspaceDirectoryDialog" aria-labelledby="workspaceDirectoryTitle" class="shadcn-scope"></dialog>
   <dialog id="worktreeDialog" class="wide-dialog shadcn-scope" aria-labelledby="worktreeTitle"></dialog>
   <dialog id="gitDialog" class="git-dialog shadcn-scope" aria-labelledby="gitTitle"></dialog>
   <dialog id="commandDialog" class="wide-dialog shadcn-scope" aria-labelledby="commandTitle" aria-describedby="commandDescription"></dialog>
-  <div class="busy-panel" id="busyPanel" role="status" hidden><span class="spinner"></span><div><strong id="busyTitle" data-i18n="正在创建任务">正在创建任务</strong><small data-i18n="请稍候，正在操作本地仓库…">请稍候，正在操作本地仓库…</small></div></div>
+  <div class="busy-panel" id="busyPanel" role="status" hidden><span class="spinner"></span><div><strong id="busyTitle" data-i18n="正在创建工作区">正在创建工作区</strong><small data-i18n="请稍候，正在操作本地仓库…">请稍候，正在操作本地仓库…</small></div></div>
   <div id="toast" class="toast shadcn-scope" role="status" hidden></div>
   <dialog id="sessionDialog" class="wide-dialog shadcn-scope" aria-labelledby="sessionDialogTitle"></dialog>
   <dialog id="sessionCommandOutputDialog" class="session-command-output-dialog shadcn-scope" aria-labelledby="sessionCommandOutputTitle"></dialog>

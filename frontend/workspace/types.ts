@@ -5,8 +5,8 @@ export interface Worktree {
   comparison_ref?: string; ahead?: number; behind?: number;
   upstream?: string; sync_available?: boolean; sync_ahead?: number; sync_behind?: number;
   operation?: string; merge_head?: string; conflicts?: string[];
-  requirement_id?: string; requirement_name?: string;
-  requirements?: { id: string; name: string }[];
+  workspace_id?: string; workspace_name?: string;
+  workspaces?: { id: string; name: string }[];
 }
 export interface Project {
   id: string; name: string; path: string; folder?: string; error?: string;
@@ -17,9 +17,9 @@ export interface Member {
   mode?: string; branch?: string; base_ref?: string; base_commit?: string;
   worktree?: Worktree; error?: string;
 }
-export interface Task {
+export interface Workspace {
   id: string; name: string; slug: string; description?: string; branch: string;
-  path: string; state: string; primary_project_id: string; members: Member[]; has_workspace?: boolean;
+  path: string; state: string; primary_project_id: string; members: Member[]; has_directory?: boolean;
   created_at: string; environment_id: string; environment_name: string; connected: boolean;
 }
 export interface GitBranch {

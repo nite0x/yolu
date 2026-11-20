@@ -2,11 +2,11 @@ import { Fragment, type ReactNode } from "react"
 import { Check, ChevronDown, Copy, GitBranch, GitCommitHorizontal, MoreHorizontal, Pencil, Terminal } from "lucide-react"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { uiLocale, uiText } from "../i18n"
-import { Action, Branch, DataTable, StatusBadge, TaskOpenActions, TreeStatus, type ProjectOpenTool } from "./shared"
+import { Action, Branch, DataTable, StatusBadge, WorkspaceOpenActions, TreeStatus, type ProjectOpenTool } from "./shared"
 import type { Worktree } from "./types"
 import { compactWorkspacePath } from "./workspace-path"
 
-const directoryCell = "p-[var(--directory-cell-padding)] align-top whitespace-normal"
+const directoryCell = "p-[var(--directory-cell-padding)] align-middle whitespace-normal"
 
 export function WorkingDirectoryTable({ label, showLinkedWorkspaces = false, children }: { label: string; showLinkedWorkspaces?: boolean; children: ReactNode }) {
   const headers = [uiText("工作目录"), uiText("远程同步"), uiText("本地改动")]
@@ -14,10 +14,15 @@ export function WorkingDirectoryTable({ label, showLinkedWorkspaces = false, chi
   headers.push(uiText("操作"))
 
   return <div className="working-directory-table" data-linked-workspaces={showLinkedWorkspaces || undefined}>
-    <DataTable label={label} headers={headers} containerClassName="overflow-visible">{children}</DataTable>
+    <DataTable label={label} headers={headers} containerClassName="overflow-visible" headerClassName="h-7 bg-transparent">{children}</DataTable>
   </div>
 }
 
+export function WorkingDirectoryGroup({ label, count }: { label: string; count: number }) {
+  return <TableRow role="row" className="directory-group">
+    <TableCell role="cell" colSpan={5}><h4>{label}<span>{count}</span></h4></TableCell>
+  </TableRow>
+}
 export function directoryBranch(tree?: Worktree) {
   return tree?.branch || (tree?.detached ? "detached HEAD" : tree?.bare ? uiText("裸仓库") : uiText("尚未读取分支"))
 }
@@ -30,6 +35,7 @@ type DirectoryRowProps = {
   tool: ProjectOpenTool
   usable: boolean
   issue: boolean
+  primary?: boolean
   workspace?: { id: string; editable: boolean }
   linkedWorkspaces?: ReactNode
   unavailableStatus?: ReactNode
@@ -40,33 +46,38 @@ type DirectoryRowProps = {
 }
 
 export function WorkingDirectoryRow({
-  project, name, path, tree, tool, usable, issue, workspace, linkedWorkspaces,
+  project, name, path, tree, tool, usable, issue, primary, workspace, linkedWorkspaces,
   unavailableStatus, details, gitMenuActions, workspaceMenuActions, notice,
 }: DirectoryRowProps) {
   const gitEnabled = usable && (workspace?.editable ?? true)
   const context = { id: project, "data-path": path }
-  const gitContext = { ...context, "data-requirement": workspace?.id }
+  const gitContext = { ...context, "data-workspace": workspace?.id }
   const branch = directoryBranch(tree)
   const branchBadge = <Branch><GitBranch aria-hidden="true" /><span>{branch}</span></Branch>
   const terminalLabel = uiText("用 {0} 打开工作目录", uiText("终端"))
   const hasLinkedWorkspaces = linkedWorkspaces !== undefined
 
   return <Fragment>
-    <TableRow role="row" data-project-id={project} data-directory-path={path} className={`working-directory-row${workspace ? " task-project" : ""}${issue ? " working-directory-issue" : ""}${notice ? " border-b-0" : ""}`}>
+    <TableRow role="row" tabIndex={-1} data-project-id={project} data-directory-path={path} data-primary-directory={primary || undefined} className={`working-directory-row${workspace ? " workspace-project" : ""}${issue ? " working-directory-issue" : ""}${notice ? " border-b-0" : ""}`}>
       <TableCell role="cell" className={`${directoryCell} directory-identity`}>
-        <strong className="directory-name">{name}</strong>
-        {workspace && tree ? <Action action="git-open" {...gitContext} data-git-section="branches" variant="ghost" className="directory-branch-action h-auto p-0" disabled={!gitEnabled} aria-label={uiText("查看 {0} 的分支", name)} title={branch}>{branchBadge}</Action> : <span className="directory-branch" title={branch}>{branchBadge}</span>}
-        <button type="button" className="directory-path" data-action="copy-path" data-path={path} title={uiText("{0}\n复制目录路径", path)} aria-label={uiText("复制目录路径 {0}", path)}>
-          <span>{compactWorkspacePath(path)}</span><Copy aria-hidden="true" />
-        </button>
-        <details className="directory-details" data-workspace-detail={workspace ? `project:${project}` : undefined}>
-          <summary>{uiText("详情")}<ChevronDown aria-hidden="true" /></summary>
-          <div className="directory-detail-content">
-            <div>{uiText("完整路径")} <code>{path}</code></div>
-            {details}
-            {tree?.status_updated_at ? <div>{uiText("上次检查")} <time data-status-path={path} dateTime={tree.status_updated_at}>{new Date(tree.status_updated_at).toLocaleTimeString(uiLocale(), { hour12: false })}</time></div> : null}
-          </div>
-        </details>
+        <div className="directory-identity-main">
+          {workspace ? <a className="directory-name directory-project-link" href={`#/projects/${encodeURIComponent(project)}?${new URLSearchParams({ directory: path, fromWorkspace: workspace.id })}`}
+            data-action="jump-project" data-id={project} aria-label={uiText("查看 {0} 项目中的目录", name)}>{name}<span aria-hidden="true">↗</span></a> : <strong className="directory-name">{name}</strong>}
+          {workspace && tree ? <Action action="git-open" {...gitContext} data-git-section="branches" variant="ghost" className="directory-branch-action h-auto p-0" disabled={!gitEnabled} aria-label={uiText("查看 {0} 的分支", name)} title={branch}>{branchBadge}</Action> : name !== branch ? <span className="directory-branch" title={branch}>{branchBadge}</span> : null}
+        </div>
+        <div className="directory-identity-meta">
+          <button type="button" className="directory-path" data-action="copy-path" data-path={path} title={uiText("{0}\n复制目录路径", path)} aria-label={uiText("复制目录路径 {0}", path)}>
+            <span>{compactWorkspacePath(path)}</span><Copy aria-hidden="true" />
+          </button>
+          <details className="directory-details" data-workspace-detail={workspace ? `project:${project}` : undefined}>
+            <summary>{uiText("详情")}<ChevronDown aria-hidden="true" /></summary>
+            <div className="directory-detail-content">
+              <div>{uiText("完整路径")} <code>{path}</code></div>
+              {details}
+              {tree?.status_updated_at ? <div>{uiText("上次检查")} <time data-status-path={path} dateTime={tree.status_updated_at}>{new Date(tree.status_updated_at).toLocaleTimeString(uiLocale(), { hour12: false })}</time></div> : null}
+            </div>
+          </details>
+        </div>
       </TableCell>
       <TableCell role="cell" className={`${directoryCell} directory-sync`}>
         <span className="directory-cell-label" aria-hidden="true">{uiText("远程同步")}</span>
@@ -80,12 +91,12 @@ export function WorkingDirectoryRow({
       </TableCell> : null}
       <TableCell role="cell" className={`${directoryCell} directory-actions-cell`}>
         <div className="directory-actions">
-          <TaskOpenActions project={project} path={path} tool={tool} disabled={!usable} />
-          <Action action="changes-open" {...context} disabled={!usable}>{uiText("文件与改动")}</Action>
+          <WorkspaceOpenActions project={project} path={path} tool={tool} disabled={!usable} primary={primary} />
+          <Action action="changes-open" {...context} disabled={!usable} aria-label={uiText("文件与改动")} title={uiText("文件与改动")}>{uiText("改动")}</Action>
           <Action action="workspace-terminal" {...context} disabled={!usable} size="icon-sm" className="directory-terminal" title={terminalLabel} aria-label={terminalLabel}><Terminal aria-hidden="true" /></Action>
-          <details className={`task-more directory-more${workspace ? " task-project-more" : ""}`} data-workspace-detail={workspace ? `menu:${project}` : undefined}>
+          <details className={`workspace-more directory-more${workspace ? " workspace-project-more" : ""}`} data-workspace-detail={workspace ? `menu:${project}` : undefined}>
             <summary aria-label={uiText("{0} 更多操作", name)}><MoreHorizontal aria-hidden="true" /></summary>
-            <div className="task-more-menu">
+            <div className="workspace-more-menu">
               <Action action="workspace-conversation-new" {...context} disabled={!usable}>{uiText("新建对话…")}</Action>
               <hr />
               <Action action="git-open" {...gitContext} disabled={!gitEnabled}>{uiText("Git 操作")}</Action>

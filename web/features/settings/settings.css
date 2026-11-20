@@ -24,6 +24,8 @@
 .codex-diagnostic-heading h3 { font-size: 15px; font-weight: 600; margin: 0; }
 .codex-diagnostic-checks { list-style: none; padding: 0; display: grid; gap: 12px; margin: 18px 0; }
 .codex-diagnostic-checks li { padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; }
+.codex-install-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.codex-install-actions .settings-help { margin: 0; font-size: var(--yolu-font-size-compact); }
 .codex-diagnostic-checks p, .codex-diagnostic-error { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; font-size: 13px; line-height: 1.7; }
 .codex-diagnostic-error { color: var(--destructive); }
 .codex-diagnostic-facts { margin-top: 16px; }

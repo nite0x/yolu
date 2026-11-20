@@ -40,7 +40,7 @@ if (watch) {
 }
 
 // Terminal pages are independently mounted workspace panes. Keep xterm out of
-// the initial task/conversation bundle and bundle all assets locally.
+// the initial workspace/conversation bundle and bundle all assets locally.
 const terminalOptions = {
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
   entryPoints: ['frontend/workspace/terminal.ts'],

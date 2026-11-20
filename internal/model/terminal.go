@@ -8,7 +8,7 @@ type LaunchPlan struct {
 	Command               string   `json:"command"`
 	AdditionalDirectories []string `json:"additional_directories"`
 	Script                string   `json:"-"`
-	Requirement           string   `json:"-"`
+	Workspace             string   `json:"-"`
 	Session               string   `json:"-"`
 }
 type TerminalAvailability struct {

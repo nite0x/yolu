@@ -25,7 +25,7 @@ func (a *App) voiceRoutes(mux *http.ServeMux) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /api/voice/sessions", func(w http.ResponseWriter, r *http.Request) {
-		if a.Workspace.ReadOnlySessions {
+		if a.Execution.ReadOnlySessions {
 			httpx.WriteError(w, http.StatusMethodNotAllowed, "对话内容仅供查看")
 			return
 		}
@@ -57,7 +57,7 @@ func (a *App) nativeVoiceHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusForbidden, "请在主机上的 Yolu 中执行此操作")
 		return
 	}
-	if a.Workspace.ReadOnlySessions {
+	if a.Execution.ReadOnlySessions {
 		httpx.WriteError(w, http.StatusMethodNotAllowed, "对话内容仅供查看")
 		return
 	}

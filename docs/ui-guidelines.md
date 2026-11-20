@@ -29,7 +29,9 @@ Use component-level APIs for caller-specific labels and actions. For example, `C
 
 ## Layout and surfaces
 
-Use `WorkspaceSplitLayout` for a list/detail page with two participating panes. Use `WorkspacePane` for the list and detail surfaces. Static HTML and legacy controllers apply the same `workspace-pane` class. The global assistant uses a single panel that switches between the conversation and its history.
+Workspace and project routes show a single list or detail surface at every viewport size. Their lists share `resource-list-page` and the existing creation, search and filter controls. Details use the full surface and pair a list breadcrumb with `ResourceSwitcherTrigger`. The switcher orders recently opened items by environment and identity, then offers the remaining items through search. Returning to a list restores its search, filters, scroll position and focused row.
+
+Use `WorkspaceSplitLayout` when a workflow requires two simultaneously visible panes, such as browsing conversations. Use `WorkspacePane` for the list and detail surfaces. Static HTML and legacy controllers apply the same `workspace-pane` class. The global assistant uses a single panel that switches between the conversation and its history.
 
 ```tsx
 import {WorkspacePane, WorkspaceSplitLayout} from "@/workspace/page-surface";
@@ -58,7 +60,7 @@ import {WorkspacePane, WorkspaceSplitLayout} from "@/workspace/page-surface";
 
 Keep the canvas, pane gap and raised surfaces at the application-frame layer. Pane contents use the available width with `min-width: 0` and a bounded scroll region. Give list and detail areas independent scrolling when the workflow requires both. Reuse `setupSplitResize` and the corresponding saved preference when a divider is adjustable.
 
-At narrow widths, show the appropriate list or detail pane and provide a keyboard-accessible return control. Preserve selection, unsent text and reading position while switching panes. Compare browser and desktop at the same viewport sizes.
+At narrow widths, keep the return control and switcher visible as the resource header wraps. For split conversation views, show the active pane and provide a keyboard-accessible return control. Preserve selection, unsent text and reading position while switching panes. Compare browser and desktop at the same viewport sizes.
 
 ## Color and typography
 
@@ -81,14 +83,14 @@ Use `--font-sans` for application text and `--font-mono` for code and paths. Exi
 
 Use `ListCreateButton` for a list's primary creation action and `ListSearch`/`ListFilter` when the workflow needs search or filtering. Conversation lists use `ConversationList`, including its selected state, date groups, timestamps, truncation and focus styling. Put resource identity and essential state in the row. Detail views carry longer explanations and secondary actions.
 
-Use `WorkingDirectoryTable` and `WorkingDirectoryRow` in project and workspace details. Both show the directory, branch and copyable path together, with separate remote sync and local change columns. Keep the open-tool selector, files and changes, terminal and more actions in the same order. The project view adds a linked-workspace column. Callers supply directory availability, context-specific details, recovery notices and actions. The table stacks its fields when the pane narrows, including when the list divider moves.
+Use `WorkingDirectoryTable` and `WorkingDirectoryRow` in project and workspace details. Both show the directory, branch and copyable path together, with separate remote sync and local change columns. Keep the open-tool selector, files and changes, terminal and more actions in the same order. Workspace details use a tinted overview for the goal, conversation actions and directory status filters. The project view adds a linked-workspace column, gives the primary directory a tinted row and groups derived worktrees by attention signals. These groups describe visible Git state. Callers supply directory availability, context-specific details, recovery notices and actions. The table stacks its fields when its containing surface narrows. A link between a workspace and its project detail supplies the directory path in the route so the destination can focus and reveal the matching row.
 
 Use `ConversationHeader` and `ConversationStatusBadge` for both native and global-assistant conversations. The header title identifies the active conversation. Context and controls use the component's existing slots.
 
 Forms use the shared `Button`, `Input`, `Textarea`, `NativeSelect`, `Label`, `Dialog` and `Alert` components. Choose variants and sizes from the shared component API. Keep one clear primary action for the current operation. Preserve editable values during polling, navigation and failed requests. Place feedback next to the affected action or field and expose pending state while preventing duplicate delivery.
 
 Project registration uses `ProjectForm` and `ProjectScanResults` for both entry
-points. Its fixed header and footer share the task dialog scroll layout. The
+points. Its fixed header and footer share the workspace dialog scroll layout. The
 project controller owns scan results, editable names, selection and per-item
 registration outcomes. Changing the scan root, source or execution environment
 invalidates the results. Successful registrations return to the invoking
@@ -104,13 +106,13 @@ The shared composer owns its input shell, resize behavior, send/stop controls, k
 
 The shared composer exposes Codex voice dictation in both entry points. `frontend/chat/voice-input.ts` owns microphone and WebRTC lifetime, while `use-voice-input.ts` appends input transcript fragments through the existing composer runtime. Dictation preserves existing draft text and requires explicit sending after it stops. Connecting, listening, finishing and failed states stay next to the input. Hiding or unmounting the pane releases the microphone and signaling session. The local backend uses the installed Codex daemon and its login to negotiate a V3 WebRTC session. Linux desktop webviews without WebRTC use Codex's packaged `codex-voice-host` for capture and transport, and receive user transcript fragments over an authenticated local stream. Client-managed handoffs keep the recording separate from coding turns.
 
-Use the shared Markdown/message rendering, history-loading controls and run indicator. Display tools and attachments according to the runtime's actual capabilities. Empty-state text should help the user start the current task. Keep release planning and implementation progress in documentation.
+Use the shared Markdown/message rendering, history-loading controls and run indicator. Display tools and attachments according to the runtime's actual capabilities. Empty-state text should help the user start their current work. Keep release planning and implementation progress in documentation.
 
 Open the global assistant from the rail footer or **Alt+Shift+Y**. The shared page host owns the panel across workspace and native conversation navigation. Above 760px it sits at the right edge while the current page remains visible. At 760px and below it fills the content area and moves focus into the panel. Closing returns focus to the invoking page and preserves assistant state. The panel header identifies the assistant and exposes history and the context captured when it opened. The footer launcher shows whether an assistant action is running or awaiting approval.
 
 Application operations use `frontend/chat/assistant-actions.tsx` as custom tool content inside the corresponding assistant reply. `assistant-messages.ts` associates queries and plans with loaded transcript turns by `run_id`, including cards that arrive before the final reply text. The cards scroll with conversation history. Pending plans remain expanded and directly actionable. Resource cards carry validated environment/kind/ID targets and use the shared navigation bridge. Plan cards show resolved targets and preconditions, bind clicks to the displayed revision/digest, and expose confirmation, cancellation, member progress and recovery. Render structured domain errors as text with localized application messages. Preserve user-authored names, paths and content. Completed plans keep their result links and detailed domain outcomes available.
 
-Plan headers identify the operation, resource name and current state. Reviews show the development goal, working directory and grouped project choices with their modes, branches and source refs. Full technical reviews include internal identifiers, baseline commits and plan versions in a disclosure. Pending plans omit empty execution progress. The footer shows the execution environment and groups cancellation with the primary confirmation action. Query results use the same compact disclosures and resource rows, with choices and errors expanded. `frontend/chat/assistant-actions.css` scopes these layouts to the shared chat panel and adapts them to the panel width.
+Plan headers identify the operation, resource name and current state. Reviews show the development goal, working directory and grouped project choices with their modes, branches and source refs. When creation includes a Codex launch, the review shows the first instruction, main and additional directories, model, and permissions above the confirmation controls. Full technical reviews include internal identifiers, baseline commits and plan versions in a disclosure. Pending plans omit empty execution progress. The footer shows the execution environment and groups cancellation with the primary confirmation action. Query results use the same compact disclosures and resource rows, with choices and errors expanded. `frontend/chat/assistant-actions.css` scopes these layouts to the shared chat panel and adapts them to the panel width.
 
 ## Accessibility and localization
 

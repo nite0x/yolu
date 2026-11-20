@@ -55,7 +55,7 @@ test("Codex WebRTC signaling uses the local authenticated API and appends only u
     h.message({type: "input_transcript.added", item: {id: "one", text: "语音"}});
     h.message({type: "input_transcript.added", item: {id: "one", text: "语音"}});
     h.message({type: "output_transcript.added", item: {id: "reply", text: "自动回答"}});
-    h.message({type: "delegation.created", item: {content: [{text: "执行任务"}]}});
+    h.message({type: "delegation.created", item: {content: [{text: "执行工作区"}]}});
     h.message({type: "turn.done", turn: {role: "user", transcript: "语音"}});
     assert.deepEqual(h.transcripts, ["语音"]);
     assert.equal(h.requests.length, 1);

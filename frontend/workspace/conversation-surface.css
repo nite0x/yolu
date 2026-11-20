@@ -11,12 +11,12 @@
 .conversation-surface-header .chat-panel-heading{flex:1;overflow:hidden}
 .conversation-surface-header .chat-panel-toolbar .chat-panel-title{flex:1;max-width:100%;margin:0;min-width:0;font-size:14px;line-height:20px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .conversation-surface-header .chat-panel-actions{flex-shrink:0;gap:4px}
-.conversation-surface-header .chat-workspace-tasks{display:flex;align-items:center;gap:4px;min-width:0;max-width:40%;padding-right:8px;border-right:1px solid var(--border);font-size:12px;color:var(--muted-foreground);white-space:nowrap}
-.conversation-surface-header .chat-workspace-tasks>span{flex-shrink:0}
+.conversation-surface-header .chat-workspace-links{display:flex;align-items:center;gap:4px;min-width:0;max-width:40%;padding-right:8px;border-right:1px solid var(--border);font-size:12px;color:var(--muted-foreground);white-space:nowrap}
+.conversation-surface-header .chat-workspace-links>span{flex-shrink:0}
 .conversation-surface-header .chat-workspace-link{cursor:pointer;padding:2px 4px;border:0;border-radius:4px;background:transparent;text-align:left;color:var(--foreground);font:inherit}
 .conversation-surface-header .chat-workspace-link:hover{background:var(--accent);text-decoration:underline}
 .conversation-surface-header .chat-workspace-link:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
-.conversation-surface-header .chat-workspace-tasks .chat-workspace-link{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conversation-surface-header .chat-workspace-links .chat-workspace-link{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .conversation-surface-header .chat-workspace-context{min-width:0;margin-top:8px;font-size:12px;color:var(--muted-foreground)}
 .conversation-surface-header .chat-workspace-context>summary{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;cursor:pointer;list-style:none;min-height:28px}
 .conversation-surface-header .chat-workspace-context>summary::-webkit-details-marker{display:none}
@@ -42,7 +42,7 @@
 html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.chat-panel-header{background:color-mix(in srgb,var(--primary) 7%,var(--background))}
 @container chat-panel (max-width:620px){
   .conversation-surface-header .chat-panel-heading{flex-direction:column;align-items:flex-start;gap:2px}
-  .conversation-surface-header .chat-workspace-tasks{max-width:100%;padding-right:0;border-right:0}
+  .conversation-surface-header .chat-workspace-links{max-width:100%;padding-right:0;border-right:0}
   .conversation-surface-header .chat-panel-toolbar .chat-panel-title{width:100%}
   .conversation-surface-header .chat-workspace-context>summary::after{content:"▾"}
   .conversation-surface-header .chat-workspace-context[open]>summary::after{content:"▴"}

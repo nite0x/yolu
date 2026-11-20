@@ -3,8 +3,8 @@ package session
 import (
 	"net/http"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
-	"worktree-hub/internal/workspace"
 )
 
 func (a *Service) UploadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
@@ -19,8 +19,8 @@ func (a *Service) UploadAttachmentHandler(w http.ResponseWriter, r *http.Request
 		httpx.WriteError(w, 400, "缺少文件内容")
 		return
 	}
-	ctx := workspace.WithClient(r.Context(), a.Workspace.Remote)
-	path, err := workspace.StoreAttachment(ctx, a.Workspace.DataDir, input.Name, input.Data)
+	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
+	path, err := execution.StoreAttachment(ctx, a.Execution.DataDir, input.Name, input.Data)
 	if err != nil {
 		httpx.WriteError(w, 400, "附件保存失败："+err.Error())
 		return

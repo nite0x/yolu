@@ -33,14 +33,14 @@ func TestDataDirectoryLockAndAuthenticatedStop(t *testing.T) {
 	a := testApp(t)
 	stopped := make(chan struct{})
 	a.shutdown = func() { close(stopped) }
-	a.Workspace.Mu.Lock()
+	a.Execution.Mu.Lock()
 	code, _ := call(t, a, "POST", "/api/service/stop", nil)
-	a.Workspace.Mu.Unlock()
-	if code != 409 || a.Workspace.Closing.Load() {
+	a.Execution.Mu.Unlock()
+	if code != 409 || a.Execution.Closing.Load() {
 		t.Fatal("stop accepted an active write")
 	}
 	code, _ = call(t, a, "POST", "/api/service/stop", nil)
-	if code != 200 || !a.Workspace.Closing.Load() {
+	if code != 200 || !a.Execution.Closing.Load() {
 		t.Fatal("stop did not close ingress")
 	}
 	code, _ = call(t, a, "POST", "/api/projects", map[string]string{"path": os.TempDir()})
@@ -51,14 +51,14 @@ func TestDataDirectoryLockAndAuthenticatedStop(t *testing.T) {
 
 func TestDesktopHandshakeAuthenticatesAndChecksLiveIdentity(t *testing.T) {
 	a := testApp(t)
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	server := httptest.NewServer(a.handler())
 	defer server.Close()
 	info := a.desktopInfo(server.URL)
-	if err := writeDesktopService(a.Workspace.DataDir, info); err != nil {
+	if err := writeDesktopService(a.Execution.DataDir, info); err != nil {
 		t.Fatal(err)
 	}
-	got, err := readDesktopService(a.Workspace.DataDir)
+	got, err := readDesktopService(a.Execution.DataDir)
 	if err != nil || got != info {
 		t.Fatalf("handshake: %+v %v", got, err)
 	}
@@ -97,7 +97,7 @@ func TestDesktopHandshakeAuthenticatesAndChecksLiveIdentity(t *testing.T) {
 
 func TestDesktopReuseRejectsDifferentVersionAndRoot(t *testing.T) {
 	a := testApp(t)
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	info := a.desktopInfo("http://127.0.0.1:4317")
 	data, err := filepath.EvalSymlinks(info.DataDir)
 	if err != nil {
@@ -181,7 +181,7 @@ func TestPrepareUpgradeIsIdempotentAndDoesNotTrustStaleDescriptors(t *testing.T)
 
 func TestPrepareUpgradeRejectsBusyBackend(t *testing.T) {
 	a := testApp(t)
-	unlock, err := platform.LockDataDirectory(a.Workspace.DataDir)
+	unlock, err := platform.LockDataDirectory(a.Execution.DataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,19 +192,19 @@ func TestPrepareUpgradeRejectsBusyBackend(t *testing.T) {
 	if err := writeDesktopService(info.DataDir, info); err != nil {
 		t.Fatal(err)
 	}
-	a.Workspace.Mu.Lock()
+	a.Execution.Mu.Lock()
 	err = prepareDesktopUpgrade(info.DataDir)
-	a.Workspace.Mu.Unlock()
-	if err == nil || a.Workspace.Closing.Load() {
+	a.Execution.Mu.Unlock()
+	if err == nil || a.Execution.Closing.Load() {
 		t.Fatal("installer interrupted an active operation", err)
 	}
 	if _, err := readDesktopService(info.DataDir); err != nil {
 		t.Fatal("backend no longer healthy", err)
 	}
-	a.Workspace.GitActivity.RLock()
+	a.Execution.GitActivity.RLock()
 	err = prepareDesktopUpgrade(info.DataDir)
-	a.Workspace.GitActivity.RUnlock()
-	if err == nil || a.Workspace.Closing.Load() {
+	a.Execution.GitActivity.RUnlock()
+	if err == nil || a.Execution.Closing.Load() {
 		t.Fatal("installer interrupted a Git network operation", err)
 	}
 }

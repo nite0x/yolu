@@ -42,7 +42,9 @@ function capabilityLabel(capability: string) {
     "git.worktree.list": uiText("工作目录"),
     "conversation.list": uiText("查询对话"),
     "conversation.open": uiText("打开对话"),
+    "conversation.start_codex": uiText("启动 Codex 对话"),
     "app.navigate": uiText("打开资源"),
+    project_scan: uiText("扫描目录"),
     app_get_context: uiText("当前上下文"),
     workspace_attach_project: uiText("添加参与项目"),
     git_worktree_list: uiText("工作目录"),
@@ -126,9 +128,7 @@ function reviewLabel(key: string) {
     primary_project_id: uiText("主项目标识"),
     common_dir: uiText("仓库公共目录"),
     folder: uiText("目录名称"),
-    workspace: uiText("工作区"),
-    requirement: uiText("工作区"),
-    requirement_id: uiText("工作区标识"),
+    workspace: uiText("工作区记录"),
     workspace_id: uiText("工作区标识"),
     members: uiText("参与项目"),
     mode: uiText("目录模式"),
@@ -140,11 +140,17 @@ function reviewLabel(key: string) {
     state: uiText("状态"),
     error: uiText("错误"),
     id: uiText("标识"),
-    has_workspace: uiText("创建工作区目录"),
+    has_directory: uiText("创建工作区目录"),
     existing: uiText("现有资源"),
     warnings: uiText("提示"),
     fingerprint: uiText("状态校验值"),
     operation: uiText("操作详情"),
+    codex: uiText("启动 Codex 对话"),
+    first_instruction: uiText("首条指令"),
+    additional_directories: uiText("额外工作目录"),
+    settings: uiText("设置"),
+    model: uiText("模型"),
+    permission: uiText("权限"),
     added: uiText("新增参与项目"),
     items: uiText("查询结果"),
     created_at: uiText("创建时间"),
@@ -171,8 +177,8 @@ function reviewLabel(key: string) {
     sync_behind: uiText("待拉取提交数"),
     merge_head: uiText("合并目标"),
     conflicts: uiText("冲突文件"),
-    requirements: uiText("关联工作区"),
-    requirement_name: uiText("工作区名称"),
+    workspaces: uiText("关联工作区"),
+    workspace_name: uiText("工作区名称"),
     expected_branch: uiText("预期分支"),
     status: uiText("状态"),
     capability: uiText("应用能力"),
@@ -213,6 +219,17 @@ function ReviewFields({ value, field }: {value: unknown; field?: string}) {
 function PlanReview({plan, operation, target}: {plan: AssistantPlan; operation: Record<string, unknown>; target?: Record<string, unknown>}) {
   if (!target) return <ReviewFields value={Object.keys(plan.review || {}).length ? plan.review : plan.arguments} />;
   const members = (operation.added || target.members) as Record<string, unknown>[] | undefined;
+  const codex = operation.codex as {
+    first_instruction: string;
+    cwd: string;
+    additional_directories?: string[];
+    settings?: {model?: string; permission?: string};
+  } | undefined;
+  const permissionLabels: Record<string, string> = {
+    ask: uiText("请求批准"),
+    auto: uiText("帮我批准"),
+    full: uiText("完全访问权限"),
+  };
   return <div className="assistant-plan-review">
     {typeof target.description === "string" && target.description && <p className="assistant-plan-description">{target.description}</p>}
     {typeof target.path === "string" && target.path && <div className="assistant-plan-location">
@@ -235,6 +252,19 @@ function PlanReview({plan, operation, target}: {plan: AssistantPlan; operation: 
         </dl>
       </li>)}</ul>
     </section> : null}
+    {codex && <section className="assistant-plan-projects" aria-label={uiText("启动 Codex 对话")}>
+      <h3>{uiText("工作目录就绪后启动 Codex")}</h3>
+      <dl className="space-y-2">
+        <div><dt>{uiText("首条指令")}</dt><dd className="assistant-plan-description">{codex.first_instruction}</dd></div>
+        <div><dt>{uiText("主工作目录")}</dt><dd><code className="[overflow-wrap:anywhere]">{codex.cwd}</code></dd></div>
+        {!!codex.additional_directories?.length && <div>
+          <dt>{uiText("额外工作目录")}</dt>
+          <dd><ul>{codex.additional_directories.map((path) => <li key={path}><code className="[overflow-wrap:anywhere]">{path}</code></li>)}</ul></dd>
+        </div>}
+        <div><dt>{uiText("模型")}</dt><dd>{codex.settings?.model || uiText("沿用 Codex 默认模型")}</dd></div>
+        <div><dt>{uiText("权限")}</dt><dd>{permissionLabels[codex.settings?.permission || ""] || uiText("沿用 Codex 默认权限")}</dd></div>
+      </dl>
+    </section>}
     <details className="assistant-action-details"><summary><ChevronDown aria-hidden="true" />{uiText("完整计划")}</summary><div><p className="mb-3 text-muted-foreground">{uiText("执行环境 {0} · 计划版本 {1}", plan.environment_id, plan.revision)}</p><ReviewFields value={plan.review} /></div></details>
   </div>;
 }
@@ -278,7 +308,7 @@ function PlanCard({plan, controller}: {plan: AssistantPlan; controller: GlobalAs
   const deciding = !!state.deciding[plan.id];
   const error = state.decisionErrors[plan.id] || plan.error;
   const operation = (plan.review?.operation || plan.review || {}) as Record<string, unknown>;
-  const target = (operation.requirement || operation.project) as Record<string, unknown> | undefined;
+  const target = (operation.workspace || operation.project) as Record<string, unknown> | undefined;
   const name = target?.name || plan.arguments?.name;
   const working = ["running", "cancelling"].includes(plan.status);
   const needsAttention = ["failed", "partial", "conflict", "unknown"].includes(plan.status);
@@ -303,7 +333,7 @@ function PlanCard({plan, controller}: {plan: AssistantPlan; controller: GlobalAs
         {error && <Alert variant="destructive"><AlertDescription>{uiText(error)}</AlertDescription></Alert>}
         {plan.status === "conflict" && <p>{uiText("项目、路径或分支已变化，请让助手重新生成计划。")}</p>}
         {plan.status === "unknown" && <p>{uiText("执行结果需要核实。可检查已创建的资源并刷新结果。")}</p>}
-        {plan.status === "partial" && <p>{uiText("已完成的项目已保留。打开工作区查看失败原因并继续处理。")}</p>}
+        {plan.status === "partial" && !operation.codex && <p>{uiText("已完成的项目已保留。打开工作区查看失败原因并继续处理。")}</p>}
         <ResourceList resources={plan.resources} controller={controller} />
       </div>
       <footer className="assistant-plan-footer">

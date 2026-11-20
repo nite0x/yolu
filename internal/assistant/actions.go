@@ -118,14 +118,15 @@ func compactToolResult(result any) any {
 	if p, ok := result.(store.AssistantPlan); ok {
 		var review struct {
 			Operation struct {
-				Requirement model.Requirement `json:"requirement"`
-				Project     model.Project     `json:"project"`
-				Added       []model.Member    `json:"added"`
+				Workspace model.Workspace `json:"workspace"`
+				Project   model.Project   `json:"project"`
+				Added     []model.Member  `json:"added"`
+				Codex     json.RawMessage `json:"codex"`
 			} `json:"operation"`
 		}
 		_ = json.Unmarshal(p.Review, &review)
-		target := review.Operation.Requirement
-		return map[string]any{"plan_id": p.ID, "revision": p.Revision, "status": p.Status, "capability": p.Capability, "environment_id": p.EnvironmentID, "review_summary": map[string]any{"workspace_name": target.Name, "workspace_path": target.Path, "project_name": review.Operation.Project.Name, "project_path": review.Operation.Project.Path, "project_count": len(target.Members), "added_project_count": len(review.Operation.Added)}, "message": "请在应用中审核计划并确认后执行。"}
+		target := review.Operation.Workspace
+		return map[string]any{"plan_id": p.ID, "revision": p.Revision, "status": p.Status, "capability": p.Capability, "environment_id": p.EnvironmentID, "review_summary": map[string]any{"workspace_name": target.Name, "workspace_path": target.Path, "project_name": review.Operation.Project.Name, "project_path": review.Operation.Project.Path, "project_count": len(target.Members), "added_project_count": len(review.Operation.Added), "starts_codex": len(review.Operation.Codex) > 0}, "message": "请在应用中审核计划并确认后执行。"}
 	}
 	return result
 }
@@ -156,14 +157,14 @@ func (s *Service) propose(ctx context.Context, run store.AssistantRun, c Capabil
 	steps := []store.AssistantStep{{ID: "execute", Label: c.Name, Status: "pending"}}
 	var members struct {
 		Operation struct {
-			Requirement struct {
+			Workspace struct {
 				Members []model.Member `json:"members"`
-			} `json:"requirement"`
+			} `json:"workspace"`
 			Added []model.Member `json:"added"`
 		} `json:"operation"`
 	}
 	if json.Unmarshal(raw, &members) == nil {
-		selected := members.Operation.Requirement.Members
+		selected := members.Operation.Workspace.Members
 		if members.Operation.Added != nil {
 			selected = members.Operation.Added
 		}

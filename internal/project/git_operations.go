@@ -12,10 +12,10 @@ import (
 	"runtime"
 	"strings"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 type GitBranch struct {
@@ -46,7 +46,7 @@ type GitAction struct {
 	Source         string `json:"source"`
 	Path           string `json:"path"`
 	Track          bool   `json:"track"`
-	RequirementID  string `json:"requirement_id"`
+	WorkspaceID    string `json:"workspace_id"`
 	ExpectedBranch string `json:"expected_branch"`
 	ExpectedHead   string `json:"expected_head"`
 	SourceCommit   string `json:"source_commit"`
@@ -56,11 +56,11 @@ type GitAction struct {
 }
 
 func (a *Service) RegisteredProject(ctx context.Context, id string) (model.Project, error) {
-	return LookupProject(ctx, a.Workspace, id)
+	return LookupProject(ctx, a.Execution, id)
 }
 
 // LookupProject validates the registered repository without starting a status cache.
-func LookupProject(ctx context.Context, environment *workspace.Service, id string) (model.Project, error) {
+func LookupProject(ctx context.Context, environment *execution.Service, id string) (model.Project, error) {
 	ps, err := environment.Store.ProjectMap()
 	if err != nil {
 		return model.Project{}, err
@@ -69,11 +69,11 @@ func LookupProject(ctx context.Context, environment *workspace.Service, id strin
 	if !ok {
 		return model.Project{}, sql.ErrNoRows
 	}
-	common, err := workspace.Git(ctx, p.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	common, err := execution.Git(ctx, p.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
 		return model.Project{}, err
 	}
-	resolved, err := workspace.Eval(ctx, strings.TrimSpace(common))
+	resolved, err := execution.Eval(ctx, strings.TrimSpace(common))
 	if err != nil || resolved != p.CommonDir {
 		return model.Project{}, fmt.Errorf("仓库路径已变更，请检查登记目录")
 	}
@@ -92,7 +92,7 @@ func InspectGit(ctx context.Context, p model.Project) (GitOverview, error) {
 			v.Current = t.Branch
 		}
 	}
-	raw, err := workspace.Git(ctx, p.Path, "for-each-ref", "--format=%(refname)%09%(objectname)%09%(upstream:short)%09%(symref)", "refs/heads", "refs/remotes")
+	raw, err := execution.Git(ctx, p.Path, "for-each-ref", "--format=%(refname)%09%(objectname)%09%(upstream:short)%09%(symref)", "refs/heads", "refs/remotes")
 	if err != nil {
 		return v, err
 	}
@@ -124,15 +124,15 @@ func InspectGit(ctx context.Context, p model.Project) (GitOverview, error) {
 		}
 		v.Branches = append(v.Branches, b)
 	}
-	remotes, err := workspace.Git(ctx, p.Path, "remote")
+	remotes, err := execution.Git(ctx, p.Path, "remote")
 	if err != nil {
 		return v, err
 	}
 	for _, name := range strings.Fields(remotes) {
-		u, _ := workspace.Git(ctx, p.Path, "remote", "get-url", name)
+		u, _ := execution.Git(ctx, p.Path, "remote", "get-url", name)
 		v.Remotes = append(v.Remotes, GitRemote{Name: name, URL: RedactRemote(strings.TrimSpace(u))})
 	}
-	v.MasterHint = "创建新分支时可选择任意本地或远端来源；任务也可以直接使用已有工作目录。"
+	v.MasterHint = "创建新分支时可选择任意本地或远端来源；工作区也可以直接使用已有工作目录。"
 	return v, nil
 }
 
@@ -163,7 +163,7 @@ func (a *Service) GitOverviewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Credentials = a.CredentialSupport()
-	qs, err := a.Workspace.Store.Requirements()
+	qs, err := a.Execution.Store.Workspaces()
 	if err != nil {
 		httpx.DbError(w, err)
 		return
@@ -172,7 +172,7 @@ func (a *Service) GitOverviewHandler(w http.ResponseWriter, r *http.Request) {
 		for _, q := range qs {
 			for _, m := range q.Members {
 				if m.ProjectID == p.ID && m.Path == v.Project.Worktrees[i].Path {
-					v.Project.Worktrees[i].Requirements = append(v.Project.Worktrees[i].Requirements, model.TaskLink{ID: q.ID, Name: q.Name})
+					v.Project.Worktrees[i].Workspaces = append(v.Project.Worktrees[i].Workspaces, model.WorkspaceLink{ID: q.ID, Name: q.Name})
 				}
 			}
 		}
@@ -194,15 +194,15 @@ func selectedWorktree(ctx context.Context, p model.Project, path string) (model.
 	path = platform.CleanWorkspacePath(path)
 	// Resolve directory aliases at the API boundary, but never follow a
 	// substituted worktree entry. Git reports canonical paths on macOS.
-	st, err := workspace.Stat(ctx, path, false)
+	st, err := execution.Stat(ctx, path, false)
 	if err != nil || st.Mode()&os.ModeSymlink != 0 {
 		return model.Worktree{}, fmt.Errorf("所选 Worktree 路径不可用或是符号链接")
 	}
-	path, err = workspace.Normalize(ctx, path)
+	path, err = execution.Normalize(ctx, path)
 	if err != nil {
 		return model.Worktree{}, err
 	}
-	raw, err := workspace.Git(ctx, p.Path, "worktree", "list", "--porcelain", "-z")
+	raw, err := execution.Git(ctx, p.Path, "worktree", "list", "--porcelain", "-z")
 	if err != nil {
 		return model.Worktree{}, err
 	}
@@ -212,11 +212,11 @@ func selectedWorktree(ctx context.Context, p model.Project, path string) (model.
 			if t.Bare || t.Missing || t.Prunable || t.Error != "" {
 				return model.Worktree{}, fmt.Errorf("所选 Worktree 不可用，请先修复")
 			}
-			common, err := workspace.Git(ctx, path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+			common, err := execution.Git(ctx, path, "rev-parse", "--path-format=absolute", "--git-common-dir")
 			if err != nil {
 				return model.Worktree{}, err
 			}
-			resolved, err := workspace.Eval(ctx, strings.TrimSpace(common))
+			resolved, err := execution.Eval(ctx, strings.TrimSpace(common))
 			if err != nil || !platform.SameWorkspacePath(resolved, p.CommonDir) {
 				return model.Worktree{}, fmt.Errorf("所选目录已不属于该仓库")
 			}
@@ -275,15 +275,15 @@ func writeGitActionError(w http.ResponseWriter, action string, err error) {
 }
 
 func (a *Service) LaunchGitTerminal(p model.Project, path, remote string) (model.LaunchPlan, error) {
-	if a.Workspace.ReadOnlySessions || runtime.GOOS == "windows" || a.Workspace.Remote != nil {
+	if a.Execution.ReadOnlySessions || runtime.GOOS == "windows" || a.Execution.Remote != nil {
 		plan := model.LaunchPlan{Tool: "git", Title: "Git · " + p.Name, Cwd: path, Args: []string{"status", "--short", "--branch"}}
 		if remote != "" {
 			plan.Args = append(a.CredentialOptions(), "fetch", "--prune", "--", remote, "+refs/heads/*:refs/remotes/"+remote+"/*")
 		}
-		plan.Command = platform.DisplayCommand("git", plan.Args, runtime.GOOS == "windows" && a.Workspace.Remote == nil)
-		return plan, a.Workspace.LaunchSimpleTerminal(plan)
+		plan.Command = platform.DisplayCommand("git", plan.Args, runtime.GOOS == "windows" && a.Execution.Remote == nil)
+		return plan, a.Execution.LaunchSimpleTerminal(plan)
 	}
-	plan := model.LaunchPlan{Title: "Git · " + p.Name, Cwd: path, Script: filepath.Join(a.Workspace.DataDir, "launches", model.NewID()+".sh")}
+	plan := model.LaunchPlan{Title: "Git · " + p.Name, Cwd: path, Script: filepath.Join(a.Execution.DataDir, "launches", model.NewID()+".sh")}
 	command := "git status --short --branch"
 	if remote != "" {
 		parts := []string{"GIT_TERMINAL_PROMPT=1 git"}
@@ -307,7 +307,7 @@ func (a *Service) LaunchGitTerminal(p model.Project, path, remote string) (model
 	if err := os.WriteFile(plan.Script, []byte(script), 0700); err != nil {
 		return plan, err
 	}
-	if err := a.Workspace.Launch(plan, nil); err != nil {
+	if err := a.Execution.Launch(plan, nil); err != nil {
 		_ = os.Remove(plan.Script)
 		return plan, err
 	}
@@ -340,13 +340,13 @@ func EnsureTrackingRefspec(ctx context.Context, p model.Project, v GitOverview, 
 	exact := "refs/heads/" + branchName + ":refs/remotes/" + name
 	broad := "refs/heads/*:refs/remotes/" + remote + "/*"
 	key := "remote." + remote + ".fetch"
-	configured, _ := workspace.Git(ctx, p.Path, "config", "--get-all", key)
+	configured, _ := execution.Git(ctx, p.Path, "config", "--get-all", key)
 	for _, line := range strings.Split(configured, "\n") {
 		rule := strings.TrimPrefix(line, "+")
 		if rule == exact || rule == broad {
 			return nil
 		}
 	}
-	_, err := workspace.Git(ctx, p.Path, "config", "--local", "--add", key, "+"+exact)
+	_, err := execution.Git(ctx, p.Path, "config", "--local", "--add", key, "+"+exact)
 	return err
 }

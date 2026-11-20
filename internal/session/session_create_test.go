@@ -13,15 +13,15 @@ import (
 
 func TestNewSessionStartsFirstTurnOnCreatingConnectionAndIsIdempotent(t *testing.T) {
 	a, q, c, _ := chatFixture(t)
-	_, _ = a.Workspace.Store.DB.Exec(`DELETE FROM requirement_sessions WHERE requirement_id=?`, q.ID)
-	endpoint := "/api/requirements/" + q.ID + "/sessions/new"
-	input := map[string]string{"text": "检查任务说明并继续实现", "project_id": q.PrimaryProjectID, "request_id": "create-once"}
+	_, _ = a.Execution.Store.DB.Exec(`DELETE FROM workspace_sessions WHERE workspace_id=?`, q.ID)
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
+	input := map[string]string{"text": "检查工作区说明并继续实现", "project_id": q.PrimaryProjectID, "request_id": "create-once"}
 	code, raw := call(t, a, "POST", endpoint, input)
 	if code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	var result struct {
-		Session RequirementSession `json:"session"`
+		Session WorkspaceSession `json:"session"`
 	}
 	_ = json.Unmarshal(raw, &result)
 	if result.Session.ID != "session" || result.Session.Source != "workbench" {
@@ -41,8 +41,8 @@ func TestNewSessionStartsFirstTurnOnCreatingConnectionAndIsIdempotent(t *testing
 	if params["cwd"] != q.Members[0].Path {
 		t.Fatal(params)
 	}
-	a.Workspace.Launch = func(model.LaunchPlan, func()) error { return nil }
-	if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/launch", nil); code != 200 {
+	a.Execution.Launch = func(model.LaunchPlan, func()) error { return nil }
+	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/launch", nil); code != 200 {
 		t.Fatalf("independent terminal blocked during first sidebar turn: %d %s", code, raw)
 	}
 	c.event("turn/completed", map[string]any{"turn": map[string]any{"id": "turn", "status": "completed"}})
@@ -63,7 +63,7 @@ func (c *failingCreateClient) Call(ctx context.Context, method string, params, o
 func TestUncertainNewSessionNeverCreatesAgainOnRetry(t *testing.T) {
 	a, q, c, _ := chatFixture(t)
 	a.openLive = func(context.Context) (codex.LiveClient, error) { return &failingCreateClient{c}, nil }
-	endpoint := "/api/requirements/" + q.ID + "/sessions/new"
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
 	input := map[string]string{"text": "hello", "request_id": "uncertain"}
 	if code, _ := call(t, a, "POST", endpoint, input); code != 503 {
 		t.Fatal(code)
@@ -77,13 +77,13 @@ func TestUncertainNewSessionNeverCreatesAgainOnRetry(t *testing.T) {
 		t.Fatal(c.methods)
 	}
 }
-func TestNewSessionRejectsForeignProjectsAndArchivedRequirements(t *testing.T) {
+func TestNewSessionRejectsForeignProjectsAndArchivedWorkspaces(t *testing.T) {
 	a, q, c, _ := chatFixture(t)
-	endpoint := "/api/requirements/" + q.ID + "/sessions/new"
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
 	if code, _ := call(t, a, "POST", endpoint, map[string]string{"text": "hello", "request_id": "foreign", "project_id": "foreign"}); code != 400 {
 		t.Fatal(code)
 	}
-	_, _ = a.Workspace.Store.DB.Exec(`UPDATE requirements SET state='archived' WHERE id=?`, q.ID)
+	_, _ = a.Execution.Store.DB.Exec(`UPDATE workspaces SET state='archived' WHERE id=?`, q.ID)
 	if code, _ := call(t, a, "POST", endpoint, map[string]string{"text": "hello", "request_id": "archived"}); code != 409 {
 		t.Fatal(code)
 	}

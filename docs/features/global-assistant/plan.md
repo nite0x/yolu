@@ -2,7 +2,7 @@
 
 ## Status and use
 
-Prepared on 2026-11-16 against `main` at `6e5403a67c46b67448c2eb9d449f01c5b4f63abb`. The original proposal is preserved below with the phase 1 implementation review and verification evidence. Phases 1–3 are implemented and verified. Phase 4 remains pending. The original conversation's four-stage details and interactive selections were unavailable in the retrieved text, so the phases below were reconstructed for review. The [specification](spec.md) defines the intended behavior and acceptance criteria.
+Prepared on 2026-11-16 against `main` at `6e5403a67c46b67448c2eb9d449f01c5b4f63abb`. The original proposal is preserved below with the phase 1 implementation review and verification evidence. Phases 1–4 are implemented. The phase reviews record their verification and follow-up work. The original conversation's four-stage details and interactive selections were unavailable in the retrieved text, so the phases below were reconstructed for review. The [specification](spec.md) defines the intended behavior and acceptance criteria.
 
 The design handoff delivered two documents. Phase 1 implementation rechecked [AGENTS.md](../../../AGENTS.md), [CONTRIBUTING.md](../../../CONTRIBUTING.md), and the specification, and updated this plan with the actual branch state and verified implementation decisions.
 
@@ -10,13 +10,13 @@ The design handoff delivered two documents. Phase 1 implementation rechecked [AG
 
 | Area | Reviewed evidence | Reuse and remaining work |
 | --- | --- | --- |
-| Product direction | `AGENTS.md`, `docs/brand/yolu/migration.md` | Use workspace terminology, retain task identifiers, and keep cross-project work central |
+| Product direction | `AGENTS.md`, `docs/brand/yolu/migration.md` | Use the workspace model for cross-project development |
 | Documentation | `docs/README.md`, `docs/development.md` | Write English Markdown and add the feature documents under `docs/features/global-assistant/` |
-| Creation | `internal/task/requirements.go`, `internal/task/member_selection.go`, `internal/task/requirement_projects.go` | Reuse preflight, member modes, preparation, warnings, and retry behavior through shared service operations |
+| Creation | `internal/workspace/workspaces.go`, `internal/workspace/member_selection.go`, `internal/workspace/workspace_projects.go` | Reuse preflight, member modes, preparation, warnings, and retry behavior through shared service operations |
 | Registration and Git | `internal/project/projects.go`, `internal/project/routes.go`, `internal/project/service.go` | Preserve registration checks, Git locks, cache invalidation, and worktree coordination |
 | Reads | `internal/overview/state.go`, `internal/app/routes.go` | Reuse resource composition and expose bounded assistant read results |
 | Native conversations | `internal/model/session.go`, `internal/session/session_create.go`, `docs/session-architecture.md` | Preserve independent Codex index and request receipts, resolve assistant history and runtime dispatch |
-| Persistence | `internal/store/store.go`, `internal/store/task_schema.go` | Add migrations and recovery records using existing storage infrastructure |
+| Persistence | `internal/store/store.go`, `internal/store/workspace_schema.go` | Add migrations and recovery records using existing storage infrastructure |
 | Frontend | `docs/development.md`, `web/core/page-host.js` | Reuse React/chat bridges and route host, extend supported routes and validation deliberately |
 | Checks | `CONTRIBUTING.md`, `.github/workflows/checks.yml` | Use the existing suites and isolated workflow smoke test |
 
@@ -45,7 +45,7 @@ The assistant supports the workspace-centered workflow by keeping a directory-in
 | Contract | Implementation decision and evidence |
 | --- | --- |
 | Provider | The user selected the existing authenticated Codex CLI. Reuse `internal/codex.LiveClient` and the ephemeral, tool-disabled thread pattern in `internal/session/session_title.go`. Inherit the installed CLI model and authentication. Credentials remain in Codex configuration. |
-| Identity and ownership | Local application-owned assistant IDs have an explicit `yolu` kind and `local` storage identity. They never enter `sessions` or `task_session_pins`. Workspace/project/environment selection does not rekey history. |
+| Identity and ownership | Local application-owned assistant IDs have an explicit `yolu` kind and `local` storage identity. They never enter `sessions` or `workspace_session_pins`. Workspace/project/environment selection does not rekey history. |
 | Transcripts | Add assistant conversation, message and run tables through `internal/store`. Include them in metadata export/import. Existing `conversation_drafts` stores text and reading position with a namespaced assistant key. Preserve full saved history, page UI history, and bound model context independently. |
 | Provider lifecycle | Each turn uses a fresh ephemeral Codex thread with a bounded transcript. Reuse the no-tools configuration from title generation, enforce read-only sandbox and never approvals, reject unexpected tools/approval requests, interrupt unfinished turns and unsubscribe on exit. |
 | Recovery | Persist input and request identity transactionally before inference. Retrying the same request reuses its receipt, changed content conflicts. Serialize sends per conversation and mark unfinished runs interrupted on restart/import. Require a fresh explicit send after interruption. |
@@ -57,10 +57,10 @@ The assistant supports the workspace-centered workflow by keeping a directory-in
 
 | Capability | Existing implementation and later extraction |
 | --- | --- |
-| Context and resource reads | `internal/overview/state.go`, store project/requirement queries and session catalog. Add bounded read adapters in phase 2. |
+| Context and resource reads | `internal/overview/state.go`, store project and workspace queries and session catalog. Add bounded read adapters in phase 2. |
 | Project registration | `internal/project/projects.go` validates repositories inside HTTP handlers. Extract its domain operation in phase 3 while keeping manual callers. |
-| Workspace creation | `internal/task/requirements.go` handles validation, metadata and preparation. Extract the smallest shared operation in phase 3. |
-| Project membership | `internal/task/requirement_projects.go` and `member_selection.go` retain all four modes, locks and partial preparation semantics. |
+| Workspace creation | `internal/workspace/workspaces.go` handles validation, metadata and preparation. Extract the smallest shared operation in phase 3. |
+| Project membership | `internal/workspace/workspace_projects.go` and `member_selection.go` retain all four modes, locks and partial preparation semantics. |
 | Git/worktrees | Existing project Git actions and execution-side workspace helpers provide locks and canonical paths. |
 | Conversation navigation | Existing environment/session identity and page bridge remain the native coding-session path. Add validated resource actions in phase 2. |
 
@@ -92,23 +92,24 @@ Depends on phases 1–2 and durable approval, idempotency, and journal contracts
 
 Exit evidence includes one approved request creating a workspace across two projects, a cancelled plan, a stale-plan conflict, all four directory modes, a failed second worktree, repeated request delivery, and restart reconciliation. Trace acceptance to AC-04 through AC-14.
 
-The representative scenario is “Create a workspace for the payment module using the frontend and backend projects.” The assistant resolves projects, presents actual branch/path choices, receives one plan approval, prepares the existing requirement/member model, and opens the saved workspace. Record resources from domain results at each step.
+The representative scenario is “Create a workspace for the payment module using the frontend and backend projects.” The assistant resolves projects, presents actual branch/path choices, receives one plan approval, prepares the workspace and member records, and opens the saved workspace. Record resources from domain results at each step.
 
-## Phase 4 — Add explicitly requested coding-session handoff
+## Phase 4 — Start Codex after workspace preparation
 
-Depends on the accepted phase 3 workflow and a usable prepared directory.
+- [x] Accept an optional first instruction on workspace creation. The review displays the instruction, primary project directory, other project directories, and the target environment's new-conversation model and permission preferences.
+- [x] After approval, prepare all reviewed directories before starting Codex through the native conversation service. Use the reviewed instruction as the first message.
+- [x] Record creation intent and Codex's acknowledgment of the first turn. Recover known results using their receipts and leave uncertain outcomes available for inspection.
+- [x] Return the workspace and native conversation links with the owning environment. Preserve the existing workspace reference and conversation controls.
 
-- [ ] Add supported executor discovery and the native Codex session-creation adapter, preserving existing creation receipts and directory validation.
-- [ ] Include executor, model/permission settings, main directory, additional roots, and first instruction in the reviewed plan when session creation is requested.
-- [ ] Start the session only when its approved prerequisite resources are ready. Reuse its durable creation identity when the result is known and reconcile uncertain creation outcomes.
-- [ ] Open the resulting native conversation with its existing environment/session identity, runtime controls, and workspace reference behavior.
-- [ ] Consider workspace metadata updates and standalone worktree creation as small follow-up increments using the same registry and policy mechanisms.
+The global assistant supplies a first instruction when the user specifies concrete work to carry out after creation. Preparation-only requests omit the instruction. One approval authorizes the reviewed workspace and optional Codex launch. Model and permission preferences are captured in the review. Empty preferences inherit the target environment's Codex configuration.
 
-Exit evidence includes the explicit “prepare both projects and start Codex” scenario and a retried or interrupted session creation. Trace acceptance to AC-15 and the relevant recovery cases. Additional execution-agent adapters and an external MCP surface can be planned after this handoff has been verified.
+Workspace preparation failures leave the saved workspace and its member results available. The plan considers the Codex step complete when the first turn is acknowledged, while the coding conversation tracks its own execution. A disconnected or interrupted launch is reconciled from the native creation and input receipts without automatically replaying it. A known conversation remains available through the result card.
+
+AC-15 was exercised through the browser and macOS desktop views with real test repositories and a simulated Codex transport. Both views displayed the reviewed instruction and directories, created two worktrees, sent one first turn with both directories available, and opened the resulting native conversation. Automated coverage checks the saved preferences and paths, partial preparation, repeat delivery, lost acknowledgment, and result navigation.
 
 ## Phases 2–3 implementation review on 2026-11-16
 
-The implementation continues from the committed phase 1 branch. Three delegated subtasks cover shared domain services, Codex application-tool interoperability and shared conversation action UI. The parent task owns the capability registry, application composition, durable plans, integration and verification.
+The implementation continues from the committed phase 1 branch. Three delegated subtasks cover shared domain services, Codex application-tool interoperability and shared conversation action UI. The main implementation owns the capability registry, application composition, durable plans, integration and verification.
 
 | Area | Implementation decision |
 | --- | --- |
@@ -156,8 +157,8 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 npm run desktop:check
 go build -o bin/yolu-backend .
 node scripts/desktop-workflow-smoke.mjs bin/yolu-backend
-go test -race ./internal/store ./internal/task ./internal/project \
-  ./internal/session ./internal/terminal ./internal/workspace ./internal/app
+go test -race ./internal/store ./internal/workspace ./internal/project \
+  ./internal/session ./internal/terminal ./internal/execution ./internal/app
 ```
 
 Build both embedded frontend bundles before invoking Go checks. Include new runtime packages in relevant focused/race coverage if introduced. Desktop-host changes also use the native checks described by the development guide. Verify a real configured provider separately from deterministic fixtures before claiming model interoperability. [Check guidance](../../development.md)
@@ -176,7 +177,7 @@ Implementation and checks ran on Linux x86_64 with Go 1.26.11, Node.js 24.22.2 a
 | Frontend regression checks | All 23 workspace tests, 124 chat tests and 261 `.test.cjs` checks passed, including assistant send receipts, uncertain-response recovery, isolated drafts, pagination and leaving before draft restoration. The `.test.cjs` coverage includes shared navigation, browser compatibility and retained native conversation panes. |
 | Backend checks | `go test ./...` and `go vet ./...` passed. Focused tests cover assistant creation, duplicate/changed requests, concurrent sends, capacity, cancellation/shutdown, escaped-input byte limits, redacted failures, authentication, local ownership and read-only mode. |
 | Persistence and compatibility | Store tests cover full paged transcript restoration, interrupted-run recovery, metadata export/import, loading older snapshots and preservation of native session behavior. |
-| Race checks | `go test -race ./internal/assistant ./internal/store ./internal/task ./internal/project ./internal/session ./internal/terminal ./internal/workspace ./internal/app` passed. The changed assistant/store/app packages were checked again after final fixes. |
+| Race checks | `go test -race ./internal/assistant ./internal/store ./internal/workspace ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app` passed. The changed assistant/store/app packages were checked again after final fixes. |
 | Vulnerability scan | `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...` reported zero reachable vulnerabilities. It also reported 13 imported-package and 10 required-module findings without reachable calls. |
 | Native build and lifecycle | `npm run desktop:check`, `npm run desktop:test`, `cargo build --manifest-path src-tauri/Cargo.toml` and `desktop-smoke.mjs` against the prepared sidecar and actual `yolu-desktop` host passed. The Rust suite has two launcher tests. |
 | Existing workflow | `desktop-workflow-smoke.mjs` passed with temporary repositories, two-project workspace preparation, Git operations, history, archive/restore and cleanup recovery. |
@@ -212,7 +213,7 @@ The final consolidation checks also passed `go test ./...`, `go vet ./...`, all 
 | Check | Evidence |
 | --- | --- |
 | Frontend | Both type checks and embedded bundles passed. The final suite passed 137 chat tests, 23 workspace tests and 261 script checks, including browser/desktop navigation, immutable approval clicks, read-only controls, structured errors and context-preserving send retries. |
-| Backend and race checks | `go test ./...`, `go vet ./...` and race coverage across assistant, store, task, project, session, terminal, workspace and app passed. Focused regressions cover all four member modes, stale/deleted source refs, canonical repository identity, duplicate/concurrent decisions, interrupted import/restart, member progress, remote lifecycle leases and delayed tool callbacks. |
+| Backend and race checks | `go test ./...`, `go vet ./...` and race coverage across assistant, store, workspace, project, session, terminal, workspace and app passed. Focused regressions cover all four member modes, stale/deleted source refs, canonical repository identity, duplicate/concurrent decisions, interrupted import/restart, member progress, remote lifecycle leases and delayed tool callbacks. |
 | Provider | The installed authenticated Codex CLI performed a real dynamic application-tool call and returned a nonce supplied solely by that tool. The final interoperability check completed in 7.75 seconds. |
 | Real application flow | In isolated temporary data, a real assistant conversation queried registered frontend/backend repositories, proposed one workspace plan and created both worktrees after confirmation. The result opened the actual workspace. Project registration and adding a third project using `project` mode also completed through recorded plans. Git and stored metadata confirmed all three ready member states and their actual branches/paths. |
 | Cancellation | A real pending plan was cancelled in the 390×844 English dark-theme UI. SQLite retained its cancelled receipt. The proposed workspace metadata, directory and branch were absent. |

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 func ParseWorktrees(raw string) []model.Worktree {
@@ -62,7 +62,7 @@ func DirtyCount(raw string) int {
 	return count
 }
 func ScanWorktrees(ctx context.Context, dir string) ([]model.Worktree, error) {
-	raw, err := workspace.Git(ctx, dir, "worktree", "list", "--porcelain", "-z")
+	raw, err := execution.Git(ctx, dir, "worktree", "list", "--porcelain", "-z")
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func ScanWorktrees(ctx context.Context, dir string) ([]model.Worktree, error) {
 }
 
 func ScanWorktreeStatus(ctx context.Context, v model.Worktree) model.Worktree {
-	if _, err := workspace.Stat(ctx, v.Path, true); err != nil {
+	if _, err := execution.Stat(ctx, v.Path, true); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			v.Error = err.Error()
 			return v
@@ -87,7 +87,7 @@ func ScanWorktreeStatus(ctx context.Context, v model.Worktree) model.Worktree {
 		v.StatusUpdatedAt = model.Now()
 		return v
 	}
-	s, err := workspace.ReadGitState(ctx, v.Path)
+	s, err := execution.ReadGitState(ctx, v.Path)
 	if err != nil {
 		v.Error = err.Error()
 		return v
@@ -95,12 +95,12 @@ func ScanWorktreeStatus(ctx context.Context, v model.Worktree) model.Worktree {
 	v.Branch, v.Head, v.Detached, v.Dirty = s.Branch, s.Head, s.Detached, s.Dirty
 	v.Upstream, v.SyncAvailable, v.SyncAhead, v.SyncBehind = s.Upstream, s.SyncAvailable, s.SyncAhead, s.SyncBehind
 	v.Operation, v.MergeHead, v.Conflicts = s.Operation, s.MergeHead, s.Conflicts
-	ref := workspace.DefaultBranchSource(ctx, v.Path)
+	ref := execution.DefaultBranchSource(ctx, v.Path)
 	if ref == "HEAD" {
 		v.StatusUpdatedAt = model.Now()
 		return v
 	}
-	comparison, err := workspace.Git(ctx, v.Path, "rev-list", "--left-right", "--count", ref+"...HEAD")
+	comparison, err := execution.Git(ctx, v.Path, "rev-list", "--left-right", "--count", ref+"...HEAD")
 	if err == nil {
 		parts := strings.Fields(comparison)
 		if len(parts) == 2 {

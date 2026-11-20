@@ -58,6 +58,16 @@ func OpenLive(ctx context.Context) (LiveClient, error) {
 	return StartWebSocket(ctx, conn)
 }
 
+func verifyDaemonSessions(ctx context.Context, conn *websocket.Conn) error {
+	live, err := StartWebSocket(ctx, conn)
+	if err != nil {
+		return err
+	}
+	defer live.Close()
+	var page SessionPage
+	return live.Call(ctx, "thread/list", map[string]any{"limit": 1}, &page)
+}
+
 // A terminal bridge forwards the TUI handshake itself; sidebar clients initialize here.
 func DialDaemon(ctx context.Context) (*websocket.Conn, error) {
 	// CLI sessions and the web client must use the same runtime. An isolated

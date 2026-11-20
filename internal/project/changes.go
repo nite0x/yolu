@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
-	"worktree-hub/internal/workspace"
 )
 
 type ChangedFile struct {
@@ -47,7 +47,7 @@ func (a *Service) ChangesHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 409, err.Error())
 		return
 	}
-	raw, err := workspace.Git(r.Context(), t.Path, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	raw, err := execution.Git(r.Context(), t.Path, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
 		httpx.WriteError(w, 409, err.Error())
 		return
@@ -75,9 +75,9 @@ func (a *Service) ChangesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	format := "patch"
-	var result workspace.GitPreview
+	var result execution.GitPreview
 	if selected.Untracked {
-		content, readErr := workspace.BrowseWorkspace(r.Context(), t.Path, file, true)
+		content, readErr := execution.BrowseWorkspace(r.Context(), t.Path, file, true)
 		if readErr != nil {
 			httpx.WriteError(w, 422, "无法预览文件："+readErr.Error())
 			return
@@ -93,7 +93,7 @@ func (a *Service) ChangesHandler(w http.ResponseWriter, r *http.Request) {
 		if selected.Previous != "" {
 			args = append(args, selected.Previous)
 		}
-		result, err = workspace.RunGitPreview(r.Context(), t.Path, args...)
+		result, err = execution.RunGitPreview(r.Context(), t.Path, args...)
 		if err != nil {
 			httpx.WriteError(w, 409, err.Error())
 			return
@@ -105,7 +105,7 @@ func (a *Service) ChangesHandler(w http.ResponseWriter, r *http.Request) {
 		if mode != "index" && strings.Contains(result.Text, "Binary files ") {
 			// Show the current working image. Staged/deleted binary changes retain
 			// their Git description rather than displaying a different version.
-			if content, err := workspace.BrowseWorkspace(r.Context(), t.Path, file, true); err == nil && content.(workspace.FilePreview).Format == "image" {
+			if content, err := execution.BrowseWorkspace(r.Context(), t.Path, file, true); err == nil && content.(execution.FilePreview).Format == "image" {
 				httpx.WriteJSON(w, 200, content)
 				return
 			}

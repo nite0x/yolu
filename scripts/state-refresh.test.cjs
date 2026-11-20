@@ -9,12 +9,12 @@ const { JSDOM } = require('jsdom');
 const markup = html => new JSDOM(html).window.document;
 
 function snapshot(updatedAt = '2026-10-22T05:23:13Z', refreshing = false) {
-  const tree = { path: '/workspace/app', branch: 'codex/task', dirty: 0, refreshing };
+  const tree = { path: '/workspace/app', branch: 'codex/workspace', dirty: 0, refreshing };
   if (updatedAt) tree.status_updated_at = updatedAt;
   return {
     root: '/workspace', terminal: {}, status_refreshing: refreshing,
     projects: [{ id: 'app', name: 'app', path: '/repo/app', has_master: true, refreshing, ...(updatedAt ? { status_updated_at: updatedAt } : {}), worktrees: [tree] }],
-    requirements: [{ id: 'task', name: 'Task', state: 'ready', branch: 'codex/task', path: '/workspace', primary_project_id: 'app', members: [{ project_id: 'app', project_name: 'app', path: tree.path, state: 'ready', base_commit: '12345678', worktree: { ...tree } }] }]
+    workspaces: [{ id: 'workspace', name: 'Workspace', state: 'ready', branch: 'codex/workspace', path: '/workspace', primary_project_id: 'app', members: [{ project_id: 'app', project_name: 'app', path: tree.path, state: 'ready', base_commit: '12345678', worktree: { ...tree } }] }]
   };
 }
 
@@ -53,17 +53,17 @@ function harness({ fullPage = false, readOnly = false } = {}) {
       querySelectorAll: selector => selector === '#content time[data-status-path]' ? times : [],
       addEventListener() {}
     },
-    window: { WorkHubUI: workspaceUI, dispatchEvent() {}, addEventListener(event, handler) { if (event === 'DOMContentLoaded') ready.push(handler); } }, location: { hash: '#/requirements/task', search: '' }, URLSearchParams, DOMException, CustomEvent: class {},
+    window: { WorkHubUI: workspaceUI, dispatchEvent() {}, addEventListener(event, handler) { if (event === 'DOMContentLoaded') ready.push(handler); } }, location: { hash: '#/workspaces/workspace', search: '' }, URLSearchParams, DOMException, CustomEvent: class {},
     setTimeout: (callback, delay) => { timers.push(delay); return timers.length; },
-    clearTimeout() {}, renderSettings() {}, refreshRequirementProjectPicker() {},
-    renderRequirementSessions() { return ''; }, refreshRequirementSessions() {},
+    clearTimeout() {}, renderSettings() {}, refreshWorkspaceProjectPicker() {},
+    renderWorkspaceSessions() { return ''; }, refreshWorkspaceSessions() {},
     fetch: async (url, options) => {
       requests.push({ url, options });
       if (failure) throw failure;
-      if (url.startsWith('/api/shortcut-pins?')) return { ok: true, json: async () => ({tasks:[], directories:[], initialized:true}) };
+      if (url.startsWith('/api/shortcut-pins?')) return { ok: true, json: async () => ({workspaces:[], directories:[], initialized:true}) };
       if (url === '/api/environments') return { ok: true, json: async () => ({ environments: [{ id: 'local', name: '本机' }], distributions: [], platform: result?.terminal?.platform, wsl_supported: result?.terminal?.platform === 'darwin' ? false : undefined }) };
-      if (url.startsWith('/api/task-inventory')) return { ok: true, json: async () => ({
-        requirements: result.requirements.map(q => ({ ...structuredClone(q), environment_id: 'local', environment_name: '本机', connected: true })),
+      if (url.startsWith('/api/workspace-inventory')) return { ok: true, json: async () => ({
+        workspaces: result.workspaces.map(q => ({ ...structuredClone(q), environment_id: 'local', environment_name: '本机', connected: true })),
         environments: [{ id: 'local', name: '本机', connected: true }], project_count: result.projects.length, status_refreshing: result.status_refreshing,
       }) };
       if (url.endsWith('/sessions') || url.startsWith('/api/sessions?')) return { ok: true, json: async () => ({ sessions: [] }) };
@@ -77,7 +77,7 @@ function harness({ fullPage = false, readOnly = false } = {}) {
       // This VM exercises business scripts; component mounting is checked in a browser.
       .filter(match => !match[0].includes('data-ui-bundle')).map(match => match[1])
       .filter(file => !readOnly || !['features/sessions/session-chat.js', 'features/sessions/session-create.js'].includes(file))]
-    : ['core/core.js', 'features/projects/projects.js', 'features/tasks/requirements.js', 'core/app.js'];
+    : ['core/core.js', 'features/projects/projects.js', 'features/workspaces/workspaces.js', 'core/app.js', 'core/resource-navigation.js'];
   for (const file of scripts) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../web', file), 'utf8'), context, { filename: file });
   }
@@ -90,50 +90,50 @@ function harness({ fullPage = false, readOnly = false } = {}) {
   };
 }
 
-test('the unified task list keeps colliding task IDs distinct by environment', () => {
+test('the unified workspace list keeps colliding workspace IDs distinct by environment', () => {
   const h = harness();
-  const task = snapshot().requirements[0];
-  const requirements = [
-    { ...task, environment_id: 'local', environment_name: 'Windows', connected: true },
-    { ...task, environment_id: 'wsl-ubuntu', environment_name: 'WSL Ubuntu', connected: false },
+  const workspace = snapshot().workspaces[0];
+  const workspaces = [
+    { ...workspace, environment_id: 'local', environment_name: 'Windows', connected: true },
+    { ...workspace, environment_id: 'wsl-ubuntu', environment_name: 'WSL Ubuntu', connected: false },
   ];
-  vm.runInContext(`taskInventory = ${JSON.stringify({ requirements, environments: [], loaded: true })}`, h.context);
-  const html = h.context.renderRequirements();
-  assert.match(html, /\?environment=local#\/requirements\/task/);
-  assert.match(html, /\?environment=wsl-ubuntu#\/requirements\/task/);
+  vm.runInContext(`workspaceInventory = ${JSON.stringify({ workspaces, environments: [], loaded: true })}`, h.context);
+  const html = h.context.renderWorkspaces();
+  assert.match(html, /\?environment=local#\/workspaces\/workspace/);
+  assert.match(html, /\?environment=wsl-ubuntu#\/workspaces\/workspace/);
   assert.match(html, /Windows/);
   assert.match(html, /WSL Ubuntu/);
   assert.match(html, /环境未连接/);
 });
 
-test('listing all tasks does not connect the previously selected environment', async () => {
+test('listing all workspaces does not connect the previously selected environment', async () => {
   const h = harness();
-  vm.runInContext("state.selectedRequirement = null; activeEnvironment = 'wsl-offline'", h.context);
+  vm.runInContext("state.selectedWorkspace = null; activeEnvironment = 'wsl-offline'", h.context);
   await h.refresh(snapshot());
-  assert.deepEqual(h.requests.map(r => r.url), ['/api/task-inventory']);
+  assert.deepEqual(h.requests.map(r => r.url), ['/api/workspace-inventory']);
   assert.equal(h.requests[0].options.headers['X-Environment-ID'], 'local');
-  assert.match(h.element('#taskListContent').innerHTML, /打开任务 Task/);
+  assert.match(h.element('#workspaceListContent').innerHTML, /打开工作区 Workspace/);
 });
 
 function prepareEnvironmentPicker(h) {
-  h.element('#requirementDialog').open = true;
-  h.element('#requirementForm').elements = { primary_project_id: h.element('#primaryProject'), slug: { value: 'demo' } };
+  h.element('#workspaceDialog').open = true;
+  h.element('#workspaceForm').elements = { primary_project_id: h.element('#primaryProject'), slug: { value: 'demo' } };
 }
 
-test('task creation reads only the chosen environment and previews its root', async () => {
+test('workspace creation reads only the chosen environment and previews its root', async () => {
   const h = harness();
   prepareEnvironmentPicker(h);
   const local = { ...snapshot(), root: 'D:\\workspaces' };
   const remote = { root: '/home/user/workspaces', projects: [{ id: 'remote', name: 'Remote project', folder: 'remote', has_master: true, status_updated_at: 'now' }] };
   const requests = [];
   h.context.api = async (url, options) => { requests.push(options.environment); return options.environment === 'local' ? local : remote; };
-  h.element('#requirementEnvironment').value = 'wsl-ubuntu';
-  await h.context.loadRequirementProjects();
+  h.element('#workspaceEnvironment').value = 'wsl-ubuntu';
+  await h.context.loadWorkspaceProjects();
   assert.match(h.element('#projectPicker').innerHTML, /Remote project/);
   assert.doesNotMatch(h.element('#projectPicker').innerHTML, /value="app"/);
   assert.match(h.element('#workspacePreview').textContent, /选择参与项目/);
-  h.element('#requirementEnvironment').value = 'local';
-  await h.context.loadRequirementProjects();
+  h.element('#workspaceEnvironment').value = 'local';
+  await h.context.loadWorkspaceProjects();
   assert.match(h.element('#projectPicker').innerHTML, /value="app"/);
   assert.doesNotMatch(h.element('#projectPicker').innerHTML, /Remote project/);
   assert.match(h.element('#workspacePreview').textContent, /选择参与项目/);
@@ -145,17 +145,17 @@ test('late project responses cannot replace a newly chosen environment', async (
   prepareEnvironmentPicker(h);
   const pending = [];
   h.context.api = () => new Promise(resolve => pending.push(resolve));
-  h.element('#requirementEnvironment').value = 'wsl-old';
-  const first = h.context.loadRequirementProjects();
-  h.element('#requirementEnvironment').value = 'local';
-  const second = h.context.loadRequirementProjects();
+  h.element('#workspaceEnvironment').value = 'wsl-old';
+  const first = h.context.loadWorkspaceProjects();
+  h.element('#workspaceEnvironment').value = 'local';
+  const second = h.context.loadWorkspaceProjects();
   pending[1](snapshot());
   await second;
   const html = h.element('#primaryProject').innerHTML;
   pending[0]({ root: '/old', projects: [{ id: 'old', name: 'Old project' }] });
   await first;
   assert.equal(h.element('#primaryProject').innerHTML, html);
-  assert.equal(vm.runInContext('requirementEnvironmentData.environment', h.context), 'local');
+  assert.equal(vm.runInContext('workspaceEnvironmentData.environment', h.context), 'local');
 });
 
 test('explicit environment calls survive navigation while old ambient calls are rejected', async () => {
@@ -215,7 +215,7 @@ test('real status changes are rendered, including errors and branch drift', asyn
     await h.refresh(snapshot());
     const next = snapshot('2026-10-22T05:23:24Z');
     Object.assign(next.projects[0].worktrees[0], patch);
-    Object.assign(next.requirements[0].members[0].worktree, patch);
+    Object.assign(next.workspaces[0].members[0].worktree, patch);
     await h.refresh(next);
     assert.equal(h.element('#content').writes, 2, JSON.stringify(patch));
   }
@@ -240,13 +240,13 @@ for (const readOnly of [true, false]) {
     assert.equal(vm.runInContext('sessionReadOnly', h.context), readOnly);
     assert.equal(h.element('#offlineBanner').hidden, true);
     assert(markup(h.element('#content').innerHTML).querySelector('[data-action="workspace-terminal"]'));
-    assert.match(h.element('#taskPageActions').innerHTML, /data-action="task-conversations"/);
+    assert.match(h.element('#content').innerHTML, /data-action="workspace-conversations"/);
     assert.equal(vm.runInContext('typeof openSessionChat', h.context), readOnly ? 'undefined' : 'function');
     // Navigation must still find both domain renderers after splitting the entry script.
-    vm.runInContext("state.view = 'projects'; state.selectedProject = 'app'; render()", h.context);
-    assert.match(h.element('#content').innerHTML, /Git 操作 · 分支管理/);
-    vm.runInContext("state.view = 'requirements'; state.selectedRequirement = null; render()", h.context);
-    assert.match(h.element('#taskListContent').innerHTML, /打开任务 Task/);
+    const project = vm.runInContext("state.view = 'projects'; state.selectedProject = 'app'; projectDetailOpen = true; renderProjects()", h.context);
+    assert.match(project, /Git 操作 · 分支管理/);
+    vm.runInContext("state.view = 'workspaces'; state.selectedWorkspace = null; render()", h.context);
+    assert.match(h.element('#workspaceListContent').innerHTML, /打开工作区 Workspace/);
   });
 }
 
@@ -271,28 +271,28 @@ test('macOS settings show Terminal and hide WSL without discarding unsaved termi
   assert.equal(h.element('#terminalPath').value, '/my unsaved terminal');
 });
 
-test('reused task directories report branch changes while remaining usable on their own branch and detached HEAD', async () => {
+test('reused workspace directories report branch changes while remaining usable on their own branch and detached HEAD', async () => {
   for (const patch of [{ branch: 'main' }, { branch: '', detached: true }]) {
     const h = harness();
     const data = snapshot();
     data.projects[0].has_master = false;
-    Object.assign(data.requirements[0].members[0], { mode: 'worktree', branch: 'existing' });
-    Object.assign(data.requirements[0].members[0].worktree, patch);
+    Object.assign(data.workspaces[0].members[0], { mode: 'worktree', branch: 'existing' });
+    Object.assign(data.workspaces[0].members[0].worktree, patch);
     await h.refresh(data);
     const html = h.element('#content').innerHTML;
     assert.doesNotMatch(html, /缺少 master|无本地 master/);
     assert.match(html, /分支已变化/);
-    assert.equal(markup(html).querySelector('[data-action="git-task-adopt"]').disabled, !!patch.detached);
+    assert.equal(markup(html).querySelector('[data-action="git-workspace-adopt"]').disabled, !!patch.detached);
     assert.equal(markup(h.element('#content').innerHTML).querySelector('[data-action="git-open"]').disabled, false);
     assert.match(html, /已有 Worktree/);
   }
 });
 
-test('new task directories use their individual expected branch and recorded source', async () => {
+test('new workspace directories use their individual expected branch and recorded source', async () => {
   const h = harness();
   const data = snapshot();
-  Object.assign(data.requirements[0].members[0], { mode: 'new', branch: 'custom/task', base_ref: 'refs/heads/release' });
-  data.requirements[0].members[0].worktree.branch = 'custom/task';
+  Object.assign(data.workspaces[0].members[0], { mode: 'new', branch: 'custom/workspace', base_ref: 'refs/heads/release' });
+  data.workspaces[0].members[0].worktree.branch = 'custom/workspace';
   await h.refresh(data);
   assert.doesNotMatch(h.element('#content').innerHTML, /分支已变化/);
   const document = markup(h.element('#content').innerHTML);

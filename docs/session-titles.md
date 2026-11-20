@@ -20,7 +20,7 @@ Before writing the generated title, recheck local provenance, timestamps, archiv
 
 Failure, timeout or invalid output leaves the existing title and surfaces a notice. An uncertain write asks for a refresh/check. Later sends, refreshes and retried creation requests do not trigger another model naming attempt. Existing historical sessions do not receive generated titles in bulk.
 
-Manual renaming writes to Codex first and then saves `title_source=manual`. A session's title does not subsequently track task names, project names or page scopes. Later explicit Codex renames can synchronize through a fresh metadata read.
+Manual renaming writes to Codex first and then saves `title_source=manual`. A session's title does not subsequently track workspace names, project names or page scopes. Later explicit Codex renames can synchronize through a fresh metadata read.
 
 ## Provenance and concurrency
 

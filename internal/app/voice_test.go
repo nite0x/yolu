@@ -21,7 +21,7 @@ func TestVoiceSignalingRejectsInvalidReadOnlyAndUnauthenticatedRequests(t *testi
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("unauthenticated offer accepted: %d", w.Code)
 	}
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	if code, _ := call(t, a, "POST", "/api/voice/sessions", map[string]string{"sdp": "v=0\r\nm=audio"}); code != http.StatusMethodNotAllowed {
 		t.Fatalf("read-only recording accepted: %d", code)
 	}
@@ -46,7 +46,7 @@ func TestNativeVoiceRejectsUnauthenticatedAndReadOnlyRequests(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		return
 	}
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	if code, _ := call(t, a, "POST", "/api/voice/native/sessions", nil); code != http.StatusMethodNotAllowed {
 		t.Fatalf("read-only native recording accepted: %d", code)
 	}

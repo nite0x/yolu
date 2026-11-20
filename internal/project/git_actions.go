@@ -36,15 +36,15 @@ func gitCommandResult(message, output string, err error) (map[string]any, error)
 	return map[string]any{"message": message, "output": RedactGitOutput(output)}, nil
 }
 
-// PerformGitAction owns validation, repository serialization and task metadata
+// PerformGitAction owns validation, repository serialization and workspace metadata
 // updates. HTTP handlers only decode requests and translate the result/error.
 func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction) (map[string]any, error) {
 	// Failed commands can still change a checkout; invalidate after every action,
 	// including service callers that do not pass through the HTTP adapter.
 	defer a.cache.invalidate()
-	a.Workspace.GitActivity.RLock()
-	defer a.Workspace.GitActivity.RUnlock()
-	if a.Workspace.Closing.Load() {
+	a.Execution.GitActivity.RLock()
+	defer a.Execution.GitActivity.RUnlock()
+	if a.Execution.Closing.Load() {
 		return nil, gitIssue(gitUnavailable, "后台正在退出")
 	}
 	p, err := a.RegisteredProject(ctx, id)
@@ -62,8 +62,8 @@ func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction)
 	if err != nil {
 		return nil, gitIssue(gitInspection, err.Error())
 	}
-	if in.RequirementID != "" {
-		if err := a.validateGitTask(p.ID, in); err != nil {
+	if in.WorkspaceID != "" {
+		if err := a.validateGitWorkspace(p.ID, in); err != nil {
 			return nil, gitIssue(gitConflict, err.Error())
 		}
 	}
@@ -74,10 +74,10 @@ func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction)
 		}
 	}
 	// Metadata and the Git checkout must change together. Keep the original
-	// repository -> metadata lock order through task-context publication.
+	// repository -> metadata lock order through workspace-context publication.
 	if in.Action == "switch" || in.Action == "adopt_branch" {
-		a.Workspace.Mu.Lock()
-		defer a.Workspace.Mu.Unlock()
+		a.Execution.Mu.Lock()
+		defer a.Execution.Mu.Unlock()
 	}
 	var result map[string]any
 	switch in.Action {
@@ -110,10 +110,10 @@ func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction)
 	if err != nil {
 		return nil, err
 	}
-	if in.RequirementID != "" && (in.Action == "switch" || in.Action == "adopt_branch") && a.TaskContextUpdated != nil {
-		if q, e := a.Workspace.Store.Requirement(in.RequirementID); e == nil {
-			if e := a.TaskContextUpdated(ctx, q); e != nil {
-				result["message"] = result["message"].(string) + "；自动任务上下文更新失败：" + e.Error()
+	if in.WorkspaceID != "" && (in.Action == "switch" || in.Action == "adopt_branch") && a.WorkspaceContextUpdated != nil {
+		if q, e := a.Execution.Store.Workspace(in.WorkspaceID); e == nil {
+			if e := a.WorkspaceContextUpdated(ctx, q); e != nil {
+				result["message"] = result["message"].(string) + "；自动工作区上下文更新失败：" + e.Error()
 			}
 		}
 	}

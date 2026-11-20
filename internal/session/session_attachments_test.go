@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 func TestUploadedFilesReachCodexInExecutionEnvironment(t *testing.T) {
@@ -20,7 +20,7 @@ func TestUploadedFilesReachCodexInExecutionEnvironment(t *testing.T) {
 			a, _, c, _ := chatFixture(t)
 			t.Setenv("HOME", t.TempDir())
 			if remote {
-				a.Workspace.Remote = testWorkspaceClient(t)
+				a.Execution.Remote = testWorkspaceClient(t)
 			}
 			for _, file := range []struct {
 				name string
@@ -30,7 +30,7 @@ func TestUploadedFilesReachCodexInExecutionEnvironment(t *testing.T) {
 				{"archive.zip", []byte{'P', 'K', 0, 1, 255}},
 				{"unknown", []byte{0, 255, 1}},
 				{"empty.txt", []byte{}},
-				{"limit.bin", bytes.Repeat([]byte{0xff}, workspace.MaxAttachmentSize)},
+				{"limit.bin", bytes.Repeat([]byte{0xff}, execution.MaxAttachmentSize)},
 			} {
 				code, raw := call(t, a, "POST", "/api/chat-attachments", map[string]any{"name": file.name, "data": file.data})
 				var result struct {
@@ -39,7 +39,7 @@ func TestUploadedFilesReachCodexInExecutionEnvironment(t *testing.T) {
 				if code != 200 || json.Unmarshal(raw, &result) != nil {
 					t.Fatalf("%d %s", code, raw)
 				}
-				root := a.Workspace.DataDir
+				root := a.Execution.DataDir
 				if remote {
 					root = platform.DefaultDataDir()
 				}
@@ -80,7 +80,7 @@ func TestAttachmentUploadValidationAndDrafts(t *testing.T) {
 		map[string]any{"name": `C:\escape`, "data": []byte("x")},
 		map[string]any{"name": "bad\nname", "data": []byte("x")},
 		map[string]any{"name": ".", "data": []byte("x")},
-		map[string]any{"name": "a.zip", "data": make([]byte, workspace.MaxAttachmentSize+1)},
+		map[string]any{"name": "a.zip", "data": make([]byte, execution.MaxAttachmentSize+1)},
 		map[string]any{"name": "a.zip", "data": "!invalid"},
 		map[string]any{"name": "a.zip"},
 	} {

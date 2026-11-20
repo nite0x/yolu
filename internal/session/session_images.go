@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 // Tokens are minted only for image references in displayable session history.
@@ -98,7 +98,7 @@ func (a *Service) SessionImageHandler(w http.ResponseWriter, r *http.Request) {
 		// This cache lives on the Yolu host, not in a remote execution root.
 		ctx = context.Background()
 	}
-	raw, err := workspace.ReadImage(ctx, source)
+	raw, err := execution.ReadImage(ctx, source)
 	if err != nil {
 		httpx.WriteError(w, 404, "图片不存在、已移动或格式不受支持")
 		return

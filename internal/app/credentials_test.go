@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/project"
-	"worktree-hub/internal/workspace"
 )
 
 // Fixture secrets exist only in the isolated test helper, never in the user's
@@ -80,7 +80,7 @@ func TestTerminalLoginReusedByBackgroundFetchPullAndReopen(t *testing.T) {
 	}
 	t.Setenv("GIT_ASKPASS", askpass)
 	var plan model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
 	if code, raw := gitAction(t, a, id, project.GitAction{Action: "fetch_terminal", Remote: "origin"}); code != 200 {
 		t.Fatalf("terminal login failed: %d %s", code, raw)
 	}
@@ -118,11 +118,11 @@ func TestTerminalLoginReusedByBackgroundFetchPullAndReopen(t *testing.T) {
 	if testGit(t, clone, "rev-parse", "HEAD") != testGit(t, seed, "rev-parse", "HEAD") {
 		t.Fatal("authenticated pull did not update checkout")
 	}
-	reopened, err := openApp(a.Workspace.DataDir, a.Workspace.Root)
+	reopened, err := openApp(a.Execution.DataDir, a.Execution.Root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Workspace.Store.DB.Close()
+	defer reopened.Execution.Store.DB.Close()
 	reopened.Projects.CredentialHelper = helper
 	if code, raw := gitAction(t, reopened, id, project.GitAction{Action: "fetch", Remote: "origin"}); code != 200 || strings.Contains(string(raw), password) {
 		t.Fatal("reopened service did not reuse credentials")
@@ -169,7 +169,7 @@ if sys.argv[1] == 'get':
 	t.Setenv("GCM_TRACE_SECRETS", "true")
 	for _, operation := range []string{"get", "store", "erase"} {
 		var out, diagnostic bytes.Buffer
-		if err := workspace.CredentialBridge(manager, operation, strings.NewReader("protocol=http\nhost=example.invalid\n\n"), &out, &diagnostic); err != nil {
+		if err := execution.CredentialBridge(manager, operation, strings.NewReader("protocol=http\nhost=example.invalid\n\n"), &out, &diagnostic); err != nil {
 			t.Fatal("credential protocol bridge failed", operation)
 		}
 		if diagnostic.Len() != 0 || (operation == "get" && !strings.Contains(out.String(), "password=")) || (operation != "get" && out.Len() != 0) {
@@ -177,13 +177,13 @@ if sys.argv[1] == 'get':
 		}
 	}
 	var out bytes.Buffer
-	if err := workspace.CredentialBridge(manager, "invalid", strings.NewReader(""), &out, &out); err == nil {
+	if err := execution.CredentialBridge(manager, "invalid", strings.NewReader(""), &out, &out); err == nil {
 		t.Fatal("invalid operation accepted")
 	}
-	if err := workspace.CredentialBridge(manager, "get", strings.NewReader("protocol=ssh\n\n"), &out, &out); err != nil || out.Len() != 0 {
+	if err := execution.CredentialBridge(manager, "get", strings.NewReader("protocol=ssh\n\n"), &out, &out); err != nil || out.Len() != 0 {
 		t.Fatal("SSH should be left to existing key configuration")
 	}
-	env := strings.Join(workspace.CredentialBridgeEnv([]string{"WSLENV=EXISTING/p", "GCM_INTERACTIVE=true"}, "https"), "\n")
+	env := strings.Join(execution.CredentialBridgeEnv([]string{"WSLENV=EXISTING/p", "GCM_INTERACTIVE=true"}, "https"), "\n")
 	if strings.Contains(env, "GCM_ALLOW_UNSAFE_REMOTES=true") || strings.Contains(env, "GCM_INTERACTIVE=true") {
 		t.Fatal("HTTP-only configuration leaked to HTTPS or prompt suppression failed")
 	}

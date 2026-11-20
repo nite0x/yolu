@@ -58,8 +58,8 @@ html[data-workhub-desktop] .workspace-pane,
   background: var(--yolu-surface, #fff);
   box-shadow: var(--yolu-elevation);
 }
-html[data-workhub-desktop] :is(.tasks-page,.projects-page:not(.project-tool-page)) .shell,
-html[data-workhub-desktop] :is(.tasks-page,.projects-page) #workContent { background: transparent; box-shadow: none; }
+html[data-workhub-desktop] :is(.workspaces-page,.projects-page:not(.project-tool-page)) .shell,
+html[data-workhub-desktop] :is(.workspaces-page,.projects-page) #workContent { background: transparent; box-shadow: none; }
 html[data-workhub-desktop] .workspace-pane { border: 1px solid transparent; }
 html[data-workhub-desktop][data-workspace-conversation] body .shell { border-radius: 0; box-shadow: none; }
 body[data-workspace-conversations] .workspace-page[data-focused=true] {
@@ -69,12 +69,9 @@ body[data-workspace-conversations] .workspace-page[data-focused=true] {
 html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.chat-panel-header { background: var(--background); }
 
 /* Resize grips appear only when the pointer is on the gutter. */
-.workspace-pane-resize::after, .workspace-shared-list-resize::after,
-html[data-workhub-desktop] :is(.task-resize-handle,.project-resize-handle,.projects-page .ui-resizable-separator)::after { width: 3px; inset: 50% auto auto 50%; height: 40px; transform: translate(-50%, -50%); border-radius: 3px; background: transparent; transition: background-color .15s; }
+.workspace-pane-resize::after, .workspace-shared-list-resize::after { width: 3px; inset: 50% auto auto 50%; height: 40px; transform: translate(-50%, -50%); border-radius: 3px; background: transparent; transition: background-color .15s; }
 .workspace-pane-resize:hover::after, .workspace-pane-resize:focus-visible::after, .workspace-pages[data-split-resizing] .workspace-pane-resize::after,
 .workspace-shared-list-resize:hover::after, .workspace-shared-list-resize:focus-visible::after, body[data-split-resizing] .workspace-shared-list-resize::after { background: color-mix(in srgb, var(--yolu-primary, #1f5f5a) 45%, transparent); }
-html[data-workhub-desktop] :is(.task-resize-handle,.project-resize-handle,.projects-page .ui-resizable-separator):is(:hover,:focus-visible,[data-separator="active"])::after,
-html[data-workhub-desktop] :is(#workContent[data-task-resizing] .task-resize-handle,.project-workspace[data-resizing] .project-resize-handle)::after { left: 50%; width: 3px; background: color-mix(in srgb, var(--yolu-primary, #1f5f5a) 45%, transparent); }
 
 /* Tabs: quiet text until active, then a lifted chip. */
 html[data-workhub-desktop] .workspace-tab-item { border-color: transparent; border-radius: 8px; background: transparent; transition: background-color .15s, box-shadow .15s; }
@@ -87,15 +84,15 @@ html[data-workhub-desktop] .workspace-tab-item[data-active=true] .workspace-tab-
 
 /* Sidebar controls share a flat selection surface. */
 html[data-workhub-desktop] .sidebar nav .nav-item { padding: 0; }
-html[data-workhub-desktop] .sidebar :is(.nav-item,.task-shortcut-picker > summary,:where(#refreshButton),.codex-quota-trigger:not([data-tone="low"])) {
+html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,:where(#refreshButton),.codex-quota-trigger:not([data-tone="low"])) {
   border-radius: 10px;
   color: var(--yolu-rail-muted);
   transition: background-color .15s, color .15s;
 }
-html[data-workhub-desktop] .sidebar :is(.nav-item,.task-shortcut-picker > summary,:where(#refreshButton),.codex-quota-trigger:not([data-tone="low"])):hover,
+html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,:where(#refreshButton),.codex-quota-trigger:not([data-tone="low"])):hover,
 html[data-workhub-desktop] .sidebar .nav-item.active,
 html[data-workhub-desktop][data-workspace-navigation] .sidebar .nav-item[data-view="sessions"],
-html[data-workhub-desktop] .sidebar .task-shortcut-picker[open] > summary,
+html[data-workhub-desktop] .sidebar .workspace-shortcut-picker[open] > summary,
 html[data-workhub-desktop] .sidebar-shortcut-list .conversation-shortcut-open[aria-current="true"] {
   background: var(--yolu-rail-selected);
   color: var(--yolu-rail-active);
@@ -124,9 +121,9 @@ html[data-workhub-desktop] .sidebar-footer { border-top-color: transparent; }
 html[data-workhub-desktop] .session-browser-list-tools { gap: var(--workspace-list-tools-gap); }
 html[data-workhub-desktop] .session-browser-list-heading { min-height: var(--workspace-list-heading-height); }
 .session-browser-list-heading strong,
-html[data-workhub-desktop] :is(.task-browser-heading h2,.projects-page #panelTitle) { font-size: var(--yolu-font-size-list-title); font-weight: var(--yolu-font-weight-title); letter-spacing: -.01em; }
-html[data-workhub-desktop] :is(.tasks-page .page-heading h1,.project-detail-heading h2) { font-size: var(--yolu-font-size-detail-title); font-weight: var(--yolu-font-weight-title); line-height: 1.4; }
-html[data-workhub-desktop] :is(.task-list-scroll .row-title,.project-list-name strong,.session-browser-item-title) { font-size: var(--yolu-font-size-row); font-weight: var(--yolu-font-weight-row); }
+html[data-workhub-desktop] :is(.workspace-browser-heading h1,.projects-page #panelTitle) { font-size: var(--yolu-font-size-list-title); font-weight: var(--yolu-font-weight-title); letter-spacing: -.01em; }
+html[data-workhub-desktop] :is(.workspaces-page .page-heading h1,.project-detail-heading h2) { font-size: var(--yolu-font-size-detail-title); font-weight: var(--yolu-font-weight-title); line-height: 1.4; }
+html[data-workhub-desktop] :is(.workspace-list-scroll .row-title,.project-list-name strong,.session-browser-item-title) { font-size: var(--yolu-font-size-row); font-weight: var(--yolu-font-weight-row); }
 /* Search fields are filled, not outlined. Utilities force a transparent
    background colour, so the fill is painted as a background image instead. */
 input[type="search"][data-slot="input"] { --input: transparent; --tw-shadow-color: transparent; --radius: 12px; background-image: linear-gradient(var(--yolu-subtle, #f4f7f5), var(--yolu-subtle, #f4f7f5)); }
@@ -156,16 +153,15 @@ input[type="search"][data-slot="input"]:focus-visible { background-image: none; 
 .chat-permission-trigger { background: var(--yolu-subtle, #f4f7f5); }
 .chat-change-summary { border-radius: 14px; }
 
-/* Legacy pages (tasks, projects): rounder controls and borderless cards. */
+/* Legacy pages (workspaces, projects): rounder controls and borderless cards. */
 .button { border-radius: 8px; }
 .button.primary { background: var(--yolu-primary, #1f5f5a); border-color: transparent; color: var(--yolu-surface, #fff); box-shadow: var(--yolu-elevation-sm); }
 .button.primary:hover { background: color-mix(in srgb, var(--yolu-primary, #1f5f5a) 88%, #000); }
-.task-list-scroll .list-row { border-bottom-color: transparent; border-radius: 10px; }
-.task-list-scroll .list-row:hover { background: var(--yolu-subtle, #f4f7f5); }
-.task-list-scroll .list-row[aria-current="true"],
-.project-list-item[aria-pressed="true"],
-.project-workspace[data-react-panels="wide"] .project-list-item[aria-pressed="true"] { background: var(--yolu-selected, #dcebe4) !important; box-shadow: none; }
-.task-list-scroll .list-row[aria-current="true"] .row-title { color: var(--yolu-primary-ink, #173f3d); }
+.workspace-list-scroll .list-row { border-bottom-color: transparent; border-radius: 10px; }
+.workspace-list-scroll .list-row:hover { background: var(--yolu-subtle, #f4f7f5); }
+.workspace-list-scroll .list-row[aria-current="true"],
+.project-list-item[aria-pressed="true"] { background: var(--yolu-selected, #dcebe4) !important; box-shadow: none; }
+.workspace-list-scroll .list-row[aria-current="true"] .row-title { color: var(--yolu-primary-ink, #173f3d); }
 .project-card { border-color: transparent; border-radius: 12px; box-shadow: var(--yolu-elevation-sm); }
 .project-card:hover, .project-card.selected { border-color: transparent; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--yolu-primary, #1f5f5a) 35%, transparent); }
 .stat, .content-panel { border-color: transparent; border-radius: var(--yolu-pane-radius); box-shadow: var(--yolu-elevation-sm); }

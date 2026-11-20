@@ -26,9 +26,9 @@ CREATE INDEX IF NOT EXISTS sessions_cwd ON sessions(cwd);
 CREATE TABLE IF NOT EXISTS session_organization (session_id TEXT PRIMARY KEY REFERENCES sessions(id), pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS conversation_drafts (key TEXT PRIMARY KEY,payload TEXT NOT NULL,updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS conversation_input_requests (session_id TEXT NOT NULL,request_id TEXT NOT NULL,fingerprint TEXT NOT NULL,status TEXT NOT NULL,PRIMARY KEY(session_id,request_id));
-CREATE TABLE IF NOT EXISTS task_session_pins (
- requirement_id TEXT NOT NULL REFERENCES requirements(id),
- session_id TEXT NOT NULL REFERENCES sessions(id), PRIMARY KEY(requirement_id,session_id));
+CREATE TABLE IF NOT EXISTS workspace_session_pins (
+ workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+ session_id TEXT NOT NULL REFERENCES sessions(id), PRIMARY KEY(workspace_id,session_id));
 CREATE TABLE IF NOT EXISTS conversation_create_requests (
  request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, session_id TEXT NOT NULL DEFAULT '');`)
 	if err != nil {
@@ -57,6 +57,15 @@ UPDATE sessions SET title_source='legacy' WHERE name<>'';`); err != nil {
 			return err
 		}
 	}
+	var providerColumns int
+	if err := tx.QueryRow(`SELECT count(*) FROM pragma_table_info('sessions') WHERE name='provider'`).Scan(&providerColumns); err != nil {
+		return err
+	}
+	if providerColumns == 0 {
+		if _, err := tx.Exec(`ALTER TABLE sessions ADD COLUMN provider TEXT NOT NULL DEFAULT 'codex';`); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
@@ -65,11 +74,11 @@ UPDATE sessions SET title_source='legacy' WHERE name<>'';`); err != nil {
 func backfillSessions(tx *sql.Tx) error {
 	_, err := tx.Exec(`
 INSERT OR IGNORE INTO sessions(id,name,cwd,created_at,updated_at,source)
- SELECT session_id,name,cwd,created_at,updated_at,source FROM requirement_sessions ORDER BY updated_at DESC;
-INSERT OR IGNORE INTO task_session_pins(requirement_id,session_id)
- SELECT requirement_id,session_id FROM requirement_sessions WHERE source='manual';
+ SELECT session_id,name,cwd,created_at,updated_at,source FROM workspace_sessions ORDER BY updated_at DESC;
+INSERT OR IGNORE INTO workspace_session_pins(workspace_id,session_id)
+ SELECT workspace_id,session_id FROM workspace_sessions WHERE source='manual';
 INSERT OR IGNORE INTO conversation_create_requests(request_id,fingerprint,session_id)
- SELECT 'task:' || requirement_id || ':' || request_id,'',session_id FROM session_create_requests;`)
+ SELECT 'workspace:' || workspace_id || ':' || request_id,'',session_id FROM session_create_requests;`)
 	return err
 }
 
@@ -78,19 +87,21 @@ func (s *Store) SaveSession(v model.Session, observedAt ...int64) error {
 	if len(observedAt) > 0 {
 		started = observedAt[0]
 	}
+	v.Provider = model.NormalizeProvider(v.Provider)
 	v.Name = strings.TrimSpace(v.Name)
 	if v.Name != "" && v.TitleSource == "" {
-		v.TitleSource = "codex"
+		v.TitleSource = v.Provider
 	}
-	_, err := s.DB.Exec(`INSERT INTO sessions(id,name,cwd,created_at,updated_at,source,last_synced_at,title_source,title_changed_at)
- VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+	_, err := s.DB.Exec(`INSERT INTO sessions(id,name,cwd,created_at,updated_at,source,last_synced_at,title_source,title_changed_at,provider)
+ VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
  name=CASE WHEN excluded.name<>'' AND sessions.title_changed_at<excluded.title_changed_at THEN excluded.name ELSE sessions.name END,
  title_source=CASE WHEN excluded.name<>'' AND sessions.name<>excluded.name AND sessions.title_changed_at<excluded.title_changed_at THEN excluded.title_source ELSE sessions.title_source END,
  title_changed_at=CASE WHEN excluded.name<>'' AND sessions.name<>excluded.name AND sessions.title_changed_at<excluded.title_changed_at THEN excluded.title_changed_at ELSE sessions.title_changed_at END,
  cwd=excluded.cwd,
  created_at=excluded.created_at,updated_at=excluded.updated_at,last_synced_at=excluded.last_synced_at,
+ provider=CASE WHEN excluded.provider<>'' THEN excluded.provider ELSE sessions.provider END,
  source=CASE WHEN excluded.source='workbench' THEN excluded.source ELSE sessions.source END`,
-		v.ID, v.Name, platform.CleanWorkspacePath(v.Cwd), v.CreatedAt, v.UpdatedAt, v.Source, time.Now().Unix(), v.TitleSource, started)
+		v.ID, v.Name, platform.CleanWorkspacePath(v.Cwd), v.CreatedAt, v.UpdatedAt, v.Source, time.Now().Unix(), v.TitleSource, started, v.Provider)
 	return err
 }
 
@@ -117,14 +128,15 @@ func (s *Store) ObserveSessionTitle(id, name string) (bool, error) {
 func scanSession(scan func(...any) error) (model.Session, error) {
 	var v model.Session
 	var directories string
-	err := scan(&v.ID, &v.Name, &v.Cwd, &v.CreatedAt, &v.UpdatedAt, &v.Source, &v.LastSyncedAt, &directories, &v.Pinned, &v.Archived, &v.TitleSource, &v.TitleChangedAt)
+	err := scan(&v.ID, &v.Name, &v.Cwd, &v.CreatedAt, &v.UpdatedAt, &v.Source, &v.LastSyncedAt, &directories, &v.Pinned, &v.Archived, &v.TitleSource, &v.TitleChangedAt, &v.Provider)
 	if err == nil {
+		v.Provider = model.NormalizeProvider(v.Provider)
 		err = json.Unmarshal([]byte(directories), &v.AdditionalDirectories)
 	}
 	return v, err
 }
 
-const sessionColumns = `id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,COALESCE((SELECT pinned FROM session_organization WHERE session_id=sessions.id),0),COALESCE((SELECT archived FROM session_organization WHERE session_id=sessions.id),0),title_source,title_changed_at`
+const sessionColumns = `id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,COALESCE((SELECT pinned FROM session_organization WHERE session_id=sessions.id),0),COALESCE((SELECT archived FROM session_organization WHERE session_id=sessions.id),0),title_source,title_changed_at,provider`
 
 func (s *Store) Session(id string) (model.Session, error) {
 	return scanSession(s.DB.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id=?`, id).Scan)
@@ -158,8 +170,8 @@ func (s *Store) SaveSessionDirectories(id string, directories []string) error {
 	return MustAffected(s.DB.Exec(`UPDATE sessions SET additional_directories=? WHERE id=?`, string(raw), id))
 }
 
-func (s *Store) PinnedSessionIDs(task string) (map[string]bool, error) {
-	rows, err := s.DB.Query(`SELECT session_id FROM task_session_pins WHERE requirement_id=?`, task)
+func (s *Store) PinnedSessionIDs(workspace string) (map[string]bool, error) {
+	rows, err := s.DB.Query(`SELECT session_id FROM workspace_session_pins WHERE workspace_id=?`, workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -175,20 +187,20 @@ func (s *Store) PinnedSessionIDs(task string) (map[string]bool, error) {
 	return out, rows.Err()
 }
 
-// SessionTaskLinks supplies explicit workspace membership for an aggregate list.
-func (s *Store) SessionTaskLinks() (map[string][]string, error) {
-	rows, err := s.DB.Query(`SELECT session_id,requirement_id FROM task_session_pins ORDER BY session_id,requirement_id`)
+// SessionWorkspaceLinks supplies explicit workspace membership for an aggregate list.
+func (s *Store) SessionWorkspaceLinks() (map[string][]string, error) {
+	rows, err := s.DB.Query(`SELECT session_id,workspace_id FROM workspace_session_pins ORDER BY session_id,workspace_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	links := map[string][]string{}
 	for rows.Next() {
-		var session, task string
-		if err := rows.Scan(&session, &task); err != nil {
+		var session, workspace string
+		if err := rows.Scan(&session, &workspace); err != nil {
 			return nil, err
 		}
-		links[session] = append(links[session], task)
+		links[session] = append(links[session], workspace)
 	}
 	return links, rows.Err()
 }

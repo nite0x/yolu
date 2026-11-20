@@ -30,7 +30,7 @@ explicit history-only mode, hiding the composer and suggestions. Both session
 modes mount through the same chat bridge.
 
 `frontend/chat/panel.tsx` supplies the existing external-store runtime, history
-pagination, task/project information, and application-specific approvals. Tool
+pagination, workspace/project information, and application-specific approvals. Tool
 entries are converted to the official args/result format in `chat/model.ts`;
 messages, composer, tool disclosures and Markdown use the registry components.
 

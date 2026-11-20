@@ -1,10 +1,10 @@
 import type {Session} from "./sessions"
-import type {Project, Task} from "./types"
+import type {Project, Workspace} from "./types"
 import type {SessionTarget} from "../chat/controller-types"
 import type {ConversationTreeRow} from "./conversation-tree"
 
 export interface ConversationScope {
-  kind: "all" | "task" | "project" | "directory"
+  kind: "all" | "workspace" | "project" | "directory"
   id?: string
   environment?: string
   cwd?: string
@@ -46,7 +46,7 @@ export interface ConversationView {
   followTarget?: unknown
 }
 interface CatalogLoad {loading: boolean; checkedAt: number; revision: number; error: string; pending?: Promise<void>}
-interface Workspace {projects: Project[]; requirements: Task[]}
+interface EnvironmentOverview {projects: Project[]; workspaces: Workspace[]}
 
 // One owner for page scope, cached metadata and query generations. Rendering and
 // navigation supply dependencies rather than reaching into unrelated globals.
@@ -57,7 +57,7 @@ export function createConversationState({storage, scopeKey, sessionKey}: {
 }) {
   const views = new Map<string, ConversationView>()
   const index = new Map<string, Map<string, Session>>()
-  const workspaces = new Map<string, Workspace>()
+  const workspaces = new Map<string, EnvironmentOverview>()
   const pageScopes = new Map<string, ConversationScope>()
   const catalogs = new Map<string, CatalogLoad>()
   function invalidate(view: ConversationView) {
@@ -77,7 +77,7 @@ export function createConversationState({storage, scopeKey, sessionKey}: {
     views: () => views.values(),
     invalidate,
     workspace: (environment: string) => workspaces.get(environment),
-    rememberWorkspace: (environment: string, workspace: Workspace) => workspaces.set(environment, workspace),
+    rememberWorkspace: (environment: string, workspace: EnvironmentOverview) => workspaces.set(environment, workspace),
     pageScope: (environment: string) => pageScopes.get(environment),
     rememberPageScope: (environment: string, scope: ConversationScope) => pageScopes.set(environment, scope),
     session: (environment: string, id: string) => index.get(environment)?.get(id),

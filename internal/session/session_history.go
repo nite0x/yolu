@@ -10,6 +10,7 @@ import (
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 )
 
 // Only user-visible messages and command records cross the HTTP boundary.
@@ -278,7 +279,18 @@ func (a *Service) HistorySessionAllowed(w http.ResponseWriter, r *http.Request) 
 	return ok
 }
 func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) {
-	if !a.HistorySessionAllowed(w, r) {
+	record, ok := a.requestSession(w, r)
+	if !ok {
+		return
+	}
+	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
+		history, err := a.readAgySessionHistory(r.Context(), record)
+		if err != nil {
+			httpx.WriteError(w, 503, "无法读取 Antigravity 对话历史："+err.Error())
+			return
+		}
+		a.prepareHistoryMedia(record.ID, history.Entries)
+		httpx.WriteJSON(w, 200, history)
 		return
 	}
 	c, err := a.openSessions(r.Context())
@@ -297,7 +309,7 @@ func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) 
 		httpx.DbError(w, err)
 		return
 	}
-	if cached, err := a.Workspace.Store.Session(s.ID); err == nil {
+	if cached, err := a.Execution.Store.Session(s.ID); err == nil {
 		s.Name = cached.Name
 	}
 	history, err := readSessionHistory(c, s, r.URL.Query().Get("cursor"))

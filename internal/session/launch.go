@@ -14,13 +14,13 @@ import (
 )
 
 func (a *Service) LaunchHandler(w http.ResponseWriter, r *http.Request) {
-	releaseControl := a.lockControl("launch-task:" + r.PathValue("id"))
+	releaseControl := a.lockControl("launch-workspace:" + r.PathValue("id"))
 	defer releaseControl()
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
 	p, err := a.plans.MakeLaunchPlan(r.Context(), r.PathValue("id"))
 	if errors.Is(err, sql.ErrNoRows) {
-		httpx.WriteError(w, 404, "任务不存在")
+		httpx.WriteError(w, 404, "工作区不存在")
 		return
 	}
 	if err != nil {
@@ -37,20 +37,20 @@ func (a *Service) LaunchHandler(w http.ResponseWriter, r *http.Request) {
 func (a *Service) LaunchCodexPlan(w http.ResponseWriter, p model.LaunchPlan) {
 	// The managed terminal relay verifies peers through Linux /proc. Other
 	// platforms use the normal terminal launcher while in-app chat stays enabled.
-	if a.Workspace.ReadOnlySessions || runtime.GOOS != "linux" || a.Workspace.Remote != nil {
-		if err := a.Workspace.LaunchSimpleTerminal(p); err != nil {
+	if a.Execution.ReadOnlySessions || runtime.GOOS != "linux" || a.Execution.Remote != nil {
+		if err := a.Execution.LaunchSimpleTerminal(p); err != nil {
 			httpx.WriteJSON(w, 503, map[string]string{"error": err.Error(), "command": p.Command})
 			return
 		}
 		httpx.WriteJSON(w, 200, map[string]string{"message": "已向终端发送启动请求，请在终端中对话", "command": p.Command})
 		return
 	}
-	if err := os.MkdirAll(filepath.Join(a.Workspace.DataDir, "launches"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(a.Execution.DataDir, "launches"), 0700); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
-	p.Script = filepath.Join(a.Workspace.DataDir, "launches", model.NewID()+".sh")
-	b, err := a.NewTerminalBridge(p.Requirement, p.Cwd)
+	p.Script = filepath.Join(a.Execution.DataDir, "launches", model.NewID()+".sh")
+	b, err := a.NewTerminalBridge(p.Workspace, p.Cwd)
 	if err != nil {
 		httpx.WriteError(w, 503, "无法准备可交接终端："+err.Error())
 		return
@@ -74,7 +74,7 @@ func (a *Service) LaunchCodexPlan(w http.ResponseWriter, p model.LaunchPlan) {
 	p.Args = args
 	p.Args = append(p.Args, "--remote", "unix://"+b.socket)
 	p.Command = platform.DisplayCommand("codex", p.Args, false)
-	// Every argument is shell-quoted. No project or requirement text is evaluated as shell code.
+	// Every argument is shell-quoted. No project or workspace text is evaluated as shell code.
 	finishLaunch := "if [ -d " + platform.ShellQuote(b.dir) + " ]; then : > " + platform.ShellQuote(filepath.Join(b.dir, "launch-finished")) + "; fi"
 	script := "#!/usr/bin/env bash\nexport PATH=\"$HOME/.local/bin:$PATH\"\n" +
 		"finish_launch() { " + finishLaunch + "; }\ntrap finish_launch EXIT\n" +
@@ -88,7 +88,7 @@ func (a *Service) LaunchCodexPlan(w http.ResponseWriter, p model.LaunchPlan) {
 		httpx.DbError(w, err)
 		return
 	}
-	if err := a.Workspace.Launch(p, func() { a.releaseUnconnectedBridge(p) }); err != nil {
+	if err := a.Execution.Launch(p, func() { a.releaseUnconnectedBridge(p) }); err != nil {
 		b.Close()
 		_ = os.Remove(p.Script)
 		httpx.WriteJSON(w, 503, map[string]string{"error": err.Error(), "command": p.Command})
@@ -97,7 +97,7 @@ func (a *Service) LaunchCodexPlan(w http.ResponseWriter, p model.LaunchPlan) {
 	httpx.WriteJSON(w, 200, map[string]string{"message": "已向系统终端发送启动请求；可在终端内查看 Codex 状态", "command": p.Command})
 }
 func (a *Service) LaunchConflict(session, cwd string) error {
-	if a.Workspace.ReadOnlySessions {
+	if a.Execution.ReadOnlySessions {
 		return nil
 	}
 	return a.AppTerminalConflict(session, cwd)

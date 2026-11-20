@@ -2,7 +2,7 @@
   "name": "yolu-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Yolu — a task-centered workspace for cross-project development",
+  "description": "Yolu — a personal development workspace for multiple repositories",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

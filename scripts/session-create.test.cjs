@@ -19,8 +19,8 @@ function harness() {
     crypto: { randomUUID: () => 'request-' + ++sequence },
     document: { addEventListener() {}, querySelector() { return null; }, hidden: false },
     window: { WorkHubUI: workspaceUI, addEventListener() {} }, setInterval() { timers++; return timers; }, clearInterval() {},
-    state: { view: 'requirements', selectedRequirement: 'req', requirements: [{ id: 'req', name: '开发工作区', state: 'ready', primary_project_id: 'main', members: [{ project_id: 'main', project_name: 'Main', path: '/work/main' }, { project_id: 'other', project_name: 'Other', path: '/work/other' }] }] },
-    requirementSessions: new Map(), updateRequirementSessionsView() {}, markSessionRead() {}, updateSessionChatActivity() {}, esc: s => String(s ?? ''),
+    state: { view: 'workspaces', selectedWorkspace: 'req', workspaces: [{ id: 'req', name: '开发工作区', state: 'ready', primary_project_id: 'main', members: [{ project_id: 'main', project_name: 'Main', path: '/work/main' }, { project_id: 'other', project_name: 'Other', path: '/work/other' }] }] },
+    workspaceSessions: new Map(), updateWorkspaceSessionsView() {}, markSessionRead() {}, updateSessionChatActivity() {}, esc: s => String(s ?? ''),
     api(url, options) {
       if (url.endsWith('/sessions/new')) return new Promise((resolve, reject) => creates.push({ url, body: JSON.parse(options.body), resolve, reject }));
       if (url.endsWith('/history')) return Promise.resolve({ session: { id: 'created', name: 'Created', cwd: '/work/main' }, entries: [] });
@@ -67,7 +67,7 @@ test('first send creates once and transitions into the linked conversation; fail
   assert.equal(h.current().session, 'created');
   assert.equal(h.$('#newSessionProjectField').hidden, true);
   assert.equal(h.$('#sessionChatInput').disabled, false);
-  assert.equal(h.context.requirementSessions.get('req').sessions[0].id, 'created');
+  assert.equal(h.context.workspaceSessions.get('req').sessions[0].id, 'created');
 });
 test('reopening while a creation is pending reuses it; closing prevents late result from opening a panel', async () => {
   const h = harness(); h.context.openSessionHistory('req');
@@ -81,5 +81,5 @@ test('reopening while a creation is pending reuses it; closing prevents late res
   h.creates[0].resolve(created()); await sending;
   assert.equal(h.current(), null);
   assert.equal(h.$('#sessionHistoryPanel').hidden, true);
-  assert.equal(h.context.requirementSessions.get('req').sessions.length, 1);
+  assert.equal(h.context.workspaceSessions.get('req').sessions.length, 1);
 });

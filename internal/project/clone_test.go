@@ -81,7 +81,7 @@ func TestCloneProjectFailuresDoNotRegisterOrEscapeParent(t *testing.T) {
 		t.Fatalf("failed %d %s", code, raw)
 	}
 	var count int
-	if err := a.Workspace.Store.DB.QueryRow(`SELECT count(*) FROM projects`).Scan(&count); err != nil || count != 0 {
+	if err := a.Execution.Store.DB.QueryRow(`SELECT count(*) FROM projects`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("registered failed clone: %d %v", count, err)
 	}
 	if _, err := os.Stat(filepath.Join(parent, "failed")); !os.IsNotExist(err) {

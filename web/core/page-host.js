@@ -27,7 +27,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       return fetch(path,options).finally(() => reads.clear());
     }
     if (/[?&]refresh=1(?:&|$)/.test(path)) {reads.clear(); return fetch(path,options);}
-    if (options.signal || !/^\/api\/(state|task-inventory|environments|shortcut-pins)(\?|$)/.test(path)) return fetch(path,options);
+    if (options.signal || !/^\/api\/(state|workspace-inventory|environments|shortcut-pins)(\?|$)/.test(path)) return fetch(path,options);
     const key = JSON.stringify([path,options.headers]), cached = reads.get(key);
     if (cached && (!cached.updated || Date.now() - cached.updated < 1000)) return cached.promise.then(response => response.clone());
     const entry = {updated:0};
@@ -62,8 +62,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   };
   function normalize(value) {
     const snapshot = value && typeof value === 'object' ? value : {};
-    const route = typeof snapshot.route === 'string' && /^\/(requirements(?:\/[\w-]+)?|projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|assistant)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/requirements';
-    return {...snapshot, route, environment:typeof snapshot.environment === 'string' ? snapshot.environment : 'local', title:typeof snapshot.title === 'string' ? snapshot.title.slice(0,200) : uiText("任务"), kind:route.split('/')[1].split('?')[0]};
+    const route = typeof snapshot.route === 'string' && /^\/(workspaces(?:\/[\w-]+)?|projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|assistant)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/workspaces';
+    return {...snapshot, route, environment:typeof snapshot.environment === 'string' ? snapshot.environment : 'local', title:typeof snapshot.title === 'string' ? snapshot.title.slice(0,200) : uiText("工作区"), kind:route.split('/')[1].split('?')[0]};
   }
   function send(page,type,detail = {}) {
     if (page?.ready) page.frame.contentWindow.postMessage({type,...detail},location.origin);
@@ -90,7 +90,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const controls = document.getElementById('workhubWindowControls');
     if (controls) window.WorkHubLayout.renderChrome(controls,{
       ready:!!page?.ready,
-      home:() => openPage({route:'/requirements',environment:page?.snapshot.environment}),
+      home:() => openPage({route:'/workspaces',environment:page?.snapshot.environment}),
       appMenu:window.WorkHubDesktopWindow ? () => window.WorkHubDesktopWindow.showMenu(!!page?.ready) : undefined,
     });
   }
@@ -144,9 +144,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const page = source && source !== navigation ? source : currentPage();
     const bridge = page?.frame.contentWindow?.WorkHubPage;
     const snapshot = environment ? {environment} : (bridge?.snapshot?.() || page?.snapshot);
-    const match = snapshot?.route?.match(/^\/(requirements|projects)\/([\w-]+)/);
+    const match = snapshot?.route?.match(/^\/(workspaces|projects)\/([\w-]+)/);
     const scope = snapshot?.conversation?.scope;
-    const workspaceID = match?.[1] === 'requirements' ? match[2] : scope?.kind === 'task' ? scope.id : snapshot?.terminal?.taskID;
+    const workspaceID = match?.[1] === 'workspaces' ? match[2] : scope?.kind === 'workspace' ? scope.id : snapshot?.terminal?.workspaceID;
     const projectID = match?.[1] === 'projects' ? match[2] : scope?.kind === 'project' ? scope.id : snapshot?.terminal?.projectID;
     const environmentID = snapshot?.sessionEnvironment || scope?.environment || snapshot?.environment || 'local';
     assistantContext = {environment_id: environmentID, workspace_id: workspaceID, project_id: projectID,
@@ -341,14 +341,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     pages.style.gridTemplateColumns = owner.widths.map(value => value + 'fr').join(' 8px ');
   }
   function pageScope(snapshot) {
-    if (isTerminal(snapshot) && snapshot.terminal?.taskID) return {kind:'task',id:snapshot.terminal.taskID,environment:snapshot.environment};
+    if (isTerminal(snapshot) && snapshot.terminal?.workspaceID) return {kind:'workspace',id:snapshot.terminal.workspaceID,environment:snapshot.environment};
     if (snapshot.conversation?.scope) return snapshot.conversation.scope;
-    return snapshot.terminal?.taskID ? {kind:'task',id:snapshot.terminal.taskID,environment:snapshot.environment} : {kind:'all'};
+    return snapshot.terminal?.workspaceID ? {kind:'workspace',id:snapshot.terminal.workspaceID,environment:snapshot.environment} : {kind:'all'};
   }
   function preferredCreation(snapshot) {
-    const scope = pageScope(snapshot), taskID = snapshot.terminal?.taskID || (scope.kind === 'task' ? scope.id : undefined);
-    if (snapshot.environment !== 'local' || !taskID || window.WorkHubLayout.conversationDefaults.get('kind') !== 'terminal') return snapshot;
-    return {...snapshot,route:'/terminals',title:uiText("新建终端"),terminal:{...snapshot.terminal,taskID}};
+    const scope = pageScope(snapshot), workspaceID = snapshot.terminal?.workspaceID || (scope.kind === 'workspace' ? scope.id : undefined);
+    if (snapshot.environment !== 'local' || !workspaceID || window.WorkHubLayout.conversationDefaults.get('kind') !== 'terminal') return snapshot;
+    return {...snapshot,route:'/terminals',title:uiText("新建终端"),terminal:{...snapshot.terminal,workspaceID}};
   }
   function dispatchOpen(message,owner = group,pageID = owner?.focused) {
     const snapshot = message.create && isTerminal(message.snapshot) ? {...message.snapshot,route:'/sessions',title:uiText("新建对话"),conversation:{scope:pageScope(message.snapshot),selected:null,creating:true,pane:'detail'}} : message.snapshot;
@@ -365,12 +365,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     window.WorkHubLayout.conversationDefaults.set('kind',kind);
     const scope = pageScope(source), environment = source.environment;
     const next = kind === 'terminal'
-      ? {...source,route:'/terminals',title:uiText("新建终端"),terminal:{taskID:source.terminal?.taskID || (scope.kind === 'task' ? scope.id : undefined),projectID:source.terminal?.projectID}}
-      : {...source,route:'/sessions',title:uiText("新建对话"),conversation:{...source.conversation,scope:source.terminal?.taskID ? {kind:'task',id:source.terminal.taskID,environment} : scope,selected:null,creating:true,pane:'detail'}};
+      ? {...source,route:'/terminals',title:uiText("新建终端"),terminal:{workspaceID:source.terminal?.workspaceID || (scope.kind === 'workspace' ? scope.id : undefined),projectID:source.terminal?.projectID}}
+      : {...source,route:'/sessions',title:uiText("新建对话"),conversation:{...source.conversation,scope:source.terminal?.workspaceID ? {kind:'workspace',id:source.terminal.workspaceID,environment} : scope,selected:null,creating:true,pane:'detail'}};
     // Keep each unfinished form mounted so changing form does not discard a
     // typed message, attachments or custom terminal options.
     const replacement = page.alternate || createPage(next);
-    const contextKey = snapshot => JSON.stringify([snapshot.environment,snapshot.terminal?.taskID || (pageScope(snapshot).kind === 'task' ? pageScope(snapshot).id : ''),snapshot.terminal?.projectID || '',snapshot.conversation?.creationDirectory || snapshot.conversation?.directory || '']);
+    const contextKey = snapshot => JSON.stringify([snapshot.environment,snapshot.terminal?.workspaceID || (pageScope(snapshot).kind === 'workspace' ? pageScope(snapshot).id : ''),snapshot.terminal?.projectID || '',snapshot.conversation?.creationDirectory || snapshot.conversation?.directory || '']);
     if (page.alternate && contextKey(replacement.snapshot) !== contextKey(next)) {
       replacement.snapshot = normalize(next);
       send(replacement,'workhub:page-restore',{snapshot:replacement.snapshot,active:false});
@@ -522,7 +522,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('workhub:desktop-chrome',renderLayout);
   window.addEventListener('workhub:desktop-home', () => {
     const page = conversationsPresented ? sharedLayout() ? navigation : group.pages[0] : workspace;
-    if (page?.ready) openPage({route:'/requirements',environment:page.snapshot.environment});
+    if (page?.ready) openPage({route:'/workspaces',environment:page.snapshot.environment});
   });
   function followURL() {
     if (appliedURL === location.href) return;
@@ -544,12 +544,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const assistantLink = initial.route === '/assistant';
   if (assistantLink) {
     const url = new URL(location.href);
-    url.hash = '/requirements';
+    url.hash = '/workspaces';
     history.replaceState(null, '', url);
   }
-  const workspace = createPage({...initial,route:initial.route === '/sessions' || assistantLink ? '/requirements' : initial.route},'workspace');
+  const workspace = createPage({...initial,route:initial.route === '/sessions' || assistantLink ? '/workspaces' : initial.route},'workspace');
   sharedListWidth?.subscribe(paintConversationListWidth);
   mountPage(workspace);
-  openPage(assistantLink ? {...initial, route:'/requirements'} : initial);
+  openPage(assistantLink ? {...initial, route:'/workspaces'} : initial);
   if (assistantLink) showAssistant(undefined, initial.environment);
 })();

@@ -12,21 +12,21 @@ import (
 	"worktree-hub/internal/model"
 )
 
-func TestDirectoryScopesShareSessionsWithoutPersistingTaskOwnership(t *testing.T) {
+func TestDirectoryScopesShareSessionsWithoutPersistingWorkspaceOwnership(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
 	_, other, _ := create(t, a, q.PrimaryProjectID, nil, "other")
-	if _, err := a.Workspace.Store.DB.Exec(`UPDATE members SET path=?,mode='worktree',branch=? WHERE requirement_id=?`, q.Members[0].Path, q.Branch, other.ID); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`UPDATE members SET path=?,mode='worktree',branch=? WHERE workspace_id=?`, q.Members[0].Path, q.Branch, other.ID); err != nil {
 		t.Fatal(err)
 	}
 	fakeSessions(a, map[string]codex.Session{
-		"shared":     {ID: "shared", Cwd: q.Members[0].Path},
-		"task-root":  {ID: "task-root", Cwd: q.Path},
-		"other-root": {ID: "other-root", Cwd: other.Path},
-		"prefix":     {ID: "prefix", Cwd: q.Members[0].Path + "-unrelated"},
+		"shared":         {ID: "shared", Cwd: q.Members[0].Path},
+		"workspace-root": {ID: "workspace-root", Cwd: q.Path},
+		"other-root":     {ID: "other-root", Cwd: other.Path},
+		"prefix":         {ID: "prefix", Cwd: q.Members[0].Path + "-unrelated"},
 	})
-	first := getRequirementSessions(t, a, q.ID)
-	second := getRequirementSessions(t, a, other.ID)
-	ids := func(sessions []RequirementSession) string {
+	first := getWorkspaceSessions(t, a, q.ID)
+	second := getWorkspaceSessions(t, a, other.ID)
+	ids := func(sessions []WorkspaceSession) string {
 		var out []string
 		for _, s := range sessions {
 			if s.Available {
@@ -35,36 +35,36 @@ func TestDirectoryScopesShareSessionsWithoutPersistingTaskOwnership(t *testing.T
 		}
 		return strings.Join(out, ",")
 	}
-	if !strings.Contains(ids(first), "shared") || !strings.Contains(ids(first), "task-root") || strings.Contains(ids(first), "other-root") || strings.Contains(ids(first), "prefix") {
+	if !strings.Contains(ids(first), "shared") || !strings.Contains(ids(first), "workspace-root") || strings.Contains(ids(first), "other-root") || strings.Contains(ids(first), "prefix") {
 		t.Fatalf("first: %+v", first)
 	}
-	if !strings.Contains(ids(second), "shared") || !strings.Contains(ids(second), "other-root") || strings.Contains(ids(second), "task-root") {
+	if !strings.Contains(ids(second), "shared") || !strings.Contains(ids(second), "other-root") || strings.Contains(ids(second), "workspace-root") {
 		t.Fatalf("second: %+v", second)
 	}
 	var count int
-	if err := a.Workspace.Store.DB.QueryRow(`SELECT count(*) FROM requirement_sessions`).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("directory discovery wrote task ownership: %d %v", count, err)
+	if err := a.Execution.Store.DB.QueryRow(`SELECT count(*) FROM workspace_sessions`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("directory discovery wrote workspace ownership: %d %v", count, err)
 	}
-	if _, err := a.Workspace.Store.DB.Exec(`UPDATE members SET path='/another-directory' WHERE requirement_id=?`, q.ID); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`UPDATE members SET path='/another-directory' WHERE workspace_id=?`, q.ID); err != nil {
 		t.Fatal(err)
 	}
-	first = getRequirementSessions(t, a, q.ID)
+	first = getWorkspaceSessions(t, a, q.ID)
 	if strings.Contains(ids(first), "shared") {
-		t.Fatal("old directory match became a permanent task link")
+		t.Fatal("old directory match became a permanent workspace link")
 	}
-	if _, err := a.Workspace.Store.Session("shared"); err != nil {
-		t.Fatal("changing task scope deleted the session", err)
+	if _, err := a.Execution.Store.Session("shared"); err != nil {
+		t.Fatal("changing workspace scope deleted the session", err)
 	}
 }
 
-func TestStandaloneWorktreeCreationNeedsNoTaskAndRetriesOnce(t *testing.T) {
+func TestStandaloneWorktreeCreationNeedsNoWorkspaceAndRetriesOnce(t *testing.T) {
 	a := testApp(t)
 	id := register(t, a, "Standalone", repo(t, "standalone", "master"))
-	ps, _ := a.Workspace.Store.ProjectMap()
+	ps, _ := a.Execution.Store.ProjectMap()
 	cwd := filepath.Join(filepath.Dir(ps[id].Path), "detached")
 	testGit(t, ps[id].Path, "worktree", "add", "--detach", cwd, "HEAD")
 	c := &fakeLiveClient{updates: make(chan codex.Event, 256), cwd: cwd}
-	a.plans = nil // No task service is needed for this entire lifecycle.
+	a.plans = nil // No workspace service is needed for this entire lifecycle.
 	a.openLive = func(context.Context) (codex.LiveClient, error) { return c, nil }
 	a.terminalConflict = func(string, string) error { return nil }
 	input := map[string]string{"text": "检查项目", "project_id": id, "cwd": cwd, "request_id": "standalone"}
@@ -79,11 +79,11 @@ func TestStandaloneWorktreeCreationNeedsNoTaskAndRetriesOnce(t *testing.T) {
 	if code, _ := call(t, a, "POST", "/api/sessions/new", input); code != 409 {
 		t.Fatal("changed payload reused creation key", code)
 	}
-	var tasks, pins int
-	_ = a.Workspace.Store.DB.QueryRow(`SELECT count(*) FROM requirements`).Scan(&tasks)
-	_ = a.Workspace.Store.DB.QueryRow(`SELECT count(*) FROM task_session_pins`).Scan(&pins)
-	if tasks != 0 || pins != 0 {
-		t.Fatalf("created task ownership: %d %d", tasks, pins)
+	var workspaces, pins int
+	_ = a.Execution.Store.DB.QueryRow(`SELECT count(*) FROM workspaces`).Scan(&workspaces)
+	_ = a.Execution.Store.DB.QueryRow(`SELECT count(*) FROM workspace_session_pins`).Scan(&pins)
+	if workspaces != 0 || pins != 0 {
+		t.Fatalf("created workspace ownership: %d %d", workspaces, pins)
 	}
 	c.event("turn/completed", map[string]any{"turn": map[string]any{"id": "turn", "status": "completed"}})
 	awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
@@ -100,10 +100,10 @@ func TestStandaloneWorktreeCreationNeedsNoTaskAndRetriesOnce(t *testing.T) {
 	}
 }
 
-func TestTaskWorkspaceCanBeTheCreationDirectory(t *testing.T) {
+func TestWorkspaceDirectoryCanBeTheCreationDirectory(t *testing.T) {
 	a, q, c, _ := chatFixture(t)
 	c.cwd = q.Path
-	code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "研究跨项目方案", "task_id": q.ID, "cwd": q.Path, "request_id": "task-root"})
+	code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "研究跨项目方案", "workspace_id": q.ID, "cwd": q.Path, "request_id": "workspace-root"})
 	if code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
@@ -121,18 +121,18 @@ func TestTaskWorkspaceCanBeTheCreationDirectory(t *testing.T) {
 	awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
 }
 
-func TestSharedSessionHasOneRunAcrossTasksAndGlobalControls(t *testing.T) {
+func TestSharedSessionHasOneRunAcrossWorkspacesAndGlobalControls(t *testing.T) {
 	a, q, c, _ := chatFixture(t)
 	_, other, _ := create(t, a, q.PrimaryProjectID, nil, "shared")
-	_, err := a.Workspace.Store.DB.Exec(`UPDATE members SET path=?,mode='worktree',branch=? WHERE requirement_id=?`, q.Members[0].Path, q.Branch, other.ID)
+	_, err := a.Execution.Store.DB.Exec(`UPDATE members SET path=?,mode='worktree',branch=? WHERE workspace_id=?`, q.Members[0].Path, q.Branch, other.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Archiving the original task must not block this independent conversation.
-	_, _ = a.Workspace.Store.DB.Exec(`UPDATE requirements SET state='archived' WHERE id=?`, q.ID)
+	// Archiving the original workspace must not block this independent conversation.
+	_, _ = a.Execution.Store.DB.Exec(`UPDATE workspaces SET state='archived' WHERE id=?`, q.ID)
 	a.plans = nil
 	startFakeChat(t, a, "/api/sessions/session/chat")
-	for _, path := range []string{"/api/sessions/session/chat", "/api/requirements/" + q.ID + "/sessions/session/chat", "/api/requirements/" + other.ID + "/sessions/session/chat"} {
+	for _, path := range []string{"/api/sessions/session/chat", "/api/workspaces/" + q.ID + "/sessions/session/chat", "/api/workspaces/" + other.ID + "/sessions/session/chat"} {
 		code, raw := call(t, a, "GET", path, nil)
 		var state ChatState
 		_ = json.Unmarshal(raw, &state)
@@ -142,7 +142,7 @@ func TestSharedSessionHasOneRunAcrossTasksAndGlobalControls(t *testing.T) {
 	}
 	c.request("item/commandExecution/requestApproval", "approval", map[string]any{"command": "pwd", "availableDecisions": []string{"accept", "decline"}})
 	waiting := awaitChat(t, a, func(s ChatState) bool { return len(s.Approvals) == 1 })
-	second := "/api/requirements/" + other.ID + "/sessions/session/chat"
+	second := "/api/workspaces/" + other.ID + "/sessions/session/chat"
 	if code, raw := call(t, a, "POST", second+"/approval", map[string]any{"run_id": "request1", "approval_id": waiting.Approvals[0].ID, "decision": "accept"}); code != 200 {
 		t.Fatalf("cross-entry approval: %d %s", code, raw)
 	}
@@ -167,16 +167,16 @@ func TestStandaloneCreationRejectsForeignDirectoriesBeforeStartingCodex(t *testi
 	}
 }
 
-func TestGlobalResumeUsesSavedDirectoriesWithoutTaskLookup(t *testing.T) {
+func TestGlobalResumeUsesSavedDirectoriesWithoutWorkspaceLookup(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
 	a.plans = nil
-	a.Workspace.ReadOnlySessions = true // Use the platform terminal launcher on all OSes.
-	if err := a.Workspace.Store.SaveSessionDirectories("session", []string{q.Path}); err != nil {
+	a.Execution.ReadOnlySessions = true // Use the platform terminal launcher on all OSes.
+	if err := a.Execution.Store.SaveSessionDirectories("session", []string{q.Path}); err != nil {
 		t.Fatal(err)
 	}
 	fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Members[0].Path}})
 	var plan model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
 	if code, raw := call(t, a, "POST", "/api/sessions/session/resume", nil); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
@@ -188,17 +188,17 @@ func TestGlobalResumeUsesSavedDirectoriesWithoutTaskLookup(t *testing.T) {
 func TestGlobalResumeUsesCodexDirectoryWithoutAddingTheCachedOldRoot(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
 	a.plans = nil
-	a.Workspace.ReadOnlySessions = true
+	a.Execution.ReadOnlySessions = true
 	fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Path}})
 	var plan model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
 	if code, raw := call(t, a, "POST", "/api/sessions/session/resume", nil); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	if plan.Cwd != q.Path || len(plan.AdditionalDirectories) != 0 {
 		t.Fatalf("old cached cwd added to execution context: %+v", plan)
 	}
-	saved, _ := a.Workspace.Store.Session("session")
+	saved, _ := a.Execution.Store.Session("session")
 	if saved.Cwd != q.Path {
 		t.Fatalf("index was not refreshed: %+v", saved)
 	}

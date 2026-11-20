@@ -118,7 +118,7 @@ fn connect(app: tauri::AppHandle, stop: bool) {
                     }
                     *host.origin.lock().unwrap() = Some(url.origin().ascii_serialization());
                     if let Some(window) = app.get_webview_window("main") {
-                        // Keep the selected task/environment when reconnecting to a new port.
+                        // Keep the selected workspace/environment when reconnecting to a new port.
                         if let Ok(old) = window.url() {
                             if old.host_str() == Some("127.0.0.1") {
                                 url.set_query(old.query());
@@ -253,7 +253,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     let same = |requested: &Option<PathBuf>, active: &PathBuf| requested.as_ref()
                         .is_none_or(|p| p.canonicalize().unwrap_or_else(|_| p.clone()) == *active);
                     if !same(&incoming.data, &service.data_dir) || !same(&incoming.root, &service.root) {
-                        // Keep the current task intact; report the conflict in a separate window.
+                        // Keep the current workspace intact; report the conflict in a separate window.
                         show_notice(app, "另一个数据目录或工作区的桌面窗口已经打开。请先关闭该窗口，再使用新的启动参数。");
                         return;
                     }

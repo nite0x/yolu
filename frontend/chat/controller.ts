@@ -2,7 +2,7 @@ import type {ChatOptions, SessionTarget, Snapshot} from "./controller-types";
 import { uiText } from "../i18n";
 import {createHistoryLoader} from "./history-loader";
 import {createDraftPersistence} from "./draft-persistence";
-import {entryKey, idleChat, latestEntryFingerprint, mergeEntries, newConversationSettings, pendingAsyncQuestion, questionDraftKey, readSnapshots, type Approval, type ChatState, type Entry, type HistoryPush, type Session, type QuestionDraft} from "./model";
+import {defaultCapabilities, entryKey, idleChat, latestEntryFingerprint, mergeEntries, newConversationSettings, normalizeProvider, pendingAsyncQuestion, questionDraftKey, readSnapshots, type AgentProvider, type Approval, type ChatState, type Entry, type HistoryPush, type ProviderCapabilities, type Session, type QuestionDraft} from "./model";
 import type {ConversationDefaults} from "./settings";
 import {draftFiles, draftImages, readLocalDraft, restoreFiles, restoreImages, type DraftRecord} from "./drafts";
 import type {TurnSettings,ChatContext,ChatModel} from "./model";
@@ -15,7 +15,7 @@ export type {ChatOptions, SessionTarget, Snapshot} from "./controller-types";
 // drafts are scoped to their creation target.
 export const conversationKey = (options: ChatOptions, session: string | null = options.session?.id || null) => JSON.stringify(session
   ? [options.environment, "session", session]
-  : [options.environment, "draft", options.task?.id || options.target?.task_id || "", options.target?.project_id || "", options.target?.cwd || ""]);
+  : [options.environment, "draft", options.workspace?.id || options.target?.workspace_id || "", options.target?.project_id || "", options.target?.cwd || ""]);
 export class ChatController {
   reading: DraftRecord['reading'] = {top: 0, bottom: true, anchor: "", offset: 0};
   opening = true;
@@ -43,7 +43,7 @@ export class ChatController {
   private generation = 0;
   private handoffID?: string;
   private submitted?: {id?: string; text: string; attachments: readonly Attachment[]};
-  private pending?: {text: string; images?: string[]; project_id: string; task_id?: string; cwd?: string; additional_directories?: string[]; request_id: string; settings?: TurnSettings; turn_id?: string};
+  private pending?: {text: string; images?: string[]; provider?: AgentProvider; project_id: string; workspace_id?: string; cwd?: string; additional_directories?: string[]; request_id: string; settings?: TurnSettings; turn_id?: string};
   private openingApproval = false;
   private defaultsRefreshPending = false;
   private draftPersistence: ReturnType<typeof createDraftPersistence>;
@@ -73,7 +73,8 @@ export class ChatController {
     }
   };
   constructor(public options: ChatOptions) {
-    this.snapshot = {session: options.session, entries: [], chat: idleChat(), project: options.target?.project_id || options.task?.primary_project_id || "", draft: "", error: "", historyError: "", loading: false, submitting: false, stopping: false, answering: null, cursor: null, draftRestore: 0, settings: {}, defaults: {}, models: [], modes: [], optionsLoading: false, draftNotice: "", search: "", searching:false, searchError:"", managing:false};
+    const initialProvider = normalizeProvider(options.session?.provider);
+    this.snapshot = {session: options.session, provider: initialProvider, capabilities: defaultCapabilities(initialProvider), entries: [], chat: idleChat(), project: options.target?.project_id || options.workspace?.primary_project_id || "", draft: "", error: "", historyError: "", loading: false, submitting: false, stopping: false, answering: null, cursor: null, draftRestore: 0, settings: {}, defaults: {}, models: [], modes: [], optionsLoading: false, draftNotice: "", search: "", searching:false, searchError:"", managing:false};
     this.historyLoader = createHistoryLoader({
       request: (path, init) => this.options.request(path, init),
       base: () => this.base(),
@@ -90,7 +91,7 @@ export class ChatController {
       enabled: () => !!this.options.persistDraft && !this.options.readOnly,
       connected: () => this.connected,
       submitting: () => this.snapshot.submitting,
-      capture: () => ({text:this.snapshot.draft, images:draftImages(this.draftAttachments), files:draftFiles(this.draftAttachments), settings:this.snapshot.settings, project:this.snapshot.project, reading:this.reading, questions:Object.fromEntries([...this.questionDrafts].filter(([key]) => key.startsWith('["async",')))}),
+      capture: () => ({text:this.snapshot.draft, images:draftImages(this.draftAttachments), files:draftFiles(this.draftAttachments), ...(this.snapshot.session ? {} : {provider: this.snapshot.provider}), settings:this.snapshot.settings, project:this.snapshot.project, reading:this.reading, questions:Object.fromEntries([...this.questionDrafts].filter(([key]) => key.startsWith('["async",')))}),
       restore: record => this.restoreDraft(record),
       notice: draftNotice => this.update({draftNotice}),
     });
@@ -140,8 +141,8 @@ export class ChatController {
     if (echo) this.update({entries: this.snapshot.entries.filter(e => e.id !== echo.entry.id)});
   }
   private base() { return `/api/sessions/${encodeURIComponent(this.snapshot.session!.id)}`; }
-  canSend = () => !this.options.readOnly && !this.snapshot.session?.archived && (!!this.snapshot.session || !this.snapshot.optionsLoading && (this.options.task
-    ? this.options.task.state === "ready" : !!(this.options.target?.task_id || this.options.target?.project_id && this.options.target?.cwd)));
+  canSend = () => !this.options.readOnly && !this.snapshot.session?.archived && (!!this.snapshot.session || !this.snapshot.optionsLoading && (this.options.workspace
+    ? this.options.workspace.state === "ready" : !!(this.options.target?.workspace_id || this.options.target?.project_id && this.options.target?.cwd)));
   resume = async () => {
     if (!this.snapshot.session) return;
     try { await this.options.request(this.base() + "/resume", {method: "POST"}); }
@@ -150,7 +151,19 @@ export class ChatController {
   setDraft = (draft: string) => { if (draft !== this.snapshot.draft) { this.update({draft}); this.draftChanged(); } };
   setError = (error: string) => this.update({error});
   updateSession = (session: Session) => {
-    if (this.snapshot.session?.id === session.id) this.update({session: {...this.snapshot.session, ...session}});
+    if (this.snapshot.session?.id === session.id) {
+      const provider = normalizeProvider(session.provider || this.snapshot.provider);
+      this.update({session: {...this.snapshot.session, ...session, provider}, provider, capabilities: defaultCapabilities(provider)});
+    }
+  };
+  setProvider = (provider: AgentProvider) => {
+    if (this.snapshot.session || this.snapshot.submitting) return;
+    const normalized = normalizeProvider(provider);
+    if (normalized === this.snapshot.provider) return;
+    const permission = this.snapshot.settings.permission;
+    this.update({provider: normalized, capabilities: defaultCapabilities(normalized), settings: permission ? {permission} : {}, models: [], modes: [], defaults: {}, error: ""});
+    this.draftChanged();
+    if (!this.options.readOnly) void this.loadOptions();
   };
   setProject = (project: string) => {this.update({project}); this.draftChanged();};
   setSettings = (settings: TurnSettings) => {this.update({settings});this.draftChanged();};
@@ -289,17 +302,19 @@ export class ChatController {
     const before = this.snapshot;
     const steering = before.chat.busy;
     if (!messageText && !images.length) return;
-    if (before.submitting || (steering && (!before.chat.turn_id || !["running","waiting"].includes(before.chat.status))) || before.chat.blocked || !this.canSend()) throw new Error(uiText("当前暂不能发送，草稿已保留，请稍后重试"));
+    if (before.submitting || (steering && (!before.capabilities.steer || !before.chat.turn_id || !["running","waiting"].includes(before.chat.status))) || before.chat.blocked || !this.canSend()) throw new Error(uiText("当前暂不能发送，草稿已保留，请稍后重试"));
     try { validateImages(images); }
     catch (error) { this.update({error: (error as Error).message}); throw error; }
     const target: SessionTarget & {project_id: string} = before.session ? {project_id: ""}
-      : {...this.options.target, ...(this.options.task ? {task_id: this.options.task.id} : {}), project_id: before.project};
-    const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.task_id === target.task_id && this.pending.cwd === target.cwd
+      : {...this.options.target, ...(this.options.workspace ? {workspace_id: this.options.workspace.id} : {}), project_id: before.project};
+    const createProvider: AgentProvider | undefined = !before.session && before.provider === "agy" ? "agy" : undefined;
+    const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.workspace_id === target.workspace_id && this.pending.cwd === target.cwd
+      && this.pending.provider === createProvider
       && JSON.stringify(this.pending.additional_directories) === JSON.stringify(target.additional_directories)
       && (this.pending.images || []).length === images.length
       && images.every((image, i) => image === this.pending?.images?.[i])
       && this.pending?.turn_id === (steering ? before.chat.turn_id : undefined) && (steering || JSON.stringify(this.pending?.settings || {}) === JSON.stringify(before.settings));
-    const pending = samePending ? this.pending! : {text: messageText, ...(images.length ? {images} : {}), ...target, request_id: crypto.randomUUID(), settings: before.settings, ...(steering ? {turn_id:before.chat.turn_id} : {})};
+    const pending = samePending ? this.pending! : {text: messageText, ...(images.length ? {images} : {}), ...(createProvider ? {provider: createProvider} : {}), ...target, request_id: crypto.randomUUID(), settings: before.settings, ...(steering ? {turn_id:before.chat.turn_id} : {})};
     this.pending = pending;
     const attachments = this.draftAttachments;
     const entry: Entry = {id: "local:" + pending.request_id, turn_id: "local:" + pending.request_id, kind: "user", text: messageText, ...(images.length ? {images} : {})};
@@ -315,7 +330,9 @@ export class ChatController {
         chat = result.chat;
       } else if (!before.session) {
         const result = await this.options.request<{session: Session; chat: ChatState}>("/api/sessions/new", {method: "POST", body: JSON.stringify(pending)});
-        this.update({session: result.session}); this.options.created(result.session); chat = result.chat;
+        const createdProvider = normalizeProvider(result.session.provider || before.provider);
+        const session = {...result.session, provider: createdProvider};
+        this.update({session, provider: createdProvider, capabilities: defaultCapabilities(createdProvider)}); this.options.created(session); chat = result.chat;
       } else {
         chat = await this.options.request<ChatState>(this.base() + "/chat", {method: "POST", body: JSON.stringify({text: messageText, ...(images.length ? {images} : {}), request_id: pending.request_id, ...(Object.keys(before.settings).length ? {settings:before.settings} : {})})});
       }
@@ -351,7 +368,8 @@ export class ChatController {
     for (const [key, draft] of Object.entries(record.questions || {})) {
       if (key.startsWith('["async",') && draft && typeof draft === "object") this.questionDrafts.set(key, draft);
     }
-    this.update({draft:record.text,settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
+    const restoredProvider = !this.snapshot.session && record.provider ? normalizeProvider(record.provider) : this.snapshot.provider;
+    this.update({draft:record.text,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
   }
   private loadDraft() { return this.draftPersistence.load(); }
   private draftChanged() { this.draftPersistence.changed(); }
@@ -366,10 +384,13 @@ export class ChatController {
   loadOptions = async () => {
     if(this.snapshot.optionsLoading) return;
     this.defaultsRefreshPending = false;
+    const provider = normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider);
     this.update({optionsLoading:true});
     try {
-      const [catalog,context] = await Promise.all([this.options.readOnly ? Promise.resolve({models:[],modes:[]}) : this.options.request<{models:ChatModel[];modes:string[];defaults?:ConversationDefaults}>("/api/codex/chat-options"),this.snapshot.session ? this.options.request<ChatContext>(this.base()+"/context") : Promise.resolve(undefined)]);
-      this.update({models:catalog.models||[],modes:catalog.modes||[],defaults:("defaults" in catalog ? catalog.defaults : undefined)||{},context});
+      const optionsPath = provider === "agy" ? "/api/agents/chat-options?provider=agy" : "/api/codex/chat-options";
+      const [catalog,context] = await Promise.all([this.options.readOnly ? Promise.resolve({models:[],modes:[]}) : this.options.request<{models:ChatModel[];modes:string[];defaults?:ConversationDefaults;capabilities?:ProviderCapabilities}>(optionsPath),this.snapshot.session ? this.options.request<ChatContext>(this.base()+"/context") : Promise.resolve(undefined)]);
+      if (normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider) !== provider) return;
+      this.update({models:catalog.models||[],modes:catalog.modes||[],defaults:("defaults" in catalog ? catalog.defaults : undefined)||{},capabilities:("capabilities" in catalog && catalog.capabilities) ? catalog.capabilities : defaultCapabilities(provider),context});
     } catch(error){this.update({error:(error as Error).message});}
     finally{
       const refresh = this.defaultsRefreshPending;

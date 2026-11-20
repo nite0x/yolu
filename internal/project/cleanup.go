@@ -11,10 +11,10 @@ import (
 	"sort"
 	"strings"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 type CleanupCandidate struct {
@@ -33,7 +33,7 @@ type CleanupCandidate struct {
 	Fingerprint string   `json:"fingerprint"`
 }
 
-func cleanupCurrent(q model.Requirement, project, path string) bool {
+func cleanupCurrent(q model.Workspace, project, path string) bool {
 	for _, m := range q.Members {
 		if m.ProjectID == project && platform.SameWorkspacePath(m.Path, path) {
 			return true
@@ -42,13 +42,13 @@ func cleanupCurrent(q model.Requirement, project, path string) bool {
 	return false
 }
 
-func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.Requirement, qs []model.Requirement, path string) CleanupCandidate {
+func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.Workspace, qs []model.Workspace, path string) CleanupCandidate {
 	v := CleanupCandidate{ProjectID: p.ID, ProjectName: p.Name, Path: path, Current: cleanupCurrent(q, p.ID, path), Shared: []string{}, Reasons: []string{}}
 	if !platform.AbsoluteWorkspacePath(q.Path) || !platform.Within(q.Path, path) || platform.SameWorkspacePath(path, p.Path) {
-		v.Reasons = append(v.Reasons, "项目原目录或任务工作区外的目录，仅检查，不提供清理")
+		v.Reasons = append(v.Reasons, "项目原目录或工作区外的目录，仅检查，不提供清理")
 	}
 	if v.Current && q.State != "archived" {
-		v.Reasons = append(v.Reasons, "当前仍关联任务，请先归档任务")
+		v.Reasons = append(v.Reasons, "当前仍关联工作区，请先归档工作区")
 	}
 	for _, other := range qs {
 		if other.ID == q.ID {
@@ -63,7 +63,7 @@ func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.R
 	}
 	sort.Strings(v.Shared)
 	if len(v.Shared) > 0 {
-		v.Reasons = append(v.Reasons, "其他任务仍引用此目录："+strings.Join(v.Shared, "、"))
+		v.Reasons = append(v.Reasons, "其他工作区仍引用此目录："+strings.Join(v.Shared, "、"))
 	}
 	t, err := selectedWorktree(ctx, p, path)
 	if err != nil {
@@ -82,13 +82,13 @@ func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.R
 		if t.Operation != "" {
 			v.Reasons = append(v.Reasons, "有未完成的 Git 操作："+t.Operation)
 		}
-		if st, e := workspace.Stat(ctx, platform.JoinWorkspacePath(path, ".git"), false); e != nil || st.IsDir() {
+		if st, e := execution.Stat(ctx, platform.JoinWorkspacePath(path, ".git"), false); e != nil || st.IsDir() {
 			v.Reasons = append(v.Reasons, "不是可清理的附属 Worktree")
 		}
-		if resolved, e := workspace.Eval(ctx, path); e != nil || !platform.SameWorkspacePath(path, resolved) {
+		if resolved, e := execution.Eval(ctx, path); e != nil || !platform.SameWorkspacePath(path, resolved) {
 			v.Reasons = append(v.Reasons, "目录真实路径已变化")
 		}
-		ignored, e := workspace.Git(ctx, path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
+		ignored, e := execution.Git(ctx, path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
 		v.Ignored = ignored != ""
 		if e != nil {
 			v.Reasons = append(v.Reasons, "无法检查忽略文件")
@@ -105,12 +105,12 @@ func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.R
 		} else {
 			// With no upstream, allow only commits reachable from another retained
 			// baseline or a remote reference. The branch itself is always retained.
-			published, e := workspace.Git(ctx, path, "for-each-ref", "--format=%(refname)", "--contains", t.Head, "refs/remotes")
+			published, e := execution.Git(ctx, path, "for-each-ref", "--format=%(refname)", "--contains", t.Head, "refs/remotes")
 			if e != nil {
 				v.Reasons = append(v.Reasons, "无法检查提交保留状态")
 			} else if strings.TrimSpace(published) == "" {
-				base := workspace.DefaultBranchSource(ctx, path)
-				_, e := workspace.Git(ctx, path, "merge-base", "--is-ancestor", t.Head, base)
+				base := execution.DefaultBranchSource(ctx, path)
+				_, e := execution.Git(ctx, path, "merge-base", "--is-ancestor", t.Head, base)
 				if base == "HEAD" || base == "refs/heads/"+t.Branch || e != nil {
 					v.Reasons = append(v.Reasons, "没有上游，且提交尚未包含在其他保留基线中")
 				}
@@ -128,22 +128,22 @@ func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.R
 	return v
 }
 
-func (a *Service) TaskReviewHandler(w http.ResponseWriter, r *http.Request) {
-	q, err := a.Workspace.Store.Requirement(r.PathValue("id"))
+func (a *Service) WorkspaceReviewHandler(w http.ResponseWriter, r *http.Request) {
+	q, err := a.Execution.Store.Workspace(r.PathValue("id"))
 	if errors.Is(err, sql.ErrNoRows) {
-		httpx.WriteError(w, 404, "任务不存在")
+		httpx.WriteError(w, 404, "工作区不存在")
 		return
 	}
 	if err != nil {
 		httpx.DbError(w, err)
 		return
 	}
-	qs, err := a.Workspace.Store.Requirements()
+	qs, err := a.Execution.Store.Workspaces()
 	if err != nil {
 		httpx.DbError(w, err)
 		return
 	}
-	ps, err := a.Workspace.Store.Projects()
+	ps, err := a.Execution.Store.Projects()
 	if err != nil {
 		httpx.DbError(w, err)
 		return
@@ -156,7 +156,7 @@ func (a *Service) TaskReviewHandler(w http.ResponseWriter, r *http.Request) {
 				paths[m.Path] = true
 			}
 		}
-		raw, e := workspace.Git(r.Context(), p.Path, "worktree", "list", "--porcelain", "-z")
+		raw, e := execution.Git(r.Context(), p.Path, "worktree", "list", "--porcelain", "-z")
 		if e == nil {
 			for _, t := range ParseWorktrees(raw) {
 				if platform.Within(q.Path, t.Path) {
@@ -184,7 +184,7 @@ func (a *Service) TaskReviewHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return items[i].Path < items[j].Path
 	})
-	httpx.WriteJSON(w, 200, map[string]any{"task": q, "items": items})
+	httpx.WriteJSON(w, 200, map[string]any{"workspace": q, "items": items})
 }
 
 func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request) {
@@ -199,9 +199,9 @@ func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request)
 		httpx.WriteError(w, 400, "请先检查并选择具体目录")
 		return
 	}
-	a.Workspace.GitActivity.RLock()
-	defer a.Workspace.GitActivity.RUnlock()
-	if a.Workspace.Closing.Load() {
+	a.Execution.GitActivity.RLock()
+	defer a.Execution.GitActivity.RUnlock()
+	if a.Execution.Closing.Load() {
 		httpx.WriteError(w, 503, "后台正在退出")
 		return
 	}
@@ -220,14 +220,14 @@ func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request)
 		}
 		defer release()
 	}
-	a.Workspace.Mu.Lock()
-	defer a.Workspace.Mu.Unlock()
-	q, err := a.Workspace.Store.Requirement(r.PathValue("id"))
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
+	q, err := a.Execution.Store.Workspace(r.PathValue("id"))
 	if err != nil {
-		httpx.WriteError(w, 404, "任务不存在")
+		httpx.WriteError(w, 404, "工作区不存在")
 		return
 	}
-	qs, err := a.Workspace.Store.Requirements()
+	qs, err := a.Execution.Store.Workspaces()
 	if err != nil {
 		httpx.DbError(w, err)
 		return
@@ -242,21 +242,21 @@ func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// No --force, branch deletion, recursive filesystem deletion or prune.
-	if _, err := workspace.GitOperation(r.Context(), p.Path, "worktree", "remove", "--", in.Path); err != nil {
+	if _, err := execution.GitOperation(r.Context(), p.Path, "worktree", "remove", "--", in.Path); err != nil {
 		httpx.WriteError(w, 409, "清理未完成，现场已保留："+RedactGitOutput(err.Error()))
 		return
 	}
-	_, err = a.Workspace.Store.DB.Exec(`UPDATE members SET state='removed',branch=?,error='目录已清理；取消归档后可重试恢复，或更换工作目录' WHERE requirement_id=? AND project_id=? AND path=?`, v.Branch, q.ID, p.ID, in.Path)
+	_, err = a.Execution.Store.DB.Exec(`UPDATE members SET state='removed',branch=?,error='目录已清理；取消归档后可重试恢复，或更换工作目录' WHERE workspace_id=? AND project_id=? AND path=?`, v.Branch, q.ID, p.ID, in.Path)
 	if err != nil {
-		httpx.WriteError(w, 500, "目录已清理，但任务记录更新失败，请刷新核对："+err.Error())
+		httpx.WriteError(w, 500, "目录已清理，但工作区记录更新失败，请刷新核对："+err.Error())
 		return
 	}
 	message := "已清理 Worktree 目录，分支和对话记录保留"
 	warning := ""
-	if a.TaskContextUpdated != nil {
-		if current, err := a.Workspace.Store.Requirement(q.ID); err == nil {
-			if err := a.TaskContextUpdated(r.Context(), current); err != nil {
-				warning = "任务上下文更新失败：" + err.Error()
+	if a.WorkspaceContextUpdated != nil {
+		if current, err := a.Execution.Store.Workspace(q.ID); err == nil {
+			if err := a.WorkspaceContextUpdated(r.Context(), current); err != nil {
+				warning = "工作区上下文更新失败：" + err.Error()
 			}
 		}
 	}

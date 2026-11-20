@@ -1,4 +1,4 @@
-export interface PendingOperation { id: number; key: string; environment: string; title: string; project?: string; task?: string }
+export interface PendingOperation { id: number; key: string; environment: string; title: string; project?: string; workspace?: string }
 export function createOperations() {
   let sequence = 0
   const pending = new Map<string, PendingOperation>()

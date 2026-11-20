@@ -12,8 +12,8 @@ function harness() {
     if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', value: '', hidden: true, dataset: {}, scrollHeight: 1000, scrollTop: 900, clientHeight: 100, handlers: {}, querySelectorAll() { return []; }, addEventListener(event, fn) { this.handlers[event] = fn; } });
     return elements.get(id);
   };
-  const current = { requirement: 'req', session: 'session', entries: [] };
-  const context = vm.createContext({ window: { WorkHubUI: workspaceUI }, cleanHistoryApproval: value => value, plainHistoryText: value => String(value ?? ''), $, sessionHistoryState: current, state: { requirements: [{ id: 'req', state: 'ready' }] }, token: 'token', AbortController, TextDecoder, URLSearchParams, crypto: { randomUUID: () => 'request' }, setInterval() { return 1; }, clearInterval() {}, document: { hidden: false }, esc: s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]), historyText: s => String(s), renderHistoryEntry: e => e.text || e.command, loadSessionHistory() {}, api: async () => ({ status: 'idle', busy: false, entries: [], approvals: [] }) });
+  const current = { workspace: 'req', session: 'session', entries: [] };
+  const context = vm.createContext({ window: { WorkHubUI: workspaceUI }, cleanHistoryApproval: value => value, plainHistoryText: value => String(value ?? ''), $, sessionHistoryState: current, state: { workspaces: [{ id: 'req', state: 'ready' }] }, token: 'token', AbortController, TextDecoder, URLSearchParams, crypto: { randomUUID: () => 'request' }, setInterval() { return 1; }, clearInterval() {}, document: { hidden: false }, esc: s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]), historyText: s => String(s), renderHistoryEntry: e => e.text || e.command, loadSessionHistory() {}, api: async () => ({ status: 'idle', busy: false, entries: [], approvals: [] }) });
   context.updateSessionChatActivity = () => {};
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../web/features/sessions/session-chat.js'), 'utf8'), context);
   return { context, $, current };
@@ -83,7 +83,7 @@ test('uncertain sends are recovered once, and pre-turn failures restore the draf
   assert.equal(h.current.pendingMessage, null);
   h.context.applyChatState(h.current, { ...idle(), id: 'r', status: 'conflict', error: 'terminal busy' });
   assert.equal(h.$('#sessionChatInput').value, 'draft');
-  const other = { requirement: 'req', session: 'other', entries: [] };
+  const other = { workspace: 'req', session: 'other', entries: [] };
   h.context.sessionHistoryState = other;
   h.context.applyChatState(h.current, { ...idle(), error: 'STALE_ERROR' });
   assert.doesNotMatch(h.$('#sessionChatError').textContent, /STALE_ERROR/);

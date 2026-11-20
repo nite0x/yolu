@@ -29,7 +29,7 @@ func (s TurnSettings) validate() error {
 	if len(s.Model) > 200 {
 		return fmt.Errorf("模型名称过长")
 	}
-	if s.Mode != "" && s.Mode != "plan" && s.Mode != "default" {
+	if s.Mode != "" && !strings.Contains("|plan|default|accept-edits|auto|ask|code|architect|", "|"+s.Mode+"|") {
 		return fmt.Errorf("不支持的工作模式")
 	}
 	if s.Effort != "" && !strings.Contains("|none|minimal|low|medium|high|xhigh|max|ultra|", "|"+s.Effort+"|") {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 	"worktree-hub/internal/codex"
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 func (a *Service) sessionActivity(ctx context.Context, s codex.Session) codex.Activity {
@@ -18,9 +18,9 @@ func (a *Service) sessionActivity(ctx context.Context, s codex.Session) codex.Ac
 	if s.Path == "" {
 		return codex.Activity{Status: "unknown"}
 	}
-	if a.Workspace.Remote != nil {
+	if a.Execution.Remote != nil {
 		var activity codex.Activity
-		if a.Workspace.Remote.Call(ctx, workspace.Request{Op: "rollout-activity", Path: s.Path}, &activity) != nil {
+		if a.Execution.Remote.Call(ctx, execution.Request{Op: "rollout-activity", Path: s.Path}, &activity) != nil {
 			return codex.Activity{Status: "unknown"}
 		}
 		return activity

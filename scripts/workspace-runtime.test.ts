@@ -3,8 +3,8 @@ import assert from "node:assert/strict"
 import {createOperations} from "../frontend/workspace/operations"
 import {createSessionRequests} from "../frontend/workspace/session-requests"
 import {conversationPathKey,conversationEnvironmentKey} from "../frontend/workspace/conversation-runtime"
-import {taskMatches,taskSignals} from "../frontend/workspace/task-signals"
-import type {Task} from "../frontend/workspace/types"
+import {workspaceMatches,workspaceSignals} from "../frontend/workspace/workspace-signals"
+import type {Workspace} from "../frontend/workspace/types"
 
 test("operation ownership is per environment and resource, and completion cannot release a newer operation", () => {
   const operations=createOperations()
@@ -39,10 +39,10 @@ test("session queries share simultaneous identical reads while force and navigat
   pending[2].resolve({sessions:[]});await after
 })
 
-test("task signals distinguish committed work awaiting push from a clean directory", () => {
-  const task={members:[{state:"ready",worktree:{dirty:0,sync_ahead:2,status_updated_at:"now"}},{state:"pending"},{state:"ready",worktree:{dirty:2,operation:"merge",conflicts:["a"],status_updated_at:"now"}}],connected:true} as Task
-  assert.deepEqual(taskSignals(task),{issues:1,dirty:1,push:1,conflicts:1,checking:0})
-  for(const filter of ["issues","dirty","push","conflicts"] as const) assert(taskMatches(task,filter))
+test("workspace signals distinguish committed work awaiting push from a clean directory", () => {
+  const workspace={members:[{state:"ready",worktree:{dirty:0,sync_ahead:2,status_updated_at:"now"}},{state:"pending"},{state:"ready",worktree:{dirty:2,operation:"merge",conflicts:["a"],status_updated_at:"now"}}],connected:true} as Workspace
+  assert.deepEqual(workspaceSignals(workspace),{issues:1,dirty:1,push:1,conflicts:1,checking:0})
+  for(const filter of ["issues","dirty","push","conflicts"] as const) assert(workspaceMatches(workspace,filter))
   assert.equal(conversationPathKey("C:\\Repo\\"),"c:/repo")
   assert.equal(conversationPathKey("/Home/Repo/"),"/Home/Repo")
   assert.notEqual(conversationEnvironmentKey("local","same"),conversationEnvironmentKey("wsl","same"))

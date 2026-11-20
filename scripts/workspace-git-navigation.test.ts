@@ -25,29 +25,29 @@ test("Git sections keep controller-owned fields, context and draft values mounte
   const api = (window as any).GitUITest
   const mount = window.document.getElementById("mount")!
   const overview = {
-    project: { id: "app", name: "App", path: "/repo/app", worktrees: [{ path: "/repo/app", branch: "main" }, { path: "/work/task/app", branch: "feature/task" }] },
+    project: { id: "app", name: "App", path: "/repo/app", worktrees: [{ path: "/repo/app", branch: "main" }, { path: "/work/workspace/app", branch: "feature/workspace" }] },
     remotes: [{ name: "origin", url: "example.invalid/repo" }],
-    branches: [{ name: "main", ref: "refs/heads/main", kind: "local", commit: "12345678", worktrees: ["/repo/app"] }, { name: "feature/task", ref: "refs/heads/feature/task", kind: "local", commit: "87654321", worktrees: ["/work/task/app"] }],
+    branches: [{ name: "main", ref: "refs/heads/main", kind: "local", commit: "12345678", worktrees: ["/repo/app"] }, { name: "feature/workspace", ref: "refs/heads/feature/workspace", kind: "local", commit: "87654321", worktrees: ["/work/workspace/app"] }],
   }
   api.mountGitView(mount, overview)
   const branch = window.document.getElementById("gitBranchName") as HTMLInputElement
   const context = window.document.getElementById("gitContext")!
   const worktree = window.document.getElementById("gitWorktree") as HTMLSelectElement
   branch.value = "feature/draft"
-  context.textContent = "当前分支 feature/task"
-  worktree.value = "/work/task/app"
+  context.textContent = "当前分支 feature/workspace"
+  worktree.value = "/work/workspace/app"
   assert.equal(mount.querySelectorAll('[role="tab"]').length, 0)
   assert.equal(mount.querySelectorAll('.git-operation-section').length, 3)
   assert.equal(mount.querySelectorAll('.git-section-navigation a').length, 3)
   api.scrollToGitSection(mount, "branches")
   assert.equal(window.document.getElementById("gitBranchName"), branch)
   assert.equal(branch.value, "feature/draft")
-  assert.equal(worktree.value, "/work/task/app")
+  assert.equal(worktree.value, "/work/workspace/app")
   api.scrollToGitSection(mount, "merge")
-  api.mountGitView(mount, { ...overview, current: "feature/task" })
+  api.mountGitView(mount, { ...overview, current: "feature/workspace" })
   assert.equal(window.document.getElementById("gitBranchName"), branch)
   assert.equal(branch.value, "feature/draft")
-  assert.equal(context.textContent, "当前分支 feature/task")
+  assert.equal(context.textContent, "当前分支 feature/workspace")
   const ids = [...mount.querySelectorAll("[id]")].map(node => node.id)
   assert.equal(new Set(ids).size, ids.length)
   api.resetGitView(mount)

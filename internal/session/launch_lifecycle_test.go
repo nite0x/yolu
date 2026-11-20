@@ -18,13 +18,13 @@ func TestNativeLaunchRetainsAdditionalDirectoriesWithoutManagedRelay(t *testing.
 	front := register(t, a, "Front", repo(t, "front", "main"))
 	back := register(t, a, "Back", repo(t, "back", "main"))
 	_, q, _ := create(t, a, front, []string{back}, "native-launch")
-	want, err := a.Tasks.MakeLaunchPlan(context.Background(), q.ID)
+	want, err := a.Workspaces.MakeLaunchPlan(context.Background(), q.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { got = p; return nil }
-	if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/launch", nil); code != 200 {
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { got = p; return nil }
+	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/launch", nil); code != 200 {
 		t.Fatalf("launch: %d %s", code, raw)
 	}
 	if got.Cwd != want.Cwd || !reflect.DeepEqual(got.Args, want.Args) || !reflect.DeepEqual(got.AdditionalDirectories, want.AdditionalDirectories) || len(a.bridges) != 0 {
@@ -38,17 +38,17 @@ func TestManagedLaunchFailureIsScopedToItsSessionService(t *testing.T) {
 	}
 	a := testApp(t)
 	var failures []func()
-	a.Workspace.Launch = func(_ model.LaunchPlan, failed func()) error {
+	a.Execution.Launch = func(_ model.LaunchPlan, failed func()) error {
 		failures = append(failures, failed)
 		return nil
 	}
 	firstDir, secondDir := t.TempDir(), t.TempDir()
 	first := httptest.NewRecorder()
-	a.LaunchCodexPlan(first, model.LaunchPlan{Requirement: "first", Cwd: firstDir, Session: "first-session", Args: []string{"--cd", firstDir}})
-	other := New(a.Workspace, a.Tasks)
+	a.LaunchCodexPlan(first, model.LaunchPlan{Workspace: "first", Cwd: firstDir, Session: "first-session", Args: []string{"--cd", firstDir}})
+	other := New(a.Execution, a.Workspaces)
 	defer other.Close()
 	second := httptest.NewRecorder()
-	other.LaunchCodexPlan(second, model.LaunchPlan{Requirement: "second", Cwd: secondDir, Session: "second-session", Args: []string{"--cd", secondDir}})
+	other.LaunchCodexPlan(second, model.LaunchPlan{Workspace: "second", Cwd: secondDir, Session: "second-session", Args: []string{"--cd", secondDir}})
 	if first.Code != 200 || second.Code != 200 || len(failures) != 2 || failures[0] == nil || failures[1] == nil {
 		t.Fatalf("launches: %d %d callbacks=%d", first.Code, second.Code, len(failures))
 	}

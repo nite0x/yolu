@@ -10,7 +10,7 @@ import { NativeSelect, NativeSelectOption as Option, NativeSelectOptGroup } from
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { ChevronDown, CodeXml, Terminal } from "lucide-react"
-import type { GitOverview, Member, Task, Worktree } from "./types"
+import type { GitOverview, Member, Workspace, Worktree } from "./types"
 
 export const statusLabels: Record<string, string> = { ready: uiText("已就绪"), partial: uiText("部分就绪"), archived: uiText("已归档"), creating: uiText("创建中"), pending: uiText("待创建"), failed: uiText("创建失败"), removed: uiText("目录已清理") }
 const tones: Record<string, string> = {
@@ -34,9 +34,9 @@ export function TreeStatus({ tree: t, pending = false, compact = false }: { tree
   return <><StatusBadge kind={t.dirty ? "warning" : "neutral"}>{t.dirty ? uiText("{0} 项改动", t.dirty) : uiText("无未提交改动")}</StatusBadge>{!compact ? <div className="comparison status-checked-at">{uiText("上次检查")} <time data-status-path={t.path} dateTime={t.status_updated_at}>{new Date(t.status_updated_at).toLocaleTimeString(uiLocale(), { hour12: false })}</time></div> : null}</>
 }
 export const reusesDirectory = (m: Member) => m.mode === "project" || m.mode === "worktree"
-export const expectedBranch = (m: Member, q: Task) => m.branch || q.branch
+export const expectedBranch = (m: Member, q: Workspace) => m.branch || q.branch
 export const canOpenMember = (m: Member) => m.state === "ready" && !m.error && !!m.worktree?.status_updated_at && !m.worktree.bare && !m.worktree.missing && !m.worktree.prunable && !m.worktree.error
-export const branchSummary = (q: Task) => [...new Set(q.members.map(m => m.worktree?.branch || m.branch || (reusesDirectory(m) ? "detached HEAD" : q.branch)).filter(Boolean))].join(" · ") || uiText("使用已有工作目录")
+export const branchSummary = (q: Workspace) => [...new Set(q.members.map(m => m.worktree?.branch || m.branch || (reusesDirectory(m) ? "detached HEAD" : q.branch)).filter(Boolean))].join(" · ") || uiText("使用已有工作目录")
 
 export function Action({ action, id, children, ...props }: ComponentProps<typeof Button> & { action: string; id?: string }) {
   return <Button type="button" variant="outline" size="sm" data-action={action} data-id={id} {...props}>{children}</Button>
@@ -44,12 +44,12 @@ export function Action({ action, id, children, ...props }: ComponentProps<typeof
 
 export type ProjectOpenTool = "vscode" | "idea" | "terminal"
 export const projectOpenLabels: Record<ProjectOpenTool, string> = { vscode: "VS Code", idea: "IDEA", terminal: uiText("终端") }
-export function TaskOpenActions({ project, path, disabled, tool, primary = false }: { project: string; path: string; disabled?: boolean; tool: ProjectOpenTool; primary?: boolean }) {
-  return <div className={`task-split-action${primary ? " task-split-accent" : ""}`} data-project-open>
-    <Action className="task-split-primary rounded-r-none" variant={primary ? "default" : "outline"} action={tool === "terminal" ? "workspace-terminal" : `project-open-${tool}`} id={project} data-path={path} data-project-open-primary aria-label={uiText("用 {0} 打开工作目录", projectOpenLabels[tool])} disabled={disabled}>{tool === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}<span data-project-open-label>{uiText("{0} 打开", projectOpenLabels[tool])}</span></Action>
-    {!disabled ? <details className="task-action-menu"><summary aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></summary><div className="task-action-menu-body">
+export function WorkspaceOpenActions({ project, path, disabled, tool, primary = false }: { project: string; path: string; disabled?: boolean; tool: ProjectOpenTool; primary?: boolean }) {
+  return <div className={`workspace-split-action${primary ? " workspace-split-accent" : ""}`} data-project-open>
+    <Action className="workspace-split-primary rounded-r-none" variant={primary ? "default" : "outline"} action={tool === "terminal" ? "workspace-terminal" : `project-open-${tool}`} id={project} data-path={path} data-project-open-primary aria-label={uiText("用 {0} 打开工作目录", projectOpenLabels[tool])} disabled={disabled}>{tool === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}<span data-project-open-label>{uiText("{0} 打开", projectOpenLabels[tool])}</span></Action>
+    {!disabled ? <details className="workspace-action-menu"><summary aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></summary><div className="workspace-action-menu-body">
       {(["vscode", "idea", "terminal"] as const).map(choice => <Action key={choice} variant="ghost" className="justify-start font-normal" action={choice === "terminal" ? "workspace-terminal" : `project-open-${choice}`} id={project} data-path={path} data-project-open-choice={choice}>{choice === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}{projectOpenLabels[choice]}</Action>)}
-    </div></details> : <Button className="task-split-toggle rounded-l-none border-l-0" size="icon-sm" variant={primary ? "default" : "outline"} disabled aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></Button>}
+    </div></details> : <Button className="workspace-split-toggle rounded-l-none border-l-0" size="icon-sm" variant={primary ? "default" : "outline"} disabled aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></Button>}
   </div>
 }
 export function Field({ id, label, help, required, children, ...props }: ComponentProps<"div"> & { id: string; label: string; help?: string; required?: boolean; children: ReactNode }) {
@@ -71,8 +71,8 @@ export function ModalHeader({ id, title }: { id: string; title: string }) {
 export function ModalFooter({ children, note }: { children: ReactNode; note?: string }) {
   return <div className="dialog-footer">{note ? <span className="footer-note">{note}</span> : null}<Button type="button" variant="outline" className="close-dialog">{uiText("取消")}</Button>{children}</div>
 }
-export function DataTable({ headers, children, label, containerClassName }: { headers: string[]; children: ReactNode; label: string; containerClassName?: string }) {
-  return <Table role="table" aria-label={label} containerClassName={containerClassName}><TableHeader role="rowgroup"><TableRow role="row">{headers.map((title, index) => <TableHead key={index} role="columnheader" scope="col" className="bg-muted px-3 text-xs text-muted-foreground whitespace-normal">{title}</TableHead>)}</TableRow></TableHeader><TableBody role="rowgroup">{children}</TableBody></Table>
+export function DataTable({ headers, children, label, containerClassName, headerClassName }: { headers: string[]; children: ReactNode; label: string; containerClassName?: string; headerClassName?: string }) {
+  return <Table role="table" aria-label={label} containerClassName={containerClassName}><TableHeader role="rowgroup"><TableRow role="row">{headers.map((title, index) => <TableHead key={index} role="columnheader" scope="col" className={cn("bg-muted px-3 text-xs text-muted-foreground whitespace-normal", headerClassName)}>{title}</TableHead>)}</TableRow></TableHeader><TableBody role="rowgroup">{children}</TableBody></Table>
 }
 export function SourceOptions({ overview: v, includeHead = true }: { overview: GitOverview; includeHead?: boolean }) {
   return <><Option value="">{uiText("请选择来源分支")}</Option>{[[uiText("远端分支"), "remote"], [uiText("本地分支"), "local"]].map(([label, kind]) => {

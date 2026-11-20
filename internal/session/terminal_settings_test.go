@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/project"
-	"worktree-hub/internal/workspace"
 )
 
 func TestTerminalSettingsPersistAndRejectInvalidChanges(t *testing.T) {
@@ -25,12 +25,12 @@ func TestTerminalSettingsPersistAndRejectInvalidChanges(t *testing.T) {
 	if code, raw := call(t, a, "PUT", "/api/settings/terminal", settings); code != 200 {
 		t.Fatalf("save: %d %s", code, raw)
 	}
-	reopened, err := openApp(a.Workspace.DataDir, a.Workspace.Root)
+	reopened, err := openApp(a.Execution.DataDir, a.Execution.Root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.Workspace.Store.DB.Close()
-	got, err := reopened.Workspace.TerminalSettings()
+	defer reopened.Execution.Store.DB.Close()
+	got, err := reopened.Execution.TerminalSettings()
 	if err != nil || got != settings {
 		t.Fatalf("settings lost after restart: %+v %v", got, err)
 	}
@@ -52,10 +52,10 @@ func TestTerminalSettingsPersistAndRejectInvalidChanges(t *testing.T) {
 			t.Fatalf("accepted invalid settings: %+v %d %s", invalid, code, raw)
 		}
 	}
-	if got, _ := a.Workspace.TerminalSettings(); got != settings {
+	if got, _ := a.Execution.TerminalSettings(); got != settings {
 		t.Fatalf("invalid request changed saved settings: %+v", got)
 	}
-	if path, err := workspace.CustomTerminalPath(settings.Path); err != nil || path != "/mnt/c/Program Files/终端/bin/otty.exe" {
+	if path, err := execution.CustomTerminalPath(settings.Path); err != nil || path != "/mnt/c/Program Files/终端/bin/otty.exe" {
 		t.Fatalf("Windows path conversion: %q %v", path, err)
 	}
 }
@@ -72,7 +72,7 @@ func TestTerminalCommandPreservesWSLArguments(t *testing.T) {
 		{"custom", "windows-terminal", []string{"-w", "new", "new-tab", "--title", p.Title}},
 	} {
 		t.Run(tc.kind+"/"+tc.style, func(t *testing.T) {
-			cmd, err := workspace.TerminalCommand(model.TerminalSettings{Kind: tc.kind, Style: tc.style}, "/program path/terminal.exe", "Ubuntu", p)
+			cmd, err := execution.TerminalCommand(model.TerminalSettings{Kind: tc.kind, Style: tc.style}, "/program path/terminal.exe", "Ubuntu", p)
 			want := append([]string{"/program path/terminal.exe"}, tc.prefix...)
 			want = append(want, payload...)
 			if err != nil || !reflect.DeepEqual(cmd.Args, want) {
@@ -81,17 +81,17 @@ func TestTerminalCommandPreservesWSLArguments(t *testing.T) {
 		})
 	}
 	for _, kind := range []string{"otty", "custom"} {
-		cmd, err := workspace.TerminalCommand(model.TerminalSettings{Kind: kind, Style: "otty"}, "/program path/terminal.exe", "Ubuntu", p)
+		cmd, err := execution.TerminalCommand(model.TerminalSettings{Kind: kind, Style: "otty"}, "/program path/terminal.exe", "Ubuntu", p)
 		wantCommand := `"wsl.exe" "-d" "Ubuntu" "--cd" "/work/项目 with spaces" "--exec" "bash" "/data dir/launch 'script.sh"`
 		want := []string{"/program path/terminal.exe", "tab", "new", "--json", "--title", p.Title, "--command", wantCommand}
 		if err != nil || !reflect.DeepEqual(cmd.Args, want) {
 			t.Fatalf("Otty command lost arguments: %v %v", cmd, err)
 		}
 	}
-	if _, err := workspace.TerminalCommand(model.TerminalSettings{Kind: "otty"}, "/otty.exe", "", p); err == nil {
+	if _, err := execution.TerminalCommand(model.TerminalSettings{Kind: "otty"}, "/otty.exe", "", p); err == nil {
 		t.Fatal("Windows terminal accepted without WSL distro")
 	}
-	cmd, err := workspace.TerminalCommand(model.TerminalSettings{Kind: "custom", Style: "command"}, "/usr/bin/terminal", "Ubuntu", p)
+	cmd, err := execution.TerminalCommand(model.TerminalSettings{Kind: "custom", Style: "command"}, "/usr/bin/terminal", "Ubuntu", p)
 	if err != nil || !reflect.DeepEqual(cmd.Args, []string{"/usr/bin/terminal", "-e", "bash", p.Script}) {
 		t.Fatalf("Linux terminal used Windows bridge: %v %v", cmd, err)
 	}
@@ -108,7 +108,7 @@ func TestAllTerminalEntrypointsUseSavedLauncher(t *testing.T) {
 	id := register(t, a, "Terminal", path)
 	code, q, raw := create(t, a, id, nil, "terminal-settings")
 	if code != 201 || q.State != "ready" {
-		t.Fatalf("requirement: %d %s", code, raw)
+		t.Fatalf("workspace: %d %s", code, raw)
 	}
 	launcherDir := t.TempDir()
 	for _, entry := range []string{"codex", "resume", "git", "fetch", "login-fetch"} {
@@ -134,14 +134,14 @@ func TestAllTerminalEntrypointsUseSavedLauncher(t *testing.T) {
 			var code int
 			var raw []byte
 			if entry == "codex" {
-				code, raw = call(t, a, "POST", "/api/requirements/"+q.ID+"/launch", nil)
+				code, raw = call(t, a, "POST", "/api/workspaces/"+q.ID+"/launch", nil)
 			} else if entry == "resume" {
 				s := codex.Session{ID: "saved-session", Cwd: cwd, Name: "继续对话"}
 				fakeSessions(a, map[string]codex.Session{s.ID: s})
 				if err := a.SaveSession(q.ID, s, "manual"); err != nil {
 					t.Fatal(err)
 				}
-				code, raw = call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/"+s.ID+"/resume", nil)
+				code, raw = call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/"+s.ID+"/resume", nil)
 			} else if entry == "git" {
 				cwd = path
 				code, raw = gitAction(t, a, id, project.GitAction{Action: "terminal", Path: path})
@@ -157,12 +157,12 @@ func TestAllTerminalEntrypointsUseSavedLauncher(t *testing.T) {
 			// before the next entrypoint simulates a separate terminal launch.
 			defer a.CloseBridges()
 			args, err := os.ReadFile(capture)
-			wantCommand := `"wsl.exe" "-d" "Ubuntu" "--cd" ` + workspace.WindowsQuoteArg(cwd) + ` "--exec" "bash" `
+			wantCommand := `"wsl.exe" "-d" "Ubuntu" "--cd" ` + execution.WindowsQuoteArg(cwd) + ` "--exec" "bash" `
 			if err != nil || !strings.HasPrefix(string(args), "tab\nnew\n--json\n--title\n") || !strings.Contains(string(args), wantCommand) {
 				t.Fatalf("saved launcher was not used: %q", args)
 			}
 			if entry == "resume" {
-				launches, err := filepath.Glob(filepath.Join(a.Workspace.DataDir, "launches", "*.sh"))
+				launches, err := filepath.Glob(filepath.Join(a.Execution.DataDir, "launches", "*.sh"))
 				if err != nil || len(launches) != 2 {
 					t.Fatalf("expected initial and resume scripts: %v %v", launches, err)
 				}
@@ -209,7 +209,7 @@ func TestOttyColdStartRetriesAreBoundedAndOnlyForStartupErrors(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			err := workspace.LaunchOttyContext(ctx, launcher, []string{"tab", "new", "--json"}, dir)
+			err := execution.LaunchOttyContext(ctx, launcher, []string{"tab", "new", "--json"}, dir)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("unexpected startup result: %v", err)
 			}
@@ -246,7 +246,7 @@ func TestOttyColdStartCreatesNewTabAndRequiresAcknowledgement(t *testing.T) {
 	if err := os.WriteFile(launcher, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := workspace.LaunchOtty(launcher, []string{"tab", "new", "--json"}, dir); err != nil {
+	if err := execution.LaunchOtty(launcher, []string{"tab", "new", "--json"}, dir); err != nil {
 		t.Fatal(err)
 	}
 	log, _ := os.ReadFile(calls)
@@ -256,13 +256,13 @@ func TestOttyColdStartCreatesNewTabAndRequiresAcknowledgement(t *testing.T) {
 	if err := os.WriteFile(launcher, []byte("#!/bin/bash\nexit 0\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := workspace.LaunchOtty(launcher, []string{"tab", "new", "--json"}, dir); err == nil {
+	if err := execution.LaunchOtty(launcher, []string{"tab", "new", "--json"}, dir); err == nil {
 		t.Fatal("accepted GUI process exit without tab acknowledgement")
 	}
 	if err := os.WriteFile(launcher, []byte("#!/bin/bash\necho 'error: unknown command: tab.new' >&2\nexit 1\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := workspace.LaunchOtty(launcher, []string{"tab", "new", "--json"}, dir); err == nil || !strings.Contains(err.Error(), "当前运行中的 Otty 不支持") {
+	if err := execution.LaunchOtty(launcher, []string{"tab", "new", "--json"}, dir); err == nil || !strings.Contains(err.Error(), "当前运行中的 Otty 不支持") {
 		t.Fatalf("unsupported Otty runtime was not explained: %v", err)
 	}
 }

@@ -12,12 +12,12 @@ test("scope options group sources and shorten directories while preserving full 
   const path = "D:\\Projects\\Yolu"
   const scopes = [
     {kind: "all", name: "All conversations"},
-    {kind: "task", id: "task", environment: "local", name: "Feature"},
+    {kind: "workspace", id: "workspace", environment: "local", name: "Feature"},
     {kind: "project", id: "project", environment: "remote", environmentName: "Remote", name: "Yolu"},
     {kind: "directory", cwd: path, environment: "local", name: path},
   ]
   const dom = new JSDOM(renderToStaticMarkup(createElement(ConversationScopes, {scopes, selected: {kind: "directory", cwd: "d:/projects/yolu/", environment: "local"}})))
-  assert.deepEqual([...dom.window.document.querySelectorAll('.session-scope-group h3')].map(element => element.textContent), [uiText('任务'), uiText('项目'), uiText('工作目录')])
+  assert.deepEqual([...dom.window.document.querySelectorAll('.session-scope-group h3')].map(element => element.textContent), [uiText('工作区'), uiText('项目'), uiText('工作目录')])
   const selected = dom.window.document.querySelector('[aria-current="true"]')!
   assert.equal(selected.getAttribute('title'), path)
   assert.equal(selected.querySelector('.session-scope-option-title')?.textContent, 'Yolu')
@@ -31,7 +31,7 @@ test("conversation statuses use inline accessible icons and titles preserve thei
   const name = "A long conversation title that should stay on a single line with an ellipsis"
   const states = ["starting", "running", "waiting", "stopping", "handoff", "failed", "interrupted", "unknown", ""]
   const sessions: Session[] = states.map((state, index) => ({id: String(index), name, cwd: "/repo", chat_status: state, unread: true, updated_at: 1794520000}))
-  sessions.push({id: "terminal", name, cwd: "/repo", terminal: {taskID: "task", attached: true}})
+  sessions.push({id: "terminal", name, cwd: "/repo", terminal: {workspaceID: "workspace", attached: true}})
   const dom = new JSDOM(renderToStaticMarkup(createElement(ConversationList, {sessions, showDirectory: false})))
   for (const row of dom.window.document.querySelectorAll(".session-browser-item")) {
     const title = row.querySelector(".session-browser-item-title")!
@@ -59,8 +59,8 @@ test("conversation statuses use inline accessible icons and titles preserve thei
 test("compact conversation rows omit empty metadata and keep directory and environment on one secondary line", () => {
   const sessions: Session[] = [
     {id: "plain", name: "Conversation", cwd: "/repo"},
-    {id: "terminal", name: "Shell", cwd: "/repo", terminal: {taskID: "task", attached: true}},
-    {id: "context", name: "Conversation", cwd: "/repo", environment_name: "Remote", context: {project: "App", branch: "feature/work", cwd: "/repo", tasks: [], kind: "Worktree"}},
+    {id: "terminal", name: "Shell", cwd: "/repo", terminal: {workspaceID: "workspace", attached: true}},
+    {id: "context", name: "Conversation", cwd: "/repo", environment_name: "Remote", context: {project: "App", branch: "feature/work", cwd: "/repo", workspaces: [], kind: "Worktree"}},
   ]
   const dom = new JSDOM(renderToStaticMarkup(createElement(ConversationList, {sessions, showDirectory: false, parallel: true, parallelSessions: ["plain", "terminal"]})))
   assert.equal(dom.window.document.querySelector('[data-conversation-session="plain"] .session-browser-item-meta'), null)
@@ -89,8 +89,8 @@ test("compact conversation rows omit empty metadata and keep directory and envir
 test("workspace names update their accessible labels after metadata arrives while retaining conversation rows", () => {
   const dom = new JSDOM('<div id="list"></div>')
   const list = dom.window.document.getElementById("list")!
-  const markup = (name: string) => `<div class="session-browser-groups"><section class="session-browser-group" data-conversation-group="local-task" aria-label="${name}"><h3>${name}</h3><ul class="session-browser-items"><li><button data-conversation-session="session">Conversation</button></li></ul></section></div>`
-  patchConversationList(list, markup("task-id"))
+  const markup = (name: string) => `<div class="session-browser-groups"><section class="session-browser-group" data-conversation-group="local-workspace" aria-label="${name}"><h3>${name}</h3><ul class="session-browser-items"><li><button data-conversation-session="session">Conversation</button></li></ul></section></div>`
+  patchConversationList(list, markup("workspace-id"))
   const row = list.querySelector("[data-conversation-session]")
   patchConversationList(list, markup("Login"))
   assert.equal(list.querySelector("section")?.getAttribute("aria-label"), "Login")

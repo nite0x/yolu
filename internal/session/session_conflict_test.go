@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 // Opt-in real tool turn, isolated from existing user threads and projects.
@@ -22,7 +22,7 @@ func TestInstalledCodexToolTurnDoesNotConflict(t *testing.T) {
 	p := register(t, a, "Probe", repo(t, "probe", "master"))
 	_, q, _ := create(t, a, p, nil, "probe")
 	a.terminalConflict = terminalSessionConflict
-	code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", map[string]string{"text": "这是工具执行回归测试。请调用 shell 工具执行 pwd; sleep 3; printf WORKTREE_HUB_TOOL_OK。不修改文件，然后回复 WORKTREE_HUB_TOOL_OK。", "request_id": "tool-probe"})
+	code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "这是工具执行回归测试。请调用 shell 工具执行 pwd; sleep 3; printf WORKTREE_HUB_TOOL_OK。不修改文件，然后回复 WORKTREE_HUB_TOOL_OK。", "request_id": "tool-probe"})
 	if code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
@@ -99,7 +99,7 @@ func TestTerminalDetectionDistinguishesSandboxFromInteractiveCLI(t *testing.T) {
 				t.Fatal(err)
 			}
 			err := scanTerminalSessions(proc, tc.id, cwd)
-			if (err != nil) != tc.conflict || workspace.IsSessionConflict(err) != tc.conflict {
+			if (err != nil) != tc.conflict || execution.IsSessionConflict(err) != tc.conflict {
 				t.Fatalf("conflict=%t: %v", tc.conflict, err)
 			}
 		})

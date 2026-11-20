@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import {ChatController, conversationKey, type ChatOptions} from "../frontend/chat/controller";
 import {convertEntries, convertEntry, idleChat, readSnapshots, mergeEntries, type ChatState, type HistoryPush} from "../frontend/chat/model";
 
-const task = {id: "task", name: "跨项目任务", state: "ready", primary_project_id: "p", members: [{project_id:"p", project_name:"项目", path:"/home/test/workspaces/task/p"}]};
-const session = {id:"thread", name:"会话", cwd:task.members[0].path};
+const workspace = {id: "workspace", name: "跨项目工作区", state: "ready", primary_project_id: "p", members: [{project_id:"p", project_name:"项目", path:"/home/test/workspaces/workspace/p"}]};
+const session = {id:"thread", name:"会话", cwd:workspace.members[0].path};
 function setup(request: ChatOptions["request"], isNew = false) {
-  return new ChatController({task, session: isNew ? null : session, environment:"wsl-ubuntu", request, stream: async () => {throw new Error("offline");}, created() {}, close() {}});
+  return new ChatController({workspace, session: isNew ? null : session, environment:"wsl-ubuntu", request, stream: async () => {throw new Error("offline");}, created() {}, close() {}});
 }
 
 test("new conversations and existing conversations inherit native settings without fixed overrides", async () => {
@@ -305,22 +305,22 @@ test("chat state updates publish session activity for the surrounding list", asy
   } finally { c.disconnect(); }
 });
 
-test("existing sessions send independently of task state and keep retry identity across task entry points", async () => {
+test("existing sessions send independently of workspace state and keep retry identity across workspace entry points", async () => {
   const bodies: any[] = [];
   const c = setup(async (path, options) => {
     assert(path.startsWith("/api/sessions/thread/"));
     if (options?.method === "POST") bodies.push(JSON.parse(String(options.body)));
     throw new Error("offline");
   });
-  c.options.task = {...task,state:"archived"};
+  c.options.workspace = {...workspace,state:"archived"};
   await assert.rejects(c.send("继续这个会话"));
-  c.options.task = {...task,id:"another-task"};
+  c.options.workspace = {...workspace,id:"another-workspace"};
   await assert.rejects(c.send("继续这个会话"));
   assert.equal(bodies.length,2);
   assert.equal(bodies[0].request_id,bodies[1].request_id);
 });
 
-test("a project worktree creates a conversation without a task", async () => {
+test("a project worktree creates a conversation without a workspace", async () => {
   const calls: {path:string; body:any}[] = [];
   const c = new ChatController({session:null,target:{project_id:"project",cwd:"/repo/worktree"},environment:"local",created(){},close(){},stream:async()=>{throw new Error("offline");},request:async(path,options)=>{
     calls.push({path,body:JSON.parse(String(options?.body))});
@@ -330,18 +330,18 @@ test("a project worktree creates a conversation without a task", async () => {
   assert.equal(calls[0].path,"/api/sessions/new");
   assert.equal(calls[0].body.project_id,"project");
   assert.equal(calls[0].body.cwd,"/repo/worktree");
-  assert.equal(calls[0].body.task_id,undefined);
+  assert.equal(calls[0].body.workspace_id,undefined);
   assert.equal(c.getSnapshot().session?.id,"thread");
 });
 
 
 test("conversation identity depends on environment and session, while new drafts depend on the target", () => {
- const options: ChatOptions = {task,session,environment:"local",request:async()=>({} as any),stream:async()=>new Response(),created(){},close(){}};
- assert.equal(conversationKey(options),conversationKey({...options,task:{...task,id:"other"}}));
- assert.equal(conversationKey(options),conversationKey({...options,task:undefined,target:{project_id:"p",cwd:session.cwd}}));
+ const options: ChatOptions = {workspace,session,environment:"local",request:async()=>({} as any),stream:async()=>new Response(),created(){},close(){}};
+ assert.equal(conversationKey(options),conversationKey({...options,workspace:{...workspace,id:"other"}}));
+ assert.equal(conversationKey(options),conversationKey({...options,workspace:undefined,target:{project_id:"p",cwd:session.cwd}}));
  assert.notEqual(conversationKey(options),conversationKey({...options,environment:"wsl"}));
- assert.notEqual(conversationKey({...options,session:null}),conversationKey({...options,task:{...task,id:"other"},session:null}));
- assert.notEqual(conversationKey({...options,task:undefined,session:null,target:{project_id:"p",cwd:"/one"}}),conversationKey({...options,task:undefined,session:null,target:{project_id:"p",cwd:"/two"}}));
+ assert.notEqual(conversationKey({...options,session:null}),conversationKey({...options,workspace:{...workspace,id:"other"},session:null}));
+ assert.notEqual(conversationKey({...options,workspace:undefined,session:null,target:{project_id:"p",cwd:"/one"}}),conversationKey({...options,workspace:undefined,session:null,target:{project_id:"p",cwd:"/two"}}));
 });
 
 test("active-turn input uses steer and recovers a lost acknowledgement without another POST",async()=>{
@@ -637,4 +637,44 @@ test("inactive tabs pause both interactive and read-only observation without sto
       assert(!paths.some(path=>path.endsWith('/stop')));
     } finally {inactive=false;c.disconnect();}
   }
+});
+
+test("switching provider to agy loads agy options, creates an agy session and disables steering while busy", async () => {
+  const requests: {path: string; body?: any}[] = [];
+  const c = new ChatController({
+    session: null,
+    target: {project_id: "project", cwd: "/repo/worktree"},
+    environment: "local",
+    created() {},
+    close() {},
+    stream: async () => { throw new Error("offline"); },
+    request: async (path, init) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      requests.push({path, body});
+      if (path === "/api/agents/chat-options?provider=agy") {
+        return {
+          provider: "agy",
+          models: [{id: "gemini-3-pro", model: "gemini-3-pro", displayName: "Gemini 3 Pro", isDefault: true, defaultReasoningEffort: "high", supportedReasoningEfforts: [{reasoningEffort: "high"}]}],
+          modes: ["default", "plan", "accept-edits", "auto"],
+          capabilities: {steer: false, fork: false, handoff: false, rate_limits: false, voice: false},
+        } as any;
+      }
+      if (path === "/api/sessions/new") {
+        return {session: {id: "agy-1", provider: "agy", name: "AGY", cwd: "/repo/worktree"}, chat: running(body.request_id)} as any;
+      }
+      return running() as any;
+    },
+  });
+  c.setProvider("agy");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(c.getSnapshot().provider, "agy");
+  assert.equal(c.getSnapshot().capabilities.steer, false);
+  assert.equal(c.getSnapshot().capabilities.fork, false);
+  assert.equal(requests[0].path, "/api/agents/chat-options?provider=agy");
+
+  await c.send("使用 Antigravity 检查测试");
+  const createReq = requests.find(r => r.path === "/api/sessions/new");
+  assert.equal(createReq?.body.provider, "agy");
+  assert.equal(c.getSnapshot().session?.provider, "agy");
+  await assert.rejects(c.send("运行中插话"));
 });

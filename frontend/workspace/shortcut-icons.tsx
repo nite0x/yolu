@@ -28,7 +28,7 @@ function IconEditor({entries, close, save}: {entries: Entry[]; close: () => void
   const [selected, setSelected] = useState(entries[0]?.key || "")
   const entry = entries.find(item => item.key === selected)
   const [value, setValue] = useState(entry?.appearance || defaultShortcutIcon(""))
-  if (!entry) return <><h2 id="shortcutIconTitle">{uiText("设置固定入口图标")}</h2><p>{uiText("先固定一个任务或项目目录，再为它设置图标。")}</p><button type="button" onClick={close}>{uiText("关闭")}</button></>
+  if (!entry) return <><h2 id="shortcutIconTitle">{uiText("设置固定入口图标")}</h2><p>{uiText("先固定一个工作区或项目目录，再为它设置图标。")}</p><button type="button" onClick={close}>{uiText("关闭")}</button></>
   return <form onSubmit={event => {event.preventDefault(); save(entry, value)}}>
     <h2 id="shortcutIconTitle">{uiText("设置固定入口图标")}</h2>
     <label htmlFor="shortcutIconEntry">{uiText("固定入口")}</label>

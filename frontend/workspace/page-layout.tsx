@@ -55,7 +55,7 @@ function WindowChrome(props: WindowChromeProps) {
     <DropdownMenu.Portal>
       <DropdownMenu.Content className="window-brand-menu shadcn-scope" side="bottom" align="start" sideOffset={6} collisionPadding={8}>
         <DropdownMenu.Item className="window-brand-menu-item" disabled={!props.ready} onSelect={props.home}>
-          <ListTodo aria-hidden="true" /><span>{uiText("任务首页")}</span>
+          <ListTodo aria-hidden="true" /><span>{uiText("工作区首页")}</span>
         </DropdownMenu.Item>
       </DropdownMenu.Content>
     </DropdownMenu.Portal>

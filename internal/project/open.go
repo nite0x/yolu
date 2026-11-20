@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"strings"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
-	"worktree-hub/internal/workspace"
 )
 
 func RemoteWebURL(raw string) (string, error) {
@@ -63,14 +63,14 @@ func (a *Service) ProjectRemoteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Service) projectRemoteURL(ctx context.Context, p model.Project, t model.Worktree) (string, string, error) {
-	raw, err := workspace.Git(ctx, p.Path, "remote")
+	raw, err := execution.Git(ctx, p.Path, "remote")
 	if err != nil {
 		return "", "", err
 	}
 	names := strings.Fields(raw)
 	remote := ""
 	if t.Branch != "" {
-		configured, _ := workspace.Git(ctx, t.Path, "config", "--get", "branch."+t.Branch+".remote")
+		configured, _ := execution.Git(ctx, t.Path, "config", "--get", "branch."+t.Branch+".remote")
 		for _, name := range names {
 			if name == strings.TrimSpace(configured) {
 				remote = name
@@ -87,7 +87,7 @@ func (a *Service) projectRemoteURL(ctx context.Context, p model.Project, t model
 	if remote == "" {
 		return "", "", fmt.Errorf("未配置可确定的远端，请在 Git 中配置 origin 或当前分支的 upstream")
 	}
-	raw, err = workspace.Git(ctx, t.Path, "remote", "get-url", "--", remote)
+	raw, err = execution.Git(ctx, t.Path, "remote", "get-url", "--", remote)
 	if err != nil {
 		return "", "", fmt.Errorf("%s", RedactGitOutput(err.Error()))
 	}
@@ -131,8 +131,8 @@ func (a *Service) OpenProjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	distro := ""
-	if a.Workspace.Remote != nil {
-		distro = a.Workspace.Remote.Identity.Distro
+	if a.Execution.Remote != nil {
+		distro = a.Execution.Remote.Identity.Distro
 	}
 	if err := a.OpenEditor(input.Tool, t.Path, distro); err != nil {
 		httpx.WriteError(w, 503, err.Error())

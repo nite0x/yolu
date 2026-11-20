@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 func awaitSessionRun(t *testing.T, a *App, id string, condition func(ChatState) bool) ChatState {
@@ -45,7 +45,7 @@ func TestIndependentConversationsRunInSameDirectory(t *testing.T) {
 			a.openLive = func(context.Context) (codex.LiveClient, error) { return second, nil }
 			endpoint := "/api/sessions/second/chat"
 			if createNew {
-				code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/new", map[string]string{
+				code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{
 					"text": "parallel work", "project_id": q.PrimaryProjectID, "request_id": "second-create",
 				})
 				if code != 202 {
@@ -96,7 +96,7 @@ func TestTerminalOwnershipIsScopedToConversation(t *testing.T) {
 			t.Fatalf("independent conversation %q blocked: %v", id, err)
 		}
 	}
-	if err := a.AppTerminalConflict("session", t.TempDir()); !workspace.IsSessionConflict(err) || !strings.Contains(err.Error(), "保有此对话") {
+	if err := a.AppTerminalConflict("session", t.TempDir()); !execution.IsSessionConflict(err) || !strings.Contains(err.Error(), "保有此对话") {
 		t.Fatalf("same conversation lost terminal ownership: %v", err)
 	}
 }

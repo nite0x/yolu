@@ -2,7 +2,7 @@
 
 ## Status and provenance
 
-Design handoff prepared on 2026-11-16. The conversation foundation, application read capabilities and reviewed workspace-management writes are implemented across phases 1–3. Coding-session creation remains phase 4. This document records the requested product outcome, the architecture discussed in ChatGPT, and adaptations from the repository review. Implementation and verification evidence are tracked in [plan.md](plan.md).
+Design handoff prepared on 2026-11-16. The conversation foundation, application read capabilities and reviewed workspace-management writes are implemented across phases 1–3. Phase 4 adds the approved handoff from workspace creation to a new native Codex session. This document records the requested product outcome, the architecture discussed in ChatGPT, and adaptations from the repository review. Implementation and verification evidence are tracked in [plan.md](plan.md).
 
 The user requested a global conversation for operating Yolu, including creating work and loading projects, followed by a design and implementation plan. The discussion recommended a Go tool-calling runtime, a capability registry, reviewable action plans, and reuse of application services and conversation UI. The cached conversation contains headings for four implementation stages and an interactive architecture selector, but its stage details and selector values are unavailable. The phases in the accompanying plan are an editorial proposal. The user selected the authenticated local Codex CLI during implementation, and the implementation decisions below record the persistence contracts. [Source conversation](https://chatgpt.com/c/6afab987-1c04-83ee-a4a7-d50babf23b5a)
 
@@ -14,7 +14,7 @@ Users can describe a development goal, find the participating projects, review t
 
 The assistant opens in a panel from **Yolu Assistant** in the navigation rail footer or **Alt+Shift+Y**. Its header provides access to assistant history. Users can create and restore multiple conversations independently of workspace and project selection. A conversation can use the selection at launch as temporary context. Switching selection preserves the conversation's identity and history.
 
-The original discussion uses both task and workspace terminology. Repository guidance defines the user-facing workspace as the requirement container and retains `task`, `Requirement`, and `requirements` internally. In this design, “create a task” resolves to the existing workspace creation flow. A request to create work and its workspace produces one requirement record with project members. A separate task entity would require a later product decision. [Repository direction](../../../AGENTS.md)
+A workspace contains the projects and working directories for one development goal. Creating a workspace through the assistant uses the same domain operation as the workspace page and saves one workspace record with its project members. [Repository direction](../../../AGENTS.md)
 
 ## Initial delivery and subsequent capabilities
 
@@ -27,7 +27,7 @@ The first usable delivery covers the following workflow.
 5. Review one plan containing the proposed metadata and filesystem changes, approve or cancel it, and observe execution progress.
 6. Open the resulting workspace, project, or existing coding conversation through validated application navigation.
 
-Follow-up capabilities include workspace metadata updates, standalone worktree creation, and explicitly requested coding-agent session creation. The discussion also describes a compound request that prepares frontend and backend projects and starts Codex. Session creation belongs to a later phase after the core management workflow passes acceptance.
+Workspace creation can also include a first instruction for Codex when the user specifies concrete work. The approved plan prepares every participating directory, starts one native Codex conversation, and sends the reviewed instruction. Workspace metadata updates and standalone worktree creation are follow-up capabilities.
 
 Future candidates include an external MCP adapter, additional coding agents, durable advanced orchestration, long-term memory, and model-generated interactive interfaces. Initial UI uses Markdown plus application-owned structured components. Model-supplied executable UI, generic shell access, and direct model access to SQLite fall outside the initial capability surface.
 
@@ -36,15 +36,15 @@ Future candidates include an external MCP adapter, additional coding agents, dur
 | Area | Observed implementation | Design consequence |
 | --- | --- | --- |
 | Application | Go HTTP service, Tauri host, SQLite, React workspace markup and interactive chat | Compose the runtime in Go and reuse the existing HTTP/event and UI bridges |
-| Workspaces | `internal/task/requirements.go` manages requirement creation and preparation | Wrap the same domain operations for assistant calls |
+| Workspaces | `internal/workspace/workspaces.go` manages workspace creation and preparation | Wrap the same domain operations for assistant calls |
 | Projects | `internal/project/projects.go` validates registration and Git common-directory identity | Preserve validation, duplicate detection, environment routing, and cache invalidation |
-| Membership | `internal/task/member_selection.go` supports `new`, `existing`, `project`, and `worktree` | Preserve all four modes and resolved baseline information |
+| Membership | `internal/workspace/member_selection.go` supports `new`, `existing`, `project`, and `worktree` | Preserve all four modes and resolved baseline information |
 | Conversation index | `internal/model/session.go` indexes independent native Codex threads | Extend conversation presentation and dispatch deliberately for assistant records |
 | Conversation history | Native Codex holds full messages, SQLite stores metadata and drafts | Resolve assistant transcript persistence explicitly before implementation |
 | Environments | Environment-local storage and runtime, combined frontend environment/session identity | Carry environment identity through every target, event, cache, and navigation action |
 | Transport | Authenticated HTTP, CSRF checks, and `X-Environment-ID` routing | Apply existing request protections to assistant endpoints |
 
-Current `/api/sessions/new` creation resolves a concrete task/project directory before starting Codex. The existing global conversation browser aggregates native conversations. A directory-independent Yolu assistant therefore needs an explicit conversation kind and runtime path. Its global presentation scope must coexist with native directory discovery and `task_session_pins` reference semantics. The illustrative `scope`, `scopeId`, `agentKind`, and `providerId` fields in the discussion describe concepts whose concrete representation requires repository-level design. [Session architecture](../../session-architecture.md)
+Current `/api/sessions/new` creation resolves a concrete workspace/project directory before starting Codex. The existing global conversation browser aggregates native conversations. A directory-independent Yolu assistant therefore needs an explicit conversation kind and runtime path. Its global presentation scope must coexist with native directory discovery and `workspace_session_pins` reference semantics. The illustrative `scope`, `scopeId`, `agentKind`, and `providerId` fields in the discussion describe concepts whose concrete representation requires repository-level design. [Session architecture](../../session-architecture.md)
 
 Some domain operations currently live inside HTTP handlers. Extract the smallest shared service operation when necessary so manual UI and assistant execution use the same validation, locks, side effects, and result semantics. Compose cross-module interfaces in `internal/app` and retain the existing package dependency direction. [Development architecture](../../development.md)
 
@@ -87,17 +87,17 @@ Names are logical contracts to be finalized during implementation review.
 | `app.getContext` | Read current selection and environment hints | Initial |
 | `project.list`, `project.get` | Query registered repositories and available directories | Initial |
 | `project.register` | Register an existing repository through current registration rules | Initial |
-| `workspace.list`, `workspace.get` | Query existing requirement records and members | Initial |
-| `workspace.create` | Create a requirement and prepare its selected members | Initial |
+| `workspace.list`, `workspace.get` | Query existing workspace records and members | Initial |
+| `workspace.create` | Create a workspace and prepare its selected members | Initial |
 | `workspace.attachProject` | Add project members through existing preparation logic | Initial |
 | `git.status`, `git.worktree.list` | Query execution-side Git state with freshness information | Initial |
 | `conversation.list`, `conversation.open` | Find and open existing native conversations | Initial |
 | `app.navigate` | Produce a validated in-app navigation action | Initial |
-| `workspace.update` | Update requirement name or goal through current domain rules | Follow-up |
+| `workspace.update` | Update workspace name or goal through current domain rules | Follow-up |
 | `git.worktree.create` | Create a standalone worktree through project services | Follow-up |
 | `agent.list`, `agent.session.create` | Discover supported executors and explicitly create a coding session | Follow-up |
 
-The discussion's `task.list`, `task.get`, `task.create`, and `task.update` correspond to the workspace capabilities above. If compatibility aliases are useful, they share the same implementation and request identity. Enabling `workspace.create` includes the worktree preparation performed by its selected member modes. Avoid creating the same worktree again through a separate capability.
+The `workspace.create` operation prepares worktrees according to the selected member modes.
 
 ### Workspace membership behavior
 
@@ -108,13 +108,13 @@ The discussion's `task.list`, `task.get`, `task.create`, and `task.update` corre
 | `project` | Reuse the registered project directory | Project, actual directory, observed branch or detached state |
 | `worktree` | Reuse a discovered Git worktree | Project, selected actual path, observed branch or detached state |
 
-Creation currently requires 1–30 registered projects. A request with a goal alone can produce a draft while the assistant obtains project choices. An all-reused workspace can reserve a path with `has_workspace=false`, and its saved record can exist without a newly created workspace directory. Respect the configured root and saved paths. Project registration scans existing repositories and worktrees. Clone-from-Git remains available through the existing manual workflow and can receive its own assistant capability later. [Project registration](../../project-registration.md)
+Creation currently requires 1–30 registered projects. A request with a goal alone can produce a draft while the assistant obtains project choices. An all-reused workspace can reserve a path with `has_directory=false`, and its saved record can exist without a newly created workspace directory. Respect the configured root and saved paths. Project registration scans existing repositories and worktrees. Clone-from-Git remains available through the existing manual workflow and can receive its own assistant capability later. [Project registration](../../project-registration.md)
 
 ### Structured results and errors
 
 Each invocation returns its request, run, plan revision, and step identity as applicable, its completion state, typed resource references, and validated UI actions. Errors include a stable code, readable message, execution certainty, actual resources created, and available recovery actions. Suggested error classes include invalid input, ambiguous target, permission denied, stale plan, resource conflict, environment unavailable, timeout, cancellation, partial failure, and unknown outcome.
 
-Workspace preparation can return a saved requirement whose individual members failed. Determine success from the resulting domain state and member outcomes as well as transport status. Surface context-generation warnings and partial resources. Only report full completion after the requested steps have succeeded.
+Workspace preparation can return a saved workspace whose individual members failed. Determine success from the resulting domain state and member outcomes as well as transport status. Surface context-generation warnings and partial resources. Only report full completion after the requested steps have succeeded.
 
 ## Authorization and execution consistency
 
@@ -142,7 +142,7 @@ For a failed second worktree, retain the successfully created workspace and firs
 
 ## Acceptance criteria
 
-These criteria define the phased acceptance target. Evidence for phases 1–3 is recorded in the implementation plan. AC-15 belongs to phase 4.
+The implementation plan records the verification evidence for each phase.
 
 | ID | Scenario | Observable result |
 | --- | --- | --- |
@@ -150,8 +150,8 @@ These criteria define the phased acceptance target. Evidence for phases 1–3 is
 | AC-02 | Ask for current workspaces and projects, including an unavailable environment | Show discovered resources, environment identities, freshness, and a clear partial-query failure |
 | AC-03 | Request workspace creation with a goal and an ambiguous project name | Query candidates and collect the required project choice before presenting an executable plan |
 | AC-04 | Register an existing repository and repeat the same request | Enforce canonical Git identity and duplicate rules, preserve a durable request result, and open the registered project |
-| AC-05 | Create a workspace with frontend and backend projects, then confirm | Display reviewed paths/refs/branches, create one requirement with both members, and link to the resulting workspace |
-| AC-06 | Exercise all four membership modes, including an all-reused workspace | Match manual creation semantics, reflect actual paths and `has_workspace`, and preserve existing directory contents |
+| AC-05 | Create a workspace with frontend and backend projects, then confirm | Display reviewed paths/refs/branches, create one workspace with both members, and link to the resulting workspace |
+| AC-06 | Exercise all four membership modes, including an all-reused workspace | Match manual creation semantics, reflect actual paths and `has_directory`, and preserve existing directory contents |
 | AC-07 | Cancel a pending plan, or submit a forged approval for changed arguments | Cancellation leaves the plan unexecuted, and the backend rejects mismatched authorization |
 | AC-08 | Change a target branch or repository between review and execution | Detect stale preconditions, explain the conflict, and present a revised plan for changed operations |
 | AC-09 | Fail the second project's worktree preparation | Display partial completion and actual resources, retain the successful member, and offer domain-compatible recovery |
@@ -159,8 +159,8 @@ These criteria define the phased acceptance target. Evidence for phases 1–3 is
 | AC-11 | Restart during a run or cancel while a tool is active | Restore execution state, stop later steps, and report completed, failed, cancelled, and uncertain effects accurately |
 | AC-12 | Supply an escaping symlink, wrong environment target, or instruction embedded in repository text | Enforce path and target authorization and keep execution within the approved capabilities and plan |
 | AC-13 | Open a result and revisit the assistant from keyboard navigation | Navigate to the correct environment/resource and restore the conversation state with usable approval controls |
-| AC-14 | Load data created before the feature and use existing native conversation flows | Preserve session discovery, task pins, drafts, creation receipts, archive behavior, worktree cleanup coordination, and saved workspace paths |
-| AC-15 | Explicitly request Codex launch after workspace preparation, in the follow-up phase | Create or recover one native session in a validated directory, retain environment identity, and open the actual resulting conversation |
+| AC-14 | Load data created before the feature and use existing native conversation flows | Preserve session discovery, workspace pins, drafts, creation receipts, archive behavior, worktree cleanup coordination, and saved workspace paths |
+| AC-15 | Request workspace creation for specified work and approve the reviewed first instruction | Wait for all reviewed directories, create or recover one native Codex conversation, submit the instruction once, and offer to open the conversation in its owning environment |
 
 ## Implementation decisions
 
@@ -168,13 +168,13 @@ These criteria define the phased acceptance target. Evidence for phases 1–3 is
 2. Phase 1 stores assistant transcripts in additive local SQLite tables and uses explicit `yolu` conversation kind and local identity. Native Codex session indexing and workspace references retain their existing contracts.
 3. Phases 2–3 use the schemas, immutable plan revisions, approval binding, execution journal, authoritative snapshots and stable error codes described below.
 4. Each reviewed plan targets one execution environment. Global history remains in the primary local database, while domain resources retain environment ownership.
-5. The assistant is the first navigation item. Coding-session creation remains phase 4.
+5. The assistant is the first navigation item. Phase 4 adds the approved handoff from workspace creation to a new native Codex session.
 
 ## Phase 1 implementation contract
 
 The first navigation item opens **Yolu Assistant** at `#/assistant` in the shared browser/desktop page host. The user requested this placement during implementation. Conversation selection is independent of workspace/project/environment selection. Assistant conversations are stored in the primary local application database and always use the local CLI. A future resource capability must identify its target environment explicitly.
 
-`assistant_conversations`, `assistant_messages` and `assistant_runs` preserve titles, full transcript and durable per-conversation request receipts. The existing `conversation_drafts` table stores namespaced assistant text, reading position and an unconfirmed send identity. Metadata export/import includes these records. Opening a pre-feature database adds the tables without changing native session discovery or task pins. On startup/import unfinished runs become interrupted, with their submitted messages retained. A subsequent explicit message creates a fresh run.
+`assistant_conversations`, `assistant_messages` and `assistant_runs` preserve titles, full transcript and durable per-conversation request receipts. The existing `conversation_drafts` table stores namespaced assistant text, reading position and an unconfirmed send identity. Metadata export/import includes these records. Opening a pre-feature database adds the tables without changing native session discovery or workspace pins. On startup/import unfinished runs become interrupted, with their submitted messages retained. A subsequent explicit message creates a fresh run.
 
 Each provider turn uses a fresh ephemeral Codex thread through the existing live protocol client. It inherits CLI model/authentication and uses a read-only sandbox with approvals disabled. Shared configuration disables shell, hooks, plugins, apps, multi-agent features, configured MCP servers and web search. Unexpected tools or approval requests end the turn. Saved transcript context is bounded to the most recent 100 messages and 128,000 text bytes, independently of full transcript retention. Each input and model output is limited to 64,000 bytes. There is one active run per conversation and at most four active assistant runs. A turn expires after two minutes. Cancellation interrupts the ephemeral turn and releases its subscription.
 
@@ -185,6 +185,8 @@ The phase 1 baseline recorded inference runs and planning conversations. Phases 
 ## Phases 2–3 implementation contract
 
 The Go registry advertises validated application functions through Codex app-server dynamic tools. The existing read-only worker configuration keeps native execution tools disabled. `app_get_context` reads saved selection hints. Project/workspace queries, fresh Git/worktree summaries, native conversation discovery and typed navigation use existing application stores and services. The native conversation catalog is shared with the sidebar. Discovery failures preserve saved index records with their synchronization timestamps. Resource pages include environment identities, freshness, ambiguous choices and independent environment failures.
+
+The assistant can search registered projects with `project_list` or discover Git repositories under a specified directory with `project_scan`. The scan uses the project import service in the selected execution environment. Matches include a suggested registration name and path, or the existing project ID. After the user approves registration, the assistant can use those IDs to prepare the workspace plan.
 
 `project_register`, `workspace_create` and `workspace_attach_project` produce immutable plans. Each plan covers one domain operation in one environment. A workspace operation can prepare all selected project members, including `new`, `existing`, `project` and `worktree` modes. Manual HTTP callers and approved assistant calls share the same domain validation, persistence, repository locks and preparation logic.
 

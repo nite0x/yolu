@@ -4,7 +4,7 @@ import (
 	"context"
 	"runtime"
 
-	"worktree-hub/internal/workspace"
+	"worktree-hub/internal/execution"
 )
 
 type CredentialSupport struct {
@@ -32,5 +32,5 @@ func (a *Service) CredentialOptions() []string {
 }
 
 func (a *Service) GitNetwork(ctx context.Context, dir string, args ...string) (string, error) {
-	return workspace.GitOperation(ctx, dir, append(a.CredentialOptions(), args...)...)
+	return execution.GitOperation(ctx, dir, append(a.CredentialOptions(), args...)...)
 }

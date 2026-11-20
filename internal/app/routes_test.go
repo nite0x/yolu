@@ -17,7 +17,7 @@ func TestEmbeddedPageAssetsInBothSessionModes(t *testing.T) {
 			name = "read-only"
 		}
 		t.Run(name, func(t *testing.T) {
-			a.Workspace.ReadOnlySessions = readOnly
+			a.Execution.ReadOnlySessions = readOnly
 			handler := a.handler()
 			page := httptest.NewRecorder()
 			handler.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost:4317/?workspace-page=fixture", nil))

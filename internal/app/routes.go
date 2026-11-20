@@ -28,9 +28,9 @@ func (a *App) handler() http.Handler {
 		mux.HandleFunc("POST /api/environments", a.environments.addHandler)
 		mux.HandleFunc("POST /api/environments/{environment}/reconnect", a.environments.reconnectHandler)
 	}
-	mux.Handle("GET /api/state", overview.New(a.Workspace, a.Projects))
+	mux.Handle("GET /api/state", overview.New(a.Execution, a.Projects))
 	mux.HandleFunc("POST /api/dialogs/directory", a.pickDirectoryHandler)
-	mux.HandleFunc("GET /api/task-inventory", a.taskInventoryHandler)
+	mux.HandleFunc("GET /api/workspace-inventory", a.workspaceInventoryHandler)
 	mux.HandleFunc("GET /api/shortcut-pins", a.shortcutPinsHandler)
 	mux.HandleFunc("PUT /api/shortcut-pins", a.shortcutPinsHandler)
 	mux.HandleFunc("GET /api/settings/language", a.languageHandler)
@@ -48,16 +48,16 @@ func (a *App) handler() http.Handler {
 		a.voiceRoutes(mux)
 	}
 	a.Projects.RegisterRoutes(mux)
-	a.Tasks.RegisterRoutes(mux, a.Projects.InvalidateStateAfter)
+	a.Workspaces.RegisterRoutes(mux, a.Projects.InvalidateStateAfter)
 	a.Sessions.RegisterRoutes(mux)
-	a.Workspace.RegisterRoutes(mux)
+	a.Execution.RegisterRoutes(mux)
 	a.terminalRoutes(mux)
 	mux.Handle("/", a.assetsHandler())
 	return a.secureHandler(mux)
 }
 
 func (a *App) assetsHandler() http.Handler {
-	return web.Handler(a.token, a.Workspace.ReadOnlySessions, func() web.UISettings {
+	return web.Handler(a.token, a.Execution.ReadOnlySessions, func() web.UISettings {
 		return web.UISettings{Language: a.uiLanguage(), ColorTheme: a.uiColorTheme(), SendShortcut: a.uiSendShortcut()}
 	})
 }

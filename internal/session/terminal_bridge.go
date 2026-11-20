@@ -22,21 +22,21 @@ import (
 // Each managed TUI uses a private relay. Revocation gates requests before the
 // sidebar is enabled; resuming a thread alone never grants exclusive ownership.
 type terminalBridge struct {
-	mu                                     sync.Mutex
-	writeMu                                sync.Mutex
-	app                                    *Service
-	requirement, session, cwd, dir, socket string
-	additionalDirectories                  []string
-	sandbox                                json.RawMessage
-	listener                               net.Listener
-	peer                                   *os.Process
-	client, upstream                       *websocket.Conn
-	pending                                map[string]bridgeCall
-	active, connected, draining, revoked   bool
-	waiting                                bool
-	bound                                  bool
-	once                                   sync.Once
-	done                                   chan struct{}
+	mu                                   sync.Mutex
+	writeMu                              sync.Mutex
+	app                                  *Service
+	workspace, session, cwd, dir, socket string
+	additionalDirectories                []string
+	sandbox                              json.RawMessage
+	listener                             net.Listener
+	peer                                 *os.Process
+	client, upstream                     *websocket.Conn
+	pending                              map[string]bridgeCall
+	active, connected, draining, revoked bool
+	waiting                              bool
+	bound                                bool
+	once                                 sync.Once
+	done                                 chan struct{}
 }
 type bridgeCall struct {
 	Method, Thread string
@@ -44,12 +44,12 @@ type bridgeCall struct {
 }
 type bridgePeerKey struct{}
 
-func (a *Service) NewTerminalBridge(requirement, cwd string) (*terminalBridge, error) {
+func (a *Service) NewTerminalBridge(workspace, cwd string) (*terminalBridge, error) {
 	dir, err := os.MkdirTemp("", "worktree-hub-terminal-")
 	if err != nil {
 		return nil, err
 	}
-	b := &terminalBridge{app: a, requirement: requirement, cwd: cwd, dir: dir, socket: filepath.Join(dir, "control.sock"), pending: map[string]bridgeCall{}, done: make(chan struct{})}
+	b := &terminalBridge{app: a, workspace: workspace, cwd: cwd, dir: dir, socket: filepath.Join(dir, "control.sock"), pending: map[string]bridgeCall{}, done: make(chan struct{})}
 	listener, err := net.Listen("unix", b.socket)
 	if err != nil {
 		os.RemoveAll(dir)
@@ -253,13 +253,13 @@ func (b *terminalBridge) forward(raw []byte) error {
 	b.mu.Lock()
 	reason := ""
 	if b.revoked {
-		reason = "控制权已交给任务页侧栏，请在侧栏继续"
+		reason = "控制权已交给工作区页侧栏，请在侧栏继续"
 	} else if m.Method != "" && b.draining {
 		reason = "正在等待本轮结束并切换到侧栏；请勿发送新请求。已有审批仍可回答，或在侧栏取消交接"
 	}
 	if m.Method != "" && m.Method != "initialize" && m.Method != "initialized" && !b.draining {
 		if b.session != "" && (m.Method == "thread/start" || m.Method == "thread/fork" || (m.Params.ThreadID != "" && m.Params.ThreadID != b.session)) {
-			reason = "该终端已绑定当前对话，请在任务页创建或打开其他对话"
+			reason = "该终端已绑定当前对话，请在工作区页创建或打开其他对话"
 		}
 		thread := m.Params.ThreadID
 		if thread == "" {
@@ -297,7 +297,7 @@ func (b *terminalBridge) forward(raw []byte) error {
 
 // Called under mu. Use the policy returned by thread/start or thread/resume
 // unless the TUI explicitly supplies one. Preserve all existing permissions;
-// only workspace-write policies can receive the verified task directories.
+// only workspace-write policies can receive the verified workspace directories.
 func (b *terminalBridge) withWorkspaceRoots(raw []byte) ([]byte, error) {
 	var message map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &message); err != nil {
@@ -412,11 +412,11 @@ func (b *terminalBridge) observe(raw []byte) {
 	}
 	b.mu.Unlock()
 	if save != nil {
-		b.app.Workspace.Mu.Lock()
+		b.app.Execution.Mu.Lock()
 		if err := b.app.SaveSession("", *save, "workspace", titleObservedAt); err == nil {
-			_ = b.app.Workspace.Store.SaveSessionDirectories(save.ID, directories)
+			_ = b.app.Execution.Store.SaveSessionDirectories(save.ID, directories)
 		}
-		b.app.Workspace.Mu.Unlock()
+		b.app.Execution.Mu.Unlock()
 	}
 }
 

@@ -31,7 +31,7 @@ func TestAssistantBoundsActivityPayloadBeforePersistence(t *testing.T) {
 
 func TestAssistantFullPlanReviewRemainsStoredWithBoundedModelReceipt(t *testing.T) {
 	s, _ := actionService(t, Capability{Review: func(context.Context, json.RawMessage) (any, error) {
-		return map[string]any{"operation": map[string]any{"requirement": map[string]any{"name": "Large workspace", "path": "/workspaces/large", "members": []any{}}, "evidence": strings.Repeat("x", maxToolBytes+1)}}, nil
+		return map[string]any{"operation": map[string]any{"workspace": map[string]any{"name": "Large workspace", "path": "/workspaces/large", "members": []any{}}, "evidence": strings.Repeat("x", maxToolBytes+1)}}, nil
 	}}, nil)
 	p := proposeAction(t, s, "Large workspace")
 	if len(p.Review) <= maxToolBytes {

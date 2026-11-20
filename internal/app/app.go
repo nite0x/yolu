@@ -7,20 +7,20 @@ import (
 
 	"worktree-hub/internal/assistant"
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/project"
 	"worktree-hub/internal/session"
-	"worktree-hub/internal/task"
 	"worktree-hub/internal/terminal"
 	"worktree-hub/internal/workspace"
 )
 
 type App struct {
 	Assistant           *assistant.Service
-	Workspace           *workspace.Service
+	Execution           *execution.Service
 	Projects            *project.Service
-	Tasks               *task.Service
+	Workspaces          *workspace.Service
 	Sessions            *session.Service
 	Terminals           *terminal.Manager
 	token               string
@@ -36,20 +36,20 @@ type App struct {
 	voice               *codex.VoiceService
 }
 
-func openApp(dataDir, root string) (*App, error) { return openAppForWorkspace(dataDir, root, nil) }
-func openAppForWorkspace(dataDir, root string, remote *workspace.Client) (*App, error) {
-	env, err := workspace.Open(dataDir, root, remote)
+func openApp(dataDir, root string) (*App, error) { return openAppForExecution(dataDir, root, nil) }
+func openAppForExecution(dataDir, root string, remote *execution.Client) (*App, error) {
+	env, err := execution.Open(dataDir, root, remote)
 	if err != nil {
 		return nil, err
 	}
-	tasks := task.New(env)
-	sessions := session.New(env, tasks)
+	workspaces := workspace.New(env)
+	sessions := session.New(env, workspaces)
 	projects := project.New(env)
-	tasks.LockRepositories = projects.LockRepositories
-	tasks.StateChanged = projects.InvalidateState
+	workspaces.LockRepositories = projects.LockRepositories
+	workspaces.StateChanged = projects.InvalidateState
 	projects.ReserveWorktree = sessions.ReserveWorktree
-	projects.TaskContextUpdated = task.WriteBriefContext
-	a := &App{Workspace: env, Tasks: tasks, Projects: projects, Sessions: sessions, Terminals: terminal.New(), token: model.NewID() + model.NewID(), pickDirectory: platform.PickDirectory}
+	projects.WorkspaceContextUpdated = workspace.WriteBriefContext
+	a := &App{Execution: env, Workspaces: workspaces, Projects: projects, Sessions: sessions, Terminals: terminal.New(), token: model.NewID() + model.NewID(), pickDirectory: platform.PickDirectory}
 	if remote == nil {
 		a.voice = codex.NewVoiceService(env.DataDir, codex.OpenLive)
 		a.browser = newBrowserAccess(a)
@@ -68,7 +68,7 @@ func openAppForWorkspace(dataDir, root string, remote *workspace.Client) (*App, 
 // initialized remote environments. Schedulers are stopped by their owner first.
 func (a *App) Close() error {
 	a.closeOnce.Do(func() {
-		a.Workspace.Closing.Store(true)
+		a.Execution.Closing.Store(true)
 		if a.voice != nil {
 			a.voice.Close()
 		}
@@ -83,12 +83,12 @@ func (a *App) Close() error {
 		if a.Terminals != nil {
 			a.Terminals.Close()
 		}
-		if a.Workspace.Remote != nil {
-			a.Workspace.Remote.Close()
+		if a.Execution.Remote != nil {
+			a.Execution.Remote.Close()
 		}
 		a.Sessions.Close()
 		a.Projects.Close()
-		a.closeErr = a.Workspace.Close()
+		a.closeErr = a.Execution.Close()
 	})
 	return a.closeErr
 }

@@ -4,13 +4,13 @@
 
 .git-credentials{margin-top:14px;font-size:14px;line-height:1.8;color:var(--yolu-secondary-ink,#52587b);background:var(--yolu-subtle,#ecedf5);padding:10px 12px;border-radius:5px}
 
-/* One stable context and one task at a time. Panels remain mounted so native
+/* One stable context and one workspace at a time. Panels remain mounted so native
    controls retain their values while the controller refreshes Git state. */
 .git-dialog[open] { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); width: min(960px, calc(100vw - 32px)); padding: 0; overflow: hidden; }
 .git-dialog > .dialog-header { flex-shrink: 0; margin: 0 !important; padding: 20px 24px 16px; border-bottom: 1px solid var(--border); }
 .git-dialog > .dialog-header > div > [data-slot="badge"] { display: none; }
 .git-dialog > .dialog-header h2 { font-size: 19px; }
-.git-task-context { margin: 0; padding: 10px 24px 0; color: var(--muted-foreground); font-size: 12px; overflow-wrap: anywhere; }
+.git-workspace-context { margin: 0; padding: 10px 24px 0; color: var(--muted-foreground); font-size: 12px; overflow-wrap: anywhere; }
 .git-dialog > .dialog-footer { flex-shrink: 0; margin: 0; padding: 12px 24px; background: var(--background); }
 .git-dialog > #gitError, .git-dialog > #gitAuthHelp, .git-dialog > #gitProgress, .git-dialog > #gitResult { flex-shrink: 0; margin: 12px 24px 0 !important; max-height: 160px; overflow: auto; width: auto; }
 .git-dialog > #gitProgress { position: static; }

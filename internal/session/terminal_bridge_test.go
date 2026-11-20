@@ -50,8 +50,8 @@ func TestManagedMultiProjectLaunchMovesAdditionalRootsToBridge(t *testing.T) {
 	back := register(t, a, "Back", repo(t, "back", "master"))
 	_, q, _ := create(t, a, front, []string{back}, "terminal-roots")
 	var plan model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
-	endpoint := "/api/requirements/" + q.ID + "/launch"
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
+	endpoint := "/api/workspaces/" + q.ID + "/launch"
 	if code, raw := call(t, a, "GET", endpoint, nil); code != 200 || !strings.Contains(string(raw), "--add-dir") {
 		t.Fatalf("standalone command lost additional directories: %d %s", code, raw)
 	}
@@ -77,7 +77,7 @@ func TestManagedMultiProjectLaunchMovesAdditionalRootsToBridge(t *testing.T) {
 		if err := a.SaveSession(q.ID, s, "workspace"); err != nil {
 			t.Fatal(err)
 		}
-		if code, raw := call(t, a, "POST", "/api/requirements/"+q.ID+"/sessions/"+id+"/resume", nil); code != 200 {
+		if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/"+id+"/resume", nil); code != 200 {
 			t.Fatalf("resume: %d %s", code, raw)
 		}
 		checkInstalledManagedArgs(t, plan)
@@ -104,7 +104,7 @@ func checkInstalledManagedArgs(t *testing.T, plan model.LaunchPlan) {
 	}
 }
 
-func TestBridgeAddsTaskRootsToTurnsAfterStartAndResume(t *testing.T) {
+func TestBridgeAddsWorkspaceRootsToTurnsAfterStartAndResume(t *testing.T) {
 	for _, method := range []string{"thread/start", "thread/resume"} {
 		t.Run(method, func(t *testing.T) {
 			a, q, _, _ := chatFixture(t)
@@ -113,7 +113,7 @@ func TestBridgeAddsTaskRootsToTurnsAfterStartAndResume(t *testing.T) {
 			_ = server.SetReadDeadline(time.Now().Add(2 * time.Second))
 			cwd := q.Members[0].Path
 			extra := t.TempDir()
-			b := &terminalBridge{app: a.Service, requirement: q.ID, cwd: cwd, additionalDirectories: []string{extra, extra, cwd}, upstream: up, client: client, pending: map[string]bridgeCall{"1": {Method: method}}}
+			b := &terminalBridge{app: a.Service, workspace: q.ID, cwd: cwd, additionalDirectories: []string{extra, extra, cwd}, upstream: up, client: client, pending: map[string]bridgeCall{"1": {Method: method}}}
 			response, _ := json.Marshal(map[string]any{"id": 1, "result": map[string]any{
 				"thread":  map[string]any{"id": "session", "cwd": cwd},
 				"sandbox": map[string]any{"type": "workspaceWrite", "writableRoots": []string{"/existing-root"}, "networkAccess": false, "excludeTmpdirEnvVar": true},
@@ -185,7 +185,7 @@ func TestBridgeGatesNextTurnButForwardsExistingApprovalWhileDraining(t *testing.
 	a, q, _, _ := chatFixture(t)
 	up, server := socketPair(t)
 	client, tui := socketPair(t)
-	b := &terminalBridge{app: a.Service, requirement: q.ID, session: "session", cwd: q.Members[0].Path, upstream: up, client: client, pending: map[string]bridgeCall{}}
+	b := &terminalBridge{app: a.Service, workspace: q.ID, session: "session", cwd: q.Members[0].Path, upstream: up, client: client, pending: map[string]bridgeCall{}}
 	raw := []byte(`{"id":1,"method":"turn/start","params":{"threadId":"session","input":[]}}`)
 	if err := b.forward(raw); err != nil {
 		t.Fatal(err)
@@ -290,8 +290,8 @@ func TestTerminalScriptFailureReleasesReservationAndAllowsRetry(t *testing.T) {
 			a, q, _, _ := chatFixture(t)
 			fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Members[0].Path}})
 			var plan model.LaunchPlan
-			a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
-			endpoint := "/api/requirements/" + q.ID + "/sessions/session/resume"
+			a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
+			endpoint := "/api/workspaces/" + q.ID + "/sessions/session/resume"
 			if code, raw := call(t, a, "POST", endpoint, nil); code != 200 {
 				t.Fatalf("launch: %d %s", code, raw)
 			}
@@ -322,7 +322,7 @@ func TestTerminalScriptFailureReleasesReservationAndAllowsRetry(t *testing.T) {
 	}
 }
 
-// Real CLI + real shared daemon, on an isolated temporary requirement. This
+// Real CLI + real shared daemon, on an isolated temporary workspace. This
 // sends one tool-free prompt and never resumes or terminates a user's session.
 func TestInstalledCodexNewSessionAndManagedTerminalHandoff(t *testing.T) {
 	if runtime.GOOS != "linux" {
@@ -334,7 +334,7 @@ func TestInstalledCodexNewSessionAndManagedTerminalHandoff(t *testing.T) {
 	a := testApp(t)
 	// Remote trust prompts are saved by the shared daemon. Remove only this
 	// run's temporary project entries, preserving all pre-existing settings.
-	testPrefix := filepath.Dir(filepath.Dir(a.Workspace.DataDir))
+	testPrefix := filepath.Dir(filepath.Dir(a.Execution.DataDir))
 	t.Cleanup(func() {
 		home, _ := os.UserHomeDir()
 		codexHome := os.Getenv("CODEX_HOME")
@@ -356,13 +356,13 @@ func TestInstalledCodexNewSessionAndManagedTerminalHandoff(t *testing.T) {
 	})
 	p := register(t, a, "Managed", repo(t, "managed", "master"))
 	_, q, _ := create(t, a, p, nil, "managed-handoff")
-	endpoint := "/api/requirements/" + q.ID + "/sessions/new"
+	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
 	code, raw := call(t, a, "POST", endpoint, map[string]string{"text": "这是连通性测试。只回复 NEW_SESSION_OK，不调用工具，不读取文件。", "request_id": "installed-new"})
 	if code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	var result struct {
-		Session RequirementSession `json:"session"`
+		Session WorkspaceSession `json:"session"`
 	}
 	_ = json.Unmarshal(raw, &result)
 	ctx, end := context.WithTimeout(context.Background(), 90*time.Second)
@@ -386,8 +386,8 @@ func TestInstalledCodexNewSessionAndManagedTerminalHandoff(t *testing.T) {
 		t.Fatalf("new session: %+v", s)
 	}
 	var plan model.LaunchPlan
-	a.Workspace.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
-	base := "/api/requirements/" + q.ID + "/sessions/" + result.Session.ID
+	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
+	base := "/api/workspaces/" + q.ID + "/sessions/" + result.Session.ID
 	if code, raw := call(t, a, "POST", base+"/resume", nil); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
