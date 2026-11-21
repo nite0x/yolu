@@ -42,11 +42,15 @@ export function SessionBrowser() {
       </div><div id="sessionBrowserError" role="alert" hidden /><div id="sessionBrowserList" aria-label={uiText("对话结果")} /></aside>
       <div id="sessionBrowserResize" className="session-browser-resize" role="separator" tabIndex={0} aria-label={uiText("调整对话列表宽度")} aria-orientation="vertical" aria-controls="sessionBrowserListPane" aria-valuemin={220} aria-valuemax={520} aria-valuenow={280} />
       <section className="session-browser-detail" aria-label={uiText("对话详情")}>
-        <div id="conversationCreationKind" hidden><ConversationKindSwitch kind="ui" /></div>
         <div className="session-reading-toolbar"><div className="session-browser-mobile-back"><Button type="button" size="sm" variant="ghost" data-conversation-action="back"><ArrowLeft aria-hidden="true" />{uiText("对话列表")}</Button></div></div>
         <div className="session-reading-layout" id="sessionReadingLayout"><div className="session-reading-chat">
-        <div id="sessionBrowserNewDirectoryField" className="session-browser-new-directory" hidden><span id="sessionBrowserNewDirectoryLabel">{uiText("工作目录")}</span><div id="sessionBrowserDirectoryChoices" className="creation-choices" role="group" aria-labelledby="sessionBrowserNewDirectoryLabel" /><select id="sessionBrowserNewDirectory" hidden aria-label={uiText("工作目录")} /></div>
-        <details id="sessionBrowserAdditionalField" className="session-browser-new-directory session-creation-additional" hidden><summary>{uiText("可访问的其他项目目录")}<span id="sessionBrowserAdditionalCount" /></summary><div id="sessionBrowserAdditionalDirectories" /></details>
+        <div className="shrink-0">
+          <div id="sessionCreationSetup">
+            <div id="conversationCreationKind" hidden><ConversationKindSwitch kind="ui" /></div>
+            <div id="sessionBrowserNewDirectoryField" className="session-browser-new-directory" hidden><span id="sessionBrowserNewDirectoryLabel">{uiText("工作目录")}</span><div id="sessionBrowserDirectoryChoices" className="creation-choices" role="group" aria-labelledby="sessionBrowserNewDirectoryLabel" /><select id="sessionBrowserNewDirectory" hidden aria-label={uiText("工作目录")} /></div>
+            <details id="sessionBrowserAdditionalField" className="session-browser-new-directory session-creation-additional" hidden><summary>{uiText("可访问的其他项目目录")}<span id="sessionBrowserAdditionalCount" /></summary><div id="sessionBrowserAdditionalDirectories" /></details>
+          </div>
+        </div>
         <div id="sessionBrowserEmpty" className="session-browser-empty" role="status">{uiText("选择一个对话，或新建对话开始工作。")}</div>
         <aside id="sessionHistoryPanel" className="session-history-panel shadcn-scope" role="region" aria-labelledby="sessionHistoryTitle" hidden><SessionHistoryPanel /></aside>
         </div><div id="conversationFilesResize" className="reading-splitter conversation-files-resize" role="separator" tabIndex={0} aria-label={uiText("调整对话与文件区域大小")} aria-orientation="vertical" aria-controls="conversationFilesDock" hidden /><div id="conversationFilesDock" className="conversation-files-dock" hidden><aside id="conversationFilesPane" className="conversation-files-pane" aria-labelledby="conversationFilesTitle">

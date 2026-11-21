@@ -8,7 +8,7 @@ import type {ChatOptions} from "../frontend/chat/controller";
 
 let bundle = "";
 before(async () => {
-  const output = await build({entryPoints:["frontend/chat/main.tsx"], bundle:true, write:false, outfile:"chat-test.js", format:"iife", globalName:"ChatTest", jsx:"automatic", define:{"process.env.NODE_ENV":'"production"'}, plugins:[{name:"test-css",setup(builder){builder.onLoad({filter:/frontend[\\/]chat[\\/]controls\.tsx$/},args=>{let contents=readFileSync(args.path,'utf8');for(const name of ['ChatStatusView','ChatPermissionsView','ChatControlsView']){const start=contents.indexOf('function '+name+'(');const brace=contents.indexOf(') {',start)+3;contents=contents.slice(0,brace)+' window.__widgetRenders ||= {}; window.__widgetRenders["'+name+'"] = (window.__widgetRenders["'+name+'"] || 0) + 1;'+contents.slice(brace);}return {loader:'tsx',contents};});builder.onLoad({filter:/frontend[\\/]chat[\\/]panel\.tsx$/},args=>({loader:'tsx',contents:readFileSync(args.path,'utf8').replace('export function ChatPanel({controller}: {controller: ChatController}) {','export function ChatPanel({controller}: {controller: ChatController}) { window.__panelRenders = (window.__panelRenders || 0) + 1;')}));builder.onLoad({filter:/\.css$/},()=>({contents:"",loader:"css"}));}}]});
+  const output = await build({entryPoints:["frontend/chat/main.tsx"], bundle:true, write:false, outfile:"chat-test.js", format:"iife", globalName:"ChatTest", jsx:"automatic", define:{"process.env.NODE_ENV":'"production"'}, plugins:[{name:"test-css",setup(builder){builder.onLoad({filter:/frontend[\\/]chat[\\/]controls\.tsx$/},args=>{let contents=readFileSync(args.path,'utf8');for(const name of ['ChatStatusView','ChatControlsView']){const start=contents.indexOf('function '+name+'(');const brace=contents.indexOf(') {',start)+3;contents=contents.slice(0,brace)+' window.__widgetRenders ||= {}; window.__widgetRenders["'+name+'"] = (window.__widgetRenders["'+name+'"] || 0) + 1;'+contents.slice(brace);}return {loader:'tsx',contents};});builder.onLoad({filter:/frontend[\\/]chat[\\/]panel\.tsx$/},args=>({loader:'tsx',contents:readFileSync(args.path,'utf8').replace('export function ChatPanel({controller}: {controller: ChatController}) {','export function ChatPanel({controller}: {controller: ChatController}) { window.__panelRenders = (window.__panelRenders || 0) + 1;')}));builder.onLoad({filter:/\.css$/},()=>({contents:"",loader:"css"}));}}]});
   bundle = output.outputFiles.find(file=>file.path.endsWith(".js"))!.text + "\nwindow.ChatTest = ChatTest;";
 });
 
@@ -61,7 +61,62 @@ function mount(existing = false, entries: Entry[] = [], extra: Partial<ChatOptio
   return {w,errors,calls,bridge,options,input,type,setChat:(value:ChatState)=>{chat=value;},failSends:(count:number)=>{sendFailures=count;},dispose(){bridge.close();dom.window.close();}};
 }
 
+function setting(h: ReturnType<typeof mount>, label: string) {
+  return h.w.document.querySelector<HTMLFieldSetElement>(`fieldset[aria-label="${label}"]`)!;
+}
+function chooseSetting(h: ReturnType<typeof mount>, label: string, value: string) {
+  const field = setting(h, label);
+  const details = field.closest("details");
+  if (details) details.open = true;
+  const choice = [...field.querySelectorAll<HTMLInputElement>("input")].find(input => input.value === value);
+  assert(choice, `Missing option ${value} in ${label}`);
+  choice.click();
+}
+async function openSettingMenu(h: ReturnType<typeof mount>, label: string) {
+  const field = () => h.w.document.querySelector<HTMLButtonElement>(`.chat-setting-picker-trigger[aria-label^="${label} ·"]`);
+  await until(() => field() && !field()!.disabled);
+  const trigger = field()!;
+  trigger.focus();
+  trigger.dispatchEvent(new h.w.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}));
+  const menu = () => h.w.document.getElementById(trigger.getAttribute("aria-controls") || "");
+  await until(menu);
+  return menu()!;
+}
+async function chooseMenuSetting(h: ReturnType<typeof mount>, menu: HTMLElement, value: string) {
+  const choice = [...menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.dataset.value === value);
+  assert(choice, `Missing menu option ${value}`);
+  choice.click();
+  await until(() => !menu.isConnected);
+}
+function selectedSetting(h: ReturnType<typeof mount>, label: string) {
+  return setting(h, label)?.querySelector<HTMLInputElement>("input:checked")?.value;
+}
+
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1cAAAAASUVORK5CYII=";
+
+test("historical visualization references open only on demand in a sandboxed frame", async () => {
+  const path = "/codex/visualizations/settings.html";
+  const marker = `visualize${JSON.stringify({path, title: "Settings preview"})}`;
+  const entries: Entry[] = [{id:"assistant", turn_id:"turn", kind:"assistant", visualizations:{[path]:"scoped-ref"}, text:`Before\n\n${marker}\n\nAfter\n\n\`\`\`text\n${marker}\n\`\`\``}];
+  for (let opened = 0; opened < 2; opened++) {
+    const h = mount(true, entries);
+    try {
+      await until(() => h.w.document.querySelector(".chat-visualization-trigger"));
+      const trigger = h.w.document.querySelector<HTMLButtonElement>(".chat-visualization-trigger")!;
+      assert.equal(trigger.textContent, "Settings preview");
+      assert.equal(h.w.document.querySelectorAll(".chat-visualization-trigger").length, 1);
+      assert(h.w.document.querySelector("pre")?.textContent?.includes(marker));
+      assert.equal(h.w.document.querySelector(".chat-visualization iframe"), null);
+      trigger.click();
+      await until(() => h.w.document.querySelector(".chat-visualization iframe"));
+      const frame = h.w.document.querySelector(".chat-visualization iframe")!;
+      assert.equal(frame.getAttribute("sandbox"), "allow-scripts");
+      assert.equal(frame.getAttribute("src"), "/session-visualization/session?ref=scoped-ref&theme=light");
+      assert(h.w.document.body.textContent?.includes("Before"));
+      assert(h.w.document.body.textContent?.includes("After"));
+    } finally { h.dispose(); }
+  }
+});
 
 test("generated assistant images load through authenticated media without replacing the text timeline",async()=>{
   const source='/workhub-generated-images/icon';
@@ -123,18 +178,17 @@ test("new chat inherits native settings and sends only explicitly selected model
     return idleChat() as any;
   }});
   try{
-    await until(()=>h.w.document.querySelector('[aria-label="上下文与设置"]')?.textContent?.includes('沿用 Codex 默认模型'));
-    assert.equal(h.w.document.querySelector('[aria-label="权限设置"]')?.getAttribute('data-permission'),'inherit');
+    await until(()=>h.w.document.querySelector('[aria-label="上下文与设置"]')?.textContent?.includes('Other'));
+    assert.match(h.w.document.querySelector('[aria-label="上下文与设置"]')?.getAttribute('aria-description') || '', /权限 · 默认/);
     h.w.document.querySelector<HTMLButtonElement>('[aria-label="上下文与设置"]')!.click();
-    await until(()=>h.w.document.querySelector('[aria-label="下轮模型"]'));
-    const model=h.w.document.querySelector<HTMLSelectElement>('[aria-label="下轮模型"]')!;
-    model.value='other';model.dispatchEvent(new h.w.Event('change',{bubbles:true}));
+    await chooseMenuSetting(h, await openSettingMenu(h, "模型"), "other");
+    const modelMenu = await openSettingMenu(h, "模型");
+    assert.equal(modelMenu.querySelector<HTMLElement>('[aria-checked="true"]')?.dataset.value, "other");
+    await chooseMenuSetting(h, modelMenu, "gpt-6.1-sol");
     await tick();
-    assert.equal(model.value,'other');
-    model.value='gpt-6.1-sol';model.dispatchEvent(new h.w.Event('change',{bubbles:true}));await tick();
-    const effort=h.w.document.querySelector<HTMLSelectElement>('[aria-label="下轮思考强度"]')!;
-    effort.value='high';effort.dispatchEvent(new h.w.Event('change',{bubbles:true}));await tick();
-    effort.value='medium';effort.dispatchEvent(new h.w.Event('change',{bubbles:true}));
+    chooseSetting(h, "下轮思考强度", "high");
+    await tick();
+    chooseSetting(h, "下轮思考强度", "medium");
     h.type('手动调整强度');await tick();h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
     await until(()=>h.calls.some(c=>c.path.endsWith('/sessions/new')));
     assert.deepEqual(h.calls.find(c=>c.path.endsWith('/sessions/new'))!.body.settings,{model:'gpt-6.1-sol',effort:'medium'});
@@ -150,11 +204,13 @@ test("new conversations display saved defaults and permit a permission override"
   }});
   try {
     await until(()=>h.w.document.querySelector('[aria-label="上下文与设置"]')?.textContent?.includes('Available model'));
-    const trigger=h.w.document.querySelector<HTMLButtonElement>('[aria-label="权限设置"]')!;
-    assert.equal(trigger.getAttribute('data-permission'),'full');
-    trigger.dispatchEvent(new h.w.KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true}));await until(()=>h.w.document.querySelector('.chat-permission-option[data-permission="ask"]'));
-    h.w.document.querySelector<HTMLElement>('.chat-permission-option[data-permission="ask"]')!.click();await tick();
-    assert.equal(trigger.getAttribute('data-permission'),'ask');
+    const trigger=h.w.document.querySelector<HTMLButtonElement>('[aria-label="上下文与设置"]')!;
+    assert(trigger.title.includes("完全访问权限"));
+    assert(trigger.querySelector(".chat-settings-state-icons [data-danger]"));
+    trigger.click();
+    await chooseMenuSetting(h, await openSettingMenu(h, "权限"), "ask");
+    await until(() => trigger.title.includes("请求批准"));
+    assert.equal(trigger.querySelector(".chat-settings-state-icons [data-danger]"), null);
     h.type('Use the saved model with manual approvals');await tick();h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
     await until(()=>h.calls.some(c=>c.path.endsWith('/sessions/new')));
     assert.deepEqual(h.calls.find(c=>c.path.endsWith('/sessions/new'))!.body.settings,{permission:'ask'});
@@ -907,12 +963,21 @@ test("the shared panel opens a project directory without any workspace object", 
   workspace:undefined,target:{project_id:"p",cwd:"/workspace/project"},
   overview:{workspaces:[],projects:[{id:"p",name:"项目",path:"/repo/project",worktrees:[{path:"/workspace/project",branch:"feature/current"}]}]},
  });
+ const setupMount = h.w.document.createElement("div");
+ const setup = h.w.document.createElement("div");
+ setup.id = "sessionCreationSetup";
+ setupMount.append(setup);
+ h.w.document.body.append(setupMount);
  try {
   await until(()=>h.input());
   assert.equal(h.w.document.querySelector("#assistantChatProject"),null);
-  assert.match(h.w.document.querySelector(".chat-panel-header")?.textContent || "",/\/workspace\/project/);
-  const directoryHint = h.w.document.querySelector(".aui-thread-viewport-footer .chat-creation-directory");
-  assert.match(directoryHint?.textContent || "", /主工作目录.*\/workspace\/project.*feature\/current/);
+  const input = h.input();
+  const footer = input.closest(".aui-thread-viewport-footer");
+  const path = h.w.document.querySelector(".chat-panel-header .chat-workspace-path");
+  assert.equal(path?.textContent, "/workspace/project");
+  assert.equal(h.w.document.querySelector(".chat-panel-header .chat-workspace-branch")?.textContent, "feature/current");
+  assert.equal(setup.parentElement?.className, "chat-creation-setup");
+  assert(footer?.classList.contains("sticky"));
   h.type("从项目页开始"); await tick();
   h.w.document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
   await until(()=>h.calls.some(call=>call.body));
@@ -920,7 +985,11 @@ test("the shared panel opens a project directory without any workspace object", 
   assert.equal(sent.path,"/api/sessions/new");
   assert.equal(sent.body.workspace_id,undefined);
   assert.equal(sent.body.cwd,"/workspace/project");
-  await until(()=>!h.w.document.querySelector(".chat-creation-directory"));
+  await until(()=>h.w.document.querySelector("#assistantChatTitle")?.textContent === session.name && setup.parentElement === setupMount);
+  assert.equal(h.input(), input);
+  assert.equal(h.w.document.querySelector(".aui-thread-viewport-footer"), footer);
+  assert(footer?.classList.contains("sticky"));
+  assert.equal(h.w.document.querySelector(".chat-panel-header .chat-workspace-path"), path);
   assert.deepEqual(h.errors,[]);
  } finally {h.dispose();}
 });
@@ -987,17 +1056,16 @@ test("next-turn badges only mark settings that differ from an active turn", asyn
   return current as any;
  }});
  try{
-  await until(()=>h.w.document.querySelector('[aria-label="上下文与设置"]')?.textContent?.includes('沿用 Codex 默认模型'));
+  await until(()=>h.w.document.querySelector('[aria-label="上下文与设置"]')?.textContent?.includes('默认'));
   assert.ok(!h.w.document.querySelector('.chat-next-turn'), 'new conversation defaults are not pending changes');
   h.type('开始');await tick();h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
   await until(()=>h.w.document.querySelector('.aui-composer-cancel'));
   assert.ok(!h.w.document.querySelector('.chat-next-turn'), 'applied settings are not pending changes');
   h.w.document.querySelector<HTMLButtonElement>('[aria-label="上下文与设置"]')!.click();
   await until(()=>h.w.document.querySelector('[aria-label="下轮思考强度"]'));
-  const effort=h.w.document.querySelector<HTMLSelectElement>('[aria-label="下轮思考强度"]')!;
-  effort.value='medium';effort.dispatchEvent(new h.w.Event('change',{bubbles:true}));
+  chooseSetting(h, "下轮思考强度", "medium");
   await until(()=>h.w.document.querySelector('[aria-label="上下文与设置"] .chat-next-turn'));
-  effort.value='high';effort.dispatchEvent(new h.w.Event('change',{bubbles:true}));
+  chooseSetting(h, "下轮思考强度", "high");
   await until(()=>!h.w.document.querySelector('.chat-next-turn'));
   assert.deepEqual(h.errors,[]);
  }finally{h.dispose();}
@@ -1019,17 +1087,15 @@ test("context settings use the catalog and stay out of user text",async()=>{
   assert(settings.closest('.aui-composer-action-wrapper'));
   assert.equal(h.w.document.querySelector('.chat-panel-header [aria-label="上下文与设置"]'),null);
   settings.click();
-  await until(()=>h.w.document.querySelector<HTMLSelectElement>('[aria-label="下轮工作模式"]')?.options.length===3);
-  const model=h.w.document.querySelector<HTMLSelectElement>('[aria-label="下轮模型"]')!;
-  assert.equal(model.value,'model');assert.equal(model.selectedOptions[0].textContent,'Fixture');
-  const effort=h.w.document.querySelector<HTMLSelectElement>('[aria-label="下轮思考强度"]')!;
-  assert.equal(effort.value,'medium');assert.equal(effort.selectedOptions[0].textContent,'中');
-  model.value='other';model.dispatchEvent(new h.w.Event('change',{bubbles:true}));
-  await until(()=>effort.value==='low');assert.equal(effort.selectedOptions[0].textContent,'低');
-  model.value='model';model.dispatchEvent(new h.w.Event('change',{bubbles:true}));
-  await until(()=>effort.value==='medium');
-  assert(!h.w.document.querySelector('.chat-settings-popover')!.textContent?.includes('沿用当前'));
-  const mode=h.w.document.querySelector<HTMLSelectElement>('[aria-label="下轮工作模式"]')!;mode.value='plan';mode.dispatchEvent(new h.w.Event('change',{bubbles:true}));
+  await until(() => setting(h, "下轮工作模式")?.querySelectorAll("input").length === 3);
+  assert.equal(selectedSetting(h, "下轮思考强度"), "medium");
+  const modelMenu = await openSettingMenu(h, "模型");
+  assert.equal(modelMenu.querySelector<HTMLElement>('[aria-checked="true"]')?.dataset.value, "model");
+  await chooseMenuSetting(h, modelMenu, "other");
+  await until(() => selectedSetting(h, "下轮思考强度") === "low");
+  await chooseMenuSetting(h, await openSettingMenu(h, "模型"), "model");
+  await until(() => selectedSetting(h, "下轮思考强度") === "medium");
+  chooseSetting(h, "下轮工作模式", "plan");
   h.type('先做计划');await tick();h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
   await until(()=>h.calls.some(c=>c.path.endsWith('/chat')&&c.body));
   const sent=h.calls.find(c=>c.path.endsWith('/chat')&&c.body)!.body;
@@ -1066,9 +1132,16 @@ test("settings dismiss with Escape, restore focus and never send the conversatio
     const trigger = h.w.document.querySelector<HTMLButtonElement>('[aria-label="上下文与设置"]')!;
     trigger.click();
     await until(() => h.w.document.querySelector('.chat-settings-popover'));
-    assert(h.w.document.querySelector('.assistant-chat-scope .chat-settings-popover'));
-    const field = h.w.document.querySelector<HTMLSelectElement>('[aria-label="下轮模型"]')!;
-    field.focus(); field.dispatchEvent(new h.w.KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}));
+    const panel = h.w.document.querySelector('.assistant-chat-scope .chat-settings-popover')!;
+    assert(panel);
+    const menu = await openSettingMenu(h, "模型");
+    assert.equal(panel.contains(menu), false);
+    const field = h.w.document.querySelector<HTMLElement>(".chat-setting-picker-trigger")!;
+    const escape = () => new h.w.KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true});
+    menu.dispatchEvent(escape());
+    await until(() => !menu.isConnected && h.w.document.activeElement === field);
+    assert(panel.isConnected);
+    field.dispatchEvent(escape());
     await until(() => !h.w.document.querySelector('.chat-settings-popover'));
     await until(() => h.w.document.activeElement === trigger);
     assert.equal(h.input().value, "未发送的草稿");

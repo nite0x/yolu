@@ -9,7 +9,6 @@ import (
 	"worktree-hub/internal/codex"
 )
 
-var DefaultEfforts = []string{"low", "medium", "high", "xhigh", "max"}
 var DefaultModes = []string{"default", "plan", "accept-edits", "auto"}
 
 type OptionCatalog struct {
@@ -51,7 +50,7 @@ func CatalogFromSetup(setup acp.SessionSetupResult) OptionCatalog {
 		Modes:            []string{},
 		HasConfigOptions: len(setup.ConfigOptions) > 0,
 	}
-	efforts := append([]string(nil), DefaultEfforts...)
+	var efforts []string
 	defaultEffort := ""
 
 	for _, opt := range setup.ConfigOptions {
@@ -171,7 +170,6 @@ func ListCLIModels(ctx context.Context) []codex.ChatModel {
 func ParseModelsOutput(output string) []codex.ChatModel {
 	models := []codex.ChatModel{}
 	seen := map[string]bool{}
-	efforts := effortList(DefaultEfforts)
 	for _, raw := range strings.Split(output, "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") && strings.Trim(line, "- ") == "" {
@@ -201,12 +199,10 @@ func ParseModelsOutput(output string) []codex.ChatModel {
 			}
 		}
 		models = append(models, codex.ChatModel{
-			ID:            id,
-			Model:         id,
-			Name:          display,
-			Default:       isDefault,
-			DefaultEffort: "medium",
-			Efforts:       efforts,
+			ID:      id,
+			Model:   id,
+			Name:    display,
+			Default: isDefault,
 		})
 	}
 	return models

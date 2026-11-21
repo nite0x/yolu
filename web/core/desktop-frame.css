@@ -19,6 +19,8 @@ html[data-workhub-desktop]:not([data-workhub-platform]) .sidebar .brand { displa
 html[data-workhub-desktop]:not([data-workhub-platform]) .sidebar .brand span { display: none; }
 html[data-workhub-desktop] .sidebar nav { grid-template-columns: 1fr; justify-items: center; margin: 0; gap: var(--yolu-rail-gap); }
 html[data-workhub-desktop] .sidebar nav .nav-item { position: relative; justify-content: center; gap: 0; }
+html:not([data-workspace-page]) #openGlobalSearch,
+html[data-workhub-platform] #openGlobalSearch { display: none; }
 html[data-workhub-desktop] .sidebar .nav-icon { display: flex; flex: none; align-items: center; justify-content: center; }
 html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,#refreshButton,.codex-quota-trigger,.conversation-shortcut-open) {
   width: var(--yolu-rail-control-size);

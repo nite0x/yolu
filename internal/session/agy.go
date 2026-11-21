@@ -662,7 +662,7 @@ func buildAgyChatContext(plan model.LaunchPlan, cat agy.OptionCatalog, settings 
 	if settings.Model != "" {
 		ctx.Model = settings.Model
 	}
-	if settings.Effort != "" {
+	if settings.Effort != "" && cat.EffortConfigID != "" {
 		ctx.Effort = settings.Effort
 	}
 	if settings.Mode != "" {
@@ -675,10 +675,6 @@ func buildAgyChatContext(plan model.LaunchPlan, cat agy.OptionCatalog, settings 
 	case "ask":
 		ctx.ApprovalPolicy = "on-request"
 		ctx.ApprovalsReviewer = "user"
-		ctx.Sandbox = map[string]any{"type": "workspaceWrite"}
-	case "auto":
-		ctx.ApprovalPolicy = "on-request"
-		ctx.ApprovalsReviewer = "auto_review"
 		ctx.Sandbox = map[string]any{"type": "workspaceWrite"}
 	}
 	return ctx

@@ -33,6 +33,10 @@ func (a *Service) imageRef(session, path string) string {
 func (a *Service) prepareHistoryMedia(session string, entries []HistoryEntry) {
 	for i := range entries {
 		e := &entries[i]
+		if a.Execution.Remote == nil && e.Kind == "assistant" && e.Status != "inProgress" {
+			e.Visualizations = maps.Clone(e.Visualizations)
+			a.prepareVisualizations(session, e)
+		}
 		e.LocalImages = maps.Clone(e.LocalImages)
 		// Replace inline generated/user images with short session-scoped refs.
 		// Clone first: live snapshots share image slices with the active run.

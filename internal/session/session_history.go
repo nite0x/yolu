@@ -18,6 +18,7 @@ import (
 type HistoryEntry struct {
 	FileChanges     []HistoryFileChange `json:"file_changes,omitempty"`
 	LocalImages     map[string]string   `json:"local_images,omitempty"`
+	Visualizations  map[string]string   `json:"visualizations,omitempty"`
 	LocalImagePaths []string            `json:"-"`
 	ID              string              `json:"id"`
 	TurnID          string              `json:"turn_id"`

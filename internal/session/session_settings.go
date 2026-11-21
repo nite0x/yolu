@@ -6,10 +6,11 @@ import (
 )
 
 type TurnSettings struct {
-	Model      string `json:"model,omitempty"`
-	Effort     string `json:"effort,omitempty"`
-	Mode       string `json:"mode,omitempty"`
-	Permission string `json:"permission,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Effort      string `json:"effort,omitempty"`
+	Mode        string `json:"mode,omitempty"`
+	Permission  string `json:"permission,omitempty"`
+	ServiceTier string `json:"serviceTier,omitempty"`
 }
 
 func newConversationSettings(settings TurnSettings, defaults conversationPreferences) TurnSettings {
@@ -28,6 +29,9 @@ func (s TurnSettings) validate() error {
 	}
 	if len(s.Model) > 200 {
 		return fmt.Errorf("模型名称过长")
+	}
+	if len(s.ServiceTier) > 100 || strings.TrimSpace(s.ServiceTier) != s.ServiceTier {
+		return fmt.Errorf("不支持的响应速度")
 	}
 	if s.Mode != "" && !strings.Contains("|plan|default|accept-edits|auto|ask|code|architect|", "|"+s.Mode+"|") {
 		return fmt.Errorf("不支持的工作模式")

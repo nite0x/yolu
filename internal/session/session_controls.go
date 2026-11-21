@@ -20,6 +20,7 @@ type ChatContext struct {
 	Model                 string   `json:"model"`
 	Effort                string   `json:"reasoningEffort"`
 	Mode                  string   `json:"mode,omitempty"`
+	ServiceTier           string   `json:"serviceTier,omitempty"`
 	Cwd                   string   `json:"cwd"`
 	ApprovalPolicy        any      `json:"approvalPolicy,omitempty"`
 	ApprovalsReviewer     string   `json:"approvalsReviewer,omitempty"`
@@ -111,7 +112,7 @@ func (a *Service) applyTurnSettings(ctx context.Context, c codex.LiveClient, par
 	if err := settings.validate(); err != nil {
 		return err
 	}
-	if settings.Model == "" && settings.Effort == "" && settings.Mode == "" {
+	if settings.Model == "" && settings.Effort == "" && settings.Mode == "" && settings.ServiceTier == "" {
 		return nil
 	}
 	call := func(method string, p any, out any) error {
@@ -144,6 +145,16 @@ func (a *Service) applyTurnSettings(ctx context.Context, c codex.LiveClient, par
 	}
 	if selected == nil {
 		return fmt.Errorf("当前模型不可用，请重新选择模型")
+	}
+	if settings.ServiceTier != "" {
+		supported := false
+		for _, tier := range selected.ServiceTiers {
+			supported = supported || tier.ID == settings.ServiceTier
+		}
+		if !supported {
+			return fmt.Errorf("所选模型不支持该响应速度")
+		}
+		params["serviceTierForTurn"] = settings.ServiceTier
 	}
 	if settings.Effort != "" {
 		valid := false

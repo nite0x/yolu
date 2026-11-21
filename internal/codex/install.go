@@ -149,6 +149,14 @@ func codexHome() string {
 	return ""
 }
 
+// VisualizationRoot is the local Codex conversation artifact directory.
+func VisualizationRoot() string {
+	if home := codexHome(); filepath.IsAbs(home) {
+		return filepath.Join(home, "visualizations")
+	}
+	return ""
+}
+
 func commandLocation(cmd *exec.Cmd) string {
 	if len(cmd.Args) > 2 { // Windows npm shim uses Node and the package entry point.
 		return cmd.Args[1]

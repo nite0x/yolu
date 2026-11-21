@@ -6,6 +6,7 @@ export interface Entry {
   file_changes?: {path: string; additions: number; deletions: number}[];
   id: string; turn_id: string; kind: string; text?: string; command?: string; cwd?: string;
   tool?: string; images?: string[]; local_images?: Record<string,string>; status?: string; output?: string | null; exit_code?: number | null; duration_ms?: number | null;
+  visualizations?: Record<string, string>;
   delivery?: string; questions?: Question[]; question_status?: string;
 }
 export interface Question { id: string; header: string; question: string; isOther?: boolean; isSecret?: boolean; options?: {label: string; description: string}[] }
@@ -23,8 +24,8 @@ export interface HistoryPush { connected: boolean; entries: Entry[]; sync: numbe
 export interface Session { id: string; provider?: import("./settings").AgentProvider; name: string; cwd: string; available?: boolean; pinned?: boolean; archived?: boolean; model?: string; reasoningEffort?: string }
 export interface Workspace { id: string; name: string; state: string; primary_project_id: string; members: {project_id: string; project_name: string; path: string}[] }
 export {defaultCapabilities, newConversationSettings, normalizeProvider, type AgentProvider, type PermissionMode, type ProviderCapabilities, type TurnSettings} from "./settings";
-export interface ChatContext {model?:string;reasoningEffort?:string;mode?:string;cwd?:string;approvalPolicy?:unknown;approvalsReviewer?:string;sandbox?:{type?:string;writableRoots?:string[];networkAccess?:boolean};additional_directories?:string[]}
-export interface ChatModel {id:string;model:string;displayName:string;isDefault:boolean;defaultReasoningEffort:string;supportedReasoningEfforts:{reasoningEffort:string}[]}
+export interface ChatContext {model?:string;reasoningEffort?:string;mode?:string;serviceTier?:string;cwd?:string;approvalPolicy?:unknown;approvalsReviewer?:string;sandbox?:{type?:string;writableRoots?:string[];networkAccess?:boolean};additional_directories?:string[]}
+export interface ChatModel {id:string;model:string;displayName:string;isDefault:boolean;defaultReasoningEffort:string;supportedReasoningEfforts?:{reasoningEffort:string}[];serviceTiers?:{id:string;name:string;description:string}[]}
 export const entryKey = (e: Entry) => JSON.stringify([e.turn_id, e.id]);
 // A compact read marker also detects a reply growing while its item ID stays the same.
 export function latestEntryFingerprint(entries: Entry[]): string {

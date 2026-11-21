@@ -34,6 +34,7 @@ func (c *controlsLive) Call(ctx context.Context, method string, params any, out 
 		result = map[string]any{"turnId": "turn"}
 	case "model/list":
 		result = map[string]any{"data": []any{map[string]any{"id": "model", "model": "model", "displayName": "Fixture model", "isDefault": true, "defaultReasoningEffort": "medium", "supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "medium"}, map[string]any{"reasoningEffort": "high"}}}}}
+		result.(map[string]any)["data"].([]any)[0].(map[string]any)["serviceTiers"] = []codex.ModelServiceTier{{ID: "fast", Name: "Fast"}}
 		result.(map[string]any)["data"] = append(result.(map[string]any)["data"].([]any), map[string]any{"id": "gpt-6.1-sol", "model": "gpt-6.1-sol", "displayName": "GPT-6.1-Sol", "defaultReasoningEffort": "medium", "supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "high"}}})
 	case "collaborationMode/list":
 		result = map[string]any{"data": []any{map[string]any{"mode": "default"}, map[string]any{"mode": "plan"}}}
@@ -138,7 +139,7 @@ func TestTurnSettingsValidateModelCapabilitiesAndBuildNativeMode(t *testing.T) {
 	a, _, base, _ := chatFixture(t)
 	c := &controlsLive{fakeLiveClient: base}
 	params := map[string]any{}
-	if err := a.applyTurnSettings(context.Background(), c, params, TurnSettings{Model: "model", Effort: "high", Mode: "plan"}, "", ""); err != nil {
+	if err := a.applyTurnSettings(context.Background(), c, params, TurnSettings{Model: "model", Effort: "high", Mode: "plan", ServiceTier: "fast"}, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	mode := params["collaborationMode"].(map[string]any)
@@ -146,7 +147,10 @@ func TestTurnSettingsValidateModelCapabilitiesAndBuildNativeMode(t *testing.T) {
 	if mode["mode"] != "plan" || settings["model"] != "model" || settings["reasoning_effort"] != "high" || settings["developer_instructions"] != nil {
 		t.Fatal(params)
 	}
-	for _, s := range []TurnSettings{{Model: "unknown"}, {Model: "model", Effort: "ultra"}, {Mode: "invalid"}} {
+	if params["serviceTierForTurn"] != "fast" || params["serviceTier"] != nil {
+		t.Fatal("speed must apply to one turn", params)
+	}
+	for _, s := range []TurnSettings{{Model: "unknown"}, {Model: "model", Effort: "ultra"}, {Mode: "invalid"}, {Model: "gpt-6.1-sol", ServiceTier: "fast"}} {
 		if err := a.applyTurnSettings(context.Background(), c, map[string]any{}, s, "", ""); err == nil {
 			t.Fatal("invalid settings accepted", s)
 		}

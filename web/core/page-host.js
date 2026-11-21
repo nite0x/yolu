@@ -27,7 +27,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       return fetch(path,options).finally(() => reads.clear());
     }
     if (/[?&]refresh=1(?:&|$)/.test(path)) {reads.clear(); return fetch(path,options);}
-    if (options.signal || !/^\/api\/(state|workspace-inventory|environments|shortcut-pins)(\?|$)/.test(path)) return fetch(path,options);
+    const cacheable = /^\/api\/(state|workspace-inventory|environments|shortcut-pins)(\?|$)/.test(path) || /^\/api\/sessions\?(archived=true)?$/.test(path) || path === '/api/sessions/search';
+    if (options.signal || !cacheable) return fetch(path,options);
     const key = JSON.stringify([path,options.headers]), cached = reads.get(key);
     if (cached && (!cached.updated || Date.now() - cached.updated < 1000)) return cached.promise.then(response => response.clone());
     const entry = {updated:0};
@@ -42,6 +43,19 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }};
   const pages = document.getElementById('workspacePages');
   const assistant = document.getElementById('workspaceAssistant');
+  const searchToken = document.querySelector('meta[name="csrf-token"]').content;
+  const search = window.WorkHubLayout.createGlobalSearch(document.getElementById('globalSearch'), {
+    async read(path, environment) {
+      const response = await window.WorkHubWorkspace.read(path, {headers: {'Content-Type':'application/json', 'X-CSRF-Token':searchToken, 'X-Environment-ID':environment}});
+      if (!response.ok) throw new Error(String(response.status));
+      return response.json();
+    },
+    navigate(snapshot) {
+      closeAssistant(false);
+      dispatchOpen({snapshot});
+      currentPage()?.frame.focus({preventScroll:true});
+    },
+  });
   let assistantFrame, assistantReady = false, assistantContext, assistantReturnFocus, assistantActivity = '';
   const paneChrome = document.createElement('div');
   paneChrome.className = 'workspace-pane-chrome'; pages.append(paneChrome);
@@ -91,6 +105,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (controls) window.WorkHubLayout.renderChrome(controls,{
       ready:!!page?.ready,
       home:() => openPage({route:'/workspaces',environment:page?.snapshot.environment}),
+      search:trigger => search.open(trigger),
       appMenu:window.WorkHubDesktopWindow ? () => window.WorkHubDesktopWindow.showMenu(!!page?.ready) : undefined,
     });
   }
@@ -187,9 +202,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (assistant.hidden) showAssistant(source);
     else closeAssistant();
   }
-  function assistantKeydown(event) {
+  function workspaceKeydown(event) {
     if (event.defaultPrevented || event.isComposing || event.repeat) return;
-    if (event.code === 'KeyY' && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+      event.preventDefault();
+      search.open(event.currentTarget.activeElement);
+    } else if (event.code === 'KeyY' && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
       const source = [...allPages(), navigation].find(page => page?.frame.contentDocument === event.currentTarget);
       toggleAssistant(source);
@@ -243,6 +261,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       full:group.pages.length >= 3,listWidth:renderedConversationListWidth(),split,canSplit:canSplit(group),
     });
     renderPaneChrome(); renderChrome();
+    const current = currentPage();
+    if (current?.visible && current.restored) search.remember(current.snapshot);
     if (!performance.getEntriesByName?.('workhub:layout-ready').length) performance.mark?.('workhub:layout-ready');
   }
   function update() {renderLayout(); syncURL();}
@@ -435,7 +455,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (assistantFrame && assistantFrame.contentWindow === event.source) {
       if (message.type === 'workhub:assistant-ready') {
         assistantReady = true;
-        assistantFrame.contentDocument?.addEventListener('keydown', assistantKeydown);
+        assistantFrame.contentDocument?.addEventListener('keydown', workspaceKeydown);
         showAssistantFrame();
       } else if (message.type === 'workhub:assistant-close') closeAssistant();
       else if (message.type === 'workhub:assistant-activity') {
@@ -451,7 +471,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (navigation?.frame.contentWindow === event.source) {
       if (message.type === 'workhub:page-ready') {
         navigation.ready = true;
-        navigation.frame.contentDocument?.addEventListener('keydown', assistantKeydown);
+        navigation.frame.contentDocument?.addEventListener('keydown', workspaceKeydown);
         syncAssistantLaunchers();
         send(navigation,'workhub:page-restore',{snapshot:navigation.snapshot,active:!!navigation.visible}); renderLayout();
       } else if (message.type === 'workhub:page-restored') {
@@ -463,6 +483,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         renderNavigationModal();
       }
       else if (message.type === 'workhub:assistant-toggle' && navigation.visible) toggleAssistant(navigation);
+      else if (message.type === 'workhub:global-search' && navigation.visible) search.open(navigation.frame.contentDocument?.getElementById('openGlobalSearch'));
       else if (message.type === 'workhub:conversation-select') {
         if (message.initial && (!conversationsVisible || group.pages.some(page => isPaneView(page.snapshot)))) return;
         openConversation(message.snapshot);
@@ -479,7 +500,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (!displayed && !['workhub:page-ready','workhub:page-restored','workhub:page-state'].includes(message.type)) return;
     if (message.type === 'workhub:page-ready') {
       page.ready = true;
-      page.frame.contentDocument?.addEventListener('keydown', assistantKeydown);
+      page.frame.contentDocument?.addEventListener('keydown', workspaceKeydown);
       syncAssistantLaunchers();
       if (page === workspace && !assistantReady) {
         page.frame.contentWindow.WorkHubPage?.readAssistantActivity?.().then(activity => {
@@ -509,6 +530,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       else if (displayed) update();
       if (isTerminal(clean)) send(navigation,'workhub:terminals-changed');
     } else if (message.type === 'workhub:assistant-toggle' && page.visible) toggleAssistant(page);
+    else if (message.type === 'workhub:global-search' && page.visible) search.open(page.frame.contentDocument?.getElementById('openGlobalSearch'));
     else if (message.type === 'workhub:terminals-changed') send(navigation,'workhub:terminals-changed');
     else if (message.type === 'workhub:conversation-kind') switchCreation(group,page,message.kind,message.snapshot);
     else if (message.type === 'workhub:page-open') dispatchOpen(message,group,page === workspace ? group.focused : page.id);
@@ -517,7 +539,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       else if (message.command === 'zoom' && wide(group)) {group.focused = page.id; group.zoomed = group.zoomed ? '' : page.id; update();}
     } else if (message.type === 'workhub:page-focus' && visiblePages(group).includes(page)) focusPane(group,page.id);
   });
-  document.addEventListener('keydown', assistantKeydown);
+  document.addEventListener('keydown', workspaceKeydown);
   window.addEventListener('resize',renderLayout);
   window.addEventListener('workhub:desktop-chrome',renderLayout);
   window.addEventListener('workhub:desktop-home', () => {

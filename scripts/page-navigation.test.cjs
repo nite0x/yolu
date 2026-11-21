@@ -17,8 +17,13 @@ function harness(t, hash = '#/workspaces', {desktop = false, listWidth} = {}) {
     w.localStorage.setItem('workhub:sidebar-width:v1','360');
   }
   const layouts = [], splitters = [];
+  const search = { openers: [], visits: [] };
   w.WorkHubLayout = {
     renderPanes:(_,props) => layouts.push(props), renderChrome() {}, setupSplitResize(options) { splitters.push(options); },
+    createGlobalSearch(_, {navigate}) {
+      search.navigate = navigate;
+      return {open(trigger){search.openers.push(trigger);},remember(snapshot){search.visits.push(snapshot);}};
+    },
     conversationDefaults:{get() {return 'ui';},set() {}},
   };
   const requests = [];
@@ -36,7 +41,7 @@ function harness(t, hash = '#/workspaces', {desktop = false, listWidth} = {}) {
     return received;
   };
   const workspace = frames()[0]; ready(workspace);
-  return {w,frames,send,ready,messages,layouts,requests,splitters,workspace,nav:() => w.document.querySelector('.workspace-navigation-frame')};
+  return {w,frames,send,ready,messages,layouts,requests,splitters,search,workspace,nav:() => w.document.querySelector('.workspace-navigation-frame')};
 }
 const conversation = id => ({route:'/sessions',environment:'local',title:id,conversation:{scope:{kind:'all'},selected:id,pane:'detail'}});
 const open = (h,snapshot,placement) => {
@@ -47,6 +52,37 @@ const open = (h,snapshot,placement) => {
   for (const frame of h.frames()) if (frame !== h.workspace && !h.messages.has(frame)) h.ready(frame);
 };
 const visible = h => h.frames().filter(frame => !frame.hidden);
+
+test('global search opens from the visible rail or a focused conversation and keeps the result environment', t => {
+  const h = harness(t);
+  const mount = (frame, tag) => {
+    const doc = frame.contentDocument;
+    const html = doc.documentElement || doc.appendChild(doc.createElement('html'));
+    const body = doc.body || html.appendChild(doc.createElement('body'));
+    return body.appendChild(doc.createElement(tag));
+  };
+  const launcher = mount(h.workspace, 'button');
+  launcher.id = 'openGlobalSearch';
+  h.send(h.workspace, 'workhub:global-search');
+  assert.equal(h.search.openers[0], launcher);
+
+  const remote = {...conversation(JSON.stringify(['remote', 'thread'])), environment:'remote'};
+  h.search.navigate(remote);
+  h.ready(h.nav());
+  const reader = h.frames()[1];
+  h.ready(reader);
+  assert.equal(h.w.location.search, '?environment=remote');
+  assert.equal(h.search.visits.at(-1).conversation.selected, remote.conversation.selected);
+  h.send(h.workspace, 'workhub:global-search');
+  assert.equal(h.search.openers.length, 1);
+
+  const composer = mount(reader, 'textarea');
+  composer.focus();
+  const shortcut = new reader.contentWindow.KeyboardEvent('keydown', {key:'k', metaKey:true, bubbles:true, cancelable:true});
+  composer.dispatchEvent(shortcut);
+  assert.equal(shortcut.defaultPrevented, true);
+  assert.equal(h.search.openers.at(-1), composer);
+});
 
 test('desktop shares a 52px rail from the first paint and ignores expanded sidebar preferences', t => {
   const h = harness(t, '#/workspaces', {desktop:true});

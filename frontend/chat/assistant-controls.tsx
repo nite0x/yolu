@@ -11,7 +11,7 @@ type AssistantControlsProps = {
   controller: GlobalAssistantController;
   portal: RefObject<HTMLElement | null>;
 };
-const overlayClass = "chat-control-overlay rounded-xl border bg-background p-4 text-sm text-foreground shadow-lg outline-none";
+const overlayClass = "shadcn-scope chat-control-overlay rounded-xl border border-border bg-background p-4 text-sm text-foreground shadow-lg outline-none";
 
 export function AssistantPermissions({controller, portal}: AssistantControlsProps) {
   const {settings, restored, submitting} = useSyncExternalStore(controller.subscribe, controller.getSnapshot);

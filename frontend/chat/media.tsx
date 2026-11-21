@@ -7,11 +7,14 @@ import type {ChatController} from "./controller";
 import type {Entry} from "./model";
 import {ChatFileProvider, ChatMarkdownLink, ChatInlineCode} from "./file-preview";
 import {chatURLTransform} from "./links";
+import {VisualizationBlock, VisualizationContext, remarkVisualization} from "./visualization";
 
 type Media = {refs: Map<string, string>; load: (ref: string) => Promise<string>};
 const MediaContext = createContext<Media | null>(null);
 export function ChatMediaProvider({controller, entries, children}: PropsWithChildren<{controller: ChatController; entries: Entry[]}>) {
   const refs = useMemo(() => new Map(entries.flatMap(e => Object.entries(e.local_images || {}))), [entries]);
+  const session = controller.getSnapshot().session?.id;
+  const visualizations = useMemo(() => ({session, refs: new Map(entries.flatMap(e => Object.entries(e.visualizations || {})))}), [entries, session]);
   const load = useMemo(() => {
     const pending = new Map<string, Promise<string>>();
     return (ref: string) => {
@@ -28,7 +31,7 @@ export function ChatMediaProvider({controller, entries, children}: PropsWithChil
     };
   }, [controller]);
   const value = useMemo(() => ({refs, load}), [refs, load]);
-  return <MediaContext.Provider value={value}><ChatFileProvider controller={controller}>{children}</ChatFileProvider></MediaContext.Provider>;
+  return <MediaContext.Provider value={value}><VisualizationContext.Provider value={visualizations}><ChatFileProvider controller={controller}>{children}</ChatFileProvider></VisualizationContext.Provider></MediaContext.Provider>;
 }
 function useLocalImage(source: string) {
   const media = useContext(MediaContext);
@@ -52,8 +55,9 @@ function ChatMarkdownImage({src, alt, title}: ImgHTMLAttributes<HTMLImageElement
   if (!loaded.image) return <span className="text-xs text-muted-foreground" role="status">{uiText("正在加载")}{alt || uiText("图片")}…</span>;
   return <img src={loaded.image} alt={alt} title={title} className="chat-history-image max-w-full rounded-lg" loading="lazy" />;
 }
-const markdownComponents = {img: ChatMarkdownImage, a: ChatMarkdownLink, code: ChatInlineCode};
-export function ChatMessageText() {return <MarkdownText components={markdownComponents} urlTransform={chatURLTransform} />;}
+const markdownComponents = {img: ChatMarkdownImage, a: ChatMarkdownLink, code: ChatInlineCode, div: VisualizationBlock};
+const chatRemarkPlugins = [remarkVisualization];
+export function ChatMessageText() {return <MarkdownText components={markdownComponents} urlTransform={chatURLTransform} remarkPlugins={chatRemarkPlugins} />;}
 export const ChatUserImage: ImageMessagePartComponent = props => {
   const loaded = useLocalImage(props.image);
   if (/^data:image\//.test(props.image)) return <Image {...props} />;

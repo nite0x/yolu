@@ -160,8 +160,8 @@ export class ChatController {
     if (this.snapshot.session || this.snapshot.submitting) return;
     const normalized = normalizeProvider(provider);
     if (normalized === this.snapshot.provider) return;
-    const permission = this.snapshot.settings.permission;
-    this.update({provider: normalized, capabilities: defaultCapabilities(normalized), settings: permission ? {permission} : {}, models: [], modes: [], defaults: {}, error: ""});
+    if (this.snapshot.optionsLoading) this.defaultsRefreshPending = true;
+    this.update({provider: normalized, capabilities: defaultCapabilities(normalized), settings: {}, models: [], modes: [], defaults: {}, error: ""});
     this.draftChanged();
     if (!this.options.readOnly) void this.loadOptions();
   };
@@ -391,7 +391,7 @@ export class ChatController {
       const [catalog,context] = await Promise.all([this.options.readOnly ? Promise.resolve({models:[],modes:[]}) : this.options.request<{models:ChatModel[];modes:string[];defaults?:ConversationDefaults;capabilities?:ProviderCapabilities}>(optionsPath),this.snapshot.session ? this.options.request<ChatContext>(this.base()+"/context") : Promise.resolve(undefined)]);
       if (normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider) !== provider) return;
       this.update({models:catalog.models||[],modes:catalog.modes||[],defaults:("defaults" in catalog ? catalog.defaults : undefined)||{},capabilities:("capabilities" in catalog && catalog.capabilities) ? catalog.capabilities : defaultCapabilities(provider),context});
-    } catch(error){this.update({error:(error as Error).message});}
+    } catch(error){if (normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider) === provider) this.update({error:(error as Error).message});}
     finally{
       const refresh = this.defaultsRefreshPending;
       this.defaultsRefreshPending = false;

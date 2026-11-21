@@ -17,7 +17,7 @@ import {useChatReading} from "./use-chat-reading";
 import {cleanText, convertEntries, mergeEntries, questionDraftKey, type Approval} from "./model";
 import {readElicitation} from "./approval";
 import {ApprovalActions, ElicitationFields} from "./approval-fields";
-import {ChatControls, ChatPermissions, ChatProviderSelect, ChatSearch, ChatSessionMenu, ChatStatus} from "./controls";
+import {ChatControls, ChatSearch, ChatSessionMenu, ChatStatus} from "./controls";
 import {ChatMediaProvider, ChatMessageText, ChatUserImage} from "./media";
 import {ChatAttachmentAdapter} from "./attachments";
 import {conversationContext} from "../workspace/conversation-context";
@@ -52,6 +52,18 @@ function ChatFileToggle() {
     return () => {original.append(button);};
   }, []);
   return <span ref={slot} className="chat-file-toggle-slot" />;
+}
+
+function ConversationCreationSetup({children}: {children?: React.ReactNode}) {
+  const slot = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const setup = document.getElementById("sessionCreationSetup");
+    const mount = setup?.parentElement;
+    if (!setup || !mount || !slot.current) return;
+    slot.current.append(setup);
+    return () => {mount.append(setup);};
+  }, []);
+  return <div ref={slot} className="chat-creation-setup">{children}</div>;
 }
 
 const ChatRunIndicator = memo(function ChatRunIndicator({controller}: {controller: ChatController}) {
@@ -170,19 +182,15 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   const workspace = controller.options.workspace;
   const path = state.chat.context?.cwd || state.context?.cwd || state.session?.cwd || controller.options.target?.cwd || workspace?.members.find(m => m.project_id === state.project)?.path || "";
   const context = conversationContext(path, controller.options.overview || (workspace ? {workspaces: [workspace], projects: []} : undefined), workspace?.id || controller.options.target?.workspace_id);
-  const creationDirectory = !readOnly && !state.session && path ? <div className="chat-creation-directory" role="status">
-    <FolderIcon aria-hidden="true" />
-    <span>{uiText("主工作目录")}</span>
-    <code>{path}</code>
-    {context.branch ? <span className="chat-creation-branch" title={uiText("分支 · {0}", context.branch)}><GitBranchIcon aria-hidden="true" /><code>{context.branch}</code></span>
-      : controller.options.target?.workspace_id && !controller.options.target.project_id ? <span className="chat-workspace-kind">{uiText("工作区根目录")}</span> : null}
-  </div> : null;
   const additionalDirectories = state.chat.context?.additional_directories || state.context?.additional_directories || [];
   const changePaths = useMemo(() => ({cwd: path, additionalDirectories,
     projectRoots: [...(controller.options.overview?.projects.flatMap(project => [project.path, ...project.worktrees.map(tree => tree.path)]) || []), ...(controller.options.overview?.workspaces.flatMap(workspace => workspace.members.map(member => member.path)) || []), ...(workspace?.members.map(member => member.path) || [])],
   }), [path, additionalDirectories, controller.options.overview, workspace]);
   const status = state.chat.blocked;
-  const footer = state.draftNotice || status || state.chat.notice || state.chat.retrying || state.chat.can_handoff || state.error || state.chat.error;
+  const feedback = (state.draftNotice || status || state.chat.notice || state.chat.retrying || state.chat.can_handoff || state.error || state.chat.error) &&
+    <ConversationFeedback messages={[status, state.draftNotice, state.chat.notice, state.chat.retrying]} error={state.error || state.chat.error}>
+      {state.capabilities.handoff && state.chat.can_handoff && !state.chat.busy && <Button type="button" size="sm" variant="outline" disabled={state.submitting} onClick={() => void controller.handoff()}>{uiText("在这里继续（等终端本轮结束）")}</Button>}
+    </ConversationFeedback>;
   const terminal = state.terminal;
   return <ChatMediaProvider controller={controller} entries={entries}><ChatChangePathsProvider value={changePaths}>
     <ConversationPanel runtime={runtime} panelRef={panel} reading={reading}
@@ -203,14 +211,13 @@ export function ChatPanel({controller}: {controller: ChatController}) {
           <summary>
             {context.projectID && controller.options.openWorkspace ? <button type="button" className="chat-workspace-project chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} title={uiText("打开项目详情：{0}", context.project)} onClick={event => {event.preventDefault(); event.stopPropagation(); controller.options.openWorkspace?.("project", context.projectID!);}}><FolderIcon aria-hidden="true" /><span>{context.project}</span></button> : <span className="chat-workspace-project"><FolderIcon aria-hidden="true" />{context.project || uiText("工作目录")}</span>}
             {context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><GitBranchIcon aria-hidden="true" />{context.branch}</span>}
-            {state.session && path && <code className="chat-workspace-path" title={path}>{path}</code>}
+            {path && <code className="chat-workspace-path" title={path}>{path}</code>}
           </summary>
           <dl className="chat-context-facts grid gap-2 text-xs"><dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd><dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd>{path || uiText("请选择工作目录")}</dd><dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd><dt>{uiText("关联工作区")}</dt><dd>{context.workspaces.length ? context.workspaces.map(t => t.name).join("、") : uiText("未关联工作区")}</dd>{additionalDirectories.length > 0 && <><dt>{uiText("额外工作目录")}</dt><dd>{additionalDirectories.join("、")}</dd></>}</dl>
           {!readOnly && state.session && <Button type="button" size="sm" variant="outline" className="chat-workspace-resume" disabled={!state.session.available} onClick={() => void controller.resume()}><TerminalIcon aria-hidden="true" />{uiText("在终端继续")}</Button>}
         </details>
         {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
         {state.session && <ChatSearch controller={controller} container={reading.container} open={searchOpen} onClose={closeSearch} />}
-        {!state.session && workspace && <div className="mt-2 space-y-2"><Label htmlFor="assistantChatProject">{uiText("工作项目")}</Label><NativeSelect id="assistantChatProject" value={state.project} disabled={state.submitting} onChange={e => controller.setProject(e.target.value)}>{workspace.members.map(m => <NativeSelectOption key={m.project_id} value={m.project_id}>{m.project_name}{m.project_id === workspace.primary_project_id ? uiText("（主项目）") : ""}</NativeSelectOption>)}</NativeSelect></div>}
       </ConversationHeader>}
       onKeyDownCapture={event => {
         if (state.chat.busy && state.capabilities.steer && event.key==="Enter" && (sendShortcut() === "enter" || event.ctrlKey || event.metaKey) && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229 && event.target instanceof HTMLTextAreaElement && event.target.closest(".aui-composer-root")) {event.preventDefault();event.stopPropagation();runtime.thread.composer.send();}
@@ -220,10 +227,14 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       }}
       beforeThread={state.historyError && <Alert variant="destructive" className="shrink-0 rounded-none"><AlertDescription>{state.historyError}</AlertDescription></Alert>}
       thread={{
-        composerStatus: <><ChatRunIndicator controller={controller} />{creationDirectory}</>, components: chatComponents,
+        dockComposer: !readOnly,
+        emptyStateControls: !readOnly && !state.session && <ConversationCreationSetup>
+          {workspace && <div className="flex flex-wrap items-center gap-3 p-3"><Label htmlFor="assistantChatProject">{uiText("工作项目")}</Label><NativeSelect id="assistantChatProject" value={state.project} disabled={state.submitting} onChange={e => controller.setProject(e.target.value)}>{workspace.members.map(m => <NativeSelectOption key={m.project_id} value={m.project_id}>{m.project_name}{m.project_id === workspace.primary_project_id ? uiText("（主项目）") : ""}</NativeSelectOption>)}</NativeSelect></div>}
+        </ConversationCreationSetup>,
+        composerStatus: !readOnly && <>{feedback}<ChatRunIndicator controller={controller} /></>, components: chatComponents,
         autoFocus: !!controller.options.focusComposer && !readOnly && !state.session && !document.documentElement.hasAttribute("data-workspace-inactive"), readOnly,
         composer: question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined,
-        composerLeadingControls: <><ChatProviderSelect controller={controller} portal={panel} /><ChatPermissions controller={controller} portal={panel} /></>, composerControls: <ChatControls controller={controller} portal={panel} />,
+        composerControls: <ChatControls controller={controller} portal={panel} />,
       }}
       afterThread={<>
       {readOnly && (terminal?.waiting || !!terminal?.confirmations?.length) && <Alert className="max-h-[40%] shrink-0 overflow-y-auto rounded-none" role="alert"><AlertDescription>
@@ -232,8 +243,6 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       </AlertDescription></Alert>}
       {approvals.length > 0 && <div className="max-h-[40%] shrink-0 space-y-2 overflow-y-auto border-t p-4" aria-live="polite">{approvals.map(a => <ApprovalCard key={a.id} approval={a} controller={controller} />)}</div>}
 </>}
-      feedback={footer && <ConversationFeedback messages={[status, state.draftNotice, state.chat.notice, state.chat.retrying]} error={state.error || state.chat.error}>
-        {state.capabilities.handoff && state.chat.can_handoff && !state.chat.busy && <Button type="button" size="sm" variant="outline" disabled={state.submitting} onClick={() => void controller.handoff()}>{uiText("在这里继续（等终端本轮结束）")}</Button>}
-      </ConversationFeedback>} />
+      feedback={readOnly && feedback} />
   </ChatChangePathsProvider></ChatMediaProvider>;
 }

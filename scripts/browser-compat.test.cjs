@@ -14,7 +14,7 @@ test('LAN HTTP pages generate RFC 4122 UUIDs and mount the workspace without nat
   const ids = Array.from({length:100}, () => w.crypto.randomUUID());
   assert.equal(new Set(ids).size, 100);
   for (const id of ids) assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-  w.WorkHubLayout = {renderPanes(){},renderChrome(){},setupSplitResize(){}};
+  w.WorkHubLayout = {renderPanes(){},renderChrome(){},setupSplitResize(){},createGlobalSearch(){return {open(){},remember(){}};}};
   for (const file of ['web/core/workspace-list-width.js','web/core/page-host.js']) w.eval(fs.readFileSync(file,'utf8'));
   assert.equal(w.document.querySelectorAll('iframe.workspace-page').length, 1);
   const page = new URL(w.document.querySelector('iframe.workspace-page').src);

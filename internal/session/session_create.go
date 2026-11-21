@@ -76,6 +76,10 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 400, err.Error())
 		return
 	}
+	if provider == model.ProviderAgy && input.Settings.ServiceTier != "" {
+		httpx.WriteError(w, 400, "所选对话引擎不支持设置响应速度")
+		return
+	}
 	if (input.Text == "" && len(input.Images) == 0 && input.Purpose != "merge_conflict") || len(input.Text) > 64000 || input.RequestID == "" || len(input.RequestID) > 100 || (input.Purpose != "" && input.Purpose != "merge_conflict") {
 		httpx.WriteError(w, 400, "请输入第一条消息或添加图片（文字最多 64000 字节）并提供创建标识")
 		return

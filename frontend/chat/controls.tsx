@@ -1,6 +1,6 @@
 import { uiText } from "../i18n";
 import {memo, useEffect, useId, useRef, useState, useSyncExternalStore, type RefObject} from "react";
-import {ArchiveIcon, ArchiveRestoreIcon, ArrowDownIcon, ArrowUpIcon, BotIcon, CheckIcon, ChevronDownIcon, GitForkIcon, LoaderCircleIcon, MoreHorizontalIcon, PencilIcon, PinIcon, PinOffIcon, RefreshCwIcon, SearchIcon, HandIcon, ShieldCheckIcon, ShieldAlertIcon, ZapIcon, XIcon} from "lucide-react";
+import {ArchiveIcon, ArchiveRestoreIcon, ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, GaugeIcon, GitForkIcon, LoaderCircleIcon, MoreHorizontalIcon, OrbitIcon, PencilIcon, PinIcon, PinOffIcon, RefreshCwIcon, SearchIcon, ShieldAlertIcon, ShieldCheckIcon, ShieldIcon, ShieldQuestionMarkIcon, SquareTerminalIcon, XIcon, ZapIcon, type LucideIcon} from "lucide-react";
 import {Collapsible, DropdownMenu, Popover} from "radix-ui";
 import {TooltipIconButton} from "@/components/assistant-ui/elements/tooltip-icon-button";
 import {Button} from "@/components/ui/button";
@@ -12,10 +12,13 @@ import {useChatState} from './use-chat-state';
 import {ConversationStatusBadge} from '../workspace/conversation-surface';
 
 const providerLabel = (provider?: AgentProvider) => provider === "agy" ? "Antigravity" : "Codex";
-const modeLabel = (mode?: string) => mode === "plan" ? uiText("规划") : mode === "default" ? uiText("执行") : mode === "accept-edits" ? uiText("自动编辑") : mode === "auto" ? uiText("自动") : uiText("未获取工作模式");
+const providerIcons = {codex: SquareTerminalIcon, agy: OrbitIcon};
+const permissionIcons = {ask: ShieldQuestionMarkIcon, auto: ShieldCheckIcon, full: ShieldAlertIcon};
+const isFastTier = (id?: string) => id === "fast" || id === "priority";
+const modeLabel = (mode?: string) => mode === "plan" ? uiText("规划") : mode === "default" ? uiText("执行") : mode === "accept-edits" ? uiText("自动编辑") : mode === "auto" ? uiText("自动") : mode || uiText("未获取工作模式");
 const approvalLabel = (policy: unknown, provider?: AgentProvider) => typeof policy === "string" ? ({"on-request": uiText("按需审批"), untrusted: uiText("非受信任操作需审批"), "on-failure": uiText("失败后审批"), never: uiText("无需审批")}[policy] || policy) : provider === "agy" ? uiText("由 Antigravity 管理") : uiText("由 Codex 管理");
 type ControlsProps = {controller: ChatController; portal: RefObject<HTMLElement | null>};
-const overlayClass = "chat-control-overlay rounded-xl border bg-background p-4 text-sm text-foreground shadow-lg outline-none";
+const overlayClass = "shadcn-scope chat-control-overlay rounded-xl border border-border bg-background p-4 text-sm text-foreground shadow-lg outline-none";
 
 function ChatStatusView({controller}: {controller: ChatController}) {
   const s = useChatState(controller, s => ({session:s.session ? {archived:s.session.archived} : null,submitting:s.submitting,chat:{blocked:s.chat.blocked,busy:s.chat.busy,external:s.chat.external,status:s.chat.status},terminal:{connected:s.terminal?.connected,waiting:s.terminal?.waiting}}));
@@ -30,105 +33,156 @@ function ChatStatusView({controller}: {controller: ChatController}) {
   </ConversationStatusBadge>;
 }
 
-const permissions = [
-  {value: "ask", label: uiText("请求批准"), description: uiText("编辑工作区外文件和使用互联网时请求批准"), icon: HandIcon},
-  {value: "auto", label: uiText("帮我批准"), description: uiText("自动审查批准请求，风险操作仍需确认"), icon: ShieldCheckIcon},
-  {value: "full", label: uiText("完全访问权限"), description: uiText("可不受沙箱限制地访问互联网和电脑上的文件"), icon: ShieldAlertIcon},
-] as const;
+type SettingChoice = {value: string; label: string; description?: string; danger?: boolean; icon?: LucideIcon};
+
+function permissionChoices(provider: AgentProvider): (SettingChoice & {value: PermissionMode})[] {
+  if (provider === "agy") return [
+    {value: "ask", label: uiText("启用沙箱"), description: uiText("在 Antigravity 的沙箱限制内运行。")},
+    {value: "full", label: uiText("跳过权限检查"), description: uiText("Antigravity 将跳过操作权限检查。"), danger: true},
+  ];
+  return [
+    {value: "ask", label: uiText("请求批准"), description: uiText("编辑工作区外文件和使用互联网时请求批准")},
+    {value: "auto", label: uiText("帮我批准"), description: uiText("自动审查批准请求，风险操作仍需确认")},
+    {value: "full", label: uiText("完全访问权限"), description: uiText("可不受沙箱限制地访问互联网和电脑上的文件"), danger: true},
+  ];
+}
+
 function contextPermission(context?: ChatContext): PermissionMode | undefined {
   if (context?.sandbox?.type === "dangerFullAccess" && context.approvalPolicy === "never") return "full";
   if (context?.sandbox?.type !== "workspaceWrite" || context.approvalPolicy !== "on-request") return undefined;
   if (context.approvalsReviewer === "auto_review" || context.approvalsReviewer === "guardian_subagent") return "auto";
   return context.approvalsReviewer === "user" ? "ask" : undefined;
 }
-const providers = [
-  {value: "codex" as AgentProvider, label: "Codex", description: uiText("通过 Codex App Server 运行，支持原生引导、分叉与终端交接")},
-  {value: "agy" as AgentProvider, label: "Antigravity (AGY)", description: uiText("通过 ACP 协议运行 Antigravity Agent，支持多目录、审批与终端继续")},
-] as const;
 
-function ChatProviderView({controller, portal}: ControlsProps) {
-  const s = useChatState(controller, s => ({session: s.session, provider: s.provider, submitting: s.submitting}));
-  if (s.session) return null;
-  return <DropdownMenu.Root>
-    <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="sm" className="chat-permission-trigger" data-agent-provider={s.provider} aria-label={uiText("选择对话引擎")} title={providerLabel(s.provider)} disabled={s.submitting}>
-      <BotIcon aria-hidden="true" /><span>{providerLabel(s.provider)}</span><ChevronDownIcon className="size-3" aria-hidden="true" />
-    </Button></DropdownMenu.Trigger>
-    <DropdownMenu.Portal container={portal.current}><DropdownMenu.Content className={`${overlayClass} chat-permission-menu`} align="start" side="top" sideOffset={10} collisionPadding={12}>
-      <DropdownMenu.Label className="chat-permission-heading">{uiText("选择对话引擎")}</DropdownMenu.Label>
-      <DropdownMenu.RadioGroup value={s.provider} onValueChange={value => controller.setProvider(value as AgentProvider)}>
-        {providers.map(p => <DropdownMenu.RadioItem key={p.value} value={p.value} className="chat-permission-option" data-provider-option={p.value}>
-          <BotIcon aria-hidden="true" /><span><strong>{p.label}</strong><span className="chat-permission-description">{p.description}</span></span>{s.provider === p.value && <CheckIcon className="chat-permission-check" aria-hidden="true" />}
-        </DropdownMenu.RadioItem>)}
-      </DropdownMenu.RadioGroup>
-    </DropdownMenu.Content></DropdownMenu.Portal>
-  </DropdownMenu.Root>;
-}
-
-function ChatPermissionsView({controller, portal}: ControlsProps) {
-  const s = useChatState(controller, s => ({session:s.session,provider:s.provider,context:s.context,settings:s.settings,defaults:s.defaults,submitting:s.submitting,chat:{busy:s.chat.busy,context:s.chat.context}}));
-  const context = s.chat.context || s.context;
-  const current = contextPermission(context);
-  const value = s.settings.permission || (s.session ? current : s.defaults.permission);
-  const inheritedLabel = s.session ? uiText("沿用对话权限") : s.provider === "agy" ? uiText("沿用 Antigravity 默认权限") : uiText("沿用 Codex 默认权限");
-  const selected = permissions.find(p => p.value === value);
-  const Icon = selected?.icon || ShieldCheckIcon;
-  const pending = !!s.session && s.chat.busy && !!s.settings.permission && s.settings.permission !== current;
-  return <DropdownMenu.Root>
-    <DropdownMenu.Trigger asChild><Button type="button" variant="ghost" size="sm" className="chat-permission-trigger" data-permission={value || "inherit"} aria-label={uiText("权限设置")} title={selected?.label || inheritedLabel} disabled={s.submitting || !!s.session?.archived}>
-      <Icon aria-hidden="true" /><span>{selected?.label || inheritedLabel}</span>{pending && <span className="chat-next-turn">{uiText("下轮")}</span>}
-    </Button></DropdownMenu.Trigger>
-    <DropdownMenu.Portal container={portal.current}><DropdownMenu.Content className={`${overlayClass} chat-permission-menu`} align="start" side="top" sideOffset={10} collisionPadding={12}>
-      <DropdownMenu.Label className="chat-permission-heading">{uiText("应如何批准操作？")}</DropdownMenu.Label>
-      <DropdownMenu.RadioGroup value={s.settings.permission || ""} onValueChange={permission => controller.setSettings({...s.settings, permission: permission ? permission as PermissionMode : undefined})}>
-        {permissions.map(p => <DropdownMenu.RadioItem key={p.value} value={p.value} className="chat-permission-option" data-permission={p.value}>
-          <p.icon aria-hidden="true" /><span><strong>{p.label}</strong><span className="chat-permission-description">{p.description}</span></span>{s.settings.permission === p.value && <CheckIcon className="chat-permission-check" aria-hidden="true" />}
-        </DropdownMenu.RadioItem>)}
-        <DropdownMenu.Separator className="my-1 border-t" /><DropdownMenu.RadioItem value="" className="chat-permission-inherit">{s.session ? uiText("沿用对话权限") : uiText("使用新对话默认权限")}{!s.settings.permission && <DropdownMenu.ItemIndicator><CheckIcon aria-hidden="true" /></DropdownMenu.ItemIndicator>}</DropdownMenu.RadioItem>
-      </DropdownMenu.RadioGroup>
-      <p className="chat-permission-note">{uiText("下轮发送时应用，运行中补充消息沿用本轮权限。")}</p>
-    </DropdownMenu.Content></DropdownMenu.Portal>
-  </DropdownMenu.Root>;
-}
 const effortLabel = (effort?: string) => effort ? ({none: uiText("无"), minimal: uiText("最低"), low: uiText("低"), medium: uiText("中"), high: uiText("高"), xhigh: uiText("超高"), max: uiText("最高"), ultra: uiText("极高")}[effort] || effort) : "";
+
+type ChoiceProps = {label: string; options: SettingChoice[]; value: string; disabled?: boolean; onChange: (value: string) => void};
+function SettingChoices({label, options, value, disabled, onChange}: ChoiceProps) {
+  const name = useId();
+  return <fieldset className="chat-setting-segments" disabled={disabled} aria-label={label}>
+    {options.map(({icon: Icon, ...option}) => <label key={option.value}>
+      <input type="radio" className="sr-only" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} />
+      {Icon && <Icon aria-hidden="true" />}
+      <span>{option.label}</span>
+    </label>)}
+  </fieldset>;
+}
+
+function SettingPicker({summary, display, danger, portal, label, options, value, disabled, onChange}: ChoiceProps & {summary: string; display: string; danger?: boolean; portal: ControlsProps["portal"]}) {
+  const id = useId();
+  return <div className="chat-setting-line chat-setting-picker">
+    <DropdownMenu.Root modal={false}>
+      <DropdownMenu.Trigger type="button" className="chat-setting-picker-trigger" aria-label={`${summary} · ${display}`} disabled={disabled}>
+        <strong>{summary}</strong><span data-danger={danger || undefined}>{display}</span><ChevronDownIcon aria-hidden="true" />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal container={portal.current}>
+        <DropdownMenu.Content className="shadcn-scope chat-control-overlay chat-setting-options" align="start" sideOffset={4} collisionPadding={12} aria-label={label}>
+          <DropdownMenu.RadioGroup value={value} onValueChange={onChange}>
+            {options.map((option, index) => <DropdownMenu.RadioItem key={option.value} value={option.value} textValue={option.label} data-value={option.value} data-danger={option.danger || undefined}
+              aria-labelledby={`${id}-${index}-label`} aria-describedby={option.description ? `${id}-${index}-description` : undefined}>
+              <span><span id={`${id}-${index}-label`}>{option.label}</span>{option.description && <small id={`${id}-${index}-description`}>{option.description}</small>}</span>
+              <DropdownMenu.ItemIndicator><CheckIcon aria-hidden="true" /></DropdownMenu.ItemIndicator>
+            </DropdownMenu.RadioItem>)}
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  </div>;
+}
 
 function ChatControlsView({controller, portal}: ControlsProps) {
   const s = useChatState(controller, s => ({session:s.session,provider:s.provider,context:s.context,settings:s.settings,defaults:s.defaults,submitting:s.submitting,chat:{busy:s.chat.busy,context:s.chat.context},models:s.models,modes:s.modes,optionsLoading:s.optionsLoading}));
   const title = useId();
-  useEffect(() => {if (!controller.options.readOnly) void controller.loadOptions();}, [controller]);
+  const readOnly = controller.options.readOnly;
+  useEffect(() => {if (!readOnly) void controller.loadOptions();}, [controller, readOnly]);
   const context = s.chat.context || s.context;
   const model = context?.model || s.session?.model;
   const effort = context?.reasoningEffort || s.session?.reasoningEffort;
   const settings = s.session ? s.settings : newConversationSettings(s.settings, s.defaults);
   const nextModel = settings.model || model;
-  const selectedModel = s.models.find(m => m.model === nextModel);
-  const modelName = selectedModel?.displayName || nextModel;
-  const inheritedEffort = (settings.model && settings.model !== model || !s.session) ? selectedModel?.defaultReasoningEffort : effort;
+  const selectedModel = s.models.find(m => m.model === nextModel) || (!nextModel ? s.models.find(m => m.isDefault) : undefined);
+  const modelName = selectedModel?.displayName || nextModel || selectedModel?.model;
+  const inheritedEffort = !s.session || nextModel !== model ? selectedModel?.defaultReasoningEffort : effort;
   const nextEffort = s.settings.effort || inheritedEffort;
   const nextMode = s.settings.mode || context?.mode;
-  const efforts = selectedModel?.supportedReasoningEfforts || [];
-  const changed = s.session ? nextModel !== model || nextEffort !== effort || nextMode !== context?.mode : Object.values(s.settings).some(Boolean);
-  const defaultModelLabel = s.provider === "agy" ? uiText("沿用 Antigravity 默认模型") : uiText("沿用 Codex 默认模型");
-  const loadingSettingsLabel = s.provider === "agy" ? uiText("正在读取 Antigravity 设置…") : uiText("正在读取 Codex 设置…");
-  const unreportedLabel = s.provider === "agy" ? uiText("Antigravity 未报告") : uiText("Codex 未报告");
+  const defaultLabel = uiText("默认");
+  const permissions = permissionChoices(s.provider);
+  const permission = permissions.find(p => p.value === s.settings.permission);
+  const effectivePermission = permission || permissions.find(p => p.value === (s.session ? contextPermission(context) : s.defaults.permission));
+  const permissionLabel = effectivePermission?.label || defaultLabel;
+  const tierOptions = s.provider === "codex" ? selectedModel?.serviceTiers || [] : [];
+  const selectedTier = tierOptions.find(tier => tier.id === s.settings.serviceTier);
+  const tiers = tierOptions.filter((tier, index, all) => tier.id && all.findIndex(item => item.id === tier.id) === index);
+  const tierLabel = (tier: typeof tiers[number]) => isFastTier(tier.id) ? uiText("快速") : tier.name || tier.id;
+  const unreported = s.provider === "agy" ? uiText("Antigravity 未报告") : uiText("Codex 未报告");
+  const changed = Object.values(s.settings).some(Boolean);
+  const nextTurnChanged = nextModel !== model || nextEffort !== effort || nextMode !== context?.mode ||
+    (!!permission && permission.value !== contextPermission(context)) || (!!selectedTier && selectedTier.id !== context?.serviceTier);
+  const disabled = s.submitting || !!s.session?.archived;
+  const modelOptions = s.models.map(m => ({value: m.model, label: m.displayName || m.model}));
+  if (nextModel && !modelOptions.some(m => m.value === nextModel)) modelOptions.unshift({value: nextModel, label: modelName || nextModel});
+  if (!s.session || !nextModel) modelOptions.unshift({value: "", label: defaultLabel});
+  const efforts = [...new Set([...(nextEffort ? [nextEffort] : []), ...(selectedModel?.supportedReasoningEfforts || []).map(e => e.reasoningEffort)])].map(value => ({value, label: effortLabel(value)}));
+  if (!s.session || !nextEffort) efforts.unshift({value: "", label: uiText("默认")});
+  const modes = [...new Set([...(nextMode ? [nextMode] : []), ...s.modes])].map(value => ({value, label: modeLabel(value)}));
+  modes.unshift({value: "", label: uiText("默认")});
+  const summaryModel = modelName || defaultLabel;
+  const summaryEffort = effortLabel(nextEffort);
+  const speedLabel = selectedTier ? tierLabel(selectedTier) : tiers.length ? defaultLabel : uiText("由模型决定");
+  const ProviderIcon = providerIcons[s.provider];
+  const PermissionIcon = effectivePermission ? permissionIcons[effectivePermission.value] : ShieldIcon;
+  const SpeedIcon = isFastTier(selectedTier?.id) ? ZapIcon : GaugeIcon;
+  const summary = [
+    providerLabel(s.provider),
+    `${uiText("模型")} · ${summaryModel}`,
+    summaryEffort && `${uiText("思考强度")} · ${summaryEffort}`,
+    !readOnly && `${uiText("权限")} · ${permissionLabel}`,
+    !readOnly && `${uiText("响应速度")} · ${speedLabel}`,
+  ].filter(Boolean).join(" / ");
   return <Popover.Root onOpenChange={open => {if (open) void controller.loadOptions();}}>
-    <Popover.Trigger asChild><Button type="button" variant="ghost" size="sm" className="chat-context-trigger" aria-label={uiText("上下文与设置")}>
-      <ZapIcon aria-hidden="true" /><span className="truncate">{modelName || (s.optionsLoading ? uiText("正在读取模型…") : !s.session ? defaultModelLabel : uiText("选择模型"))}{nextEffort ? ` · ${effortLabel(nextEffort)}` : ""}{nextMode ? ` · ${modeLabel(nextMode)}` : ""}</span>{s.chat.busy && changed && <span className="chat-next-turn">{uiText("下轮")}</span>}<ChevronDownIcon aria-hidden="true" />
+    <Popover.Trigger asChild><Button type="button" variant="ghost" size="sm" className="chat-context-trigger chat-settings-trigger" aria-label={uiText("上下文与设置")}
+      aria-description={summary} title={summary}>
+      <ProviderIcon aria-hidden="true" />
+      <span className="chat-settings-model-brief truncate">{summaryModel}</span>
+      {summaryEffort && <span className="chat-settings-effort-brief">{summaryEffort}</span>}
+      {!readOnly && <span className="chat-settings-state-icons" aria-hidden="true">
+        <PermissionIcon data-danger={effectivePermission?.danger || undefined} />
+        <SpeedIcon data-active={!!selectedTier || undefined} />
+      </span>}
+      {s.chat.busy && nextTurnChanged && <span className="chat-next-turn">{uiText("下轮")}</span>}
+      <ChevronDownIcon aria-hidden="true" />
     </Button></Popover.Trigger>
-    <Popover.Portal container={portal.current}><Popover.Content className={`${overlayClass} chat-settings-popover space-y-3`} align="end" side={controller.options.readOnly ? "bottom" : "top"} sideOffset={8} collisionPadding={12} aria-labelledby={title}>
-      <div className="flex items-center justify-between gap-4"><h3 id={title} className="text-sm font-semibold">{uiText("上下文与设置")}</h3><Popover.Close asChild><Button variant="ghost" size="icon" className="size-6" aria-label={uiText("关闭设置")}><XIcon className="size-4" /></Button></Popover.Close></div>
-      {!controller.options.readOnly && <>
-        <p className="text-xs text-muted-foreground">{uiText("设置在下一轮发送时应用。运行中补充消息沿用本轮设置。")}</p>
-        <label className="grid gap-1.5 text-xs">{uiText("模型")}<NativeSelect aria-label={uiText("下轮模型")} value={s.session ? nextModel || "" : s.settings.model || ""} disabled={s.optionsLoading || s.submitting} onChange={e => controller.setSettings({...s.settings, model: s.session && e.target.value === model ? undefined : e.target.value || undefined, effort: undefined})}>{!s.session ? <NativeSelectOption value="">{uiText("使用新对话默认模型")}</NativeSelectOption> : !nextModel && <NativeSelectOption value="" disabled>{s.optionsLoading ? uiText("正在读取模型…") : uiText("未获取模型")}</NativeSelectOption>}{nextModel && !s.models.some(m => m.model === nextModel) && <NativeSelectOption value={nextModel}>{nextModel}</NativeSelectOption>}{s.models.map(m => <NativeSelectOption key={m.id} value={m.model}>{m.displayName || m.model}</NativeSelectOption>)}</NativeSelect></label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="grid gap-1.5 text-xs">{uiText("思考强度")}<NativeSelect aria-label={uiText("下轮思考强度")} value={s.session ? nextEffort || "" : s.settings.effort || ""} disabled={s.optionsLoading || s.submitting} onChange={e => controller.setSettings({...s.settings, effort: s.session && e.target.value === inheritedEffort ? undefined : e.target.value || undefined})}>{!s.session ? <NativeSelectOption value="">{uiText("使用模型默认强度")}</NativeSelectOption> : !nextEffort && <NativeSelectOption value="" disabled>{uiText("未获取思考强度")}</NativeSelectOption>}{nextEffort && !efforts.some(e => e.reasoningEffort === nextEffort) && <NativeSelectOption value={nextEffort}>{effortLabel(nextEffort)}</NativeSelectOption>}{efforts.map(e => <NativeSelectOption key={e.reasoningEffort} value={e.reasoningEffort}>{effortLabel(e.reasoningEffort)}</NativeSelectOption>)}</NativeSelect></label>
-          <label className="grid gap-1.5 text-xs">{uiText("工作模式")}<NativeSelect aria-label={uiText("下轮工作模式")} value={nextMode || ""} disabled={s.optionsLoading || s.submitting} onChange={e => controller.setSettings({...s.settings, mode: e.target.value === context?.mode ? undefined : e.target.value || undefined})}>{!nextMode && <NativeSelectOption value="" disabled>{uiText("未获取工作模式")}</NativeSelectOption>}{nextMode && !s.modes.includes(nextMode) && <NativeSelectOption value={nextMode}>{modeLabel(nextMode)}</NativeSelectOption>}{s.modes.map(mode => <NativeSelectOption key={mode} value={mode}>{modeLabel(mode)}</NativeSelectOption>)}</NativeSelect></label>
+    <Popover.Portal container={portal.current}><Popover.Content className="shadcn-scope chat-control-overlay chat-settings-popover chat-coding-settings" align="end" side={readOnly ? "bottom" : "top"} sideOffset={8} collisionPadding={12} aria-labelledby={title}>
+      <header className="chat-setting-header"><h3 id={title}>{uiText("对话设置")}</h3><Popover.Close asChild><Button type="button" variant="ghost" size="icon" aria-label={uiText("关闭设置")}><XIcon aria-hidden="true" /></Button></Popover.Close></header>
+      <div className="chat-setting-body">
+        {!readOnly && <>
+          <SettingPicker portal={portal} summary={uiText("模型")} display={summaryModel} label={uiText("下轮模型")} options={modelOptions} value={s.session ? nextModel || "" : s.settings.model || ""} disabled={disabled || s.optionsLoading} onChange={value => controller.setSettings({...s.settings, model: value && (!s.session || value !== model) ? value : undefined, effort: undefined, serviceTier: undefined})} />
+          <div className="chat-setting-line"><strong>{uiText("思考强度")}</strong>{s.provider === "agy" && !selectedModel?.supportedReasoningEfforts?.length
+            ? <span className="chat-setting-unavailable">{uiText("由模型决定")}</span>
+            : <SettingChoices label={uiText("下轮思考强度")} options={efforts} value={s.session ? nextEffort || "" : s.settings.effort || ""} disabled={disabled || s.optionsLoading || !selectedModel} onChange={value => controller.setSettings({...s.settings, effort: value && (!s.session || value !== inheritedEffort) ? value : undefined})} />}</div>
+          <div className="chat-setting-line"><strong>{uiText("响应速度")}</strong>{tiers.length
+            ? <SettingChoices label={uiText("响应速度")} options={[{value: "", label: uiText("默认")}, ...tiers.map(tier => ({value: tier.id, label: tierLabel(tier)}))]} value={selectedTier?.id || ""} disabled={disabled || s.optionsLoading} onChange={value => controller.setSettings({...s.settings, serviceTier: value || undefined})} />
+            : <span className="chat-setting-unavailable">{uiText("由模型决定")}</span>}</div>
+          <SettingPicker portal={portal} summary={uiText("权限")} display={permissionLabel} danger={effectivePermission?.danger} label={uiText("权限设置")} options={[{value: "", label: defaultLabel}, ...permissions]} value={permission?.value || ""} disabled={disabled} onChange={value => controller.setSettings({...s.settings, permission: (value || undefined) as PermissionMode | undefined})} />
+          <details className="chat-setting-more"><summary>{uiText("工作模式")}</summary><SettingChoices label={uiText("下轮工作模式")} options={modes} value={nextMode || ""} disabled={disabled || s.optionsLoading} onChange={value => controller.setSettings({...s.settings, mode: value && value !== context?.mode ? value : undefined})} /></details>
+        </>}
+        {(readOnly || s.session) && <Collapsible.Root className="chat-setting-more"><Collapsible.Trigger className="chat-context-disclosure flex w-full items-center justify-between text-xs">{uiText("当前上下文与权限")}<ChevronDownIcon aria-hidden="true" /></Collapsible.Trigger><Collapsible.Content>
+          <dl className="chat-context-facts mt-3 grid gap-2 text-xs"><dt>{uiText("对话引擎")}</dt><dd>{providerLabel(s.provider)}</dd><dt>{uiText("主工作目录")}</dt><dd>{context?.cwd || s.session?.cwd || controller.options.target?.cwd || uiText("所选项目目录")}</dd><dt>{uiText("额外工作目录")}</dt><dd>{context?.additional_directories?.join("、") || uiText("未报告额外目录")}</dd><dt>{uiText("当前模型 / 思考强度")}</dt><dd>{model || unreported} / {effort ? effortLabel(effort) : uiText("未获取思考强度")}</dd><dt>{uiText("当前工作模式")}</dt><dd>{modeLabel(context?.mode)}</dd><dt>{uiText("审批策略")}</dt><dd>{approvalLabel(context?.approvalPolicy, s.provider)}</dd><dt>{uiText("批准方式")}</dt><dd>{context?.approvalsReviewer === "auto_review" || context?.approvalsReviewer === "guardian_subagent" ? uiText("帮我批准") : context?.approvalsReviewer === "user" ? uiText("手动批准") : unreported}</dd><dt>{uiText("沙箱")}</dt><dd>{context?.sandbox?.type || unreported}</dd></dl>
+        </Collapsible.Content></Collapsible.Root>}
+      </div>
+      {!readOnly && !s.session && <div className="chat-setting-creation">
+        <div className="chat-setting-line">
+          <strong>{uiText("新建时选择引擎")}</strong>
+          <SettingChoices label={uiText("对话引擎")} options={[
+            {value: "codex", label: providerLabel("codex"), icon: providerIcons.codex},
+            {value: "agy", label: providerLabel("agy"), icon: providerIcons.agy},
+          ]} value={s.provider} disabled={disabled} onChange={value => controller.setProvider(value as AgentProvider)} />
         </div>
-        {s.optionsLoading && <p role="status" className="text-xs text-muted-foreground">{loadingSettingsLabel}</p>}
-        {changed && <div className="flex items-center justify-between gap-2 text-xs"><span>{uiText("已设置下一轮参数")}</span><Button size="sm" variant="ghost" onClick={() => {const settings = s.settings.permission ? {permission: s.settings.permission} : {}; controller.setSettings(s.session ? settings : {});}}>{s.session ? uiText("恢复当前设置") : uiText("恢复默认设置")}</Button></div>}
-      </>}
-      <Collapsible.Root className="border-t pt-3"><Collapsible.Trigger className="chat-context-disclosure flex w-full items-center justify-between text-xs">{uiText("当前上下文与权限")}<ChevronDownIcon className="size-3" aria-hidden="true" /></Collapsible.Trigger><Collapsible.Content>
-        <dl className="chat-context-facts mt-3 grid gap-2 text-xs"><dt>{uiText("对话引擎")}</dt><dd>{providerLabel(s.provider)}</dd><dt>{uiText("主工作目录")}</dt><dd>{context?.cwd || s.session?.cwd || controller.options.target?.cwd || uiText("所选项目目录")}</dd><dt>{uiText("额外工作目录")}</dt><dd>{context?.additional_directories?.join("、") || uiText("未报告额外目录")}</dd><dt>{uiText("当前模型 / 思考强度")}</dt><dd>{model || unreportedLabel} / {effort ? effortLabel(effort) : uiText("未获取思考强度")}</dd><dt>{uiText("当前工作模式")}</dt><dd>{modeLabel(context?.mode)}</dd><dt>{uiText("审批策略")}</dt><dd>{approvalLabel(context?.approvalPolicy, s.provider)}</dd><dt>{uiText("批准方式")}</dt><dd>{context?.approvalsReviewer === "auto_review" || context?.approvalsReviewer === "guardian_subagent" ? uiText("帮我批准") : context?.approvalsReviewer === "user" ? uiText("手动批准") : unreportedLabel}</dd><dt>{uiText("沙箱")}</dt><dd>{context?.sandbox?.type || unreportedLabel}</dd></dl>
-      </Collapsible.Content></Collapsible.Root>
+      </div>}
+      {!readOnly && (changed || (s.chat.busy && nextTurnChanged)) && <footer className="chat-setting-footer">
+        {s.chat.busy && nextTurnChanged && <p>{uiText("下轮生效")}</p>}
+        {changed && <Button type="button" size="sm" variant="ghost" disabled={disabled} onClick={() => controller.setSettings({})}>{s.session ? uiText("恢复当前设置") : uiText("恢复默认设置")}</Button>}
+      </footer>}
     </Popover.Content></Popover.Portal>
   </Popover.Root>;
 }
@@ -206,6 +260,4 @@ export function ChatSearch({controller, container, open, onClose}: {controller: 
 }
 
 export const ChatStatus = memo(ChatStatusView);
-export const ChatProviderSelect = memo(ChatProviderView);
-export const ChatPermissions = memo(ChatPermissionsView);
 export const ChatControls = memo(ChatControlsView);

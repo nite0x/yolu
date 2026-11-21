@@ -60,6 +60,35 @@ html[data-workhub-desktop] .window-brand-trigger img {
   border-radius: 4px;
 }
 
+.window-search-trigger {
+  position: absolute;
+  left: 50vw;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(272px, calc(100vw - 340px));
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--yolu-border);
+  border-radius: var(--yolu-chip-radius);
+  background: var(--yolu-surface);
+  color: var(--yolu-muted-ink);
+  font-size: var(--yolu-font-size-label);
+  text-align: start;
+}
+.window-search-trigger:hover { background: var(--yolu-hover); color: var(--yolu-foreground); }
+.window-search-trigger svg { flex: none; }
+.window-search-trigger > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.window-search-trigger kbd { margin-inline-start: auto; font: inherit; white-space: nowrap; }
+@media (max-width: 520px) {
+  .window-search-trigger { width: 28px; padding: 0; justify-content: center; }
+  .window-search-trigger :is(span,kbd) { display: none; }
+  html[data-workhub-platform=macos] .window-search-trigger { left: calc((100vw + 168px) / 2); }
+  html[data-workhub-platform=windows] .window-search-trigger { left: calc((100vw - 54px) / 2); }
+}
+
 html[data-workhub-platform=windows] .workhub-window-controls {
   right: 138px;
 }
@@ -90,7 +119,7 @@ html[data-workhub-platform=windows] .workhub-window-controls {
   background: var(--yolu-rail-selected,#e2e6ed);
 }
 
-.workhub-window-action:focus-visible,.window-brand-trigger:focus-visible {
+.workhub-window-action:focus-visible,.window-brand-trigger:focus-visible,.window-search-trigger:focus-visible {
   outline: 2px solid var(--yolu-ring,#818cf8);
   outline-offset: -2px;
 }

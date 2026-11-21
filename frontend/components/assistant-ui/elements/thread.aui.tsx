@@ -153,6 +153,8 @@ export type ThreadProps = {
   autoFocus?: boolean | undefined;
   managedScroll?: boolean | undefined;
   readOnly?: boolean | undefined;
+  dockComposer?: boolean;
+  emptyStateControls?: ReactNode;
 };
 
 const EMPTY_COMPONENTS: ThreadComponents = {};
@@ -160,8 +162,7 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 const ThreadComponentsContext =
   createContext<ThreadComponents>(EMPTY_COMPONENTS);
 
-// Startup exposes a loading placeholder thread; treat it as a new chat so
-// the composer mounts centered. Loads after startup keep the docked layout.
+// Startup exposes a loading placeholder thread; keep its welcome visible.
 const isNewChatView = (s: AssistantState) =>
   s.thread.messages.length === 0 &&
   (!s.thread.isLoading || s.threads.isLoading);
@@ -173,11 +174,11 @@ const isHistoryLoadingView = (s: AssistantState) =>
   !s.thread.isDisabled &&
   !s.threads.isLoading;
 
-const ThreadHistorySkeleton: FC = () => (
+const ThreadHistorySkeleton: FC<{className?: string}> = ({className}) => (
   <div
     data-slot="aui_thread-history-skeleton"
     role="status"
-    className="animate-in fade-in fill-mode-both flex flex-col gap-y-6 [animation-delay:150ms] [animation-duration:200ms]"
+    className={cn("animate-in fade-in fill-mode-both flex flex-col gap-y-6 [animation-delay:150ms] [animation-duration:200ms]", className)}
   >
     <span className="sr-only">{uiText("正在读取历史…")}</span>
     <Skeleton className="ml-auto h-9 w-2/5 rounded-xl motion-reduce:animate-none" />
@@ -204,17 +205,19 @@ export const Thread: FC<ThreadProps> = ({
   autoFocus = true,
   managedScroll = false,
   readOnly = false,
+  dockComposer = false,
+  emptyStateControls,
 }) => {
   const isEmpty = useAuiState(isNewChatView);
 
   return (
     <ThreadComponentsContext.Provider value={components}>
-      <ThreadRoot composer={composer} composerStatus={composerStatus} composerControls={composerControls} composerLeadingControls={composerLeadingControls} scrollToBottom={scrollToBottom} isEmpty={isEmpty} autoFocus={autoFocus} managedScroll={managedScroll} readOnly={readOnly} />
+      <ThreadRoot composer={composer} composerStatus={composerStatus} composerControls={composerControls} composerLeadingControls={composerLeadingControls} scrollToBottom={scrollToBottom} isEmpty={isEmpty} autoFocus={autoFocus} managedScroll={managedScroll} readOnly={readOnly} dockComposer={dockComposer} emptyStateControls={emptyStateControls} />
     </ThreadComponentsContext.Provider>
   );
 };
 
-const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean; managedScroll: boolean; readOnly: boolean; composer?: ReactNode; composerStatus?: ReactNode; composerControls?: ReactNode; composerLeadingControls?: ReactNode; scrollToBottom?: ReactNode }> = ({
+const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
   composer,
   composerStatus,
   composerControls,
@@ -224,8 +227,11 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean; managedScroll: bool
   autoFocus,
   managedScroll,
   readOnly,
+  dockComposer,
+  emptyStateControls,
 }) => {
   const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
+  const docked = !isEmpty || dockComposer;
 
   return (
     <ThreadPrimitive.Root
@@ -247,14 +253,16 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean; managedScroll: bool
         <div
           className={cn(
             "mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4",
-            isEmpty && "justify-center",
+            !docked && "justify-center",
           )}
         >
           <AuiIf condition={isNewChatView}>
-            {readOnly ? <p className="text-center text-sm text-muted-foreground">{uiText("此对话尚无已保存的消息或命令记录。")}</p> : <Welcome />}
+            {readOnly ? <p className="text-center text-sm text-muted-foreground">{uiText("此对话尚无已保存的消息或命令记录。")}</p> : (
+              <div className={cn(dockComposer && "flex flex-1 flex-col justify-center py-4")}><Welcome />{emptyStateControls}</div>
+            )}
           </AuiIf>
           <AuiIf condition={isHistoryLoadingView}>
-            <ThreadHistorySkeleton />
+            <ThreadHistorySkeleton className={dockComposer ? "grow" : undefined} />
           </AuiIf>
 
           <ThreadLoadEarlier />
@@ -271,7 +279,7 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean; managedScroll: bool
           <ThreadPrimitive.ViewportFooter
             className={cn(
               "aui-thread-viewport-footer relative bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
-              !isEmpty &&
+              docked &&
                 "sticky bottom-0 rounded-t-(--composer-radius)",
             )}
           >

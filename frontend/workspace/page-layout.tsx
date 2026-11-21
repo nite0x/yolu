@@ -2,11 +2,12 @@ import { uiText } from "../i18n";
 import { useLayoutEffect, useRef } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { flushSync } from "react-dom"
-import { ChevronDown, ListTodo } from "lucide-react"
+import { ChevronDown, ListTodo, Search } from "lucide-react"
 import { DropdownMenu } from "radix-ui"
 import { setupSplitResize } from "./split-resize"
 
 export { setupSplitResize }
+export { createGlobalSearch } from "./global-search"
 
 interface PaneProps {
   count: number
@@ -34,6 +35,7 @@ const roots = new WeakMap<HTMLElement, Root>()
 interface WindowChromeProps {
   ready: boolean
   home: () => void
+  search?: (trigger: HTMLButtonElement) => void
   appMenu?: () => void
 }
 function WindowChrome(props: WindowChromeProps) {
@@ -47,8 +49,7 @@ function WindowChrome(props: WindowChromeProps) {
     <span>Yolu</span>
     <ChevronDown size={12} aria-hidden="true" />
   </button>
-  if (appMenu) return trigger
-  return <DropdownMenu.Root>
+  const brand = appMenu ? trigger : <DropdownMenu.Root>
     <DropdownMenu.Trigger asChild>
       {trigger}
     </DropdownMenu.Trigger>
@@ -60,6 +61,9 @@ function WindowChrome(props: WindowChromeProps) {
       </DropdownMenu.Content>
     </DropdownMenu.Portal>
   </DropdownMenu.Root>
+  return <>{brand}{props.search && <button type="button" className="window-search-trigger" aria-label={uiText("全局搜索")} title={uiText("全局搜索")} aria-haspopup="dialog" aria-controls="globalSearch" aria-keyshortcuts="Meta+K Control+K" onClick={event => props.search?.(event.currentTarget)}>
+    <Search size={14} aria-hidden="true" /><span>{uiText("搜索或跳转…")}</span><kbd aria-hidden="true">{navigator.platform.startsWith("Mac") ? "⌘ K" : "Ctrl K"}</kbd>
+  </button>}</>
 }
 export function renderChrome(container: HTMLElement, props: WindowChromeProps) {
   let root = roots.get(container)

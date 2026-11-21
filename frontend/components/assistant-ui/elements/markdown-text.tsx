@@ -22,6 +22,7 @@ type MarkdownTextProps = Partial<TextMessagePartProps> & {
   components?: Parameters<typeof memoizeMarkdownComponents>[0];
   componentsByLanguage?: MarkdownTextPrimitiveProps["componentsByLanguage"];
   urlTransform?: MarkdownTextPrimitiveProps["urlTransform"];
+  remarkPlugins?: MarkdownTextPrimitiveProps["remarkPlugins"];
 };
 
 const useShallowStable = <T extends Record<string, unknown> | undefined>(
@@ -44,6 +45,7 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({
   components,
   componentsByLanguage,
   urlTransform,
+  remarkPlugins,
 }) => {
   const stableComponents = useShallowStable(components);
   const stableComponentsByLanguage = useShallowStable(componentsByLanguage);
@@ -54,10 +56,11 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({
       ...memoizeMarkdownComponents(stableComponents),
     };
   }, [stableComponents]);
+  const plugins = useMemo(() => [remarkGfm, ...(remarkPlugins || [])], [remarkPlugins]);
 
   return (
     <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={plugins}
       className="aui-md"
       components={markdownComponents}
       componentsByLanguage={stableComponentsByLanguage}

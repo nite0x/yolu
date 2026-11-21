@@ -193,6 +193,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   const open = saved => post('workhub:page-open', {snapshot:saved});
   document.addEventListener('click', event => {
+    if (event.target.closest('#openGlobalSearch')) {
+      post('workhub:global-search');
+      return;
+    }
     const assistantLauncher = event.target.closest('#openYoluAssistant');
     if (assistantLauncher) {
       assistantLauncher.focus({preventScroll:true});

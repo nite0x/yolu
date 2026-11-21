@@ -195,6 +195,10 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 400, err.Error())
 		return
 	}
+	if model.NormalizeProvider(record.Provider) == model.ProviderAgy && input.Settings.ServiceTier != "" {
+		httpx.WriteError(w, 400, "所选对话引擎不支持设置响应速度")
+		return
+	}
 	a.chatMu.Lock()
 	if previous := a.chats[r.PathValue("session")]; previous != nil {
 		s := previous.snapshot()
@@ -393,6 +397,9 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		resumed.ChatContext.Effort = effort
 	}
 	resumed.ChatContext.Mode = run.settings.Mode
+	if run.settings.ServiceTier != "" {
+		resumed.ChatContext.ServiceTier = run.settings.ServiceTier
+	}
 	// Preserve model, approval policy and the roots chosen at creation; opening
 	// the same session from another workspace never adds that workspace's directories.
 	if resumed.Sandbox["type"] == "workspaceWrite" {

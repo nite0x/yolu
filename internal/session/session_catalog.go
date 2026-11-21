@@ -3,12 +3,18 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
+	"net/http"
+	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 )
 
 type catalogEntry struct {
@@ -23,6 +29,40 @@ type catalogEntry struct {
 func (a *Service) RefreshConversationCatalog(ctx context.Context) error {
 	_, err := a.sessionCatalog(ctx, sessionScope{}, false, false)
 	return err
+}
+
+// SearchSessionsHandler serves the saved index without starting an agent.
+// Discovery updates titles and archive state without reading individual threads.
+func (a *Service) SearchSessionsHandler(w http.ResponseWriter, r *http.Request) {
+	var discoveryErr error
+	provider := r.URL.Query().Get("discover")
+	switch provider {
+	case model.ProviderCodex:
+		var activeErr, archiveErr error
+		var scans sync.WaitGroup
+		scans.Go(func() { _, activeErr = a.sessionCatalog(r.Context(), sessionScope{}, false, false) })
+		scans.Go(func() { _, archiveErr = a.sessionCatalog(r.Context(), sessionScope{}, true, false) })
+		scans.Wait()
+		discoveryErr = errors.Join(activeErr, archiveErr)
+	case model.ProviderAgy:
+		// Antigravity is optional, as it is on the Conversations page.
+		_, _ = a.scanAgyCatalog(r.Context(), sessionScope{}, false)
+	default:
+		provider = ""
+	}
+	sessions, err := a.Execution.Store.Sessions()
+	if err != nil {
+		httpx.DbError(w, err)
+		return
+	}
+	if provider != "" {
+		sessions = slices.DeleteFunc(sessions, func(session model.Session) bool { return session.Provider != provider })
+	}
+	result := map[string]any{"sessions": sessions}
+	if discoveryErr != nil {
+		result["error"] = discoveryErr.Error()
+	}
+	httpx.WriteJSON(w, 200, result)
 }
 
 // Share pagination and index writes across simultaneous sidebar/list requests.
