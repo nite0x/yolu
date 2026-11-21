@@ -247,13 +247,20 @@ function readRoute() {
   const project = route.match(/^\/projects\/([a-zA-Z0-9_-]+)(?:\/(git|worktrees))?$/);
   if (project) state.selectedProject = project[1];
   projectDetailOpen = !!project;
-  state.view = route === '/assistant' ? 'assistant' : route === '/settings' ? 'settings' : route === '/projects' || project ? 'projects' : route === '/sessions' ? 'sessions' : 'workspaces';
+  state.view = route === '/assistant' ? 'assistant' : route === '/settings' ? 'settings' : route === '/issues' ? 'issues' : route === '/projects' || project ? 'projects' : route === '/sessions' ? 'sessions' : 'workspaces';
   $('#workspaceListFilters').open = false;
   const match = route.match(/^\/workspaces\/([a-zA-Z0-9_-]+)$/);
   state.selectedWorkspace = match ? match[1] : null;
   readResourceLocation(rawRoute);
   window.dispatchEvent(new CustomEvent('workhub:route-read'));
 }
+
+$('#openLinear').addEventListener('click', async event => {
+  if (!document.documentElement.hasAttribute('data-workhub-platform')) return;
+  event.preventDefault();
+  try { await api('/api/issues/open-linear', {method:'POST',environment:'local'}); }
+  catch (error) { toast(error.message,true); }
+});
 
 function navigate(route) {
   if (location.hash === '#' + route) { readRoute(); render(); return; }
@@ -275,6 +282,7 @@ function render() {
   if (typeof saveWorkspaceDetail === 'function') saveWorkspaceDetail();
   const assistantView = state.view === 'assistant';
   const settingsView = state.view === 'settings';
+  const issuesView = state.view === 'issues';
   const sessionsView = state.view === 'sessions';
   const workspacesView = state.view === 'workspaces';
   const detailView = workspacesView && !!state.selectedWorkspace;
@@ -303,16 +311,17 @@ function render() {
   if (workspace) {
     $('#workspacePageActions').innerHTML = window.WorkHubUI.workspaceActions(workspace, environmentName());
   }
-  document.title = assistantView ? uiText("Yolu 助手") : sessionsView ? uiText("对话 · Yolu") : settingsView ? uiText("设置 · Yolu") : workspace ? workspace.name + ' · Yolu' : projectsView ? (projectDetailOpen ? state.projects.find(p => p.id === state.selectedProject)?.name || uiText("项目") : uiText("项目")) + ' · Yolu' : workspaceListView ? uiText("工作区") + ' · Yolu' : 'Yolu';
+  document.title = assistantView ? uiText("Yolu 助手") : sessionsView ? uiText("对话 · Yolu") : issuesView ? "Issues · Yolu" : settingsView ? uiText("设置 · Yolu") : workspace ? workspace.name + ' · Yolu' : projectsView ? (projectDetailOpen ? state.projects.find(p => p.id === state.selectedProject)?.name || uiText("项目") : uiText("项目")) + ' · Yolu' : workspaceListView ? uiText("工作区") + ' · Yolu' : 'Yolu';
   $('#backToWorkspaces').hidden = !detailView;
   $('#workspaceBreadcrumbSeparator').hidden = !detailView;
   $('#workspaceSwitcherTrigger').hidden = !workspace;
-  $('.page-heading').hidden = projectsView || assistantView || workspaceListView;
+  $('.page-heading').hidden = issuesView || projectsView || assistantView || workspaceListView;
   $('#stats').hidden = true;
   $('#panelToolbar').hidden = false;
   $('#newButton').hidden = !workspaceListView;
   $('#settingsPage').hidden = !settingsView;
-  $('#workContent').hidden = settingsView || sessionsView || assistantView;
+  $('#issuesPage').hidden = !issuesView;
+  $('#workContent').hidden = settingsView || issuesView || sessionsView || assistantView;
   $('#globalAssistantPage').hidden = !assistantView;
   document.body.classList.toggle('assistant-page-open', assistantView);
   if (assistantView) openAssistantConversation();
@@ -321,7 +330,7 @@ function render() {
   $('#workspaceCount').textContent = workspaceInventory.loaded ? workspaceInventory.workspaces.filter(q => q.state !== 'archived').length : '…';
   $('#projectCount').textContent = workspaceInventory.loaded ? workspaceInventory.project_count : '…';
   document.querySelectorAll('[data-view]').forEach(button => {
-    const active = button.dataset.view === state.view;
+    const active = button.dataset.view === (document.documentElement.dataset.workspaceMainView || state.view);
     button.classList.toggle('active', active);
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
@@ -351,7 +360,7 @@ function render() {
   syncProjectPage();
   renderSettings();
   if (typeof syncSessionWorkspace === 'function') syncSessionWorkspace();
-  if (settingsView || sessionsView || assistantView) { if (typeof syncWorkspaceDetail === 'function') syncWorkspaceDetail(null); return; }
+  if (settingsView || issuesView || sessionsView || assistantView) { if (typeof syncWorkspaceDetail === 'function') syncWorkspaceDetail(null); return; }
   $('#stats').innerHTML = '';
   const focusedRow = workspaceListView && document.activeElement?.closest?.('#workspaceListContent [data-action="open-workspace"]');
   const focusedDirectory = document.activeElement?.matches('[data-directory-path]') && document.activeElement.dataset.directoryPath === resourceLocation.directory;

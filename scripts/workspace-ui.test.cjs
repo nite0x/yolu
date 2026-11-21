@@ -1664,7 +1664,7 @@ test('icon settings escape a clipped same-origin navigation iframe and restore f
   dialog.querySelector('form').dispatchEvent(new outer.window.Event('submit',{bubbles:true,cancelable:true})); await settle();
   assert(!dialog.open);
   assert.equal(h.document.activeElement, h.$('[data-shortcut-icon-settings]'));
-  assert.equal(JSON.parse(h.$('[data-workspace-shortcut="workspace"]').dataset.shortcutIcon).icon, 'rocket');
+  assert(h.$('[data-collection-href="#/workspaces/workspace"] .lucide-rocket'));
 });
 
 test('fixed shortcut manager searches both kinds and icon dialog cancels without saving', async t => {

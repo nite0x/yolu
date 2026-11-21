@@ -6,17 +6,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 (() => {
   const desktop = document.documentElement.hasAttribute('data-workhub-desktop');
   const sharedListWidth = window.WorkHubListWidth;
-  let navigation = null, navigationWidth = desktop ? 52 : 244, conversationListWidth = 280;
+  let navigation = null, compactNavigationOpen = false, conversationListWidth = 280;
   let conversationsVisible = false, conversationsPresented = false, appliedURL = location.href;
   const group = {pages:[], focused:'', zoomed:'', widths:[]};
   try {
     const width = Number(localStorage.getItem('workhub:conversation-list-width:v1'));
     if (width >= 220 && width <= 520) conversationListWidth = width;
-    if (!desktop) {
-      const collapsed = localStorage.getItem('workhub:sidebar-collapsed:v1');
-      const sidebar = Number(localStorage.getItem('workhub:sidebar-width:v1'));
-      navigationWidth = collapsed === 'true' || collapsed === null && innerWidth > 760 && innerWidth < 1100 ? 72 : sidebar >= 212 && sidebar <= 420 ? sidebar : 244;
-    }
   } catch {}
   const reads = new Map();
   // Same-origin pages share startup metadata, with independent response bodies.
@@ -42,6 +37,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     return entry.promise.then(response => response.clone());
   }};
   const pages = document.getElementById('workspacePages');
+  const navigationToggle = document.getElementById('workspaceNavigationToggle');
+  navigationToggle.addEventListener('click', () => {
+    compactNavigationOpen = !compactNavigationOpen;
+    renderLayout();
+  });
   const assistant = document.getElementById('workspaceAssistant');
   const searchToken = document.querySelector('meta[name="csrf-token"]').content;
   const search = window.WorkHubLayout.createGlobalSearch(document.getElementById('globalSearch'), {
@@ -76,18 +76,18 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   };
   function normalize(value) {
     const snapshot = value && typeof value === 'object' ? value : {};
-    const route = typeof snapshot.route === 'string' && /^\/(workspaces(?:\/[\w-]+)?|projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|assistant)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/workspaces';
+    const route = typeof snapshot.route === 'string' && /^\/(workspaces(?:\/[\w-]+)?|projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|issues|assistant)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/workspaces';
     return {...snapshot, route, environment:typeof snapshot.environment === 'string' ? snapshot.environment : 'local', title:typeof snapshot.title === 'string' ? snapshot.title.slice(0,200) : uiText("工作区"), kind:route.split('/')[1].split('?')[0]};
   }
   function send(page,type,detail = {}) {
     if (page?.ready) page.frame.contentWindow.postMessage({type,...detail},location.origin);
   }
   const grouped = group => group.pages.length > 1;
-  const sharedLayout = () => conversationsVisible && (innerWidth > 760 || grouped(group) || group.pages.some(page => isTerminal(page.snapshot)));
+  const sharedLayout = () => innerWidth > 760;
   const canSplit = group => group.pages.length < 3 && group.pages.every(page => isPaneView(page.snapshot));
-  const conversationListBounds = () => sharedListWidth?.bounds() ?? {min:220,max:Math.max(220,Math.min(520,innerWidth - navigationWidth - 360))};
+  const conversationListBounds = () => sharedListWidth?.bounds() ?? {min:220,max:Math.max(220,Math.min(520,innerWidth - 360))};
   const renderedConversationListWidth = () => sharedListWidth?.current() ?? conversationListWidth;
-  const wide = group => innerWidth - navigationWidth - renderedConversationListWidth() >= Math.max(761,group.pages.length * 320 + 32);
+  const wide = group => innerWidth - (sharedLayout() ? renderedConversationListWidth() : 0) >= Math.max(761,group.pages.length * 320 + 32);
   const visiblePages = group => !conversationsVisible ? [] : group.zoomed || !wide(group) ? [group.pages.find(page => page.id === (group.zoomed || group.focused)) || group.pages[0]].filter(Boolean) : group.pages;
   function syncURL() {
     const page = conversationsVisible ? group.pages.find(page => page.id === group.focused) || group.pages[0] : workspace;
@@ -100,7 +100,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     document.title = snapshot.title + ' · Yolu';
   }
   function renderChrome() {
-    const page = conversationsPresented ? sharedLayout() ? navigation : group.pages[0] : workspace;
+    const page = currentPage();
     const controls = document.getElementById('workhubWindowControls');
     if (controls) window.WorkHubLayout.renderChrome(controls,{
       ready:!!page?.ready,
@@ -131,7 +131,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     navigation?.frame.contentDocument?.documentElement?.style.setProperty('--workspace-shared-list-width',width);
   }
   function renderNavigationModal() {
-    const open = !!(navigation?.visible && navigation.modalOpen);
+    const open = !!(navigation?.visible && (navigation.modalOpen || !sharedLayout()));
     const assistantModal = !assistant.hidden && innerWidth <= 760;
     if (assistantModal) assistant.setAttribute('aria-modal', 'true');
     else assistant.removeAttribute('aria-modal');
@@ -214,29 +214,37 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     } else if (event.key === 'Escape' && !assistant.hidden && event.currentTarget === assistantFrame?.contentDocument) {
       event.preventDefault();
       closeAssistant();
+    } else if (event.key === 'Escape' && compactNavigationOpen && !navigation?.modalOpen) {
+      event.preventDefault();
+      compactNavigationOpen = false;
+      renderLayout();
+      navigationToggle.focus();
     }
   }
   function renderLayout() {
     const visible = visiblePages(group), split = grouped(group), shared = sharedLayout();
-    if (shared && !navigation) createNavigation();
+    if (!navigation) createNavigation();
     for (const page of visible) mountPage(page);
     // Prepare readers and shared navigation offscreen. Keep the current
     // workspace and its sidebar visible until the whole destination is ready.
     const destinationReady = visible.length > 0 && visible.every(page => page.restored) && (!shared || !!navigation?.restored);
     conversationsPresented = conversationsVisible && (conversationsPresented || destinationReady);
-    const sharedVisible = shared && conversationsPresented;
+    const navVisible = shared || compactNavigationOpen;
+    const splitVisible = conversationsPresented;
+    navigationToggle.setAttribute('aria-expanded',String(!shared && navVisible));
+    navigationToggle.textContent = !shared && navVisible ? uiText("关闭导航") : uiText("打开导航");
     if (navigation) {
-      navigation.wrapper.hidden = !sharedVisible;
-      if (navigation.visible !== sharedVisible) {
-        navigation.visible = sharedVisible;
-        send(navigation,'workhub:page-active',{active:sharedVisible});
+      navigation.wrapper.hidden = !navVisible;
+      if (navigation.visible !== navVisible) {
+        navigation.visible = navVisible;
+        send(navigation,'workhub:page-active',{active:navVisible});
       }
     }
     renderNavigationModal();
-    document.body.style.setProperty('--workspace-shared-sidebar-width',navigationWidth + 'px');
     paintConversationListWidth();
-    document.body.toggleAttribute('data-workspace-conversations',sharedVisible);
-    pages.style.gridTemplateColumns = sharedVisible ? visible.map(page => (visible.length === 1 ? 1 : group.widths[group.pages.indexOf(page)] || 1) + 'fr').join(' 8px ') : '';
+    document.body.toggleAttribute('data-workspace-navigation-visible',shared);
+    document.body.toggleAttribute('data-workspace-conversations',splitVisible);
+    pages.style.gridTemplateColumns = splitVisible ? visible.map(page => (visible.length === 1 ? 1 : group.widths[group.pages.indexOf(page)] || 1) + 'fr').join(' 8px ') : '';
     send(workspace,'workhub:page-pane',{split:false,shared:false});
     const workspaceVisible = !conversationsVisible || !conversationsPresented && !!workspace.visible;
     workspace.frame.hidden = !workspaceVisible;
@@ -247,17 +255,18 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     for (const page of group.pages) {
       const index = visible.indexOf(page), active = conversationsPresented && index >= 0;
       page.frame.hidden = !active;
-      page.frame.style.gridColumn = shared && active ? String(index * 2 + 1) : '';
+      page.frame.style.gridColumn = active ? String(index * 2 + 1) : '';
       page.frame.dataset.focused = String((!desktop || split) && page.id === group.focused);
-      send(page,'workhub:page-pane',{split,shared});
+      send(page,'workhub:page-pane',{split,shared:true});
       if (page.visible !== active) {page.visible = active; send(page,'workhub:page-active',{active});}
       send(page,'workhub:parallel-layout',{split,focused:page.id === group.focused,zoomed:!!group.zoomed,canZoom:wide(group),canSplit:canSplit(group)});
     }
-    if (navigation && sharedVisible) send(navigation,'workhub:conversation-group',{
+    send(navigation,'workhub:workspace-route',{route:conversationsVisible ? '/sessions' : workspace.snapshot.route});
+    send(navigation,'workhub:conversation-group',{
       targetTitle:group.pages.find(page => page.id === group.focused)?.snapshot.title,
-      target:group.pages.find(page => page.id === group.focused)?.snapshot,
-      sessions:group.pages.map(page => listIdentity(page.snapshot)),selected:listIdentity(group.pages.find(page => page.id === group.focused)?.snapshot || {}),
-      autoSelect:!group.pages.some(page => isTerminal(page.snapshot) || page.snapshot.conversation?.selected || page.snapshot.conversation?.creating),
+      target:conversationsVisible ? group.pages.find(page => page.id === group.focused)?.snapshot : undefined,
+      sessions:group.pages.map(page => listIdentity(page.snapshot)),selected:conversationsVisible ? listIdentity(group.pages.find(page => page.id === group.focused)?.snapshot || {}) : '',
+      autoSelect:conversationsVisible && !group.pages.some(page => isTerminal(page.snapshot) || page.snapshot.conversation?.selected || page.snapshot.conversation?.creating),
       full:group.pages.length >= 3,listWidth:renderedConversationListWidth(),split,canSplit:canSplit(group),
     });
     renderPaneChrome(); renderChrome();
@@ -287,10 +296,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   function mountPage(page) {
     if (page.mounted) return;
     page.mounted = true;
-    if (sharedLayout() && page.id !== 'workspace' && page.id !== 'shared-navigation') page.url.searchParams.set('workspace-conversation','1');
+    if (page.id !== 'workspace' && page.id !== 'shared-navigation') page.url.searchParams.set('workspace-conversation','1');
     if (grouped(group) && group.pages.includes(page)) page.url.searchParams.set('workspace-pane','1');
     page.url.searchParams.set('workspace-list-width',String(renderedConversationListWidth()));
-    page.url.searchParams.set('workspace-sidebar-width',String(navigationWidth));
     if (desktop) {
       page.url.searchParams.set('workspace-desktop','1');
       page.url.searchParams.set('workspace-sidebar-inset','0');
@@ -405,6 +413,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   function openPage(snapshot) {
     const clean = normalize(snapshot);
+    compactNavigationOpen = false;
     if (clean.route === '/assistant') { showAssistant(undefined, clean.environment); return; }
     if (clean.route === '/sessions' || isTerminal(clean)) {
       conversationsVisible = true;
@@ -423,13 +432,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       conversationsVisible = false;
       workspace.snapshot = clean;
       send(workspace,'workhub:page-restore',{snapshot:clean,active:true});
-      if (!desktop) workspace.frame.contentWindow.dispatchEvent(new workspace.frame.contentWindow.Event('workhub:sidebar-sync'));
     }
     update();
   }
   function openConversation(snapshot,placement = 'current',owner = group,pageID = owner.focused) {
     const clean = normalize(snapshot);
     if (!isPaneView(clean)) {openPage(clean); return;}
+    compactNavigationOpen = false;
     conversationsVisible = true;
     const key = identity(clean), existing = key && owner.pages.find(page => identity(page.snapshot) === key);
     if (existing) {owner.zoomed = ''; owner.focused = existing.id; update(); existing.frame.focus(); return;}
@@ -489,9 +498,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         openConversation(message.snapshot);
       } else if (message.type === 'workhub:conversation-add') openConversation(message.snapshot,'split');
       else if (message.type === 'workhub:page-open') dispatchOpen(message);
-      else if (!desktop && message.type === 'workhub:page-chrome' && Number.isFinite(message.chrome?.left)) {
-        navigationWidth = Math.max(60,Math.min(520,message.chrome.left)); renderLayout();
-      }
       return;
     }
     const page = allPages().find(page => page.frame.contentWindow === event.source);
@@ -509,7 +515,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
           syncAssistantLaunchers();
         }).catch(() => {});
       }
-      send(page,'workhub:page-pane',{split:page !== workspace && grouped(group),shared:page !== workspace && sharedLayout()});
+      send(page,'workhub:page-pane',{split:page !== workspace && grouped(group),shared:page !== workspace});
       send(page,'workhub:page-restore',{snapshot:page.snapshot,active:!!page.visible});
       renderLayout();
     } else if (message.type === 'workhub:page-restored') {
@@ -543,7 +549,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('resize',renderLayout);
   window.addEventListener('workhub:desktop-chrome',renderLayout);
   window.addEventListener('workhub:desktop-home', () => {
-    const page = conversationsPresented ? sharedLayout() ? navigation : group.pages[0] : workspace;
+    const page = currentPage();
     if (page?.ready) openPage({route:'/workspaces',environment:page.snapshot.environment});
   });
   function followURL() {

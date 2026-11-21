@@ -63,11 +63,12 @@ export function SessionBrowser() {
 }
 interface ShortcutWorkspace { environment?: string; appearance?: ShortcutIcon; id: string; name: string; projects: string; pinned: boolean; archived: boolean }
 interface ShortcutDirectory { appearance?: ShortcutIcon; key?: string; environment?: string; cwd: string; name: string; parent: string; pinned: boolean }
-export function ConversationShortcuts({ workspaces, directories, pinnedDirectories, selected, selectedDirectory, search, archived, environment, kind, desktopRail }: {
+export function ConversationShortcuts({ workspaces, directories, pinnedDirectories, selected, selectedDirectory, search, archived, environment, kind, desktopRail, pickerOnly }: {
   workspaces: ShortcutWorkspace[]; directories: ShortcutDirectory[]; pinnedDirectories: ShortcutDirectory[];
   selected?: string | null; selectedDirectory?: string | null; search: string; archived: boolean; environment: string;
   kind?: "workspace" | "directory";
   desktopRail?: boolean;
+  pickerOnly?: boolean;
 }) {
   const pinned = workspaces.filter(workspace => workspace.pinned && !workspace.archived)
   const query = search.trim().toLowerCase()
@@ -110,8 +111,13 @@ export function ConversationShortcuts({ workspaces, directories, pinnedDirectori
     </li>)}</ul></>}
     {!desktopRail && kind === "directory" && pinnedDirectories.length === 0 && <p className="conversation-shortcuts-empty">{uiText("点击 + 固定项目目录")}</p>}
   </>
-  return <section className={desktopRail ? "sidebar-shortcut-rail" : undefined} aria-labelledby="shortcutPinnedTitle">
-    {heading}{desktopRail ? <div className="sidebar-shortcut-list">{list}</div> : list}
+  const iconCatalog = pickerOnly ? [
+    ...pinned.map(item => ({ key: JSON.stringify(["workspace", item.id]), name: item.name, title: item.name, appearance: item.appearance })),
+    ...pinnedDirectories.map(item => ({ key: JSON.stringify(["directory", item.key || item.cwd]), name: item.name, title: item.cwd, appearance: item.appearance })),
+  ] : undefined
+  return <section className={desktopRail ? "sidebar-shortcut-rail" : undefined} aria-labelledby="shortcutPinnedTitle"
+    data-shortcut-icon-catalog={iconCatalog ? JSON.stringify(iconCatalog) : undefined}>
+    {heading}{pickerOnly ? null : desktopRail ? <div className="sidebar-shortcut-list">{list}</div> : list}
   </section>
 }
 export function ConversationList({ sessions, rows, selected, showDirectory, showContext = true, loading, workspaceID, filtered, error, canCreate = true, parallel = false, parallelSessions = [], parallelFull = false, now = Date.now(), onSelect }: { onSelect?: (id: string) => void; sessions: Session[]; rows?: ConversationTreeRow[]; selected?: string | null; showDirectory: boolean; showContext?: boolean; loading?: boolean; workspaceID?: string; filtered?: boolean; error?: boolean; canCreate?: boolean; parallel?: boolean; parallelSessions?: string[]; parallelFull?: boolean; now?: number }) {
@@ -186,10 +192,21 @@ export function ConversationList({ sessions, rows, selected, showDirectory, show
       section.rows.push(row)
     }
     return <div className="session-browser-groups session-browser-workspaces">{[...sections.values()].map(({group, rows}) => <section className="session-browser-group" key={group.key} data-conversation-group={group.key} aria-label={`${group.name}${group.environmentName ? ` · ${group.environmentName}` : ""}`}>
-      {rows.filter(row => row.kind === "group").map(row => <h3 className="session-workspace-heading" key={row.key}><button type="button" data-conversation-group-toggle={group.key} data-conversation-list-row={row.key} aria-expanded={!group.collapsed}>
-        {group.collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}<span className="session-workspace-name">{group.name}</span><span className="session-workspace-count">{group.total}</span>
-        {group.environmentName && <small>{group.environmentName}</small>}
-      </button></h3>)}
+      {rows.filter(row => row.kind === "group").map(row => <h3 className="session-workspace-heading" key={row.key}>
+        {group.href ? <a href={group.href} className="session-collection-link" data-collection-href={group.href} data-collection-environment={group.environment} title={group.name}>
+          {group.pinned && group.pinKey ? <ShortcutBadge name={group.pinName || group.name} identity={group.pinKey} appearance={group.pinIcon} /> : <Folder aria-hidden="true" />}
+          <span className="session-workspace-name">{group.name}</span>
+          {group.environmentName && <small>{group.environmentName}</small>}
+        </a> : null}
+        <button type="button" data-conversation-group-toggle={group.key} data-conversation-list-row={row.key} aria-expanded={!group.collapsed}
+          aria-label={group.href ? uiText("展开或折叠 {0} 的对话", group.name) : undefined} className={group.href ? "session-collection-toggle" : undefined}
+          title={group.name}>
+          {group.collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+          {!group.href ? <span className="session-workspace-name">{group.name}</span> : null}
+          <span className="session-workspace-count">{group.total}</span>
+          {!group.href && group.environmentName && <small>{group.environmentName}</small>}
+        </button>
+      </h3>)}
       <ul className="session-browser-items">{rows.filter(row => row.kind === "session").map(row => renderSession(row.session, row))}</ul>
       {rows.filter(row => row.kind === "more").map(row => <button type="button" className="session-workspace-more" key={row.key} data-conversation-group-more={group.key} data-conversation-list-row={row.key}>{uiText("更多对话（{0}）", group.total - group.shown)}</button>)}
     </section>)}</div>

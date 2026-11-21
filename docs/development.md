@@ -55,7 +55,7 @@ The browser-mode process runs in the foreground. Stop the test process and use i
 
 ### Global assistant foundation
 
-The **Yolu Assistant** button in the navigation rail footer and **Alt+Shift+Y** open the assistant panel through the shared browser/desktop page host. The host keeps the workspace and native conversation readers mounted while the panel is open. Existing `#/assistant` links open the panel as well. The assistant uses the already installed and authenticated local Codex CLI. Run `codex login` in the same local user account when authentication needs setup. Choose an available local model in the assistant composer or inherit the CLI default.
+The **Yolu Assistant** button in the navigation utility row and **Alt+Shift+Y** open the assistant panel through the shared browser/desktop page host. The host keeps the workspace and native conversation readers mounted while the panel is open. Existing `#/assistant` links open the panel as well. The assistant uses the already installed and authenticated local Codex CLI. Run `codex login` in the same local user account when authentication needs setup. Choose an available local model in the assistant composer or inherit the CLI default.
 
 The assistant composer saves model and permission choices with each conversation. **Query only** exposes query tools for the next turn. **Confirm changes** also allows the assistant to prepare application plans, which require explicit approval before execution. A permission change applies to the next turn. Existing plans retain their own approval and execution state.
 

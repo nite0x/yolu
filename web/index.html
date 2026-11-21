@@ -65,6 +65,7 @@
     <nav aria-label="主导航" data-i18n-aria-label="主导航">
       <button type="button" id="openGlobalSearch" class="nav-item" aria-label="全局搜索" title="全局搜索" data-i18n-aria-label="全局搜索" data-i18n-title="全局搜索" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span><span class="nav-text" data-i18n="全局搜索">全局搜索</span></button>
       <button class="nav-item active" data-view="workspaces" aria-label="工作区" title="工作区" data-i18n-title="工作区" data-i18n-aria-label="工作区"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-text" data-i18n="工作区">工作区</span><span class="nav-count" id="workspaceCount">0</span></button>
+      <button type="button" class="nav-item unified-issues" data-view="issues" hidden data-i18n="Issues">Issues</button>
       <button class="nav-item" data-view="projects" aria-label="项目" title="项目" data-i18n-title="项目" data-i18n-aria-label="项目"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-text" data-i18n="项目">项目</span><span class="nav-count" id="projectCount">0</span></button>
       <button class="nav-item" data-view="sessions" aria-label="对话" title="对话" data-i18n-title="对话" data-i18n-aria-label="对话"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="对话">对话</span><span id="sessionNavigationStatus" class="session-navigation-status" role="status"></span></button>
     </nav>
@@ -89,6 +90,11 @@
       <div class="page-heading"><div><div class="eyebrow" id="eyebrow">WORKSPACES</div><div class="resource-detail-title"><a href="#/workspaces" id="backToWorkspaces" class="resource-breadcrumb-link" aria-label="返回工作区列表" data-i18n-aria-label="返回工作区列表" data-i18n="工作区" hidden>工作区</a><span id="workspaceBreadcrumbSeparator" class="resource-breadcrumb-divider" aria-hidden="true" hidden>/</span><h1 id="pageTitle" tabindex="-1" data-i18n="工作区">工作区</h1><span id="workspaceSwitcherTrigger" class="shadcn-scope" hidden></span></div><p id="pageSubtitle" data-i18n="围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。">围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。</p></div><span id="newWorkspaceButton" class="shadcn-scope"></span><div id="workspacePageActions" hidden></div></div>
       <div id="offlineFeedback" class="shadcn-scope"></div>
       <section id="stats" class="stats" aria-label="工作台统计" data-i18n-aria-label="工作台统计"></section>
+      <section id="issuesPage" class="issues-page shadcn-scope" aria-labelledby="issuesHeading" hidden>
+        <h1 id="issuesHeading" tabindex="-1" data-i18n="Issues">Issues</h1>
+        <p data-i18n="在 Linear 查看分配给你的任务。">在 Linear 查看分配给你的任务。</p>
+        <a class="resource-breadcrumb-link" id="openLinear" href="https://linear.app/" target="_blank" rel="noopener noreferrer" data-i18n="打开 Linear">打开 Linear</a>
+      </section>
       <section id="settingsPage" class="settings-page shadcn-scope" aria-label="设置" hidden data-i18n-aria-label="设置"></section>
       <section class="content-panel" id="workContent">
         <section id="workspaceBrowser" class="workspace-browser resource-list-page workspace-pane shadcn-scope" aria-label="工作区列表" hidden data-i18n-aria-label="工作区列表">

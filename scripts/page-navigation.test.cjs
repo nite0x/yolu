@@ -53,7 +53,7 @@ const open = (h,snapshot,placement) => {
 };
 const visible = h => h.frames().filter(frame => !frame.hidden);
 
-test('global search opens from the visible rail or a focused conversation and keeps the result environment', t => {
+test('global search opens from the visible workspace page or a focused conversation and keeps the result environment', t => {
   const h = harness(t);
   const mount = (frame, tag) => {
     const doc = frame.contentDocument;
@@ -84,15 +84,18 @@ test('global search opens from the visible rail or a focused conversation and ke
   assert.equal(h.search.openers.at(-1), composer);
 });
 
-test('desktop shares a 52px rail from the first paint and ignores expanded sidebar preferences', t => {
+test('one shared navigator is mounted on the initial page without a rail inset', t => {
   const h = harness(t, '#/workspaces', {desktop:true});
-  const width = frame => new URL(frame.src).searchParams.get('workspace-sidebar-width');
-  assert.equal(width(h.workspace), '52');
-  open(h, conversation('one'));
-  const nav = h.nav();
-  assert.equal(width(nav), '52');
-  h.send(nav, 'workhub:page-chrome', {chrome:{left:360}});
-  assert.equal(h.w.document.body.style.getPropertyValue('--workspace-shared-sidebar-width'), '52px');
+  const nav = h.nav(), source = nav.src;
+  assert.equal(new URL(source).searchParams.has('workspace-sidebar-width'),false);
+  assert.equal(nav.parentElement.hidden,false);
+  assert(h.w.document.body.hasAttribute('data-workspace-navigation-visible'));
+  open(h, {route:'/issues',environment:'local'});
+  open(h, {route:'/settings',environment:'local'});
+  assert.equal(h.nav(),nav);
+  assert.equal(nav.src,source);
+  assert.equal(nav.parentElement.hidden,false);
+  assert.equal(h.messages.get(nav).findLast(message=>message.type==='workhub:workspace-route').route,'/settings');
 });
 
 test('desktop native home menu preserves the active environment when leaving projects and conversations', t => {
@@ -115,7 +118,7 @@ test('desktop conversation list leaves space for detail on resize and restores t
   assert.equal(current(), '520px');
   Object.defineProperty(h.w,'innerWidth',{value:780});
   h.w.dispatchEvent(new h.w.Event('resize'));
-  assert.equal(current(), '360px');
+  assert.equal(current(), '412px');
   assert.equal(h.w.localStorage.getItem('workhub:conversation-list-width:v1'), '520');
   Object.defineProperty(h.w,'innerWidth',{value:1400});
   h.w.dispatchEvent(new h.w.Event('resize'));
@@ -133,7 +136,7 @@ for (const first of ['navigation','reader']) test(`projects remain visible until
   const reader = h.frames().find(frame => frame !== h.workspace), navigation = h.nav();
   assert.deepEqual(visible(h),[h.workspace]);
   assert.equal(h.w.document.body.hasAttribute('data-workspace-conversations'),false);
-  assert.equal(navigation.parentElement.hidden,true);
+  assert.equal(navigation.parentElement.hidden,false);
   h.ready(reader,false); h.ready(navigation,false);
   assert.deepEqual(visible(h),[h.workspace],'registered listeners do not imply a restored layout');
   assert.equal(h.messages.get(reader).findLast(message=>message.type==='workhub:page-restore').active,false);
@@ -157,7 +160,7 @@ test('a late conversation restore cannot override navigation back to projects', 
   open(h,{route:'/projects/app',environment:'local'});
   h.send(reader,'workhub:page-restored'); h.send(navigation,'workhub:page-restored');
   assert.deepEqual(visible(h),[h.workspace]);
-  assert.equal(navigation.parentElement.hidden,true);
+  assert.equal(navigation.parentElement.hidden,false);
   assert.equal(h.w.location.hash,'#/projects/app');
   open(h,{route:'/sessions',environment:'local'});
   assert.deepEqual(visible(h),[reader]);
@@ -240,7 +243,7 @@ test('parallel Agents remain mounted while sidebar navigation opens independent 
   h.send(h.nav(),'workhub:page-open',{snapshot:{route:'/projects/app',environment:'local'}});
   assert.equal(visible(h).length,1);
   assert.equal(visible(h)[0],h.workspace);
-  assert.equal(h.nav().parentElement.hidden,true);
+  assert.equal(h.nav().parentElement.hidden,false);
   const geometry = h.messages.get(h.workspace).findLast(message => message.type === 'workhub:page-pane');
   assert.equal(geometry.shared,false);
   assert.equal(geometry.split,false);
@@ -324,14 +327,22 @@ test('page navigation from a single reader preserves its conversation and opens 
   assert.deepEqual(visible(h),[reader]);
 });
 
-test('a narrow single reader retains its own sidebar and history list', t => {
+test('narrow navigation uses the retained navigator and dismisses on chat selection', t => {
   const h = harness(t);
   Object.defineProperty(h.w,'innerWidth',{value:640});
   open(h,conversation('one'));
-  const reader = visible(h)[0], messages = h.ready(reader);
-  assert.equal(h.nav(),null);
-  assert.equal(h.w.document.body.hasAttribute('data-workspace-conversations'),false);
-  assert.equal(messages.findLast(message => message.type === 'workhub:page-pane').shared,false);
+  const reader = visible(h)[0], nav = h.nav();
+  const button = h.w.document.getElementById('workspaceNavigationToggle');
+  assert.equal(nav.parentElement.hidden,true);
+  assert.equal(h.w.document.body.hasAttribute('data-workspace-navigation-visible'),false);
+  assert.equal(h.messages.get(reader).findLast(message => message.type === 'workhub:page-pane').shared,true);
+  button.click();
+  assert.equal(nav.parentElement.hidden,false);
+  assert.equal(button.getAttribute('aria-expanded'),'true');
+  h.send(nav,'workhub:conversation-select',{snapshot:conversation('one')});
+  assert.deepEqual(visible(h),[reader]);
+  assert.equal(nav.parentElement.hidden,true);
+  assert.equal(button.getAttribute('aria-expanded'),'false');
 });
 
 test('assistant links and launcher open a retained panel over the current page', t => {

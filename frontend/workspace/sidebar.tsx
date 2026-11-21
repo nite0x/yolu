@@ -97,9 +97,21 @@ export function mountWorkspaceSidebar() {
     const icon = sidebar.querySelector(`[data-view="${view}"] .nav-icon`)
     if (icon) icon.innerHTML = renderToStaticMarkup(<Icon aria-hidden="true" size={18} />)
   }
+  const unified = document.documentElement.hasAttribute("data-workspace-navigation")
+  if (unified) {
+    sidebar.querySelector<HTMLElement>(".unified-issues")!.hidden = false
+    sidebar.querySelector(".sidebar-footer")?.before(document.getElementById("sessionsPage")!)
+    const utilities = document.createElement("div")
+    utilities.className = "navigation-utilities"
+    sidebar.querySelector("#conversationShortcuts")?.before(utilities)
+    for (const id of ["openGlobalSearch", "openYoluAssistant", "refreshControl"]) {
+      const control = document.getElementById(id)
+      if (control) utilities.append(control)
+    }
+  }
   const disposePins = setupShortcutIcons(sidebar)
   const disposeUsage = mountCodexUsage(sidebar)
-  if (document.documentElement.hasAttribute("data-workhub-desktop")) {
+  if (unified || document.documentElement.hasAttribute("data-workhub-desktop")) {
     window.addEventListener("pagehide", () => { disposeUsage(); disposePins() }, { once: true })
     return
   }

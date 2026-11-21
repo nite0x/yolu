@@ -74,7 +74,7 @@ html[data-workhub-desktop] .workspace-page{background:var(--yolu-subtle,#f3f5fa)
 html[data-workhub-desktop] .workspace-pages{top:var(--workspace-window-header-height,36px)}
 
 .workspace-pane-chrome{display:contents}
-body[data-workspace-conversations] .workspace-pages{left:calc(var(--workspace-shared-sidebar-width,244px) + var(--workspace-conversation-list-width,280px));top:0;display:grid;grid-template-rows:minmax(0,1fr);padding:6px 8px 8px}
+body[data-workspace-conversations] .workspace-pages{top:0;display:grid;grid-template-rows:minmax(0,1fr);padding:6px 8px 8px}
 body[data-workspace-conversations] .workspace-page{position:relative;inset:auto;grid-row:1;top:0;height:100%;min-width:0;border:1px solid var(--yolu-border,#dfe4ee);border-radius:8px;background:var(--yolu-surface,#fff);box-shadow:0 1px 3px #25324d05;transition:border-color .12s}
 body[data-workspace-conversations] .workspace-page[data-focused=true]{border-color:var(--yolu-primary-border,#bdc6df)}
 .workspace-pane-resize{position:relative;min-height:0;cursor:col-resize;touch-action:none;outline:none;z-index:3}
@@ -92,12 +92,12 @@ html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages{p
 /* The navigation iframe is deliberately wider than this viewport. It must not
    become a scroll container when focus or scrollIntoView reveals its content.
    Keep hidden as a clipping fallback for older WebViews without clip support. */
-.workspace-shared-navigation{position:fixed;left:0;top:0;bottom:0;width:calc(var(--workspace-shared-sidebar-width,244px) + var(--workspace-conversation-list-width,280px));overflow:hidden;overflow:clip;z-index:15;background:var(--yolu-sidebar,#f1f4fc)}
+.workspace-shared-navigation{position:fixed;left:0;top:0;bottom:0;width:var(--workspace-conversation-list-width,280px);overflow:hidden;overflow:clip;z-index:15;background:var(--yolu-sidebar,#f1f4fc)}
 .workspace-navigation-frame{position:absolute;inset:0;width:max(1200px,100vw);height:100%;border:0}
 .workspace-shared-navigation[data-modal]{width:100%;background:transparent}
 .workspace-shared-navigation[data-modal] .workspace-navigation-frame{width:100%}
 html[data-workhub-desktop] .workspace-shared-navigation{top:var(--workspace-window-header-height,36px)}
-.workspace-shared-list-size{position:absolute;left:var(--workspace-shared-sidebar-width,244px);top:0;bottom:0;width:var(--workspace-conversation-list-width,280px);pointer-events:none}
+.workspace-shared-list-size{position:absolute;left:0;top:0;bottom:0;width:var(--workspace-conversation-list-width,280px);pointer-events:none}
 .workspace-list-placeholder{position:absolute;inset:6px 0 8px 8px;border:1px solid var(--yolu-border,#dfe4ee);border-radius:8px;background:var(--yolu-surface,#fff);padding:16px 12px;color:var(--yolu-muted-ink,#71809a);font-size:12px}
 .workspace-list-placeholder strong{display:block;color:var(--yolu-foreground,#334155);font-size:14px;margin-bottom:16px}
 .workspace-list-placeholder-search{height:32px;border:1px solid var(--yolu-border,#dfe4ee);border-radius:6px;background:var(--yolu-canvas,#f8f9fd)}
@@ -105,7 +105,7 @@ html[data-workhub-desktop] .workspace-shared-navigation{top:var(--workspace-wind
 .workspace-shared-navigation:not([data-ready]) .workspace-navigation-frame{visibility:hidden}
 .workspace-shared-navigation[data-ready] .workspace-list-placeholder{display:none}
 html[data-workhub-desktop] .workspace-list-placeholder{top:var(--workspace-pane-top-inset);left:0}
-.workspace-shared-list-resize{position:fixed;top:0;bottom:0;left:calc(var(--workspace-shared-sidebar-width,244px) + var(--workspace-conversation-list-width,280px));width:8px;z-index:16;cursor:col-resize;touch-action:none;outline:none}
+.workspace-shared-list-resize{position:fixed;top:0;bottom:0;left:calc(var(--workspace-conversation-list-width,280px) - 4px);width:8px;z-index:16;cursor:col-resize;touch-action:none;outline:none}
 .workspace-shared-list-resize::after{content:"";position:absolute;left:3px;right:3px;top:50%;height:32px;transform:translateY(-50%);border-radius:2px;background:var(--yolu-border-strong,#d6ddeb);transition:background-color .12s}
 .workspace-shared-list-resize:hover::after,.workspace-shared-list-resize:focus-visible::after,body[data-split-resizing] .workspace-shared-list-resize::after{background:var(--yolu-primary-border,#939fc5)}
 .workspace-shared-list-resize:focus-visible::after{box-shadow:0 0 0 2px var(--yolu-ring-soft,#818cf84d)}
@@ -113,3 +113,26 @@ html[data-workhub-desktop] .workspace-shared-list-resize{top:var(--workspace-win
 body[data-split-resizing]{cursor:col-resize}
 body[data-split-resizing] .workspace-page,body[data-split-resizing] .workspace-navigation-frame{pointer-events:none}
 
+
+
+body[data-workspace-navigation-visible] .workspace-pages { left: var(--workspace-conversation-list-width,280px); }
+.workspace-compact-navigation { display: none; }
+@media (max-width: 760px) {
+  .workspace-compact-navigation {
+    position: fixed; z-index: 17; inset: var(--workspace-window-header-height,0px) 0 auto;
+    display: flex; align-items: center; height: 39px; padding: 0 10px;
+    background: var(--yolu-sidebar); border-bottom: 1px solid var(--yolu-border);
+  }
+  .workspace-compact-navigation button {
+    padding: 4px 8px; color: var(--yolu-foreground); background: transparent;
+    border: 1px solid transparent; border-radius: var(--yolu-chip-radius,8px);
+  }
+  .workspace-compact-navigation button:hover { background: var(--yolu-hover); }
+  .workspace-compact-navigation button:focus-visible { outline: 2px solid var(--yolu-ring); }
+  html body .workspace-pages, html[data-workhub-desktop] body .workspace-pages,
+  html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages,
+  html body .workspace-shared-navigation, html[data-workhub-desktop] body .workspace-shared-navigation {
+    top: calc(var(--workspace-window-header-height,0px) + 39px);
+  }
+  .workspace-shared-navigation[data-modal] { background: var(--yolu-sidebar); }
+}

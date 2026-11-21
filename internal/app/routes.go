@@ -6,6 +6,7 @@ import (
 
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/overview"
+	"worktree-hub/internal/platform"
 	"worktree-hub/web"
 )
 
@@ -31,6 +32,17 @@ func (a *App) handler() http.Handler {
 	mux.Handle("GET /api/state", overview.New(a.Execution, a.Projects))
 	mux.HandleFunc("POST /api/dialogs/directory", a.pickDirectoryHandler)
 	mux.HandleFunc("GET /api/workspace-inventory", a.workspaceInventoryHandler)
+	mux.HandleFunc("POST /api/issues/open-linear", func(w http.ResponseWriter, r *http.Request) {
+		if isBrowserRequest(r) {
+			httpx.WriteError(w, http.StatusForbidden, "请在浏览器中打开 Linear")
+			return
+		}
+		if err := platform.OpenExternal("https://linear.app/"); err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "无法打开 Linear")
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("GET /api/shortcut-pins", a.shortcutPinsHandler)
 	mux.HandleFunc("PUT /api/shortcut-pins", a.shortcutPinsHandler)
 	mux.HandleFunc("GET /api/settings/language", a.languageHandler)

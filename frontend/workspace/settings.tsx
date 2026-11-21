@@ -13,6 +13,11 @@ function Help({ children }: { children: ReactNode }) {
 }
 export function SettingsPage() {
   return <>
+    <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="projectManagementTitle">
+      <Heading id="projectManagementTitle" title={uiText("项目管理")} actions={<Button asChild variant="outline" size="sm"><a href="#/projects">{uiText("查看全部项目")}</a></Button>}>
+        {uiText("登记仓库，查看项目的工作目录和关联工作区。")}
+      </Heading>
+    </Card>
     <Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="browserAccessTitle">
       <form id="browserAccessForm">
         <Heading id="browserAccessTitle" title={uiText("浏览器访问")}>

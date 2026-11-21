@@ -96,7 +96,7 @@ Conversation management includes renaming, local pinning, native Codex archive/r
 
 ## Navigation, panes and embedded terminals
 
-Use the navigation rail to switch between workspaces, projects and conversations, or to open Settings. Select a workspace to open its details beside the list. In a narrow window, use **Back to workspace list** to switch panes. Conversations can open side by side in up to three panes.
+Use the shared conversation navigator to open Workspaces, Issues or Settings. Manage all registered projects from Project management in Settings. Open pinned workspaces and project directories by name, or use their disclosure buttons to show conversations. On narrow windows, use Open navigation to reach the same list. Select a workspace to open its details beside the list. In a narrow window, use **Back to workspace list** to switch panes. Conversations can open side by side in up to three panes.
 
 The new-conversation entry also offers a terminal mode. Choose an available directory and an installed shell or CLI, such as Codex, Claude Code, Gemini CLI or OpenCode, or supply a custom executable and JSON argument array. These tools use their own authentication and permission prompts. Launching a tool in a terminal does not provide Yolu's native Codex conversation integration for that tool.
 

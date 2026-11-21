@@ -176,7 +176,9 @@ export function CodexUsage({ portal }: { portal: HTMLElement }) {
 export function mountCodexUsage(sidebar: HTMLElement) {
   const host = document.createElement("div")
   host.className = "codex-quota-mount shadcn-scope"
-  sidebar.querySelector(".sidebar-footer")?.before(host)
+  const utilities = sidebar.querySelector(".navigation-utilities")
+  if (utilities) utilities.append(host)
+  else sidebar.querySelector(".sidebar-footer")?.before(host)
   let portal = document.body
   try { if (window.parent !== window && window.parent.location.origin === window.location.origin) portal = window.parent.document.body } catch { /* Use the local document when embedded elsewhere. */ }
   const root = createRoot(host)

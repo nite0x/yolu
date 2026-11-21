@@ -40,7 +40,7 @@ function IconEditor({entries, close, save}: {entries: Entry[]; close: () => void
   </form>
 }
 export function setupShortcutIcons(sidebar: HTMLElement) {
-  // The shared navigation iframe is clipped to the rail and list. Put modal
+  // The shared navigation iframe is clipped to the list. Put modal
   // settings in the same-origin workspace document so the whole window can show it.
   let hostDocument = document
   try { if (window.parent !== window && window.parent.location?.origin === window.location.origin && window.parent.document?.body) hostDocument = window.parent.document } catch { /* Standalone or externally embedded page. */ }
@@ -54,7 +54,8 @@ export function setupShortcutIcons(sidebar: HTMLElement) {
   const click = (event: MouseEvent) => {
     if (!(event.target instanceof Element) || !event.target.closest("[data-shortcut-icon-settings]")) return
     trigger = event.target.closest<HTMLElement>("[data-shortcut-icon-settings]")
-    const entries = [...sidebar.querySelectorAll<HTMLElement>("[data-shortcut-icon-key]")].map(node => ({key: node.dataset.shortcutIconKey!, name: node.dataset.shortcutName!, title: node.title.replace(/\n/g, " · "), appearance: JSON.parse(node.dataset.shortcutIcon || "{}") as ShortcutIcon}))
+    const catalog = sidebar.querySelector<HTMLElement>("[data-shortcut-icon-catalog]")?.dataset.shortcutIconCatalog
+    const entries: Entry[] = catalog ? JSON.parse(catalog) : [...sidebar.querySelectorAll<HTMLElement>("[data-shortcut-icon-key]")].map(node => ({key: node.dataset.shortcutIconKey!, name: node.dataset.shortcutName!, title: node.title.replace(/\n/g, " · "), appearance: JSON.parse(node.dataset.shortcutIcon || "{}") as ShortcutIcon}))
     flushSync(() => root.render(<IconEditor entries={entries} close={close} save={(entry, value) => {
       window.dispatchEvent(new CustomEvent("workhub:shortcut-icon-save", {detail:{key:entry.key, value}})); close()
     }} />))

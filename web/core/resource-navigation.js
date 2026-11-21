@@ -41,6 +41,7 @@ function focusResourcePage() {
   else if (state.view === 'workspaces' && state.selectedWorkspace) $('#pageTitle').focus({preventScroll:true});
   else if (state.view === 'workspaces' && !document.activeElement?.closest('#workspaceBrowser')) $('#workspaceListTitle').focus({preventScroll:true});
   else if (state.view === 'projects' && !document.activeElement?.closest('#projectListPane')) $('#panelTitle').focus({preventScroll:true});
+  else if (state.view === 'issues') $('#issuesHeading').focus({preventScroll:true});
   else if (state.view === 'sessions') $('#sessionBrowserSearch')?.focus({preventScroll:true});
 }
 

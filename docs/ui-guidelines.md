@@ -15,7 +15,7 @@ Native title bars, window controls, application menus and operating-system dialo
 | Palette | `web/core/appearance.css`, `web/core/appearance.js` | Saved palette, light/dark appearance and semantic color tokens |
 | Typography | `web/core/typography.css` | Font families, text sizes and weights |
 | Component tokens | `frontend/styles.css` | Scoped shadcn aliases, utility layers and shared imports |
-| Application frame | `web/core/chrome.css`, `desktop-frame.css`, `page-host.css` | Rail, pane surfaces, elevation, gutters and host geometry |
+| Application frame | `web/core/chrome.css`, `desktop-frame.css`, `page-host.css` | Shared navigation, pane surfaces, elevation, gutters and host geometry |
 | Pane layout | `frontend/workspace/page-surface.tsx`, `page-surface.css` | Shared split layout and pane markup |
 | Lists | `frontend/workspace/list-controls.tsx`, `session-browser.tsx` | List headings, creation actions, search, rows, selection and date groups |
 | Working directories | `frontend/workspace/working-directories.tsx`, `working-directories.css` | Project and workspace directory tables, Git summaries and row actions |
@@ -29,9 +29,11 @@ Use component-level APIs for caller-specific labels and actions. For example, `C
 
 ## Layout and surfaces
 
+The [navigation design](navigation-design.md) defines the shared navigator, pinned collections and main-pane transitions.
+
 Workspace and project routes show a single list or detail surface at every viewport size. Their lists share `resource-list-page` and the existing creation, search and filter controls. Details use the full surface and pair a list breadcrumb with `ResourceSwitcherTrigger`. The switcher orders recently opened items by environment and identity, then offers the remaining items through search. Returning to a list restores its search, filters, scroll position and focused row.
 
-The shared page host opens global search from the desktop title bar, the browser navigation rail, or **Cmd/Ctrl+K**. It shows recent resources when the query is empty and groups matching names or titles by workspace, project and conversation. Results retain their execution environment and use the same navigation paths as the sidebar. Keep the modal in the host so keyboard focus and navigation work across panes. Escape returns focus to the invoking control.
+The shared page host opens global search from the desktop title bar, the shared navigation utility row, or **Cmd/Ctrl+K**. It shows recent resources when the query is empty and groups matching names or titles by workspace, project and conversation. Results retain their execution environment and use the same navigation paths as the sidebar. Keep the modal in the host so keyboard focus and navigation work across panes. Escape returns focus to the invoking control.
 
 Global search keeps results in memory across dialog opens and reads saved conversation titles and archive state first. Entering a search term starts background conversation discovery. Available results stay usable while discovery runs.
 
@@ -52,7 +54,7 @@ import {WorkspacePane, WorkspaceSplitLayout} from "@/workspace/page-surface";
 
 | Purpose | Existing token or contract |
 | --- | --- |
-| Navigation rail | 52px shared application rail |
+| Navigation | Persistent conversation navigator beside the main pane |
 | Pane gap | `--workspace-pane-gap`, currently 8px |
 | Outer inset | `--workspace-pane-inset`, currently 8px |
 | List width | `--workspace-list-width`, default 280px, owned by the existing list-width preference |
@@ -118,7 +120,7 @@ New and existing coding conversations use the same bottom-docked composer and sh
 
 Standalone Codex visualization references in assistant messages render as expandable previews. Only files in the local conversation's Codex visualization folder can be served. The preview uses an opaque-origin sandbox, an inline-only resource policy and a separate frame so the message renderer and application API keep their existing content policies.
 
-Open the global assistant from the rail footer or **Alt+Shift+Y**. The shared page host owns the panel across workspace and native conversation navigation. Above 760px it sits at the right edge while the current page remains visible. At 760px and below it fills the content area and moves focus into the panel. Closing returns focus to the invoking page and preserves assistant state. The panel header identifies the assistant and exposes history and the context captured when it opened. The footer launcher shows whether an assistant action is running or awaiting approval.
+Open the global assistant from the navigation utility row or **Alt+Shift+Y**. The shared page host owns the panel across workspace and native conversation navigation. Above 760px it sits at the right edge while the current page remains visible. At 760px and below it fills the content area and moves focus into the panel. Closing returns focus to the invoking page and preserves assistant state. The panel header identifies the assistant and exposes history and the context captured when it opened. The footer launcher shows whether an assistant action is running or awaiting approval.
 
 Application operations use `frontend/chat/assistant-actions.tsx` as custom tool content inside the corresponding assistant reply. `assistant-messages.ts` associates queries and plans with loaded transcript turns by `run_id`, including cards that arrive before the final reply text. The cards scroll with conversation history. Pending plans remain expanded and directly actionable. Resource cards carry validated environment/kind/ID targets and use the shared navigation bridge. Plan cards show resolved targets and preconditions, bind clicks to the displayed revision/digest, and expose confirmation, cancellation, member progress and recovery. Render structured domain errors as text with localized application messages. Preserve user-authored names, paths and content. Completed plans keep their result links and detailed domain outcomes available.
 

@@ -19,7 +19,8 @@ test('LAN HTTP pages generate RFC 4122 UUIDs and mount the workspace without nat
   assert.equal(w.document.querySelectorAll('iframe.workspace-page').length, 1);
   const page = new URL(w.document.querySelector('iframe.workspace-page').src);
   assert.equal(page.searchParams.get('workspace-desktop'), '1');
-  assert.equal(page.searchParams.get('workspace-sidebar-width'), '52');
+  assert.equal(page.searchParams.has('workspace-sidebar-width'), false);
+  assert(w.document.querySelector('.workspace-navigation-frame'));
   assert.equal(w.__TAURI_INTERNALS__, undefined);
 });
 

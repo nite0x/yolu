@@ -63,3 +63,19 @@ test("workspace rows show directory context when their conversations span differ
   items[1].cwd = "/work/backend"
   assert.equal(conversationTree(items, options)[0].group.showContext, true)
 })
+
+test("pinned workspace and project collections share conversation identity and retain empty pins", () => {
+  const item = {...sessions(1)[0], cwd:"/worktrees/login", context:{
+    workspaces:[], kind:"Worktree", cwd:"/worktrees/login", project:"App", projectID:"app", branch:"login"
+  }}
+  const rows = conversationTree([item], {...options, navigator:{
+    workspaces:[
+      {id:"workspace", name:"Login", environment:"local", environmentName:"Local"},
+      {id:"empty", name:"Empty", environment:"local", environmentName:"Local"},
+    ],
+    directories:[{cwd:"/repo/app", key:"/repo/app", environment:"local", name:"app", projectID:"app", projectName:"App", projectRoot:true}],
+  }})
+  assert.deepEqual(rows.filter(row=>row.kind==="group").map(row=>[row.group.name,row.group.total]),[["Login",1],["Empty",0],["App",1]])
+  assert.deepEqual(rows.filter(row=>row.kind==="session").map(row=>row.session),[item,item])
+  assert.equal(rows.find(row=>row.group.name==="App")?.group.href,"#/projects/app?directory=%2Frepo%2Fapp")
+})

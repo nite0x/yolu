@@ -145,7 +145,10 @@ function conversationItems(environment) { return environment ? conversationState
 const shortcutPins = window.WorkHubUI.createShortcutPins({
   request: api,
   storage: () => localStorage,
-  changed: () => { renderConversationShortcuts(); updateDirectoryPinButton(); },
+  changed: () => {
+    renderConversationShortcuts(); updateDirectoryPinButton();
+    if (window.WorkHubPage?.navigationOnly) renderConversationList();
+  },
   failed: message => toast(message, true),
 });
 function pinnedWorkspaceIDs(environment = activeEnvironment) { return shortcutPins.workspaces(environment); }
@@ -213,7 +216,8 @@ function renderConversationShortcuts() {
     directories,
     pinnedDirectories: directories.filter(d => d.pinned),
     kind: host.dataset.shortcutKind,
-    desktopRail: document.documentElement.hasAttribute('data-workhub-desktop'),
+    desktopRail: document.documentElement.hasAttribute('data-workhub-desktop') && !window.WorkHubPage?.navigationOnly,
+    pickerOnly: !!window.WorkHubPage?.navigationOnly,
     selected: selectedScope?.kind === 'workspace' ? conversationEnvironmentKey(selectedScope.environment, selectedScope.id) : null,
     selectedDirectory: selectedScope?.kind === 'directory' ? directories.find(directory => directory.environment === selectedScope.environment && conversationPathKey(directory.cwd) === conversationPathKey(selectedScope.cwd))?.key : null,
     ...shortcutPickerState(), environment: uiText("全部环境"),
@@ -472,6 +476,20 @@ function renderConversationList() {
   const sessions = matching.filter(s => conversationStatusMatches(s, statusFilter)).sort((a,b) => Number(!!b.pinned)-Number(!!a.pinned) || (b.updated_at||0)-(a.updated_at||0));
   view.listItems = sessions;
   view.listRows = window.WorkHubUI.conversationTree(sessions, {
+    navigator: window.WorkHubPage?.navigationOnly && view.scope.kind === 'all' && !view.archived ? {
+      workspaces: shortcutWorkspaces().flatMap(workspace => {
+        const environment = workspace.environment_id || activeEnvironment;
+        if (!pinnedWorkspaceIDs(environment).includes(workspace.id) || view.environmentFilter && view.environmentFilter !== environment) return [];
+        return [{...workspace, environment, environmentName:environmentName(environment), appearance:shortcutPins.icons(environment)?.["workspace:" + workspace.id]}];
+      }),
+      directories: shortcutDirectories().flatMap(directory => {
+        if (!directory.pinned || view.environmentFilter && view.environmentFilter !== directory.environment) return [];
+        const path = conversationPathKey(directory.cwd);
+        const project = conversationWorkspace(directory.environment).projects.find(project =>
+          conversationPathKey(project.path) === path || (project.worktrees || []).some(tree => conversationPathKey(tree.path) === path));
+        return [{...directory, projectID:project?.id, projectName:project?.name, projectRoot:!!project && conversationPathKey(project.path) === path}];
+      }),
+    } : undefined,
     workspaces: shortcutWorkspaces(true).map(workspace => ({...workspace,environment_id:workspace.environment_id || activeEnvironment})), scope: view.scope,
     selected: window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected,
     reveal: view.locateSelection, limits: view.groupLimits, collapsed: view.collapsedGroups,

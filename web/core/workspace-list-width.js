@@ -21,7 +21,7 @@
       }
     } catch {}
     const listeners = new Set();
-    const bounds = () => ({min,max:Math.max(min,Math.min(max,window.innerWidth - 52 - 368))});
+    const bounds = () => ({min,max:Math.max(min,Math.min(max,window.innerWidth - 368))});
     const current = () => Math.min(preferred,bounds().max);
     const publish = () => { for (const listener of listeners) listener(current()); };
     width = {

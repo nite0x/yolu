@@ -1894,5 +1894,16 @@
   "Antigravity 尚未登录": "Antigravity is not logged in",
   "请在终端运行 agy 或 agy acp --login 完成认证后重试。": "Run agy or agy acp --login in a terminal to sign in, then retry.",
   "ACP 已连接，但读取会话列表失败；请确认登录状态或网络环境。": "ACP connected, but listing sessions failed. Check your sign-in status or network.",
-  "已完成认证并成功读取对话列表": "Authenticated and read the conversation list successfully"
+  "已完成认证并成功读取对话列表": "Authenticated and read the conversation list successfully",
+  "Issues": "Issues",
+  "在 Linear 查看分配给你的任务。": "View the issues assigned to you in Linear.",
+  "打开 Linear": "Open Linear",
+  "项目管理": "Project management",
+  "登记仓库，查看项目的工作目录和关联工作区。": "Register repositories and view their working directories and linked workspaces.",
+  "打开导航": "Open navigation",
+  "关闭导航": "Close navigation",
+  "固定的对话集合": "Pinned conversation groups",
+  "展开或折叠 {0} 的对话": "Expand or collapse conversations for {0}",
+  "请在浏览器中打开 Linear": "Open Linear in your browser.",
+  "无法打开 Linear": "Could not open Linear."
 }

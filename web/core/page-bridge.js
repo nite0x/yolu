@@ -43,7 +43,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const session = view ? conversationSelectedSession(view) : null;
     const project = state.projects.find(item => item.id === state.selectedProject);
     const workspace = state.workspaces.find(item => item.id === state.selectedWorkspace);
-    const title = state.view === 'assistant' ? uiText("Yolu 助手") : view ? view.creating ? uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'projects' ? uiText("项目") : workspace?.name || uiText("工作区");
+    const title = state.view === 'assistant' ? uiText("Yolu 助手") : view ? view.creating ? uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? 'Issues' : state.view === 'projects' ? uiText("项目") : workspace?.name || uiText("工作区");
     return {
       route, environment: activeEnvironment, title, kind: state.view,
       terminal:view?.creating ? creationHint : undefined,
@@ -84,7 +84,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (restoring || disposed) return;
     // Apply route geometry before render() exposes the page, rather than
     // waiting for the debounced title/selection notification after data loads.
-    if (!parallelPane) pane(false,state.view === 'sessions' && window.innerWidth > 760);
+    if (!parallelPane && !navigationOnly) pane(false,state.view === 'sessions');
     publish();
   });
   function visibility(visible) {
@@ -167,6 +167,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
     const sessionAction = target.closest('[data-session-action="details"]');
     if (sessionAction) return {...current, route:'/sessions', title:uiText("对话"), conversation:{scope:sessionAction.dataset.workspace ? {kind:'workspace', id:sessionAction.dataset.workspace, environment:activeEnvironment} : {kind:'all'}, selected:conversationEnvironmentKey(activeEnvironment,sessionAction.dataset.session), pane:'detail'}};
+    const collection = target.closest('[data-collection-href]');
+    if (collection) return {route:collection.dataset.collectionHref.slice(1),environment:collection.dataset.collectionEnvironment || activeEnvironment,title:collection.title};
     const workspaceButton = target.closest('[data-action="open-workspace"], [data-action="jump-workspace"]');
     if (workspaceButton) return {route:resourceDirectoryRoute('/workspaces/' + workspaceButton.dataset.id, workspaceButton.dataset.path), environment:workspaceButton.dataset.environment || activeEnvironment, title:workspaceButton.textContent.trim()};
     const directoryProject = target.closest('[data-action="jump-project"]');
@@ -311,6 +313,16 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         else {window.WorkHubConversations.current.selected = message.selected; if (focusChanged) window.WorkHubConversations.current.locateSelection = message.selected; renderConversationList();}
       }
       selectInitialConversation();
+    }
+    else if (message?.type === 'workhub:workspace-route' && navigationOnly) {
+      const view = message.route.split('/')[1]?.split('?')[0];
+      document.documentElement.dataset.workspaceMainView = view === 'sessions' ? 'workspaces' : view;
+      document.querySelectorAll('.sidebar [data-view]').forEach(button => {
+        const current = button.dataset.view === document.documentElement.dataset.workspaceMainView;
+        button.classList.toggle('active',current);
+        if (current) button.setAttribute('aria-current','page');
+        else button.removeAttribute('aria-current');
+      });
     }
     else if (message?.type === 'workhub:page-navigation') {navigationOnly = true; document.documentElement.setAttribute('data-workspace-navigation','');}
     else if (message?.type === 'workhub:page-restore') { visibility(!!message.active); void restore(message.snapshot); }

@@ -285,3 +285,13 @@ html[data-workspace-conversation] .ui-narrow-list{display:none!important}
 .shortcut-icon-settings svg { width:15px; height:15px; }
 .shortcut-icon-settings:hover { background:var(--yolu-selected,#e1e7ff); }
 .shortcut-icon-settings:focus-visible { outline:2px solid var(--yolu-ring,#818cf8); }
+
+.session-workspace-heading:has(.session-collection-link) { display: flex; align-items: center; }
+.session-collection-link {
+  display: flex; flex: 1; min-width: 0; align-items: center; gap: 6px;
+  padding: 6px 7px; border-radius: var(--yolu-chip-radius,8px);
+}
+.session-collection-link > svg { width: 15px; height: 15px; flex: none; }
+.session-collection-link:hover { background: var(--yolu-hover); }
+.session-workspace-heading button.session-collection-toggle { width: auto; flex: none; padding-inline: 6px; }
+.session-collection-link .shortcut-badge { width: 20px; height: 20px; flex: none; }
