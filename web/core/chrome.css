@@ -1,4 +1,4 @@
-/* Continuous frame: navigation and product pages share one quiet canvas.
+/* Two surface levels: a quiet navigation frame around the product content.
    Elevation is reserved for temporary overlays and the composer.
    Loaded last on every page so it refines the per-feature stylesheets. */
 :root {
@@ -22,7 +22,7 @@ html[data-workhub-desktop] {
   --workspace-pane-top-inset: var(--workspace-pane-inset);
   --workspace-list-heading-height: 34px;
   --workspace-list-tools-gap: 8px;
-  --yolu-rail-canvas: #f5f5f5;
+  --yolu-rail-canvas: #f3f5f4;
   --yolu-rail-selected: #eaeaea;
   --yolu-rail-muted: #737373;
   --yolu-rail-active: #171717;
@@ -40,18 +40,27 @@ html[data-workhub-desktop][data-color-scheme="dark"] {
 /* Match the title bar, navigation and gaps around the content panes. */
 html[data-workhub-desktop], html[data-workhub-desktop] body,
 html[data-workhub-desktop] .workhub-window-drag,
-html[data-workhub-desktop] .workspace-page,
 html[data-workhub-desktop] .sidebar,
 html[data-workhub-desktop] .workspace-shared-navigation { background: var(--yolu-rail-canvas); }
 .workspace-shared-navigation { background: var(--yolu-canvas, #eef2ef); }
 html[data-workhub-desktop] .workspace-shared-navigation[data-modal] { background: transparent; }
 
+/* Content documents and their iframe backing share the same surface so route
+   changes and parallel readers keep the navigation/content distinction. */
+html[data-workhub-desktop][data-workspace-page]:not([data-workspace-navigation]),
+html[data-workhub-desktop][data-workspace-page]:not([data-workspace-navigation]) body,
+html[data-workhub-desktop] .workspace-page { background: var(--yolu-surface, #fff); }
+
 /* Product panes meet the navigator edge without a floating card frame. */
 body[data-workspace-conversations] .workspace-page,
 html[data-workhub-desktop] body[data-workspace-conversations] .workspace-page,
-html[data-workspace-navigation] body .shell,
 html[data-workhub-desktop] .shell,
-html[data-workhub-desktop] .workspace-pane,
+html[data-workhub-desktop] .workspace-pane {
+  border: 0;
+  border-radius: 0;
+  background: var(--yolu-surface, #fff);
+  box-shadow: none;
+}
 .workspace-list-placeholder {
   border: 0;
   border-radius: 0;
@@ -60,12 +69,12 @@ html[data-workhub-desktop] .workspace-pane,
 }
 body[data-workspace-conversations] .workspace-pages,
 html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages { padding: 0; }
-html[data-workhub-desktop] .shell main { background: var(--yolu-rail-canvas); }
+html[data-workhub-desktop] .shell main { background: var(--yolu-surface, #fff); }
 html[data-workhub-desktop] .workspace-pane { background: transparent; }
 html[data-workhub-desktop] .assistant-chat-scope,
-.terminal-page { --background: var(--yolu-rail-canvas, var(--yolu-canvas)); }
+.terminal-page { --background: var(--yolu-surface, #fff); }
 .terminal-page { background: var(--background); }
-html[data-workhub-desktop] .workspaces-page .workspace-projects-view { background: var(--yolu-rail-canvas); }
+html[data-workhub-desktop] .workspaces-page .workspace-projects-view { background: var(--yolu-surface, #fff); }
 html[data-workhub-desktop] .workspace-directory-overview {
   padding: 0 0 18px;
   border: 0;
