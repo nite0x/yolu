@@ -2,7 +2,7 @@ import { uiText } from "../i18n";
 import { useLayoutEffect, useRef, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { flushSync } from "react-dom"
-import { ChevronDown, ListTodo, Search, CircleDot, RefreshCw } from "lucide-react"
+import { ArrowLeft, ArrowRight, ChevronDown, ListTodo, Search, CircleDot, RefreshCw } from "lucide-react"
 import { DropdownMenu } from "radix-ui"
 import { CodexUsage } from "./codex-usage"
 import { setupSplitResize } from "./split-resize"
@@ -35,6 +35,10 @@ function PaneHeaders(props: PaneProps) {
 const roots = new WeakMap<HTMLElement, Root>()
 interface WindowChromeProps {
   ready: boolean
+  canGoBack?: boolean
+  canGoForward?: boolean
+  back?: () => void
+  forward?: () => void
   home: () => void
   search?: (trigger: HTMLButtonElement) => void
   appMenu?: () => void
@@ -66,7 +70,10 @@ function WindowChrome(props: WindowChromeProps) {
       </DropdownMenu.Content>
     </DropdownMenu.Portal>
   </DropdownMenu.Root>
-  return <>{brand}{props.search && <button type="button" className="window-search-trigger" aria-label={uiText("全局搜索")} title={uiText("全局搜索")} aria-haspopup="dialog" aria-controls="globalSearch" aria-keyshortcuts="Meta+K Control+K" onClick={event => props.search?.(event.currentTarget)}>
+  return <>{brand}<div className="window-history" role="group" aria-label={uiText("页面导航")}>
+    <button type="button" className="window-utility-button" aria-label={uiText("后退")} title={uiText("后退")} aria-keyshortcuts="Alt+ArrowLeft Meta+[" disabled={!props.canGoBack} onClick={props.back}><ArrowLeft aria-hidden="true" /></button>
+    <button type="button" className="window-utility-button" aria-label={uiText("前进")} title={uiText("前进")} aria-keyshortcuts="Alt+ArrowRight Meta+]" disabled={!props.canGoForward} onClick={props.forward}><ArrowRight aria-hidden="true" /></button>
+  </div>{props.search && <button type="button" className="window-search-trigger" aria-label={uiText("全局搜索")} title={uiText("全局搜索")} aria-haspopup="dialog" aria-controls="globalSearch" aria-keyshortcuts="Meta+K Control+K" onClick={event => props.search?.(event.currentTarget)}>
     <Search size={14} aria-hidden="true" /><span>{uiText("搜索或跳转…")}</span><kbd aria-hidden="true">{navigator.platform.startsWith("Mac") ? "⌘ K" : "Ctrl K"}</kbd>
   </button>}
     <div className="window-utilities" role="toolbar" aria-label={uiText("工作台工具")}>

@@ -33,6 +33,8 @@ The [navigation design](navigation-design.md) defines the shared navigator, reso
 
 Workspace and project routes show a single list or detail surface at every viewport size. Their lists share `resource-list-page` and the existing creation, search and filter controls. Details use the full surface and pair a list breadcrumb with `ResourceSwitcherTrigger`. The switcher orders recently opened items by environment and identity, then offers the remaining items through search. Returning to a list restores its search, filters, scroll position and focused row.
 
+The shared page host provides Back and Forward controls beside the brand in both entry points. History restores the destination environment, resource route (including directory parameters) and specific conversation. Returning to a retained reader preserves its draft, reading position and split panes. Alt+Left/Right and macOS Cmd+[/] invoke the same history; unavailable directions are disabled. Title and run-state updates replace the current history snapshot without adding visits.
+
 The shared page host opens global search from the topmost application header in both browser and desktop entry points, or **Cmd/Ctrl+K**. It shows recent resources when the query is empty and groups matching names or titles by workspace, project and conversation. Results retain their execution environment and use the same navigation paths as the sidebar. Keep the modal in the host so keyboard focus and navigation work across panes. Escape returns focus to the invoking control.
 
 Global search keeps results in memory across dialog opens and reads saved conversation titles and archive state first. Entering a search term starts background conversation discovery. Available results stay usable while discovery runs.

@@ -9,6 +9,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   let navigation = null, compactNavigationOpen = false, conversationListWidth = 280;
   let conversationsVisible = false, conversationsPresented = false, appliedURL = location.href;
   const group = {pages:[], focused:'', zoomed:'', widths:[]};
+  const historyID = crypto.randomUUID(), visits = [];
+  let visitIndex = -1, restoringVisit = false, historyPending = false;
   try {
     const width = Number(localStorage.getItem('workhub:conversation-list-width:v1'));
     if (width >= 220 && width <= 520) conversationListWidth = width;
@@ -101,13 +103,32 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const renderedConversationListWidth = () => sharedListWidth?.current() ?? conversationListWidth;
   const wide = group => innerWidth - (sharedLayout() ? renderedConversationListWidth() : 0) >= Math.max(761,group.pages.length * 320 + 32);
   const visiblePages = group => !conversationsVisible ? [] : group.zoomed || !wide(group) ? [group.pages.find(page => page.id === (group.zoomed || group.focused)) || group.pages[0]].filter(Boolean) : group.pages;
+  const visitKey = (snapshot, pageID) => JSON.stringify([snapshot.environment,snapshot.route,identity(snapshot) || (isPaneView(snapshot) ? pageID : '')]);
+  function travel(offset) {
+    if (historyPending || !visits[visitIndex + offset]) return;
+    historyPending = true;
+    history.go(offset);
+  }
   function syncURL() {
     const page = conversationsVisible ? group.pages.find(page => page.id === group.focused) || group.pages[0] : workspace;
     if (!page) return;
     const url = new URL(location.href), snapshot = page.snapshot;
     if (snapshot.environment === 'local') url.searchParams.delete('environment'); else url.searchParams.set('environment',snapshot.environment);
     url.hash = conversationsVisible ? '/sessions' : snapshot.route;
-    if (url.href !== location.href) history.pushState(null,'',url);
+    if (!restoringVisit) {
+      const snapshotCopy = JSON.parse(JSON.stringify(snapshot));
+      const key = visitKey(snapshot,page.id), previous = visits[visitIndex];
+      // Resolve the initially empty conversation destination in place.
+      const resolving = previous?.snapshot.route === '/sessions' && !isPaneView(previous.snapshot) && snapshot.route === '/sessions' && previous.snapshot.environment === snapshot.environment;
+      const changed = previous?.key !== key && !resolving;
+      if (changed) {
+        visits.splice(visitIndex + 1);
+        visitIndex = visits.length;
+      }
+      visits[visitIndex] = {key,snapshot:snapshotCopy,pageID:page.id};
+      const state = {...history.state,yoluNavigation:{id:historyID,index:visitIndex}};
+      history[changed && visitIndex > 0 ? 'pushState' : 'replaceState'](state,'',url);
+    }
     appliedURL = location.href;
     document.title = snapshot.title + ' · Yolu';
   }
@@ -116,6 +137,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const controls = document.getElementById('workhubWindowControls');
     if (controls) window.WorkHubLayout.renderChrome(controls,{
       ready:!!page?.ready,
+      canGoBack:visitIndex > 0,
+      canGoForward:visitIndex < visits.length - 1,
+      back:() => travel(-1), forward:() => travel(1),
       home:() => openPage({route:'/workspaces',environment:page?.snapshot.environment}),
       search:trigger => search.open(trigger),
       issues:() => openPage({route:'/issues',environment:page?.snapshot.environment}),
@@ -163,7 +187,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   function workspaceKeydown(event) {
     if (event.defaultPrevented || event.isComposing || event.repeat) return;
-    if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+    const mac = navigator.platform.startsWith('Mac');
+    const direction = !event.shiftKey && (mac && event.metaKey && !event.ctrlKey && !event.altKey && ['[',']'].includes(event.key)
+      ? event.key === '[' ? -1 : 1
+      : !mac && event.altKey && !event.ctrlKey && !event.metaKey && ['ArrowLeft','ArrowRight'].includes(event.key) ? event.key === 'ArrowLeft' ? -1 : 1 : 0);
+    if (direction) {
+      event.preventDefault(); travel(direction);
+    } else if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
       event.preventDefault();
       search.open(event.currentTarget.activeElement);
     } else if (event.key === 'Escape' && compactNavigationOpen && !navigation?.modalOpen) {
@@ -226,7 +256,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (current?.visible && current.restored) search.remember(current.snapshot);
     if (!performance.getEntriesByName?.('workhub:layout-ready').length) performance.mark?.('workhub:layout-ready');
   }
-  function update() {renderLayout(); syncURL();}
+  function update() {renderLayout(); syncURL(); renderChrome();}
   function focusPane(owner,id) {
     if (!owner.pages.some(page => page.id === id) || owner.focused === id) return;
     owner.focused = id;
@@ -243,9 +273,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (isTerminal(snapshot)) url.searchParams.set('workspace-terminal','1');
     url.hash = snapshot.route;
     const page = {id,snapshot,frame,url,ready:false,mounted:false};
-    pages.append(frame); return page;
+    return page;
   }
-  function mountPage(page) {
+  function mountPage(page, container = pages) {
     if (page.mounted) return;
     page.mounted = true;
     if (page.id !== 'workspace' && page.id !== 'shared-navigation') page.url.searchParams.set('workspace-conversation','1');
@@ -256,6 +286,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       page.url.searchParams.set('workspace-sidebar-inset','0');
     }
     page.frame.src = page.url.href;
+    // Set the initial URL before insertion. Navigating an already attached
+    // blank iframe can add a child entry to the browser's joint history.
+    container.append(page.frame);
   }
   function createNavigation() {
     const wrapper = document.createElement('aside'); wrapper.className = 'workspace-shared-navigation'; wrapper.setAttribute('aria-label',uiText("共享导航与对话列表"));
@@ -268,8 +301,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const resizeHandle = document.createElement('div'); resizeHandle.className = 'workspace-shared-list-resize'; resizeHandle.setAttribute('role','separator'); resizeHandle.tabIndex = 0;
     resizeHandle.setAttribute('aria-label',uiText("调整共享对话列表宽度")); resizeHandle.setAttribute('aria-orientation','vertical'); resizeHandle.setAttribute('aria-controls',wrapper.id);
     resizeHandle.title = uiText("拖动调整对话列表宽度，双击恢复默认");
-    wrapper.append(page.frame,listSize); document.body.append(wrapper,resizeHandle); navigation = {...page,wrapper,resizeHandle};
-    mountPage(navigation);
+    wrapper.append(listSize); navigation = {...page,wrapper,resizeHandle};
+    mountPage(navigation,wrapper); document.body.append(wrapper,resizeHandle);
     let resizeFrame = 0;
     const paint = () => {resizeFrame = 0; paintConversationListWidth();};
     const resize = width => {
@@ -477,6 +510,34 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (page?.ready) openPage({route:'/workspaces',environment:page.snapshot.environment});
   });
   function followURL() {
+    const destination = history.state?.yoluNavigation;
+    if (destination?.id === historyID && destination.index !== visitIndex && visits[destination.index]) {
+      const previous = visitIndex, visit = visits[destination.index];
+      historyPending = false;
+      restoringVisit = true;
+      const retained = group.pages.find(page => page.id === visit.pageID && visitKey(page.snapshot,page.id) === visit.key);
+      // Reuse retained readers to preserve drafts, scroll position and splits.
+      if (retained && (conversationsVisible || canClose(workspace))) {
+        conversationsVisible = true; compactNavigationOpen = false;
+        group.focused = retained.id;
+        if (group.zoomed) group.zoomed = retained.id;
+        update();
+      } else if (!retained) dispatchOpen({snapshot:visit.snapshot});
+      restoringVisit = false;
+      const active = conversationsVisible ? group.pages.find(page => page.id === group.focused) : workspace;
+      if (!active || visitKey(active.snapshot,visit.pageID) !== visit.key) {
+        // Respect the existing close guard for unfinished actions.
+        historyPending = true; history.go(previous - destination.index);
+        return;
+      }
+      visits[destination.index] = {...visit,pageID:active.id,key:visitKey(active.snapshot,active.id)};
+      visitIndex = destination.index;
+      appliedURL = location.href;
+      renderChrome();
+      currentPage()?.frame.focus({preventScroll:true});
+      return;
+    }
+    historyPending = false;
     if (appliedURL === location.href) return;
     appliedURL = location.href;
     const route = location.hash.slice(1), environment = new URLSearchParams(location.search).get('environment') || 'local';

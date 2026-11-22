@@ -203,3 +203,23 @@ html[data-workhub-platform=windows] .workhub-window-controls {
   .window-utilities { gap: 2px; right: 6px; }
   .window-utilities .codex-quota-trigger > svg { display: none; }
 }
+
+/* Navigation stays beside the brand across browser and native title bars. */
+.window-history { position: absolute; left: 112px; top: 0; height: 100%; display: flex; align-items: center; gap: 2px; pointer-events: auto; }
+html[data-workhub-platform=macos] .window-history { left: 193px; }
+.window-history .window-utility-button { width: 32px; min-width: 32px; height: 32px; padding: 0; }
+@media (max-width: 760px) {
+  html[data-workhub-desktop] .window-brand-trigger { width: 32px; padding: 0; justify-content: center; }
+  .window-brand-trigger > :is(span,svg) { display: none; }
+  .window-history { left: 45px; }
+  html[data-workhub-platform=macos] .window-history { left: 126px; }
+  html[data-workhub-platform=macos] .window-search-trigger { left: calc((100vw + 130px) / 2); }
+}
+@media (max-width: 400px) {
+  html[data-workhub-platform=macos] .window-issues { display: none; }
+}
+@media (max-width: 520px) {
+  html[data-workhub-platform=windows] .window-issues { display: none; }
+  html[data-workhub-platform=windows] .window-utilities .codex-quota-trigger { display: none; }
+  html[data-workhub-platform=windows] .window-search-trigger { left: 140px; }
+}

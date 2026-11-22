@@ -387,3 +387,113 @@ for (const desktop of [false,true]) test(`top header owns search, Issues and ref
   assert.equal(h.w.location.search,'?environment=remote');
   assert.equal(h.chrome.at(-1).props.issuesActive,true);
 });
+
+const traverse = (h, action) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('history traversal did not complete')), 1000);
+  h.w.addEventListener('popstate', () => {clearTimeout(timer); resolve();}, {once:true});
+  action();
+});
+for (const desktop of [false,true]) test(`back and forward restore the exact retained conversation and project directory (desktop=${desktop})`, async t => {
+  const h = harness(t, '#/workspaces', {desktop});
+  assert.equal(h.chrome.at(-1).props.canGoBack, false);
+  assert.equal(h.chrome.at(-1).props.canGoForward, false);
+  const snapshot = {...conversation('remote-thread'), environment:'remote'};
+  open(h, snapshot);
+  const reader = visible(h)[0], document = reader.contentDocument;
+  const html = document.appendChild(document.createElement('html'));
+  const body = html.appendChild(document.createElement('body'));
+  const draft = body.appendChild(document.createElement('textarea'));
+  draft.value = 'unsent draft';
+  const route = '/projects/app?directory=%2Frepo%2Ffeature';
+  open(h, {route,environment:'remote'});
+  const length = h.w.history.length;
+  await traverse(h, () => h.chrome.at(-1).props.back());
+  assert.deepEqual(visible(h), [reader]);
+  assert.equal(reader.contentDocument, document);
+  assert.equal(draft.value, 'unsent draft');
+  assert.equal(h.w.location.search, '?environment=remote');
+  assert.equal(h.chrome.at(-1).props.canGoForward, true);
+  await traverse(h, () => h.chrome.at(-1).props.forward());
+  assert.equal(h.w.location.hash, '#' + route);
+  assert.deepEqual(visible(h), [h.workspace]);
+  assert.equal(h.w.history.length, length);
+  assert.equal(h.chrome.at(-1).props.canGoForward, false);
+});
+
+test('browser history distinguishes conversations with the same URL and ignores metadata updates', async t => {
+  const h = harness(t);
+  open(h,conversation('one'));
+  const reader = visible(h)[0];
+  open(h,conversation('two'));
+  const length = h.w.history.length;
+  h.send(reader, 'workhub:page-state', {snapshot:{...conversation('two'),title:'Renamed',context:'Running'}});
+  assert.equal(h.w.history.length, length);
+  await traverse(h, () => h.w.history.back());
+  assert.equal(h.messages.get(reader).findLast(m => m.type === 'workhub:page-restore').snapshot.conversation.selected, 'one');
+  await traverse(h, () => h.w.history.forward());
+  assert.equal(h.messages.get(reader).findLast(m => m.type === 'workhub:page-restore').snapshot.title, 'Renamed');
+  await traverse(h, () => h.w.history.back());
+  open(h, {route:'/settings',environment:'local'});
+  assert.equal(h.chrome.at(-1).props.canGoForward, false);
+  await traverse(h, () => h.w.history.back());
+  assert.equal(h.messages.get(reader).findLast(m => m.type === 'workhub:page-restore').snapshot.conversation.selected, 'one');
+});
+
+test('history restores focused split readers and keyboard navigation works inside frames', async t => {
+  const h = harness(t);
+  open(h,conversation('one'));
+  open(h,conversation('two'),'split');
+  const readers = visible(h);
+  open(h,{route:'/projects/app',environment:'local'});
+  const key = new h.workspace.contentWindow.KeyboardEvent('keydown', {key:'ArrowLeft',altKey:true,bubbles:true,cancelable:true});
+  await traverse(h, () => h.workspace.contentDocument.dispatchEvent(key));
+  assert.equal(key.defaultPrevented,true);
+  assert.deepEqual(visible(h),readers);
+  assert.equal(readers[1].dataset.focused,'true');
+  await traverse(h, () => h.w.history.back());
+  assert.deepEqual(visible(h),readers);
+  assert.equal(readers[0].dataset.focused,'true');
+});
+
+test('history respects resource close guards and recovers its URL and controls', async t => {
+  const h = harness(t);
+  open(h, conversation('one'));
+  open(h, {route:'/settings',environment:'local'});
+  h.workspace.contentWindow.WorkHubPage.canClose = () => false;
+  await new Promise((resolve,reject) => {
+    const timer = setTimeout(() => reject(new Error('guarded history did not return')),1000);
+    let count = 0;
+    const listener = () => {if (++count === 2) {clearTimeout(timer); h.w.removeEventListener('popstate',listener); resolve();}};
+    h.w.addEventListener('popstate',listener);
+    h.chrome.at(-1).props.back();
+  });
+  assert.equal(h.w.location.hash,'#/settings');
+  assert.deepEqual(visible(h),[h.workspace]);
+  h.workspace.contentWindow.WorkHubPage.canClose = () => true;
+  await traverse(h, () => h.chrome.at(-1).props.back());
+  assert.equal(h.w.location.hash,'#/sessions');
+});
+
+test('an initially empty conversation destination resolves in place instead of trapping Back', async t => {
+  const h = harness(t,'#/sessions');
+  open(h,conversation('one'));
+  assert.equal(h.w.history.length,1);
+  assert.equal(h.chrome.at(-1).props.canGoBack,false);
+  open(h,{route:'/projects',environment:'local'});
+  await traverse(h, () => h.w.history.back());
+  assert.equal(h.w.location.hash,'#/sessions');
+  assert.equal(h.chrome.at(-1).props.canGoBack,false);
+});
+
+test('macOS history shortcuts preserve Option-arrow text editing inside a composer', async t => {
+  const h = harness(t);
+  Object.defineProperty(h.w.navigator,'platform',{value:'MacIntel',configurable:true});
+  open(h,conversation('one'));
+  const event = new h.w.KeyboardEvent('keydown',{key:'ArrowLeft',altKey:true,cancelable:true});
+  h.w.document.dispatchEvent(event);
+  assert.equal(event.defaultPrevented,false);
+  const back = new h.w.KeyboardEvent('keydown',{key:'[',metaKey:true,cancelable:true});
+  await traverse(h, () => h.w.document.dispatchEvent(back));
+  assert.equal(back.defaultPrevented,true);
+  assert.equal(h.w.location.hash,'#/workspaces');
+});
