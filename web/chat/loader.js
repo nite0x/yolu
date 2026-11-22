@@ -3,6 +3,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 (() => {
   let loading, mounted, currentOverview, version = 0;
   window.WorkHubAssistant = {
+    draftTitle() { return mounted?.draftTitle() || ''; },
     async open(options) {
       const current = ++version;
       currentOverview = options.overview;

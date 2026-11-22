@@ -43,9 +43,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const session = view ? conversationSelectedSession(view) : null;
     const project = state.projects.find(item => item.id === state.selectedProject);
     const workspace = state.workspaces.find(item => item.id === state.selectedWorkspace);
-    const title = view ? view.creating ? uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? 'Issues' : state.view === 'projects' ? uiText("项目") : workspace?.name || uiText("工作区");
+    const draftTitle = view?.creating ? window.WorkHubAssistant?.draftTitle?.() || '' : '';
+    const title = view ? view.creating ? draftTitle ? uiText("草稿：{0}", draftTitle) : uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? 'Issues' : state.view === 'projects' ? uiText("项目") : workspace?.name || uiText("工作区");
     return {
-      route, environment: activeEnvironment, title, kind: state.view,
+      route, environment: activeEnvironment, title, kind: state.view, draftTitle,
       terminal:view?.creating ? creationHint : undefined,
       context: view ? (() => {
         const environment = session?.environment_id || activeEnvironment;
@@ -270,6 +271,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('hashchange', schedule);
   window.addEventListener('workhub:workspace-refreshed', schedule);
   window.addEventListener('workhub:session-loaded', schedule);
+  window.addEventListener('workhub:chat-draft', schedule);
   window.addEventListener('workhub:parallel-command',event => {if (parallelPane && ['close','zoom'].includes(event.detail)) post('workhub:page-pane-command',{command:event.detail});});
   window.addEventListener('message', event => {
     if (event.source !== host || event.origin !== location.origin) return;
@@ -299,7 +301,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
     else if (message?.type === 'workhub:workspace-route' && navigationOnly) {
       const view = message.route.split('/')[1]?.split('?')[0];
-      document.documentElement.dataset.workspaceMainView = view === 'sessions' ? 'workspaces' : view;
+      document.documentElement.dataset.workspaceMainView = view;
       document.querySelectorAll('.sidebar [data-view]').forEach(button => {
         const current = button.dataset.view === document.documentElement.dataset.workspaceMainView;
         button.classList.toggle('active',current);
@@ -340,6 +342,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     // Existing pagehide handlers persist drafts and dispose UI subscriptions.
     window.dispatchEvent(new Event('pagehide'));
     disposed = true; clearTimeout(timer); observer.disconnect(); chromeObserver.disconnect(); chromeResize?.disconnect(); modalObserver?.disconnect();
+    window.removeEventListener('workhub:chat-draft', schedule);
     window.removeEventListener('resize', publishChrome);
     document.removeEventListener('pointerdown', focus, true);
     document.removeEventListener('focusin', focus);

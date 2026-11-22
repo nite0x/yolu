@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Check, Feedback, NativeSelect, Option } from "./workspace/shared"
 import { ProjectForm, WorkspaceForm, WorkspaceProjectsForm, WorkspaceEditForm, WorkspaceDirectoryForm, WorktreeForm, GitDialog } from "./workspace/forms"
 import { workspaceUI } from "./workspace/renderers"
-import { SettingsPage, EnvironmentForm } from "./workspace/settings"
+import { SettingsPage, EnvironmentForm, setupSettingsNavigation } from "./workspace/settings"
 import { SessionPickerDialog, CommandOutputDialog } from "./workspace/sessions"
 import { SessionBrowser } from "./workspace/session-browser"
 import "./styles.css"
@@ -81,6 +81,7 @@ mount("workspaceDirectoryDialog", <WorkspaceDirectoryForm />)
 mount("worktreeDialog", <WorktreeForm />)
 mount("gitDialog", <GitDialog />)
 mount("settingsPage", <SettingsPage />)
+setupSettingsNavigation()
 mount("environmentDialog", <EnvironmentForm />)
 mount("sessionDialog", <SessionPickerDialog />)
 mount("sessionCommandOutputDialog", <CommandOutputDialog />)

@@ -744,6 +744,11 @@ test('settings preserve unsaved edits during polling and keep the terminal reque
   h.change('#terminalKind', 'custom');
   assert.equal(h.$('#terminalPath').required, true);
   const pathInput = h.input('#terminalPath', ' /my/terminal ');
+  h.click('[data-settings-section="settings-conversation"]');
+  assert.equal(h.window.document.activeElement.id,'settings-conversation-title');
+  assert.equal(h.$('[data-settings-section="settings-conversation"]').getAttribute('aria-current'),'location');
+  assert.equal(h.$('#terminalPath'),pathInput,'category navigation retains the same unsaved form');
+  assert.equal(pathInput.value,' /my/terminal ');
   h.change('#terminalStyle', 'command');
   h.data.projects[0].worktrees[0].dirty = 2;
   await h.window.refresh();
@@ -3842,7 +3847,7 @@ test('shared navigator starts with search and lists resources without pinning', 
   post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
   await settle();await settle();
   assert(h.$('[data-collection-href="#/workspaces/workspace"]'));
-  assert(h.$('[data-collection-href^="#/projects/app"] .shortcut-badge'));
+  assert.equal(h.$('[data-collection-href^="#/projects/app"]'),null,'workspace conversations are not duplicated under the project');
   assert(h.$('[data-collection-href^="#/projects/backend"]'));
   assert.equal(h.$('#workspaceShortcutPicker, #pinConversationDirectory, .session-browser-list-heading'),null);
   assert(h.$('#sessionBrowserSearch'));

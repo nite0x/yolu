@@ -102,6 +102,11 @@ export function mountWorkspaceSidebar() {
     sidebar.querySelector<HTMLElement>(".unified-issues")!.hidden = false
     sidebar.querySelector(".sidebar-footer")?.before(document.getElementById("sessionsPage")!)
     sidebar.querySelector("nav")!.hidden = true
+    const footer = sidebar.querySelector(".sidebar-footer-actions")!
+    for (const view of ["projects", "workspaces"]) {
+      const button = sidebar.querySelector<HTMLElement>(`nav [data-view="${view}"]`)
+      if (button) {button.classList.add("sidebar-resource"); footer.prepend(button)}
+    }
   }
   const disposeIcons = setupResourceIcons(document.body)
   const hosted = document.documentElement.hasAttribute("data-workspace-page")

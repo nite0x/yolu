@@ -3,15 +3,19 @@ import {ChatController, conversationKey as key, type ChatOptions} from "./contro
 import {ChatPanel} from "./panel";
 import "./style.css";
 import {reuseValue} from "./state";
+import {draftTitle} from "./draft-title";
 
 let root: Root | undefined;
 let active: ChatController | undefined;
 const controllers = new Map<string, ChatController>();
 let mountSequence = 0;
+let unsubscribePreview: (() => void) | undefined;
 export const bridge = {
+  draftTitle: () => active && !active.getSnapshot().session ? draftTitle(active.getSnapshot().draft) : "",
   flushDraft: () => active?.flushDraft() ?? Promise.resolve(true),
   open(options: ChatOptions) {
     if (!root) root = createRoot(document.getElementById("assistantChatRoot")!);
+    unsubscribePreview?.();
     active?.disconnect();
     let controller = controllers.get(key(options));
     if (!controller) { controller = new ChatController(options); controllers.set(key(options), controller); }
@@ -21,9 +25,18 @@ export const bridge = {
       options.created(session);
     }};
     active = controller;
+    let previous: string | undefined;
+    const publishPreview = () => {
+      const preview = bridge.draftTitle();
+      if (preview === previous) return;
+      previous = preview;
+      window.dispatchEvent(new Event("workhub:chat-draft"));
+    };
+    unsubscribePreview = controller.subscribe(publishPreview);
+    publishPreview();
     root.render(<ChatPanel key={++mountSequence} controller={controller} />);
   },
-  close() { active?.disconnect(); active = undefined; root?.render(null); },
+  close() { unsubscribePreview?.(); unsubscribePreview = undefined; active?.disconnect(); active = undefined; root?.render(null); },
   updateWorkspace(workspace: ChatOptions['workspace']) {
     if (!active || !workspace || active.options.workspace?.id !== workspace.id) return;
     const next = reuseValue(active.options.workspace, workspace);

@@ -80,8 +80,13 @@ function context() {
   element<HTMLButtonElement>("terminalContext").disabled = !workspace
   element("terminalTitle").textContent = current ? current.name : uiText("新建对话")
   element("terminalDirectoryName").textContent = member?.project_name || (workspace?.has_directory ? uiText("工作区根目录") : uiText("工作目录"))
+  element("terminalDirectoryName").title = element("terminalDirectoryName").textContent || ""
+  element("terminalBranch").title = member?.worktree?.branch || ""
   element("terminalBranch").hidden = !member?.worktree?.branch
   element("terminalBranchName").textContent = member?.worktree?.branch || ""
+  const path = current?.cwd || member?.path || workspace?.path || ""
+  element("terminalContextPath").textContent = path
+  element("terminalContextPath").title = path
 }
 
 function refreshDirectories(preferred = saved.terminal?.projectID) {
@@ -103,7 +108,11 @@ function directoryPath() {
 }
 function renderProfiles(selected = profileSelect.value || conversationDefaults.get("terminal-profile")) {
   profileSelect.replaceChildren()
-  for (const profile of [...profiles, ...customProfiles]) profileSelect.add(new Option(profile.name + (!profile.available ? uiText(" · 未找到命令") : ""), profile.id))
+  for (const profile of [...profiles, ...customProfiles]) {
+    const option = new Option(profile.name + (!profile.available ? uiText(" · 未找到命令") : ""), profile.id)
+    option.disabled = !profile.available
+    profileSelect.add(option)
+  }
   profileSelect.add(new Option(uiText("自定义 Agent…"), "custom"))
   const available = [...profiles, ...customProfiles].filter(p => p.available)
   profileSelect.value = available.some(p => p.id === selected) ? selected : available.find(p => p.id === "codex")?.id || available[0]?.id || "shell"
@@ -122,11 +131,12 @@ function syncLauncher() {
   profileSelect.disabled = unavailable
   workspaceSelect.disabled = pending || !!current
   directorySelect.disabled = pending || !!current
+  element("terminalDirectoryChoicesField").hidden = !!current || directorySelect.options.length <= 1
   element<HTMLButtonElement>("terminalKindUI").disabled = pending || !!current
   renderCreationChoices(directorySelect, element("terminalDirectoryChoices"))
   renderCreationChoices(profileSelect, element("terminalProfileChoices"), value => {
     if (value !== "custom") element<HTMLFormElement>("terminalForm").requestSubmit()
-  })
+  }, {actions:true})
   element("terminalForm").setAttribute("aria-busy", String(pending))
 }
 function parsedArgs(): string[] {

@@ -94,7 +94,7 @@ test('terminal defaults pick a valid workspace and Codex, remember Agent and ret
   assert.equal(h.$('#terminalProfile').hidden,true);
   h.$('#terminalProfile').value='claude'; h.$('#terminalProfile').dispatchEvent(new h.w.Event('change'));
   assert.equal(h.$('#terminalProfile').value,'claude');
-  assert.equal(h.$('#terminalProfileChoices [data-creation-choice="claude"]').getAttribute('aria-pressed'),'true');
+  assert.equal(h.$('#terminalProfileChoices [data-creation-choice="claude"]').getAttribute('aria-pressed'),null);
   assert.equal(h.w.localStorage.getItem('workhub:conversation-defaults:v1:terminal-profile'),'claude');
   h.$('#terminalProfileChoices [data-creation-choice="custom"]').click();
   assert.equal(h.$('#customTerminal').hidden,false);

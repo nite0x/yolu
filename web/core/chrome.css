@@ -1,5 +1,5 @@
-/* Calm frame: app chrome sits on one tinted canvas and content floats above it
-   on raised surfaces. Separation comes from space and elevation, not borders.
+/* Continuous frame: navigation and product pages share one quiet canvas.
+   Elevation is reserved for temporary overlays and the composer.
    Loaded last on every page so it refines the per-feature stylesheets. */
 :root {
   --yolu-pane-radius: 14px;
@@ -18,7 +18,7 @@
 
 html[data-workhub-desktop] {
   --workspace-pane-gap: 8px;
-  --workspace-pane-inset: 8px;
+  --workspace-pane-inset: 0px;
   --workspace-pane-top-inset: var(--workspace-pane-inset);
   --workspace-list-heading-height: 34px;
   --workspace-list-tools-gap: 8px;
@@ -46,29 +46,60 @@ html[data-workhub-desktop] .workspace-shared-navigation { background: var(--yolu
 .workspace-shared-navigation { background: var(--yolu-canvas, #eef2ef); }
 html[data-workhub-desktop] .workspace-shared-navigation[data-modal] { background: transparent; }
 
-/* Raised panes. Borders stay 1px transparent so pane geometry is unchanged. */
+/* Product panes meet the navigator edge without a floating card frame. */
 body[data-workspace-conversations] .workspace-page,
 html[data-workhub-desktop] body[data-workspace-conversations] .workspace-page,
 html[data-workspace-navigation] body .shell,
 html[data-workhub-desktop] .shell,
 html[data-workhub-desktop] .workspace-pane,
 .workspace-list-placeholder {
-  border-color: transparent;
-  border-radius: var(--yolu-pane-radius);
-  background: var(--yolu-surface, #fff);
-  box-shadow: var(--yolu-elevation);
+  border: 0;
+  border-radius: 0;
+  background: var(--yolu-rail-canvas, var(--yolu-canvas));
+  box-shadow: none;
+}
+body[data-workspace-conversations] .workspace-pages,
+html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages { padding: 0; }
+html[data-workhub-desktop] .shell main { background: var(--yolu-rail-canvas); }
+html[data-workhub-desktop] .workspace-pane { background: transparent; }
+html[data-workhub-desktop] .assistant-chat-scope,
+.terminal-page { --background: var(--yolu-rail-canvas, var(--yolu-canvas)); }
+.terminal-page { background: var(--background); }
+html[data-workhub-desktop] .workspaces-page .workspace-projects-view { background: var(--yolu-rail-canvas); }
+html[data-workhub-desktop] .workspace-directory-overview {
+  padding: 0 0 18px;
+  border: 0;
+  border-bottom: 1px solid var(--yolu-border);
+  border-radius: 0;
+  background: transparent;
 }
 html[data-workhub-desktop] :is(.workspaces-page,.projects-page:not(.project-tool-page)) .shell,
 html[data-workhub-desktop] :is(.workspaces-page,.projects-page) #workContent { background: transparent; box-shadow: none; }
-html[data-workhub-desktop] .workspace-pane { border: 1px solid transparent; }
+html[data-workhub-desktop] .workspace-pane { border: 0; }
 html[data-workhub-desktop][data-workspace-conversation] body .shell { border-radius: 0; box-shadow: none; }
 body[data-workspace-conversations] .workspace-page[data-focused=true] {
   border-color: transparent;
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--yolu-primary, #1f5f5a) 38%, transparent), var(--yolu-elevation);
+  box-shadow: inset 0 2px color-mix(in srgb, var(--yolu-primary, #1f5f5a) 38%, transparent);
 }
-html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.chat-panel-header { background: var(--background); }
+html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.chat-panel-header {
+  background: color-mix(in srgb, var(--yolu-primary) 5%, var(--background));
+  box-shadow: inset 0 2px var(--yolu-primary);
+}
 
-/* Resize grips appear only when the pointer is on the gutter. */
+/* A persistent hairline separates parallel conversations. The full 8px gutter
+   remains draggable; its grip appears on hover or keyboard focus. */
+.workspace-pane-resize::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 50%;
+  width: 1px;
+  background: var(--yolu-border-strong, #d6ddeb);
+  pointer-events: none;
+  transition: background-color .15s;
+}
+.workspace-pane-resize:hover::before,
+.workspace-pane-resize:focus-visible::before,
+.workspace-pages[data-split-resizing] .workspace-pane-resize::before { background: var(--yolu-primary-border); }
 .workspace-pane-resize::after, .workspace-shared-list-resize::after { width: 3px; inset: 50% auto auto 50%; height: 40px; transform: translate(-50%, -50%); border-radius: 3px; background: transparent; transition: background-color .15s; }
 .workspace-pane-resize:hover::after, .workspace-pane-resize:focus-visible::after, .workspace-pages[data-split-resizing] .workspace-pane-resize::after,
 .workspace-shared-list-resize:hover::after, .workspace-shared-list-resize:focus-visible::after, body[data-split-resizing] .workspace-shared-list-resize::after { background: color-mix(in srgb, var(--yolu-primary, #1f5f5a) 45%, transparent); }
@@ -120,10 +151,10 @@ input[type="search"][data-slot="input"]:focus-visible { background-image: none; 
 @media (hover: none) { .parallel-list-add[data-slot] { opacity: 1; } }
 
 /* Conversation surface: open header, chat bubbles, floating composer. */
-.conversation-surface-header.chat-panel-header { padding: 12px 18px 10px; border-bottom-color: color-mix(in srgb, var(--yolu-border, #e2e8e4) 70%, transparent); }
+.conversation-surface-header.chat-panel-header { padding: 6px 12px; border-bottom-color: color-mix(in srgb, var(--yolu-border, #e2e8e4) 70%, transparent); }
 .conversation-surface-header .chat-panel-toolbar .chat-panel-title { font-size: var(--yolu-font-size-body); letter-spacing: -.01em; }
 .conversation-surface-header .chat-status { border-radius: 999px; }
-.conversation-icon-button { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; color: var(--yolu-secondary-ink, #435856); }
+.conversation-icon-button { width: 32px; height: 32px; min-width: 32px; border-radius: 8px; color: var(--yolu-secondary-ink, #435856); }
 .conversation-icon-button:hover { color: var(--yolu-foreground, #182a2b); }
 .assistant-chat-scope .aui-user-message-content { --muted: var(--yolu-selected, #dbe9e2); --composer-radius: 18px; }
 .assistant-chat-scope [data-slot="aui_composer-shell"] { --composer-radius: 20px; --composer-bg: var(--yolu-surface, #fff); --composer-padding: 10px; box-shadow: var(--yolu-elevation-float); transition: box-shadow .15s, border-color .15s; }
@@ -183,6 +214,12 @@ html[data-workspace-navigation] .sidebar .sidebar-footer-actions { flex-directio
 html[data-workspace-navigation] .sidebar .sidebar-settings { gap: 7px; width: auto; padding: 0 7px; font-size: var(--yolu-font-size-label); white-space: nowrap; }
 html[data-workspace-navigation] .sidebar .sidebar-settings::after { content: attr(aria-label); position: static; transform: none; padding: 0; background: transparent; color: inherit; }
 html[data-workspace-navigation] .sidebar .sidebar-settings svg { width: 15px; height: 15px; }
+html[data-workspace-navigation] .sidebar .sidebar-footer [data-view] { display: inline-flex !important; align-items: center; justify-content: center; gap: 6px; width: auto; height: 32px; min-width: 0; padding: 0 7px; border-radius: 7px; font-size: var(--yolu-font-size-label); }
+html[data-workspace-navigation] .sidebar .sidebar-footer .nav-text { display: inline; }
+html[data-workspace-navigation] .sidebar .sidebar-footer .nav-icon svg { width: 15px; height: 15px; }
+html[data-workspace-navigation] .sidebar .sidebar-footer-actions { width: 100%; justify-content: space-between; gap: 4px; }
+html[data-workspace-navigation] .sidebar .sidebar-footer [data-view]:hover { background: var(--yolu-hover); }
+html[data-workspace-navigation] .sidebar .sidebar-footer [aria-current=page] { background: var(--yolu-selected); color: var(--yolu-primary-ink); }
 .issues-page { max-width: 920px; padding: 24px; }
 .issues-page p { color: var(--yolu-muted-ink); }
 @media (max-width: 760px) {

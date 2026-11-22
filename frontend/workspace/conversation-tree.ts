@@ -65,11 +65,21 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
   }
   if (options.navigator) {
     const collections = new Map<string, {group: ConversationGroup; sessions: Session[]}>()
+    // The all-conversations navigator files each runtime once, preferring its
+    // workspace. Explicit workspace/project scopes still expose all membership.
+    const filed = new Set<string>()
+    const claim = (items: Session[]) => items.filter(session => {
+      const key = conversationEnvironmentKey(session.environment_id || "local", session.id)
+      if (filed.has(key)) return false
+      filed.add(key)
+      return true
+    })
     const workspaceHref = (id: string) => `#/workspaces/${encodeURIComponent(id)}`
     for (const workspace of options.navigator.workspaces) {
       const {id, name, environment, environmentName} = workspace
       const key = JSON.stringify([environment, id])
       const entry = groups.get(key) || {group:{key,name,environment,environmentName,workspaceID:id,collapsed:options.collapsed.includes(key),total:0,shown:0,showContext:false},sessions:[]}
+      entry.sessions = claim(entry.sessions)
       Object.assign(entry.group,{href:workspaceHref(id),icon:workspace.appearance,identity:`workspace:${id}`,iconName:name})
       if (!options.filtered || entry.sessions.length) collections.set(key,entry)
       groups.delete(key)
@@ -78,9 +88,11 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
     for (const directory of options.navigator.directories) {
       const {cwd, environment, projectID, projectName, projectRoot} = directory
       const path = conversationPathKey(cwd)
-      const sessionsForDirectory = sessions.filter(session => (session.environment_id || "local") === environment &&
+      const matchingDirectory = sessions.filter(session => (session.environment_id || "local") === environment &&
         (conversationPathKey(session.cwd) === path || !!(projectRoot && projectID && session.context?.projectID === projectID)))
+      const sessionsForDirectory = claim(matchingDirectory)
       for (const session of sessionsForDirectory) projectSessions.add(session)
+      if (matchingDirectory.length && !sessionsForDirectory.length) continue
       if (options.filtered && !sessionsForDirectory.length) continue
       const key = JSON.stringify([environment,"directory",path])
       const name = projectRoot && projectName ? projectName : directory.name
@@ -89,6 +101,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
         href,icon:directory.appearance,identity:projectID ? `project:${projectID}` : directory.key,iconName:directory.name},sessions:sessionsForDirectory})
     }
     for (const [key, entry] of groups) {
+      entry.sessions = claim(entry.sessions)
       if (!entry.group.workspaceID) {
         entry.sessions = entry.sessions.filter(session => !projectSessions.has(session))
         if (!entry.sessions.length) { groups.delete(key); continue }

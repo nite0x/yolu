@@ -379,8 +379,8 @@ function renderConversationList() {
   const statusLabel = ({running:uiText("进行中"), waiting:uiText("待确认"), unread:uiText("未读")})[statusFilter] || '';
   const filterLabels = [directoryPath ? directoryPath.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || directoryPath : '', view.archived ? uiText("已归档") : '', view.environmentFilter ? environmentName(view.environmentFilter) : '', statusLabel].filter(Boolean);
   $('#sessionClearFilters').hidden = !filterCount;
-  $('#sessionActiveFilterLabel').hidden = !filterCount;
-  $('#sessionActiveFilterLabel').textContent = filterLabels.join(' · ');
+  $('#sessionActiveFilterLabel').hidden = !filterCount && view.scope.kind === 'all';
+  $('#sessionActiveFilterText').textContent = [view.scope.kind !== 'all' ? conversationScopeName(view.scope) : '', ...filterLabels].filter(Boolean).join(' · ');
   $('#sessionActiveFilterLabel').title = directoryPath || '';
   const picker = $('#sessionScopePicker');
   picker.toggleAttribute('data-active', !!(directoryPath || filterLabels.length || view.scope.kind !== 'all'));
@@ -798,6 +798,12 @@ document.addEventListener('click', event => {
       resetConversationListFilters(); $('#sessionBrowserSearch').focus(); break;
     case 'clear-filters':
       resetConversationListFilters(); break;
+    case 'clear-scope-filters': {
+      const search = conversationState.current.search;
+      if (conversationState.current.scope.kind !== 'all') selectConversationScope({kind:'all',name:uiText("全部对话")});
+      conversationState.current.search = search;
+      resetConversationListFilters(); rememberConversationView(); break;
+    }
     case 'all': selectConversationScope({ kind: 'all', name: uiText("全部对话") }); rememberConversationView(); break;
     case 'back': {
       conversationState.current.pane = 'list'; conversationState.current.locateSelection = conversationState.current.selected; renderConversationBrowser();

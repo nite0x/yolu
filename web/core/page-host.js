@@ -137,7 +137,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     let switcher = document.getElementById('workspaceNarrowPanes');
     if (conversationsPresented && grouped(owner) && !wide(owner)) {
       if (!switcher) {switcher = document.createElement('select'); switcher.id = 'workspaceNarrowPanes'; switcher.setAttribute('aria-label',uiText("查看并列组合中的页面")); pages.append(switcher);}
-      switcher.replaceChildren(...owner.pages.map(page => {const option = document.createElement('option'); option.value = page.id; option.textContent = [page.snapshot.context,page.snapshot.title].filter(Boolean).join(' / '); return option;}));
+      switcher.replaceChildren(...owner.pages.map((page,index) => {
+        const option = document.createElement('option'); option.value = page.id;
+        const title = page.snapshot.conversation?.creating && !page.snapshot.draftTitle ? uiText("新对话 {0}",index + 1) : page.snapshot.title;
+        option.textContent = [title,page.snapshot.context].filter(Boolean).join(' · '); return option;
+      }));
       switcher.value = owner.focused; switcher.onchange = () => {owner.zoomed = ''; focusPane(owner,switcher.value);}; switcher.hidden = false;
     } else if (switcher) switcher.hidden = true;
   }

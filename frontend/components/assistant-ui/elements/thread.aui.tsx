@@ -237,7 +237,7 @@ const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root bg-background @container flex h-full flex-col"
       style={{
-        ["--thread-max-width" as string]: "56rem",
+        ["--thread-max-width" as string]: "var(--conversation-content-width, 820px)",
         ["--composer-bg" as string]:
           "color-mix(in oklab, var(--color-muted) 30%, transparent)",
         ["--composer-radius" as string]: "1rem",
@@ -258,7 +258,7 @@ const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
         >
           <AuiIf condition={isNewChatView}>
             {readOnly ? <p className="text-center text-sm text-muted-foreground">{uiText("此对话尚无已保存的消息或命令记录。")}</p> : (
-              <div className={cn(dockComposer && "flex flex-1 flex-col justify-center py-4")}><Welcome />{emptyStateControls}</div>
+              <div className={cn("conversation-start", dockComposer && "flex flex-1 flex-col")}><Welcome />{emptyStateControls}</div>
             )}
           </AuiIf>
           <AuiIf condition={isHistoryLoadingView}>
@@ -448,8 +448,8 @@ const ThreadScrollToBottom: FC = () => {
 
 const ThreadWelcome: FC = () => {
   return (
-    <div className="aui-thread-welcome-root mb-6 flex flex-col px-2">
-      <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-2xl font-medium tracking-tight duration-200">{uiText("想在这个工作目录中完成什么？")}</p>
+    <div className="aui-thread-welcome-root mb-6 flex flex-col">
+      <p className="conversation-welcome-title aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both duration-200">{uiText("想在这个工作目录中完成什么？")}</p>
     </div>
   );
 };

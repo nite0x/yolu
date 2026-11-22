@@ -28,7 +28,7 @@ function ChatStatusView({controller}: {controller: ChatController}) {
   if (!readOnly && !s.session?.archived && status === "running" && s.chat.busy) return null;
   const text = s.session?.archived ? uiText("已归档") : readOnly ? (s.terminal?.waiting ? uiText("终端待确认") : s.terminal?.connected ? uiText("终端实时同步") : uiText("历史同步中")) : s.chat.external && s.chat.busy ? status === "waiting" ? uiText("Codex 待确认") : uiText("Codex 中运行") : labels[status] || uiText("可继续对话");
   const busy = !readOnly && (s.chat.busy || s.submitting);
-  return <ConversationStatusBadge data-state={status} data-compact-idle={!readOnly && !s.session?.archived && status === "idle"}>
+  return <ConversationStatusBadge data-state={status} data-header-secondary={!readOnly && !s.session?.archived && !busy && !s.chat.blocked && ["idle", "completed", "interrupted", "unknown"].includes(status)} data-compact-idle={!readOnly && !s.session?.archived && status === "idle"}>
     {busy && status !== "waiting" ? <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : status === "completed" ? <CheckIcon aria-hidden="true" /> : <span className="chat-status-dot" aria-hidden="true" />}{text}
   </ConversationStatusBadge>;
 }
@@ -143,7 +143,7 @@ function ChatControlsView({controller, portal}: ControlsProps) {
     <Popover.Trigger asChild><Button type="button" variant="ghost" size="sm" className="chat-context-trigger chat-settings-trigger" aria-label={uiText("上下文与设置")}
       aria-description={summary} title={summary}>
       <ProviderIcon aria-hidden="true" />
-      <span className="chat-settings-model-brief truncate">{summaryModel}</span>
+      <span className="chat-settings-model-brief"><span className="chat-settings-model-prefix">{summaryModel.slice(0, -9)}</span><span className="chat-settings-model-suffix">{summaryModel.slice(-9)}</span></span>
       {summaryEffort && <span className="chat-settings-effort-brief">{summaryEffort}</span>}
       {!readOnly && <span className="chat-settings-state-icons" aria-hidden="true">
         <PermissionIcon data-danger={effectivePermission?.danger || undefined} />

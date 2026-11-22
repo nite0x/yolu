@@ -35,14 +35,14 @@ export function SessionBrowser() {
           <ListCreateButton id="newBrowserSplitSession" data-conversation-action="new" data-conversation-placement="split" label={uiText("在右侧分栏新建")} icon={<Columns2 aria-hidden="true" />} />
           <ListCreateButton id="newBrowserSession" data-conversation-action="new" label={uiText("新建对话")} icon={<SquarePen aria-hidden="true" />} />
         </>} />
-        <p id="sessionActiveFilterLabel" className="session-active-filter-label" hidden />
+        <div id="sessionActiveFilterLabel" className="session-active-filter-label" hidden><span id="sessionActiveFilterText" /><button type="button" data-conversation-action="clear-scope-filters" aria-label={uiText("清除范围与筛选")} title={uiText("清除范围与筛选")}><X aria-hidden="true" /></button></div>
       </div><div id="sessionBrowserError" role="alert" hidden /><div id="sessionBrowserList" aria-label={uiText("对话结果")} /></aside>
       <div id="sessionBrowserResize" className="session-browser-resize" role="separator" tabIndex={0} aria-label={uiText("调整对话列表宽度")} aria-orientation="vertical" aria-controls="sessionBrowserListPane" aria-valuemin={220} aria-valuemax={520} aria-valuenow={280} />
       <section className="session-browser-detail" aria-label={uiText("对话详情")}>
         <div className="session-reading-toolbar"><div className="session-browser-mobile-back"><Button type="button" size="sm" variant="ghost" data-conversation-action="back"><ArrowLeft aria-hidden="true" />{uiText("对话列表")}</Button></div></div>
         <div className="session-reading-layout" id="sessionReadingLayout"><div className="session-reading-chat">
         <div className="shrink-0">
-          <div id="sessionCreationSetup">
+          <div id="sessionCreationSetup" className="conversation-creation-setup">
             <div id="conversationCreationKind" hidden><ConversationKindSwitch kind="ui" /></div>
             <div id="sessionBrowserNewDirectoryField" className="session-browser-new-directory" hidden><span id="sessionBrowserNewDirectoryLabel">{uiText("工作目录")}</span><div id="sessionBrowserDirectoryChoices" className="creation-choices" role="group" aria-labelledby="sessionBrowserNewDirectoryLabel" /><select id="sessionBrowserNewDirectory" hidden aria-label={uiText("工作目录")} /></div>
             <details id="sessionBrowserAdditionalField" className="session-browser-new-directory session-creation-additional" hidden><summary>{uiText("可访问的其他项目目录")}<span id="sessionBrowserAdditionalCount" /></summary><div id="sessionBrowserAdditionalDirectories" /></details>

@@ -26,7 +26,12 @@
 .session-browser-resize:hover::after, .session-browser-resize:focus-visible::after, .session-browser[data-resizing] .session-browser-resize::after { left: 2px; width: 3px; background: var(--primary); }
 .session-browser[data-resizing], .session-browser[data-resizing] * { cursor: col-resize !important; user-select: none; }
 .session-browser-list-tools { padding: 10px 10px 8px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
-.session-active-filter-label { font-size: 11px; margin: 0; padding: 4px 7px; border-radius: 4px; color: var(--primary); background: var(--secondary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.session-active-filter-label { display: flex; align-items: center; gap: 4px; font-size: 12px; margin: 0; padding: 2px 4px 2px 8px; border-radius: 6px; color: var(--yolu-primary-ink); background: var(--yolu-selected); }
+.session-active-filter-label>span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.session-active-filter-label>button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; padding: 6px; border: 0; border-radius: 4px; background: transparent; color: inherit; cursor: pointer; }
+.session-active-filter-label>button svg { width: 14px; height: 14px; }
+.session-active-filter-label>button:hover { background: var(--yolu-hover); }
+.session-active-filter-label>button:focus-visible { outline: 2px solid var(--yolu-ring); }
 .session-status-filters { display: flex; align-items: center; gap: 2px; min-width: 0; padding: 3px; border-radius: 7px; background: var(--muted); }
 .session-status-filters button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; min-height: 28px; padding: 3px 2px; border: 0; border-radius: 5px; font-size: 11px; line-height: 1.4; white-space: nowrap; color: var(--muted-foreground); background: transparent; }
 .session-status-filters button:hover { color: var(--foreground); }

@@ -35,7 +35,6 @@
 .chat-panel-directory { flex: 1; display: flex; gap: 8px; min-width: 0; color: var(--muted-foreground); font-size: 11px; }
 .chat-panel-directory > span:last-child { font-family: var(--font-mono); }
 .chat-workspace-link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-workspace-context > dl { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); }
 .chat-workspace-resume { margin-top: 8px; }
 .chat-context-trigger { max-width: min(100%, 340px); min-width: 0; height: 28px; flex-shrink: 1; padding: 0 6px; font-size: 11px; color: var(--muted-foreground); }
 .chat-context-trigger > svg { width: 13px; height: 13px; flex-shrink: 0; }
@@ -54,12 +53,13 @@
 /* Button utilities are important. Match the app's base-layer overrides so
    narrow toolbar visibility wins without changing the shared Button. */
 @layer base {
+  .conversation-surface-header .aui-button-icon { width: 32px !important; min-width: 32px !important; height: 32px !important; }
   .chat-readonly-menu-trigger { display: none !important; }
   @container chat-panel (max-width: 620px) {
     .chat-panel-secondary-action { display: none !important; }
-    .chat-panel-actions .chat-status[data-compact-idle="true"] { display: none !important; }
+    .chat-panel-actions > .chat-status[data-compact-idle="true"] { display: none !important; }
     .chat-readonly-menu-trigger { display: flex !important; }
-    .chat-file-toggle-slot #toggleConversationFiles { width: 24px !important; min-width: 24px !important; height: 24px !important; gap: 0 !important; padding: 4px !important; font-size: 0 !important; }
+    .chat-file-toggle-slot #toggleConversationFiles { width: 32px !important; min-width: 32px !important; height: 32px !important; gap: 0 !important; padding: 6px !important; font-size: 0 !important; }
   }
 }
 .chat-context-disclosure { cursor: pointer; padding: 2px 0; }
@@ -89,23 +89,14 @@
 .chat-question-fields:disabled { opacity: .6; }
 @container (max-width: 620px) {
   .chat-panel-heading .chat-panel-directory { display: none; }
-  .chat-panel-actions .chat-status { max-width: 90px; overflow: hidden; }
+  .chat-panel-actions > .chat-status { max-width: 90px; overflow: hidden; }
 }
 @container chat-panel (max-width: 620px) {
   .chat-menu-secondary-action { display: flex; }
 }
 
-/* Keep creation controls in the welcome area above the docked composer. */
-.chat-creation-setup:has(> :not(#sessionCreationSetup), #sessionCreationSetup > :not([hidden])) {
-  margin-inline: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--yolu-chip-radius, 9px);
-}
-.chat-creation-setup :is(.conversation-kind-switch, .session-browser-new-directory) {
-  padding: 8px 12px;
-  border-bottom: 0;
-}
-.chat-creation-setup #sessionCreationSetup > :not([hidden]) ~ :not([hidden]) { border-top: 1px solid var(--border); }
+/* Creation uses the shared terminal/UI welcome layout without a nested card. */
+.chat-creation-setup { min-width: 0; }
 
 /* Attachments stay on the left, with settings and send/stop on the right. */
 .assistant-chat-scope [data-slot="aui_composer-shell"] { border-radius: 22px; background: var(--background); box-shadow: 0 2px 10px #00000005; padding: 12px; gap: 12px; }
@@ -173,6 +164,9 @@
 .chat-setting-creation { border-top: 1px solid var(--border); padding: 2px 14px; }
 .chat-composer-trailing > .chat-settings-trigger { max-width: 248px; }
 .chat-settings-trigger { justify-content: flex-start; }
+.chat-settings-model-brief { display: inline-flex; min-width: 0; }
+.chat-settings-model-prefix { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-settings-model-suffix { flex-shrink: 0; white-space: nowrap; }
 .chat-settings-trigger .chat-settings-effort-brief, .chat-settings-state-icons { flex-shrink: 0; color: var(--muted-foreground); }
 .chat-settings-state-icons { display: inline-flex; align-items: center; gap: 6px; padding-inline-start: 6px; border-inline-start: 1px solid var(--border); }
 .chat-settings-state-icons > svg { width: 14px; height: 14px; }
@@ -186,6 +180,8 @@
 @container (max-width: 420px) {
   .chat-composer-trailing > .chat-context-trigger { max-width: 180px; }
   .chat-permission-trigger { max-width: 164px; }
+  .chat-settings-trigger .chat-settings-state-icons,
+  .chat-settings-trigger .chat-settings-effort-brief { display: none; }
 }
 
 .chat-file-toggle-slot { display: inline-flex; align-items: center; flex-shrink: 0; }

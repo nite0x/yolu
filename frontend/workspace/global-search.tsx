@@ -121,7 +121,7 @@ function createCatalog(read: Read) {
           connected = available
           discoveredAt = 0
         }
-        update({ environments: new Map(environments.map(item => [item.id, uiText(item.name)])) })
+        update({ environments: new Map(environments.map(item => [item.id, item.id === "local" ? uiText("本机") : uiText(item.name)])) })
         if (environments.some(item => !item.connected || !!item.error)) failed()
         replace(item => item.kind === "workspace" || !connected.includes(item.environment), workspaces.map(({ id, name, environment_id, state }) => ({
           id, name, kind: "workspace", environment: environment_id, detail: state === "archived" ? uiText("已归档") : undefined,

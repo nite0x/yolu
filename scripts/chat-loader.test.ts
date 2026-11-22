@@ -54,3 +54,17 @@ test("switching conversations during lazy loading mounts only the newest workspa
     assert.equal(opened[0].value.overview, workspace);
   } finally {h.dom.window.close();}
 });
+
+test("lazy loader exposes the mounted draft preview to the page snapshot", async () => {
+  const h = mount();
+  try {
+    let preview = "";
+    (h.dom.window as any).testBridge.draftTitle = () => preview;
+    assert.equal(h.loader.draftTitle(), "");
+    await h.loader.open({overview: {projects: []}});
+    preview = "整理导航层级";
+    assert.equal(h.loader.draftTitle(), preview);
+    preview = "";
+    assert.equal(h.loader.draftTitle(), "");
+  } finally {h.dom.window.close();}
+});

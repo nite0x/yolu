@@ -1,4 +1,6 @@
 {
+  "当前": "Current",
+  "当前对话栏": "Current conversation pane",
   "Antigravity 将跳过操作权限检查。": "Antigravity will skip operation permission checks.",
   "交互预览": "Interactive preview",
   "交互预览不可用": "Interactive preview unavailable",
@@ -278,6 +280,8 @@
   "查找消息": "Find messages",
   "刷新历史": "Refresh history",
   "打开项目详情：{0}": "Open project details: {0}",
+  "工作详情": "Working details",
+  "关闭工作详情": "Close working details",
   "工作目录": "Working directory",
   "分支 · {0}": "Branch · {0}",
   "执行环境": "Execution environment",
@@ -1910,5 +1914,17 @@
   "编辑图标：{0}": "Edit icon: {0}",
   "保存图标失败：": "Could not save icon:",
   "保存中…": "Saving…",
-  "工作台工具": "Workspace tools"
+  "工作台工具": "Workspace tools",
+  "草稿：{0}": "Draft: {0}",
+  "新对话 {0}": "New chat {0}",
+  "描述你要完成的任务…": "Describe the task you want to complete…",
+  "清除范围与筛选": "Clear scope and filters",
+  "配置自定义 Agent…": "Configure custom agent…",
+  "启动 {0}": "Launch {0}",
+  "选择工具，开始终端工作": "Choose a tool to start terminal work",
+  "点击启动按钮即可打开终端，使用所选工具自己的登录与审批界面。": "Launch a tool to open a terminal using its own sign-in and approval interface.",
+  "通用": "General",
+  "诊断": "Diagnostics",
+  "设置分类": "Settings categories",
+  "选择配色后点击保存，立即应用到整个工作台，无需重新加载。": "Choose a palette and save to apply it throughout the app without reloading."
 }

@@ -61,6 +61,24 @@ function mount(existing = false, entries: Entry[] = [], extra: Partial<ChatOptio
   return {w,errors,calls,bridge,options,input,type,setChat:(value:ChatState)=>{chat=value;},failSends:(count:number)=>{sendFailures=count;},dispose(){bridge.close();dom.window.close();}};
 }
 
+test("draft previews use the first task line without creating or renaming a session", async () => {
+  const h = mount();
+  try {
+    await until(h.input);
+    const renders = (h.w as any).__panelRenders;
+    let notifications = 0;
+    h.w.addEventListener("workhub:chat-draft", () => notifications++);
+    h.type("整理导航层级\n保留已有工作区");
+    await until(() => h.w.document.querySelector("#assistantChatTitle")?.textContent === "草稿：整理导航层级");
+    assert.equal(h.bridge.draftTitle(), "整理导航层级");
+    assert(notifications > 0);
+    assert.equal((h.w as any).__panelRenders,renders,"typing updates the title without remounting the panel");
+    assert(!h.calls.some(call => /sessions\/new|name|rename/.test(call.path) && call.body));
+    h.type("");
+    await until(() => h.w.document.querySelector("#assistantChatTitle")?.textContent === "新建对话");
+  } finally {h.dispose();}
+});
+
 function setting(h: ReturnType<typeof mount>, label: string) {
   return h.w.document.querySelector<HTMLFieldSetElement>(`fieldset[aria-label="${label}"]`)!;
 }
@@ -519,20 +537,54 @@ test("official Markdown and tool components render existing history and expose c
   } finally {h.dispose();}
 });
 
-test("workspace links expose every workspace and project without expanding working details", async () => {
+test("minimal left project summary keeps workspace navigation in the right working details", async () => {
   const opened: [string, string][] = [];
   const h = mount(true, [], {overview: {workspaces: [workspace, {...workspace, id:"other", name:"另一工作区"}], projects: []}, openWorkspace: (kind, id) => {opened.push([kind, id]);}});
   try {
     await until(() => h.input());
     const context = h.w.document.querySelector<HTMLDetailsElement>(".chat-workspace-context")!;
-    h.w.document.querySelector<HTMLButtonElement>('[aria-label="打开项目详情：项目"]')!.click();
     assert.equal(context.open, false);
-    const workspaces = h.w.document.querySelectorAll<HTMLButtonElement>('.chat-workspace-links button');
+    const heading = h.w.document.querySelector(".chat-panel-heading")!;
+    assert.match(heading.textContent || "", /项目/);
+    assert.doesNotMatch(heading.textContent || "", /测试工作区|另一工作区/);
+    assert(context.closest(".chat-panel-actions"));
+    assert(!heading.contains(context));
+    heading.querySelector<HTMLButtonElement>('[aria-label="打开项目详情：项目"]')!.click();
+    assert.equal(context.open, false);
+    assert(!h.w.document.querySelector(".chat-panel-heading .chat-workspace-links"));
+    context.open = true;
+    const workspaces = context.querySelectorAll<HTMLButtonElement>('.chat-workspace-links button');
     assert.equal(workspaces.length, 2);
     workspaces.forEach(button => button.click());
     assert.deepEqual(opened, [["project","p"],["workspace","workspace"],["workspace","other"]]);
     assert.deepEqual(h.errors, []);
   } finally { h.dispose(); }
+});
+
+test("working details dismiss with Escape, outside click and close without replacing the composer", async () => {
+  const h = mount(true);
+  try {
+    await until(h.input);
+    const context = h.w.document.querySelector<HTMLDetailsElement>(".chat-workspace-context")!;
+    const summary = context.querySelector("summary")!;
+    const input = h.input();
+    h.type("保留当前草稿");
+    context.open = true;
+    summary.dispatchEvent(new h.w.KeyboardEvent("keydown", {key:"Escape", bubbles:true, cancelable:true}));
+    assert.equal(context.open, false);
+    assert.equal(h.w.document.activeElement, summary);
+    context.open = true;
+    context.querySelector(".conversation-context-popover")!.dispatchEvent(new h.w.Event("pointerdown", {bubbles:true}));
+    assert.equal(context.open, true);
+    input.dispatchEvent(new h.w.Event("pointerdown", {bubbles:true}));
+    assert.equal(context.open, false);
+    context.open = true;
+    context.querySelector<HTMLButtonElement>('[aria-label="关闭工作详情"]')!.click();
+    assert.equal(context.open, false);
+    assert.equal(h.input(), input);
+    assert.equal(input.value, "保留当前草稿");
+    assert.deepEqual(h.errors, []);
+  } finally {h.dispose();}
 });
 
 test("external directories show no workspace navigation targets", async () => {

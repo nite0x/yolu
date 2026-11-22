@@ -297,6 +297,21 @@ test('narrow windows expose every retained conversation through a selector', t =
   assert.equal(visible(h)[0].id,'page-' + selector.value);
 });
 
+test('draft pane labels distinguish empty drafts and update without changing the focused pane', t => {
+  const h = harness(t);
+  const draft = {route:'/sessions',environment:'local',title:'新建对话',conversation:{scope:{kind:'all'},creating:true,selected:null,pane:'detail'}};
+  open(h,draft);
+  open(h,draft,'split');
+  const panes = visible(h);
+  Object.defineProperty(h.w,'innerWidth',{value:900}); h.w.dispatchEvent(new h.w.Event('resize'));
+  const selector = h.w.document.getElementById('workspaceNarrowPanes');
+  assert.equal(new Set([...selector.options].map(option=>option.textContent)).size,2);
+  const focused = selector.value;
+  h.send(panes[0],'workhub:page-state',{snapshot:{...draft,title:'草稿：优化导航',draftTitle:'优化导航'}});
+  assert.match(selector.options[0].textContent,/草稿：优化导航/);
+  assert.equal(selector.value,focused,'renaming a draft preview does not focus another pane');
+});
+
 test('foreign messages cannot navigate the workspace or replace a conversation', t => {
   const h = harness(t), route = h.w.location.hash;
   h.send(h.workspace,'workhub:page-open',{snapshot:conversation('one')},'https://example.invalid');

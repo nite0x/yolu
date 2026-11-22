@@ -64,11 +64,12 @@ test("workspace rows show directory context when their conversations span differ
   assert.equal(conversationTree(items, options)[0].group.showContext, true)
 })
 
-test("workspace and project collections share conversation identity and retain empty resources", () => {
+test("default navigator files conversations under workspaces before projects and retains empty resources", () => {
   const item = {...sessions(1)[0], cwd:"/worktrees/login", context:{
     workspaces:[], kind:"Worktree", cwd:"/worktrees/login", project:"App", projectID:"app", branch:"login"
   }}
-  const rows = conversationTree([item], {...options, navigator:{
+  const unlinked = {...item, id:"unlinked", workspace_ids:[]}
+  const rows = conversationTree([item,unlinked], {...options, navigator:{
     workspaces:[
       {id:"workspace", name:"Login", environment:"local", environmentName:"Local"},
       {id:"empty", name:"Empty", environment:"local", environmentName:"Local"},
@@ -76,7 +77,7 @@ test("workspace and project collections share conversation identity and retain e
     directories:[{cwd:"/repo/app", key:"/repo/app", environment:"local", name:"app", projectID:"app", projectName:"App", projectRoot:true}],
   }})
   assert.deepEqual(rows.filter(row=>row.kind==="group").map(row=>[row.group.name,row.group.total]),[["Login",1],["Empty",0],["App",1]])
-  assert.deepEqual(rows.filter(row=>row.kind==="session").map(row=>row.session),[item,item])
+  assert.deepEqual(rows.filter(row=>row.kind==="session").map(row=>row.session),[item,unlinked])
   assert.equal(rows.find(row=>row.group.name==="App")?.group.href,"#/projects/app?directory=%2Frepo%2Fapp")
 })
 
