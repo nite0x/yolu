@@ -179,3 +179,17 @@ test('Windows iframe dragging uses the host without mounting controls or a nativ
     assert.equal(child.WorkHubDesktopWindow, undefined);
   } finally {dom.window.close();}
 });
+
+for (const platform of ['macos','windows']) test(`native chrome reuses the shared header without duplicate controls (${platform})`, () => {
+  const dom = new JSDOM('<header class="workhub-window-drag"><div id="workhubWindowControls"><button id="sharedSearch">Search</button></div></header>',{url:'http://localhost',runScripts:'outside-only'});
+  try {
+    dom.window.__TAURI_INTERNALS__ = {invoke:() => Promise.resolve(false)};
+    dom.window.eval(source(platform));
+    dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
+    assert.equal(dom.window.document.querySelectorAll('.workhub-window-drag').length,1);
+    assert.equal(dom.window.document.querySelectorAll('#workhubWindowControls').length,1);
+    assert(dom.window.document.getElementById('sharedSearch'));
+    assert.equal(dom.window.document.querySelectorAll('.window-brand-trigger').length,0);
+    assert.equal(dom.window.document.querySelectorAll('.workhub-window-action').length,platform === 'windows' ? 3 : 0);
+  } finally {dom.window.close();}
+});

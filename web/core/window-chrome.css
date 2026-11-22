@@ -5,7 +5,7 @@ html[data-workhub-desktop] {
 /* Both entry points use the application layout. Native title bars are added
    by the desktop host, which supplies data-workhub-platform separately. */
 html[data-workhub-desktop]:not([data-workhub-platform]) {
-  --workspace-window-header-height: 0px;
+  --workspace-window-header-height: 40px;
 }
 
 html[data-workhub-platform=windows] {
@@ -68,7 +68,7 @@ html[data-workhub-desktop] .window-brand-trigger img {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: min(272px, calc(100vw - 340px));
+  width: clamp(28px, calc(100vw - 640px), 360px);
   height: 26px;
   padding: 0 8px;
   border: 1px solid var(--yolu-border);
@@ -180,4 +180,26 @@ html[data-workhub-platform=windows] .workhub-window-controls {
 
 .workhub-window-action[data-window-action=close] span::after {
   transform: rotate(-45deg);
+}
+
+/* Application utilities live above every page and the shared navigator. */
+.window-utilities { position: absolute; right: 10px; top: 0; height: 100%; display: flex; align-items: center; gap: 6px; pointer-events: auto; }
+.window-utility-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; min-width: 28px; padding: 0 6px; border: 0; border-radius: var(--yolu-chip-radius,8px); background: transparent; color: var(--yolu-muted-ink); font: inherit; font-size: var(--yolu-font-size-label); white-space: nowrap; }
+.window-utility-button svg { width: 15px; height: 15px; flex: none; }
+.window-utility-button:hover,.window-utility-button[aria-current=page] { background: var(--yolu-hover); color: var(--yolu-foreground); }
+.window-utility-button:disabled { opacity: .45; cursor: default; }
+.window-utility-button:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: -2px; }
+.window-utilities .codex-quota-trigger { width: auto; min-height: 0; height: 28px; gap: 5px; padding: 0 7px; font-size: 11px; }
+.window-utilities .codex-quota-trigger > svg { width: 15px; height: 15px; }
+.window-utilities .codex-quota-copy { flex: none; flex-wrap: nowrap; }
+.window-utilities :is(.codex-quota-copy > span:first-child,.codex-quota-chevron) { display: none; }
+.window-utilities .codex-quota-summary { margin: 0; white-space: nowrap; }
+@media (max-width: 640px) {
+  .window-issues span { display: none; }
+  .window-search-trigger { width: 28px; padding: 0; justify-content: center; }
+  .window-search-trigger :is(span,kbd) { display: none; }
+}
+@media (max-width: 400px) {
+  .window-utilities { gap: 2px; right: 6px; }
+  .window-utilities .codex-quota-trigger > svg { display: none; }
 }

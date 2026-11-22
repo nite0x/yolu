@@ -64,7 +64,7 @@ test("workspace rows show directory context when their conversations span differ
   assert.equal(conversationTree(items, options)[0].group.showContext, true)
 })
 
-test("pinned workspace and project collections share conversation identity and retain empty pins", () => {
+test("workspace and project collections share conversation identity and retain empty resources", () => {
   const item = {...sessions(1)[0], cwd:"/worktrees/login", context:{
     workspaces:[], kind:"Worktree", cwd:"/worktrees/login", project:"App", projectID:"app", branch:"login"
   }}
@@ -78,4 +78,14 @@ test("pinned workspace and project collections share conversation identity and r
   assert.deepEqual(rows.filter(row=>row.kind==="group").map(row=>[row.group.name,row.group.total]),[["Login",1],["Empty",0],["App",1]])
   assert.deepEqual(rows.filter(row=>row.kind==="session").map(row=>row.session),[item,item])
   assert.equal(rows.find(row=>row.group.name==="App")?.group.href,"#/projects/app?directory=%2Frepo%2Fapp")
+})
+
+test("other conversations exclude sessions already filed under registered projects", () => {
+  const known = {id:"known",name:"Known",cwd:"/repo/app",environment_id:"local"}
+  const loose = {id:"loose",name:"Loose",cwd:"/scratch",environment_id:"local"}
+  const rows = conversationTree([known,loose], {workspaces:[],scope:{kind:"all"},limits:{},collapsed:[],filtered:false,
+    navigator:{workspaces:[],directories:[{cwd:"/repo/app",key:"app",environment:"local",name:"App",projectID:"app",projectRoot:true}]}})
+  const grouped = rows.filter(row => row.kind === "session")
+  assert.deepEqual(grouped.map(row => row.session.id), ["known","loose"])
+  assert.equal(grouped.find(row => row.session.id === "loose")?.group.name, "其他对话")
 })

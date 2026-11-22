@@ -1,3 +1,4 @@
+import { ResourceIcon } from "./shortcut-icons"
 import { uiText } from "../i18n";
 import { ChevronRight, Circle, CircleAlert, Copy, FolderGit2, MoreHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -90,7 +91,7 @@ export function Projects({ projects, selectedID, openTool = "vscode", filter = "
       <div className="resource-detail-content project-detail-content">{p ? <>
         <header className="project-detail-heading"><div><div className="resource-detail-title">
           <a href="#/projects" className="resource-breadcrumb-link" data-action="project-list" aria-label={uiText("返回项目列表")}>{uiText("项目")}</a>
-          <span className="resource-breadcrumb-divider" aria-hidden="true">/</span><h2 tabIndex={-1}>{p.name}</h2><ResourceSwitcherTrigger kind="project" />
+          <span className="resource-breadcrumb-divider" aria-hidden="true">/</span><ResourceIcon kind="project" id={p.id} name={p.name} environment="" editable /><h2 tabIndex={-1}>{p.name}</h2><ResourceSwitcherTrigger kind="project" />
         </div><button type="button" className="directory-path" data-action="copy-path" data-path={p.path} title={uiText("{0}\n复制项目路径", p.path)} aria-label={uiText("复制项目路径 {0}", p.path)}><span>{compactWorkspacePath(p.path)}</span><Copy aria-hidden="true" /></button></div>
           <div className="project-detail-actions">{sourceWorkspace ? <Action action="jump-workspace" id={sourceWorkspace} data-return-directory variant="ghost">{uiText("返回工作区")}</Action> : null}<Action action="project-conversations" id={p.id}>{uiText("相关对话")}</Action><Action action="new-worktree" id={p.id} variant="default" disabled={!!p.error}>{uiText("创建 Worktree")}</Action>
             <details className="workspace-project-details project-more"><summary aria-label={uiText("更多项目操作")}><MoreHorizontal aria-hidden="true" /></summary><div className="workspace-project-details-body"><Action action="git-open" id={p.id} variant="ghost">{uiText("Git 操作 · 分支管理")}</Action><Action action="project-open-remote" id={p.id} data-path={p.path} variant="ghost" disabled={!!p.error}>{uiText("打开远端仓库")}</Action><hr /><Action action="remove-project" id={p.id} variant="ghost" className="text-destructive">{uiText("移除登记")}</Action></div></details>

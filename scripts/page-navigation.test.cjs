@@ -16,10 +16,10 @@ function harness(t, hash = '#/workspaces', {desktop = false, listWidth} = {}) {
     w.localStorage.setItem('workhub:sidebar-collapsed:v1','false');
     w.localStorage.setItem('workhub:sidebar-width:v1','360');
   }
-  const layouts = [], splitters = [];
+  const layouts = [], splitters = [], chrome = [];
   const search = { openers: [], visits: [] };
   w.WorkHubLayout = {
-    renderPanes:(_,props) => layouts.push(props), renderChrome() {}, setupSplitResize(options) { splitters.push(options); },
+    renderPanes:(_,props) => layouts.push(props), renderChrome(container,props) {chrome.push({container,props});}, setupSplitResize(options) { splitters.push(options); },
     createGlobalSearch(_, {navigate}) {
       search.navigate = navigate;
       return {open(trigger){search.openers.push(trigger);},remember(snapshot){search.visits.push(snapshot);}};
@@ -41,7 +41,7 @@ function harness(t, hash = '#/workspaces', {desktop = false, listWidth} = {}) {
     return received;
   };
   const workspace = frames()[0]; ready(workspace);
-  return {w,frames,send,ready,messages,layouts,requests,splitters,search,workspace,nav:() => w.document.querySelector('.workspace-navigation-frame')};
+  return {w,frames,send,ready,messages,layouts,chrome,requests,splitters,search,workspace,nav:() => w.document.querySelector('.workspace-navigation-frame')};
 }
 const conversation = id => ({route:'/sessions',environment:'local',title:id,conversation:{scope:{kind:'all'},selected:id,pane:'detail'}});
 const open = (h,snapshot,placement) => {
@@ -345,28 +345,30 @@ test('narrow navigation uses the retained navigator and dismisses on chat select
   assert.equal(button.getAttribute('aria-expanded'),'false');
 });
 
-test('assistant links and launcher open a retained panel over the current page', t => {
+test('removed global assistant cannot open a panel through links, messages or its former shortcut', t => {
   const h = harness(t, '#/assistant', {desktop:true});
-  const panel = h.w.document.getElementById('workspaceAssistant');
-  const assistant = panel.querySelector('iframe');
+  assert.equal(h.w.document.getElementById('workspaceAssistant'), null);
   assert.equal(new URL(h.workspace.src).hash, '#/workspaces');
-  assert.equal(panel.hidden, false);
-  assert.equal(h.w.location.hash, '#/workspaces');
-  h.send(assistant, 'workhub:assistant-close');
-  open(h, conversation('native-thread'));
-  const retained = h.frames().find(frame => frame !== h.workspace && frame !== h.nav());
   h.send(h.nav(), 'workhub:assistant-toggle');
-  assert.equal(panel.hidden, false);
-  assert.equal(panel.querySelector('iframe'), assistant);
-  assert.equal(retained.hidden, false);
-  assert.equal(h.w.location.hash, '#/sessions');
-  assert.equal(h.workspace.hidden, true);
-  Object.defineProperty(h.w,'innerWidth',{value:640});
-  h.w.dispatchEvent(new h.w.Event('resize'));
-  assert.equal(panel.getAttribute('aria-modal'), 'true');
-  assert.equal(h.w.document.getElementById('workspacePages').hasAttribute('inert'), true);
-  h.send(assistant, 'workhub:assistant-close');
-  assert.equal(panel.hidden, true);
-  assert.equal(retained.hidden, false);
-  assert.equal(h.w.document.getElementById('workspacePages').hasAttribute('inert'), false);
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {code:'KeyY', altKey:true, shiftKey:true, bubbles:true}));
+  assert.equal(h.w.document.getElementById('workspaceAssistant'), null);
+});
+
+for (const desktop of [false,true]) test(`top header owns search, Issues and refresh across page changes (desktop=${desktop})`, async t => {
+  const h = harness(t,'#/workspaces',{desktop});
+  assert.equal(h.w.document.querySelectorAll('.workhub-window-drag').length,1);
+  assert.equal(h.chrome.at(-1).container,h.w.document.getElementById('workhubWindowControls'));
+  const trigger = h.w.document.createElement('button');
+  h.chrome.at(-1).props.search(trigger);
+  assert.equal(h.search.openers.at(-1),trigger);
+  open(h,{route:'/projects/app',environment:'remote'});
+  const refreshed = [];
+  h.workspace.contentWindow.WorkHubPage.refresh = async () => refreshed.push('workspace');
+  h.nav().contentWindow.WorkHubPage.refresh = async () => refreshed.push('navigation');
+  await h.chrome.at(-1).props.refresh();
+  assert.deepEqual(refreshed.sort(),['navigation','workspace']);
+  h.chrome.at(-1).props.issues();
+  assert.equal(h.w.location.hash,'#/issues');
+  assert.equal(h.w.location.search,'?environment=remote');
+  assert.equal(h.chrome.at(-1).props.issuesActive,true);
 });

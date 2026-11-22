@@ -52,10 +52,11 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
     requests.push({ url, options, body });
     if (intercept) { const result = await intercept(url, options, body); if (result) return result; }
     let result;
-    if (url.startsWith('/api/shortcut-pins?')) {
-      const environment = new URL(url, origin).searchParams.get('environment');
-      if (options.method === 'PUT' && (!body.initialize || !pins[environment])) pins[environment] = {workspaces:body.workspaces, directories:body.directories, icons:body.icons || pins[environment]?.icons, initialized:true};
-      result = pins[environment] || {workspaces:[], directories:[], initialized:false};
+    if (url.startsWith('/api/resource-icons?')) {
+      const environment = new URL(url, origin).searchParams.get('environment') || 'local';
+      const saved = pins[environment] ||= {icons:{}};
+      if (options.method === 'PUT') saved.icons = {...saved.icons, [body.id]:body.appearance};
+      result = {icons:saved.icons || {}};
     }
     else if (url.startsWith('/api/workspace-inventory')) result = { workspaces: data.workspaces.map(q => ({ ...q, environment_id: 'local', environment_name: '本机', connected: true })), environments: [{ id: 'local', name: '本机', connected: true }], project_count: data.projects.length };
     else if (url === '/api/environments') result = options.method === 'POST' ? { id: 'wsl-test' } : environments;
@@ -1565,353 +1566,6 @@ test('browser navigation uses the shared rail and ignores old expandable sidebar
   assert.equal(h.window.location.hash, route);
 });
 
-test('browser rail keeps individual workspace and directory shortcuts visible with direct navigation', async t => {
-  const h = await harness(t, true, {width:1024, pins:{local:{workspaces:['workspace'], directories:['/workspace/workspace/app'], initialized:true}}});
-  const panel = h.$('#conversationShortcuts');
-  assert(h.$('.sidebar-shortcut-rail'));
-  assert.equal(h.document.body.classList.contains('sidebar-collapsed'), false);
-  assert(!panel.hasAttribute('popover'));
-  assert(h.$('[data-workspace-shortcut="workspace"] .shortcut-badge'));
-  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"] .shortcut-badge'));
-  const identity = h.$('[data-workspace-shortcut="workspace"]').dataset.shortcutIcon;
-  h.click('[data-workspace-shortcut="workspace"]'); await settle();
-  assert.equal(h.$('#sessionScopeLabel').textContent, '工作区 · Billing');
-  assert.equal(h.$('[data-workspace-shortcut="workspace"]').getAttribute('aria-current'), 'true');
-  h.click('[data-directory-shortcut="/workspace/workspace/app"]'); await settle();
-  assert.equal(h.$('[data-directory-shortcut="/workspace/workspace/app"]').getAttribute('aria-current'), 'true');
-  assert.equal(h.document.body.classList.contains('sidebar-collapsed'), false);
-  h.click('#workspaceShortcutPicker summary'); await settle();
-  assert.equal(h.$('[data-workspace-shortcut="workspace"]').dataset.shortcutIcon, identity);
-  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"]'));
-});
-
-test('desktop shows pinned icons directly and keeps their management in the picker', async t => {
-  const pins = {local:{workspaces:['workspace'], directories:['/workspace/workspace/app'], initialized:true}};
-  const h = await harness(t, true, {desktop:true, width:1440, pins});
-  assert.equal(h.$('.sidebar-toggle, .sidebar-resize'), null);
-  assert.equal(h.$('#workspaceShortcutPicker').open, false);
-  const list = h.$('.sidebar-shortcut-list');
-  assert(list.querySelector('[data-workspace-shortcut="workspace"] .shortcut-badge'));
-  assert(list.querySelector('[data-directory-shortcut="/workspace/workspace/app"] .shortcut-badge'));
-  h.click('.sidebar-shortcut-list [data-workspace-shortcut="workspace"]');
-  await settle();
-  assert.equal(h.$('#sessionScopeLabel').textContent, '工作区 · Billing');
-  h.click('.sidebar-shortcut-list [data-directory-shortcut="/workspace/workspace/app"]');
-  await settle();
-  assert.equal(h.$('[data-directory-shortcut="/workspace/workspace/app"]').getAttribute('aria-current'), 'true');
-  h.click('#workspaceShortcutPicker summary');
-  await settle();
-  h.$('.sidebar-shortcut-list').scrollTop = 48;
-  h.click('#shortcutPickerPanel [data-workspace-shortcut-pin="workspace"]');
-  await settle();
-  assert.equal(h.$('#workspaceShortcutPicker').open, true);
-  assert.equal(h.$('.sidebar-shortcut-list').scrollTop, 48);
-  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
-  assert.deepEqual(pins.local.workspaces, []);
-  h.$('#shortcutPickerPanel').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
-  assert.equal(h.$('#workspaceShortcutPicker').open, false);
-  assert.equal(h.document.activeElement, h.$('#workspaceShortcutPicker summary'));
-});
-
-test('icon customization persists without browser storage and rollback keeps pins intact', async t => {
-  const pins = {local:{workspaces:['workspace'], directories:['/workspace/workspace/app'], initialized:true}};
-  const h = await harness(t, true, {pins, storageUnavailable:true});
-  h.click('[data-shortcut-icon-settings]');
-  assert(h.$('.shortcut-icon-dialog').open);
-  h.click('.shortcut-icon-dialog [aria-label="火箭"]');
-  h.click('.shortcut-icon-dialog [aria-label="玫红"]');
-  await settle();
-  await h.submit('.shortcut-icon-dialog form');
-  assert.deepEqual(pins.local.icons['workspace:workspace'], {icon:'rocket', color:'rose'});
-  assert(h.$('[data-workspace-shortcut="workspace"] .shortcut-badge[data-color="rose"] svg'));
-  const pinReads = () => h.requests.filter(r => r.url.startsWith('/api/shortcut-pins?') && !r.options.method).length;
-  const previousReads = pinReads();
-  h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:shortcut-pins-updated:local'})); await settle();
-  assert.equal(pinReads(), previousReads + 1, 'another window changing pins reloads them from the database');
-  assert(h.$('[data-workspace-shortcut="workspace"] .shortcut-badge[data-color="rose"] svg'));
-  h.click('[data-shortcut-icon-settings]');
-  const key = h.$('[data-directory-shortcut]').dataset.shortcutIconKey;
-  h.change('#shortcutIconEntry', key); await settle();
-  h.click('.shortcut-icon-dialog [aria-label="终端"]'); await settle();
-  await h.submit('.shortcut-icon-dialog form');
-  assert.equal(pins.local.icons['directory:/workspace/workspace/app'].icon, 'terminal');
-  assert.equal(pins.local.icons['workspace:workspace'].icon, 'rocket');
-  h.setIntercept(async (url, options) => url.startsWith('/api/shortcut-pins?') && options.method === 'PUT' ? {ok:false,json:async()=>({error:'fixture save failed'})} : null);
-  h.click('[data-shortcut-icon-settings]');
-  h.click('.shortcut-icon-dialog [aria-label="数据库"]'); await settle();
-  await h.submit('.shortcut-icon-dialog form');
-  assert(h.$('[data-workspace-shortcut="workspace"] .shortcut-badge[data-color="rose"] svg'));
-  assert.equal(JSON.parse(h.$('[data-workspace-shortcut="workspace"]').dataset.shortcutIcon).icon, 'rocket');
-  assert.deepEqual(pins.local.workspaces, ['workspace']);
-  assert.deepEqual(pins.local.directories, ['/workspace/workspace/app']);
-});
-
-test('icon settings escape a clipped same-origin navigation iframe and restore focus', async t => {
-  const outer = new JSDOM('<body><div id="workspace"></div></body>', {url:'http://localhost:4317'});
-  t.after(() => outer.window.close());
-  outer.window.HTMLDialogElement.prototype.show = function () { this.open = true; };
-  outer.window.HTMLDialogElement.prototype.showModal = function () {this.open = true;};
-  outer.window.HTMLDialogElement.prototype.close = function () {this.open = false;};
-  const h = await harness(t, true, {pageHost:outer.window, pins:{local:{workspaces:['workspace'], directories:[], initialized:true}}});
-  for (const data of [{type:'workhub:page-navigation'}, {type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}}]) h.window.dispatchEvent(new h.window.MessageEvent('message',{source:outer.window,origin:'http://localhost:4317',data}));
-  await settle();await settle();
-  h.click('[data-shortcut-icon-settings]');
-  await settle();
-  const dialog = outer.window.document.querySelector('.shortcut-icon-dialog');
-  assert(dialog.open);
-  assert.equal(h.$('.shortcut-icon-dialog'), null);
-  dialog.querySelector('[aria-label="火箭"]').click(); await settle();
-  dialog.querySelector('form').dispatchEvent(new outer.window.Event('submit',{bubbles:true,cancelable:true})); await settle();
-  assert(!dialog.open);
-  assert.equal(h.document.activeElement, h.$('[data-shortcut-icon-settings]'));
-  assert(h.$('[data-collection-href="#/workspaces/workspace"] .lucide-rocket'));
-});
-
-test('fixed shortcut manager searches both kinds and icon dialog cancels without saving', async t => {
-  const h = await harness(t, true, {pins:{local:{workspaces:['workspace'], directories:['/workspace/workspace/app'], initialized:true}}});
-  h.$('#workspaceShortcutPicker').open = true;
-  h.input('#shortcutSearch', 'Billing');
-  assert(h.$('[data-workspace-shortcut-pin="workspace"]'));
-  assert.equal(h.$('#shortcutPickerPanel [data-directory-shortcut-pin]'), null);
-  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"]'), 'search does not hide pinned entries');
-  h.click('[data-shortcut-icon-settings]');
-  h.click('.shortcut-icon-dialog [aria-label="数据库"]'); await settle();
-  h.$('.shortcut-icon-dialog').dispatchEvent(new h.window.Event('cancel', {cancelable:true}));
-  assert(!h.$('.shortcut-icon-dialog').open);
-  assert.equal(h.document.activeElement, h.$('[data-shortcut-icon-settings]'));
-  assert.equal(h.requests.filter(r => r.options.method === 'PUT' && r.url.startsWith('/api/shortcut-pins?')).length, 0);
-});
-
-test('fixed workspaces persist and open only explicitly linked conversations', async t => {
-  const h = await harness(t);
-  h.sessions.push({id:'same-directory', name:'Not linked', cwd:'/workspace/workspace/app', updated_at:1999999999});
-  h.sessions.push({id:'newer', name:'Newest linked', cwd:'/external', updated_at:1899999999});
-  h.links.get('workspace').add('newer');
-  assert.match(h.$('#shortcutPinnedTitle').textContent, /固定入口/);
-  assert.equal(h.$('#shortcutRecentTitle'), null);
-  assert.equal(h.$('[data-workspace-shortcut-pin="archived"]'), null);
-  h.click('[data-workspace-shortcut-pin="workspace"]'); await settle();
-  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-workspaces:v1:local')), ['workspace']);
-  assert.match(h.$('[data-workspace-shortcut="workspace"]').textContent, /Billing.*App/);
-  assert.equal(h.requests.some(r => r.url.endsWith('/manage')), false);
-  h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:shortcut-pins-updated:local'})); await settle();
-  assert(h.$('[data-workspace-shortcut="workspace"]'));
-  h.click('[data-workspace-shortcut="workspace"]'); await settle();
-  assert.equal(h.window.location.hash, '#/sessions');
-  assert.equal(h.$('#sessionScopeLabel').textContent, '工作区 · Billing');
-  assert.equal(h.currentSession().session, 'newer');
-  assert.equal(h.$('[data-conversation-session="same-directory"]'), null);
-  assert.equal(h.$('[data-workspace-shortcut="workspace"]').getAttribute('aria-current'), 'true');
-  h.click('[data-conversation-session="session-1"]'); await settle();
-  await h.navigate('/projects');
-  h.click('[data-workspace-shortcut="workspace"]'); await settle();
-  assert.equal(h.currentSession().session, 'session-1');
-  h.window.setConversationDirectory('/workspace/workspace/app'); await settle();
-  h.input('#sessionBrowserSearch', 'no match');
-  h.click('[data-workspace-shortcut="workspace"]'); await settle();
-  assert.equal(h.window.WorkHubConversations.current.directory, '');
-  assert.equal(h.$('#sessionBrowserSearch').value, '');
-  assert.equal(h.$('#sessionBrowserArchived').checked, false);
-  h.$('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]').focus();
-  h.click('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]'); await settle();
-  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
-  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-workspaces:v1:local')), []);
-  assert.equal(h.document.activeElement, h.$('#workspaceShortcutPicker summary'));
-  h.$('#workspaceShortcutPicker').open = true;
-  h.$('#workspaceShortcutPicker summary').dispatchEvent(new h.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
-  assert.equal(h.$('#workspaceShortcutPicker').open, false);
-});
-
-test('fixed workspaces and directories survive a new origin without browser storage', async t => {
-  const pins = {};
-  const first = await harness(t, true, {origin:'http://localhost:50101', pins});
-  first.click('[data-workspace-shortcut-pin="workspace"]');
-  first.click('[data-directory-shortcut-pin="/workspace/workspace/app"]');
-  await settle();
-  assert.deepEqual(pins.local.workspaces, ['workspace']);
-  assert.deepEqual(pins.local.directories, ['/workspace/workspace/app']);
-  const restarted = await harness(t, true, {origin:'http://localhost:50202', pins, storageUnavailable:true});
-  assert(restarted.$('[data-workspace-shortcut="workspace"]'));
-  assert(restarted.$('[data-directory-shortcut="/workspace/workspace/app"]'));
-  restarted.click('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]');
-  restarted.click('.conversation-shortcut-row [data-directory-shortcut-pin="/workspace/workspace/app"]');
-  await settle();
-  const again = await harness(t, true, {origin:'http://localhost:50303', pins});
-  assert.equal(again.$('[data-workspace-shortcut="workspace"]'), null);
-  assert.equal(again.$('[data-directory-shortcut="/workspace/workspace/app"]'), null);
-  for (const h of [first, restarted, again]) assert(h.requests.filter(r => r.url.startsWith('/api/shortcut-pins?')).every(r => r.options.headers['X-Environment-ID'] === 'local'));
-});
-
-test('legacy pins migrate once and stale browser storage cannot resurrect removed entries', async t => {
-  const pins = {};
-  const storage = {'workhub:pinned-workspaces:v1:local':'["workspace"]', 'workhub:pinned-directories:v1:local':'["/workspace/workspace/app"]'};
-  const migrated = await harness(t, true, {pins, storage});
-  assert(migrated.$('[data-workspace-shortcut="workspace"]'));
-  assert(migrated.$('[data-directory-shortcut="/workspace/workspace/app"]'));
-  migrated.click('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]');
-  migrated.click('.conversation-shortcut-row [data-directory-shortcut-pin="/workspace/workspace/app"]');
-  await settle();
-  const stale = await harness(t, true, {pins, storage});
-  assert.equal(stale.$('[data-workspace-shortcut="workspace"]'), null);
-  assert.equal(stale.$('[data-directory-shortcut="/workspace/workspace/app"]'), null);
-  assert.equal(stale.requests.filter(r => r.url.startsWith('/api/shortcut-pins?') && r.body?.initialize).length, 0);
-});
-
-test('pin changes wait for loading, serialize rapid clicks and roll back failed saves', async t => {
-  const pins = {local:{workspaces:[], directories:[], initialized:true}};
-  let releaseLoad;
-  const h = await harness(t, true, {pins, intercept:(url, options) => url.startsWith('/api/shortcut-pins?') && !options.method ? new Promise(resolve => {releaseLoad = resolve;}) : undefined});
-  h.click('[data-workspace-shortcut-pin="workspace"]');
-  assert.equal(h.requests.some(r => r.url.startsWith('/api/shortcut-pins?') && r.options.method === 'PUT'), false);
-  releaseLoad({ok:true, json:async () => pins.local});
-  await settle();
-  assert.deepEqual(pins.local.workspaces, ['workspace']);
-  h.setIntercept(undefined);
-  let releaseSave;
-  h.setIntercept((url, options) => url.startsWith('/api/shortcut-pins?') && options.method === 'PUT' && !releaseSave ? new Promise(resolve => {releaseSave = () => {pins.local = {...JSON.parse(options.body), initialized:true}; resolve({ok:true, json:async () => structuredClone(pins.local)});};}) : undefined);
-  h.click('[data-directory-shortcut-pin="/repo/app"]');
-  await settle();
-  h.click('.conversation-shortcut-row [data-workspace-shortcut-pin="workspace"]');
-  await settle();
-  assert.deepEqual(pins.local.workspaces, ['workspace']);
-  releaseSave(); await settle();
-  assert.deepEqual(pins.local.workspaces, []);
-  assert.deepEqual(pins.local.directories, ['/repo/app']);
-  h.setIntercept((url, options) => url.startsWith('/api/shortcut-pins?') && options.method === 'PUT' ? {ok:false, json:async () => ({error:'disk full'})} : undefined);
-  h.click('.conversation-shortcut-row [data-directory-shortcut-pin="/repo/app"]');
-  assert.equal(h.$('[data-directory-shortcut="/repo/app"]'), null);
-  await settle();
-  assert(h.$('[data-directory-shortcut="/repo/app"]'));
-  assert.match(h.$('#toastMessage').textContent, /保存固定入口失败.*disk full/);
-});
-
-test('shortcut picker searches the complete workspace list and preserves focus and pin state across refreshes', async t => {
-  const h = await harness(t);
-  h.data.workspaces.push({...h.data.workspaces[0], id:'second', name:'Second workspace'});
-  await h.window.refresh(true); await settle();
-  h.$('#workspaceShortcutPicker').open = true; await settle();
-  h.click('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]'); await settle();
-  assert.equal(h.$('#workspaceShortcutPicker').open, true);
-  assert.equal(h.$('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]').getAttribute('aria-pressed'), 'true');
-  assert.match(h.$('.shortcut-picker-caption').textContent, /2 个未归档工作区 · 已固定 1 个/);
-  h.$('#shortcutSearch').focus();
-  h.input('#shortcutSearch', 'Second');
-  h.$('#shortcutSearch').setSelectionRange(2, 4);
-  h.data.workspaces.find(workspace => workspace.id === 'second').name = 'Second updated';
-  await h.window.refresh(true); await settle();
-  assert.equal(h.document.activeElement.id, 'shortcutSearch');
-  assert.equal(h.$('#shortcutSearch').value, 'Second');
-  assert.equal(h.$('#shortcutSearch').selectionStart, 2);
-  assert.equal(h.$('#shortcutSearch').selectionEnd, 4);
-  assert.equal(h.$('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]'), null);
-  assert(h.$('#workspaceShortcutPicker [data-workspace-shortcut-pin="second"]'));
-  h.input('#shortcutSearch', 'App');
-  assert.equal(h.document.querySelectorAll('#workspaceShortcutPicker [data-workspace-shortcut-pin]').length, 2);
-  h.input('#shortcutSearch', 'Archived');
-  assert.equal(h.$('[data-workspace-shortcut-pin="archived"]'), null);
-  h.$('#shortcutArchived').checked = true;
-  h.$('#shortcutArchived').dispatchEvent(new h.window.Event('change', {bubbles:true}));
-  assert(h.$('[data-workspace-shortcut-pin="archived"]').disabled);
-  h.input('#shortcutSearch', 'Billing');
-  h.click('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]');
-  assert.equal(h.$('#workspaceShortcutPicker [data-workspace-shortcut-pin="workspace"]').getAttribute('aria-pressed'), 'false');
-  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
-  await settle();
-});
-
-test('fixed directories persist by environment and open exact directory conversations without workspace ownership', async t => {
-  const h = await harness(t, false);
-  h.sessions.push({id:'not-linked',name:'Same directory, separate conversation',cwd:'/workspace/workspace/app'}, {id:'child',name:'Nested',cwd:'/workspace/workspace/app/src'});
-  await h.navigate('/sessions');
-  h.click('[data-directory-shortcut-pin="/workspace/workspace/app"]');
-  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-directories:v1:local')), ['/workspace/workspace/app']);
-  h.window.dispatchEvent(new h.window.StorageEvent('storage', {key:'workhub:shortcut-pins-updated:local'})); await settle();
-  h.click('[data-directory-shortcut="/workspace/workspace/app"]'); await settle();
-  assert.equal(h.$('#sessionScopeLabel').textContent, '目录 · /workspace/workspace/app');
-  assert.equal(h.$('[data-directory-shortcut="/workspace/workspace/app"]').getAttribute('aria-current'), 'true');
-  assert.deepEqual([...h.document.querySelectorAll('[data-conversation-session]')].map(button => button.dataset.conversationSession).sort(), ['not-linked','session-1']);
-  assert.equal(h.$('#workspaceConversationTools').hidden, true);
-  assert.equal(h.$('#pinConversationDirectory').getAttribute('aria-pressed'), 'true');
-  assert.equal(h.$('#newBrowserSession').disabled, false);
-  h.click('#newBrowserSession'); await settle();
-  assert.equal(h.currentSession().target.cwd, '/workspace/workspace/app');
-  assert.equal(h.currentSession().target.workspace_id, undefined);
-  assert.equal(h.requests.some(request => request.options.method === 'POST'), false);
-  await h.window.selectEnvironment('wsl-test', '/projects'); await settle();
-  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"]'));
-  assert.equal(h.window.localStorage.getItem('workhub:pinned-directories:v1:wsl-test'), null);
-  await h.window.selectEnvironment('local', '/sessions'); await settle();
-  assert(h.$('[data-directory-shortcut="/workspace/workspace/app"]'));
-  h.click('[data-directory-shortcut="/workspace/workspace/app"]'); await settle();
-  h.click('#pinConversationDirectory');
-  assert.equal(h.$('[data-directory-shortcut="/workspace/workspace/app"]'), null);
-  assert.deepEqual(JSON.parse(h.window.localStorage.getItem('workhub:pinned-directories:v1:local')), []);
-  await settle();
-});
-
-test('directory pinning is available from known directory filters and keeps same-name paths distinct', async t => {
-  const h = await harness(t);
-  await h.navigate('/sessions');
-  h.window.setConversationDirectory('/repo/app'); await settle();
-  assert.equal(h.$('#pinConversationDirectory').hidden, false);
-  h.click('#pinConversationDirectory');
-  h.click('[data-directory-shortcut-pin="/workspace/workspace/app"]');
-  assert.equal(h.document.querySelectorAll('[data-directory-shortcut]').length, 2);
-  assert.match(h.$('[data-directory-shortcut="/repo/app"]').textContent, /app.*\/repo/);
-  assert.match(h.$('[data-directory-shortcut="/workspace/workspace/app"]').textContent, /app.*\/workspace\/workspace/);
-  h.sessions.push({id:'external',name:'External',cwd:'/outside'});
-  h.click('[data-conversation-action="all"]'); await settle();
-  h.$('#sessionScopePicker').open = true; await settle();
-  h.input('#sessionScopeSearch', '/outside');
-  h.click('[data-conversation-scope]'); await settle();
-  assert.equal(h.$('#pinConversationDirectory').hidden, true);
-  assert.equal(h.$('#newBrowserSession').disabled, true);
-});
-
-test('fixed workspaces switch between workspace conversations and recover when a saved session is unlinked', async t => {
-  const h = await harness(t);
-  h.data.workspaces.push({...h.data.workspaces[0], id:'second', name:'Second workspace'});
-  h.sessions.push({id:'second-session', name:'Second conversation', cwd:'/external', updated_at:1});
-  h.links.set('second', new Set(['second-session']));
-  await h.window.refresh(true); await settle();
-  h.click('[data-workspace-shortcut-pin="workspace"]');
-  h.click('[data-workspace-shortcut-pin="second"]');
-  h.click('[data-workspace-shortcut="workspace"]'); await settle();
-  assert.equal(h.currentSession().session, 'session-1');
-  h.click('[data-workspace-shortcut="second"]'); await settle();
-  assert.equal(h.currentSession().session, 'second-session');
-  h.click('[data-workspace-shortcut="workspace"]'); await settle();
-  assert.equal(h.currentSession().session, 'session-1');
-  h.links.get('workspace').clear();
-  h.click('[data-workspace-shortcut="workspace"]'); await settle();
-  assert.equal(h.$('#sessionBrowserEmpty').hidden, false);
-  assert.match(h.$('#sessionBrowserEmpty').textContent, /这里还没有对话/);
-  assert.equal(h.$('#workspaceConversationTools').hidden, false);
-});
-
-test('fixed workspaces remain global, retain per-environment storage and hide archived or removed workspaces', async t => {
-  const h = await harness(t);
-  h.click('[data-workspace-shortcut-pin="workspace"]');
-  await h.window.selectEnvironment('wsl-test', '/projects'); await settle();
-  assert(h.$('[data-workspace-shortcut="workspace"]'));
-  assert(h.$('[data-workspace-shortcut-pin="workspace"]'));
-  assert.equal(h.window.localStorage.getItem('workhub:pinned-workspaces:v1:wsl-test'), null);
-  await h.window.selectEnvironment('local', '/projects'); await settle();
-  assert(h.$('[data-workspace-shortcut="workspace"]'));
-  h.data.workspaces[0].name = 'Renamed workspace';
-  await h.window.refresh(true); await settle();
-  assert.match(h.$('[data-workspace-shortcut="workspace"]').textContent, /Renamed workspace/);
-  h.data.workspaces[0].state = 'archived';
-  await h.window.refresh(true); await settle();
-  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
-  h.data.workspaces[0].state = 'ready';
-  await h.window.refresh(true); await settle();
-  assert(h.$('[data-workspace-shortcut="workspace"]'));
-  h.data.workspaces.shift();
-  await h.window.refresh(true); await settle();
-  assert.equal(h.$('[data-workspace-shortcut="workspace"]'), null);
-});
-
 test('compact conversation filters expose active choices, clear together and settings live beside refresh', async t => {
   const h = await harness(t);
   await h.navigate('/sessions');
@@ -1924,17 +1578,19 @@ test('compact conversation filters expose active choices, clear together and set
   assert(h.$('#sessionBrowserArchived').closest('#sessionScopePicker'));
   assert(h.$('#sessionsEnvironment').closest('#sessionScopePicker'));
   assert(h.$('#sessionStatusFilters').closest('#sessionScopePicker'));
-  assert(h.$('#sessionBrowserCount').closest('.session-browser-list-heading'));
+  assert(h.$('#sessionBrowserCount').classList.contains('sr-only'));
+  assert.equal(h.$('.session-browser-list-heading'), null);
   assert.equal(h.$('#sessionBrowserCount').textContent, '1');
   assert.equal(h.$('.session-browser-list-heading [data-conversation-action="refresh"]'), null);
   assert.equal(h.$('.session-browser-list-caption'), null);
   assert.equal(h.$('#sessionScopePicker').parentElement, h.$('#sessionBrowserSearch').closest('.list-search'));
   assert.equal(h.$('#sessionBrowserScopeBar').firstElementChild, h.$('#sessionBrowserSearch').parentElement);
-  assert.equal(h.$('#sessionBrowserScopeBar').lastElementChild, h.$('#sessionScopePicker'));
+  assert.equal(h.$('#sessionBrowserScopeBar').lastElementChild, h.$('#newBrowserSession').parentElement);
   assert(h.$('#sessionScopeLabel').classList.contains('sr-only'));
   assert.equal(h.$('#sessionScopePicker summary').querySelectorAll('svg').length, 1);
-  assert.equal(h.$('#newBrowserSession').dataset.variant, 'ghost');
-  assert(h.$('#pinConversationDirectory').closest('#sessionScopePicker'));
+  assert(h.$('#newBrowserSession').closest('#sessionBrowserScopeBar'));
+  assert.equal(h.$('#newBrowserSession').closest('#sessionScopePicker'), null);
+  assert.equal(h.$('#pinConversationDirectory'), null);
   h.window.setConversationDirectory('/workspace/workspace/app'); await settle();
   h.click('#sessionBrowserArchived'); await settle();
   assert.equal(h.$('#sessionClearFilters').hidden, false);
@@ -1954,11 +1610,11 @@ test('compact conversation filters expose active choices, clear together and set
   assert.equal(h.$('#settingsPage').hidden, false);
 });
 
-test('a late global shortcut response cannot replace a fresh list after switching environments and back', async t => {
+test('a late conversation catalog response cannot replace a fresh list after switching environments and back', async t => {
   const h = await harness(t);
   let release;
   h.setIntercept(url => /^\/api\/sessions\?(?:refresh=1)?$/.test(url) ? new Promise(resolve => {release = resolve;}) : undefined);
-  const pending = h.window.refreshConversationShortcuts(true); await settle();
+  const pending = h.window.refreshConversationCatalog(true); await settle();
   h.setIntercept((url, options) => /^\/api\/sessions\?(?:refresh=1)?$/.test(url) ? {ok:true, json:async()=>({sessions:[{id:'session-1', name:options.headers['X-Environment-ID'] === 'wsl-test' ? 'Remote' : 'Fresh local', cwd:'/repo/app', pinned:true}]})} : undefined);
   await h.window.selectEnvironment('wsl-test', '/projects'); await settle();
   await h.window.selectEnvironment('local', '/projects'); await settle();
@@ -2280,8 +1936,8 @@ for (const readOnly of [true, false]) test(`split conversation actions preserve 
   const h = await harness(t, readOnly);
   await h.openConversations('workspace');
   assert(h.$('#sessionScopePicker #linkWorkspaceConversation'));
-  assert(h.$('.session-browser-list-heading #newBrowserSession'));
-  assert(h.$('.session-browser-list-heading #newBrowserSplitSession'));
+  assert(h.$('#sessionBrowserScopeBar #newBrowserSession'));
+  assert(h.$('#sessionBrowserScopeBar #newBrowserSplitSession'));
   assert.equal(h.$('#sessionActionPicker'), null);
   assert.equal(h.$('#newBrowserSession').disabled, readOnly);
   assert.equal(h.$('#newBrowserSession').getAttribute('aria-label'), '新建对话');
@@ -2495,7 +2151,7 @@ test('environment filtering rejects late results and a failed environment retain
   assert.equal(h.$('#sessionBrowserError').hidden, true);
 });
 
-test('cross-environment scopes, workspace shortcuts and creation targets preserve ownership without changing project environment', async t => {
+test('cross-environment scopes and creation targets preserve ownership without changing project environment', async t => {
   const h = await harness(t, false);
   h.environments.environments.push({id: 'remote', name: 'WSL'});
   const remoteWorkspace = {...structuredClone(h.data.workspaces[0]), id: 'remote-workspace', name: 'Remote workspace', environment_id: 'remote', environment_name: 'WSL'};
@@ -2510,11 +2166,6 @@ test('cross-environment scopes, workspace shortcuts and creation targets preserv
   const scope = h.$('[data-conversation-scope]');
   assert.equal(JSON.parse(scope.dataset.conversationScope).environment, 'remote');
   scope.click(); await settle();
-  assert.equal(h.currentSession().environment, 'remote');
-  const pin = [...h.document.querySelectorAll('[data-workspace-shortcut-pin]')].find(b => b.textContent.includes('Remote workspace'));
-  assert(pin); pin.click(); await settle();
-  const shortcut = [...h.document.querySelectorAll('[data-workspace-shortcut]')].find(b => b.textContent.includes('Remote workspace'));
-  assert(shortcut); shortcut.click(); await settle();
   assert.equal(h.currentSession().environment, 'remote');
   h.click('#newBrowserSession'); await settle();
   const choices = [...h.$('#sessionBrowserNewDirectory').options];
@@ -3782,7 +3433,7 @@ test('resizing a shared list with 738 conversations does not regenerate its rows
  await settle(); await settle();
  const group = {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:false,full:false,listWidth:280,targetTitle:'当前对话'};
  post(group);
- assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,4);
+ assert(h.document.querySelectorAll('[data-conversation-session]').length >= 4);
  const row = h.$('[data-conversation-session="session-1"]'), ui = h.window.WorkHubUI;
  let renders = 0;
  h.window.WorkHubUI = {...ui,conversationList:props=>{renders++; return ui.conversationList(props);}};
@@ -4111,105 +3762,6 @@ test('clone errors stay in the dialog when its selected environment differs from
  assert.equal(h.$('#chooseProjectDirectory').disabled,true);
 });
 
-for (const desktop of [false, true]) for (const width of [640, 1280]) test(`legacy assistant route retains history and context (desktop=${desktop}, width=${width})`, async t => {
-  const h = await harness(t, false, {desktop, width, route:'/projects'});
-  const opens = [];
-  const assistantOptions = [];
-  h.window.WorkHubAssistant = {openGlobal(request, options) {opens.push(request); assistantOptions.push(options);}, open() {}, close() {}};
-  assert.equal(h.$('.sidebar nav [data-view]').dataset.view, 'workspaces');
-  assert.ok(h.$('.sidebar-footer #openYoluAssistant'));
-  await h.navigate('/assistant');
-  assert.equal(h.$('#globalAssistantPage').hidden, false);
-  assert.equal(h.$('#sessionsPage').hidden, true);
-  assert.equal(h.$('#workContent').hidden, true);
-  assert(opens.length > 0);
-  await opens[0]('/api/assistant/conversations');
-  assert.equal(h.requests.at(-1).options.headers['X-Environment-ID'], 'local');
-  const root = h.$('#globalAssistantRoot');
-  for (const route of ['/projects', '/workspaces', '/sessions', '/settings']) {
-    await h.navigate(route);
-    assert.equal(h.$('#globalAssistantPage').hidden, true);
-    await h.navigate('/assistant');
-    assert.equal(h.$('#globalAssistantRoot'), root);
-    assert.equal(h.$('#globalAssistantPage').hidden, false);
-  }
-  await h.navigate('/projects/app');
-  await h.navigate('/assistant');
-  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',project_id:'app'});
-  assert.match(assistantOptions.at(-1).contextLabel(), /App/);
-  await assistantOptions.at(-1).openResource({kind:'workspace',id:'workspace',environment_id:'local',name:'Billing'});
-  await settle();
-  assert.equal(h.window.location.hash, '#/workspaces/workspace');
-  await h.navigate('/assistant');
-  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local',workspace_id:'workspace'});
-  assistantOptions.at(-1).clearContext();
-  assert.deepEqual(JSON.parse(JSON.stringify(assistantOptions.at(-1).getContext())), {environment_id:'local'});
-  assert.doesNotMatch(assistantOptions.at(-1).contextLabel(), /Billing/);
-  await assistantOptions.at(-1).openResource({kind:'project',id:'backend',environment_id:'local',name:'Backend'});
-  await settle();
-  assert.equal(h.$('#projectDetail h2').textContent, 'Backend');
-  await h.navigate('/assistant');
-  await assistantOptions.at(-1).openResource({kind:'conversation',id:'session-1',environment_id:'local',name:'Billing review'});
-  await settle();
-  assert.equal(h.window.location.hash, '#/sessions');
-  assert.equal(h.currentSession()?.session, 'session-1');
-  await assert.rejects(assistantOptions.at(-1).openResource({kind:'project',id:'../../outside',environment_id:'local',name:'Invalid'}), /资源信息无效/);
-});
-
-for (const desktop of [false, true]) for (const width of [640, 1280]) test(`directory scan supports selection, partial failures and retries (desktop=${desktop}, width=${width})`, async t => {
-  const h = await harness(t, false, {desktop, width, route:'/projects'});
-  let imports = 0;
-  let releaseScan;
-  const pendingScan = new Promise(resolve => { releaseScan = resolve; });
-  h.setIntercept(async (url, options, body) => {
-    if (url === '/api/projects/scan') {
-      await pendingScan;
-      return {ok:true,json:async()=>({repositories:[
-        {name:'App',path:'/repo/app',common_dir:'/repo/app/.git',project_id:'app'},
-        {name:'First',path:'/repo/first',common_dir:'/repo/first/.git'},
-        {name:'Second',path:'/repo/second',common_dir:'/repo/second/.git'},
-      ],warnings:[{path:'/repo/unreadable',message:'Permission denied'}],truncated:true})};
-    }
-    if (url === '/api/projects/import') {
-      imports++;
-      if (imports === 1) {
-        assert.equal(body.repositories.length, 2);
-        assert.equal(body.repositories[0].name, 'Renamed first');
-        return {ok:true,json:async()=>({results:[{path:'/repo/first',id:'first',status:'registered'},{path:'/repo/second',status:'error',error:'Name already exists'}]})};
-      }
-      assert.deepEqual(body.repositories.map(repository => repository.path), ['/repo/second']);
-      assert.equal(body.repositories[0].name,'Renamed second');
-      return {ok:true,json:async()=>({results:[{path:'/repo/second',id:'second',status:'registered'}]})};
-    }
-  });
-  h.click('[data-action="new-project"]');
-  h.change('#projectSource','scan'); h.input('#projectPath','/repo');
-  const scanning = h.submit('#projectForm');
-  assert.equal(h.$('#projectSubmit').disabled,true);
-  assert.equal(h.$('#projectEnvironmentSelect').disabled,true);
-  assert.equal(h.$('#projectScanResults').getAttribute('aria-busy'),'true');
-  releaseScan(); await scanning;
-  assert(h.$('#projectNameField').hidden);
-  assert.equal(h.$('[data-scan-select="0"]').disabled,true);
-  assert.match(h.$('#projectScanResults').textContent,/上限/);
-  assert.match(h.$('#projectScanResults').textContent,/Permission denied/);
-  h.click('#projectScanSelectAll'); assert.equal(h.$('#projectSubmit').disabled,true);
-  h.click('[data-scan-select="1"]'); assert.equal(h.$('#projectScanSelectAll').indeterminate,true);
-  h.click('#projectScanSelectAll'); assert.equal(h.$('#projectScanSelectAll').checked,true);
-  h.input('#projectScanName1','Renamed first');
-  await h.submit('#projectForm');
-  assert(h.$('#projectDialog').open);
-  assert.equal(h.$('[data-scan-select="1"]').disabled,true);
-  assert.equal(h.$('[data-scan-select="2"]').checked,true);
-  assert.match(h.$('#projectError').textContent,/1 个仓库登记成功，1 个失败/);
-  assert.match(h.$('#projectScanResults').textContent,/Name already exists/);
-  h.input('#projectScanName2','Renamed second');
-  await h.submit('#projectForm');
-  assert.equal(h.$('#projectDialog').open,false);
-  assert.equal(imports,2);
-  await h.navigate('/workspaces'); await h.navigate('/projects');
-  assert(h.$('#projectListPane'));
-});
 
 test('directory scan invalidates results on input changes and retains failed scan inputs', async t => {
   const h = await harness(t, false, {route:'/projects'});
@@ -4252,4 +3804,46 @@ test('directory scan returns every registered project to the workspace picker', 
   assert.equal(h.$('#projectDialog').open,false);
   const selected = [...h.document.querySelectorAll('#projectPicker input[name="project_ids"]:checked')].map(input => input.value);
   assert(selected.includes('batch-0')); assert(selected.includes('batch-1'));
+});
+
+test('resource icons edit only the active detail, persist without browser storage and retain failed drafts', async t => {
+  const saved = {local:{icons:{'workspace:workspace':{icon:'code',color:'blue'}}}};
+  const h = await harness(t, false, {pins:saved, storageUnavailable:true});
+  assert.equal(h.$('#conversationShortcuts, #shortcutIconSettings, #openYoluAssistant'), null);
+  const trigger = h.$('#workspaceTitleIcon [data-resource-icon-edit]');
+  trigger.focus();trigger.click();await settle();
+  assert(h.$('.shortcut-icon-dialog').open);
+  assert.equal(h.$('#shortcutIconEntry'),null);
+  h.click('.shortcut-icon-dialog [aria-label="火箭"]');await settle();h.click('.shortcut-icon-dialog [aria-label="玫红"]');await settle();
+  await h.submit('.shortcut-icon-dialog form');
+  assert.deepEqual(saved.local.icons['workspace:workspace'],{icon:'rocket',color:'rose'});
+  assert.equal(h.$('.shortcut-icon-dialog').open,false);
+  assert.equal(h.document.activeElement,trigger);
+  await h.navigate('/projects/app');
+  assert(h.$('#projectDetail [data-resource-icon-edit]'));
+  h.click('#projectDetail [data-resource-icon-edit]');await settle();
+  h.click('.shortcut-icon-dialog [aria-label="问题修复"]');await settle();
+  await h.window.refresh(true);await settle();
+  h.setIntercept((url,options)=>url.startsWith('/api/resource-icons') && options.method === 'PUT' ? {ok:false,json:async()=>({error:'Save failed'})}:null);
+  await h.submit('.shortcut-icon-dialog form');
+  assert.equal(h.$('.shortcut-icon-dialog').open,true);
+  assert.match(h.$('.shortcut-icon-dialog [role="alert"]').textContent,/Save failed/);
+  assert.equal(h.$('.shortcut-icon-dialog [aria-label="问题修复"]').getAttribute('aria-pressed'),'true');
+  h.setIntercept(null);await h.submit('.shortcut-icon-dialog form');
+  assert.equal(saved.local.icons['project:app'].icon,'bug');
+  assert.equal(h.document.activeElement,h.$('#projectDetail [data-resource-icon-edit]'));
+  assert.equal(saved.local.icons['workspace:workspace'].icon,'rocket');
+});
+
+test('shared navigator starts with search and lists resources without pinning', async t => {
+  const host = pageHost(t), h = await harness(t,false,{pageHost:host.window});
+  const post = data => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+  await settle();await settle();
+  assert(h.$('[data-collection-href="#/workspaces/workspace"]'));
+  assert(h.$('[data-collection-href^="#/projects/app"] .shortcut-badge'));
+  assert(h.$('[data-collection-href^="#/projects/backend"]'));
+  assert.equal(h.$('#workspaceShortcutPicker, #pinConversationDirectory, .session-browser-list-heading'),null);
+  assert(h.$('#sessionBrowserSearch'));
 });

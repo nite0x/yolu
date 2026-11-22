@@ -53,17 +53,6 @@ Interactive Codex conversations are enabled by default. `--read-only-sessions` s
 
 The browser-mode process runs in the foreground. Stop the test process and use its isolated data directory when changing modes. A desktop backend can be stopped through its host or the authenticated `--stop --data /path/to/data` entry point.
 
-### Global assistant foundation
-
-The **Yolu Assistant** button in the navigation utility row and **Alt+Shift+Y** open the assistant panel through the shared browser/desktop page host. The host keeps the workspace and native conversation readers mounted while the panel is open. Existing `#/assistant` links open the panel as well. The assistant uses the already installed and authenticated local Codex CLI. Run `codex login` in the same local user account when authentication needs setup. Choose an available local model in the assistant composer or inherit the CLI default.
-
-The assistant composer saves model and permission choices with each conversation. **Query only** exposes query tools for the next turn. **Confirm changes** also allows the assistant to prepare application plans, which require explicit approval before execution. A permission change applies to the next turn. Existing plans retain their own approval and execution state.
-
-For an isolated browser trial, run the browser/backend command above with separate `--data` and `--root` directories. Open **Yolu Assistant**, select **New assistant conversation**, and send a message. Create a second conversation, type an unsent draft, close the panel, and open it again from Projects or Workspaces. Open **Assistant history** in the panel header to switch between conversations. Stop and reopen the backend with the same data directory to restore both histories and drafts. The desktop source command uses the same UI and data contracts.
-
-Phase 1 supports development planning conversations. Resource queries and reviewed workspace operations are scheduled for later phases. Assistant history is application-owned SQLite data, separate from native Codex conversation history. The provider uses ephemeral tool-disabled read-only Codex threads with bounded transcript context. Local model/authentication/configuration failures show a recoverable error with the submitted message retained. `--read-only-sessions` also disables assistant creation and sends.
-
-Focused checks include `go test ./internal/assistant ./internal/store` and `node --import tsx --test scripts/chat-global-assistant.test.ts`. An opt-in real model request can be run with `YOLU_TEST_ASSISTANT_CODEX=1 go test ./internal/assistant -run TestInstalledCodexAssistantProvider -v`. See [the implementation plan](features/global-assistant/plan.md) for limits, decisions and verification evidence.
 
 ## Repository structure
 
@@ -89,7 +78,7 @@ The application composes workspace, project, session and execution services. Low
 
 Most workspace components render static HTML through `renderToStaticMarkup` and `window.WorkHubUI`; existing controllers retain event handling, polling, forms and dialog lifecycles. The interactive chat UI mounts through its own React bridge. Avoid a global CSS reset that changes legacy pages. The page host keeps one workspace document for route-based navigation and independent same-origin conversation readers for up to three parallel Agents. Project details, Worktree creation and Git operations have addressable routes. Conversation pane groups live for the current window session. Conversation history and drafts use their own storage.
 
-The conversation page controller delegates shortcut persistence to `frontend/workspace/shortcut-pins.ts` and list mechanics to `conversation-list.ts`. The shortcut store owns legacy browser-cache migration, serialized database writes, cross-window reloads and rollback after failed saves. The list module owns the bounded scroll window, keyboard positioning and DOM row reuse. `conversation-state.ts` owns scope preferences, environment caches, request generations and partial-result publication. The page controller connects these modules to navigation, filters and DOM events.
+The conversation page controller delegates resource appearance to `frontend/workspace/resource-icons.ts` and list mechanics to `conversation-list.ts`. The icon store owns environment-specific reads, serialized resource edits and cross-window reloads. The backend merges each resource edit and retains legacy icon preferences. The list module owns the bounded scroll window, keyboard positioning and DOM row reuse. `conversation-state.ts` owns scope preferences, environment caches, request generations and partial-result publication. The page controller connects these modules to navigation, filters and DOM events.
 
 The chat controller delegates debounced, ordered draft persistence to `frontend/chat/draft-persistence.ts` and saved-history pagination to `history-loader.ts`. The history loader receives connection and live-output revisions so delayed pages cannot replace a newer turn or title. Shared controller contracts live in `controller-types.ts`; type-only dependencies do not load the controller runtime.
 
@@ -237,9 +226,8 @@ Follow the [brand reference](brand/yolu/README.md) and regenerate platform asset
 
 ## Shared UI implementation
 
-Follow [the shared UI guidelines](ui-guidelines.md) for the component inventory, token ownership, pane layout, conversation contract and verification workflow. `WorkspaceSplitLayout` and `WorkspacePane` provide reusable page surfaces, and static workspace/project markup uses the same `workspace-pane` class. Native and global-assistant conversations render the same `ConversationPanel`, with `useConversationRuntime` for lifecycle/draft synchronization and `useChatReading` for history/reading behavior. `ConversationList`, `ConversationHeader`, `Thread`, `Composer`, run indicators and feedback are shared within that contract. Domain-specific state and capabilities are supplied through props and controllers.
+Follow [the shared UI guidelines](ui-guidelines.md) for the component inventory, token ownership, pane layout, conversation contract and verification workflow. `WorkspaceSplitLayout` and `WorkspacePane` provide reusable page surfaces, and static workspace/project markup uses the same `workspace-pane` class. Native coding conversations render the shared `ConversationPanel`, with `useConversationRuntime` for lifecycle/draft synchronization and `useChatReading` for history/reading behavior. `ConversationList`, `ConversationHeader`, `Thread`, `Composer`, run indicators and feedback are shared within that contract. Domain-specific state and capabilities are supplied through props and controllers.
 
-The assistant's application actions render as custom tool content inside their transcript turn, sharing the message viewport and reading state. The Go capability registry composes existing query and domain services in `internal/app/assistant_capabilities.go`. Write tools create immutable reviews, and the application decision endpoint binds approval before domain execution. Existing manual registration, workspace creation and project attachment call the same extracted services. The phase contract, limits and recovery rules are recorded in [the assistant specification](features/global-assistant/spec.md#phases-23-implementation-contract).
 
 ## Localization
 

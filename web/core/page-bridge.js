@@ -5,7 +5,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 // Independent conversation readers retain their controllers and drafts.
 // Page navigation is owned by the workspace document.
 (() => {
-  if (!window.parent || window.parent === window || document.documentElement.hasAttribute('data-workspace-assistant')) return;
+  if (!window.parent || window.parent === window) return;
   const host = window.parent;
   let active = false, restoring = true, timer, disposed = false, parallelPane = false, navigationOnly = new URLSearchParams(location.search).has('workspace-navigation');
   let restoreRevision = 0;
@@ -43,7 +43,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const session = view ? conversationSelectedSession(view) : null;
     const project = state.projects.find(item => item.id === state.selectedProject);
     const workspace = state.workspaces.find(item => item.id === state.selectedWorkspace);
-    const title = state.view === 'assistant' ? uiText("Yolu 助手") : view ? view.creating ? uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? 'Issues' : state.view === 'projects' ? uiText("项目") : workspace?.name || uiText("工作区");
+    const title = view ? view.creating ? uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? 'Issues' : state.view === 'projects' ? uiText("项目") : workspace?.name || uiText("工作区");
     return {
       route, environment: activeEnvironment, title, kind: state.view,
       terminal:view?.creating ? creationHint : undefined,
@@ -100,7 +100,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
   }
   async function restore(saved) {
-    closeShortcutPicker();
     const revision = ++restoreRevision;
     restoring = true;
     const previousLocation = resourceLocation.key;
@@ -175,16 +174,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (directoryProject) return {route:directoryProject.hash.slice(1), environment:activeEnvironment};
     const projectButton = target.closest('[data-action="select-project"]');
     if (projectButton) return {route:'/projects/' + projectButton.dataset.id, environment:activeEnvironment, title:state.projects.find(p => p.id === projectButton.dataset.id)?.name || uiText("项目")};
-    const workspaceShortcut = target.closest('[data-workspace-shortcut]');
-    if (workspaceShortcut) {
-      const workspace = shortcutWorkspaces().find(item => shortcutWorkspaceKey(item) === workspaceShortcut.dataset.workspaceShortcut);
-      if (workspace) return {route:'/sessions', environment:activeEnvironment, title:workspace.name, conversation:{scope:{kind:'workspace',id:workspace.id,environment:workspace.environment_id || activeEnvironment},pane:'detail'}};
-    }
-    const directoryShortcut = target.closest('[data-directory-shortcut]');
-    if (directoryShortcut) {
-      const directory = shortcutDirectories().find(item => item.key === directoryShortcut.dataset.directoryShortcut);
-      if (directory) return {route:'/sessions', environment:activeEnvironment, title:directory.name, conversation:{scope:{kind:'directory',cwd:directory.cwd,environment:directory.environment},pane:'detail'}};
-    }
     const conversations = target.closest('[data-action="workspace-conversations"], [data-action="project-conversations"]');
     if (conversations) return {route:'/sessions',environment:activeEnvironment, title:uiText("对话"),conversation:{scope:{kind:conversations.dataset.action === 'workspace-conversations' ? 'workspace' : 'project', id:conversations.dataset.id, environment:activeEnvironment},pane:'detail'}};
     const nav = target.closest('[data-view]');
@@ -197,12 +186,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   document.addEventListener('click', event => {
     if (event.target.closest('#openGlobalSearch')) {
       post('workhub:global-search');
-      return;
-    }
-    const assistantLauncher = event.target.closest('#openYoluAssistant');
-    if (assistantLauncher) {
-      assistantLauncher.focus({preventScroll:true});
-      post('workhub:assistant-toggle');
       return;
     }
     const terminalButton = event.target.closest('[data-conversation-terminal]');
@@ -272,10 +255,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   document.addEventListener('input', schedule);
   document.addEventListener('change', schedule);
   // Top-layer elements stay inside their iframe. Expand the shared navigation
-  // while its dialog or shortcut picker extends into the conversation panes.
+  // while its dialog extends into the conversation panes.
   let navigationModal = false;
   const modalObserver = navigationOnly ? new MutationObserver(() => {
-    const open = !!document.querySelector('dialog[open], .sidebar-shortcut-rail #workspaceShortcutPicker[open]');
+    const open = !!document.querySelector('dialog[open]');
     if (open === navigationModal) return;
     navigationModal = open;
     post('workhub:navigation-modal', {open});
@@ -361,10 +344,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     document.removeEventListener('pointerdown', focus, true);
     document.removeEventListener('focusin', focus);
   }
-  const readAssistantActivity = () => assistantRequest('/api/assistant/conversations').then(conversations =>
-    conversations.some(conversation => conversation.activity === 'waiting') ? 'waiting'
-      : conversations.some(conversation => conversation.activity === 'running') ? 'running' : '');
-  window.WorkHubPage = {snapshot,canClose,dispose,environmentName,readAssistantActivity,get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
+  window.WorkHubPage = {snapshot,canClose,dispose,environmentName,refresh:() => refresh(true),get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
   visibility(false);
   window.addEventListener('workhub:workspace-ready', () => post('workhub:page-ready'), {once:true});
 })();

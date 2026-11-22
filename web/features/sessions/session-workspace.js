@@ -12,7 +12,6 @@ const conversationState = window.WorkHubUI.createConversationState({
 });
 window.WorkHubConversations = conversationState;
 const conversationListRenderKeys = new WeakMap();
-const shortcutPickerStates = new Map();
 const conversationHost = $('#sessionBrowser');
 let conversationTerminals = [], conversationTerminalLoad = null, conversationTerminalsCheckedAt = 0;
 const conversationTerminalKey = id => JSON.stringify(['terminal','local',id]);
@@ -142,129 +141,47 @@ function conversationReadingSession(id, environment = activeEnvironment) {
   return !window.WorkHubPage?.navigationOnly && !document.hidden && window.WorkHubPage?.active !== false && conversationVisible() && !conversationState.current?.creating && conversationState.current?.selected === conversationEnvironmentKey(environment, id) && (conversationState.current.pane === 'detail' || !width || width > 620);
 }
 function conversationItems(environment) { return environment ? conversationState.sessions(environment) : conversationEnvironments().flatMap(e => conversationState.sessions(e.id)); }
-const shortcutPins = window.WorkHubUI.createShortcutPins({
+const resourceIcons = window.WorkHubUI.createResourceIcons({
   request: api,
-  storage: () => localStorage,
-  changed: () => {
-    renderConversationShortcuts(); updateDirectoryPinButton();
-    if (window.WorkHubPage?.navigationOnly) renderConversationList();
-  },
+  changed: () => { renderResourceIcons(); if (conversationVisible()) renderConversationList(); },
   failed: message => toast(message, true),
 });
-function pinnedWorkspaceIDs(environment = activeEnvironment) { return shortcutPins.workspaces(environment); }
-function pinnedDirectoryPaths(environment = activeEnvironment) { return shortcutPins.directories(environment); }
-function loadShortcutPins(environment) { return shortcutPins.load(environment); }
-function saveShortcutPins(environment) { return shortcutPins.save(environment); }
-function shortcutPickerState() {
-  const key = JSON.stringify([activeEnvironment, $('#conversationShortcuts')?.dataset.shortcutKind || 'all']);
-  if (!shortcutPickerStates.has(key)) shortcutPickerStates.set(key, { search: '', archived: false });
-  return shortcutPickerStates.get(key);
-}
-function closeShortcutPicker(restoreFocus = false) {
-  const picker = $('#workspaceShortcutPicker');
-  if (!picker?.open) return;
-  picker.open = false;
-  syncShortcutPickerPanel();
-  if (restoreFocus) picker.querySelector('summary').focus({preventScroll:true});
-}
-function syncShortcutPickerPanel() {
-  const picker = $('#workspaceShortcutPicker');
-  const panel = $('#shortcutPickerPanel');
-  // The native top layer escapes the sidebar's scrolling and clipping boundary.
-  if (!panel) return;
-  const nativePopover = typeof panel.showPopover === 'function';
-  if (!picker.open) { if (nativePopover && panel.matches(':popover-open')) panel.hidePopover(); return; }
-  const rail = picker.closest('.sidebar-shortcut-rail');
-  if (!nativePopover && !rail) return;
-  const anchor = picker.querySelector('summary').getBoundingClientRect();
-  const below = window.innerHeight - anchor.bottom - 18;
-  const above = anchor.top - 18;
-  const useBelow = below >= 300 || below >= above;
-  const left = rail ? rail.closest('.sidebar').getBoundingClientRect().right + 8 : anchor.right - 340;
-  panel.style.left = Math.max(12, Math.min(left, window.innerWidth - 352)) + 'px';
-  panel.style.top = useBelow ? anchor.bottom + 6 + 'px' : 'auto';
-  panel.style.bottom = useBelow ? 'auto' : window.innerHeight - anchor.top + 6 + 'px';
-  panel.style.maxHeight = Math.max(100, Math.min(540, useBelow ? below : above)) + 'px';
-  if (nativePopover && !panel.matches(':popover-open')) panel.showPopover();
-}
-function syncConversationScopePanel() {
-  window.WorkHubUI.syncListFilter($('#sessionScopePicker'), conversationVisible());
-}
-function shortcutWorkspaces(includeArchived = false) {
+function navigatorWorkspaces(includeArchived = false) {
   const workspaces = workspaceInventory.loaded ? workspaceInventory.workspaces : state.workspaces;
   return workspaces.filter(workspace => includeArchived || workspace.state !== 'archived');
 }
-function shortcutWorkspaceKey(workspace) { return conversationEnvironmentKey(workspace.environment_id || activeEnvironment, workspace.id); }
-function shortcutDirectories() {
-  const paths = conversationDirectories({kind: 'all'}, '').filter(d => d.target).map(d => ({cwd: d.cwd, environment: d.environment}));
-  for (const entry of conversationEnvironments()) for (const cwd of pinnedDirectoryPaths(entry.id)) paths.push({cwd, environment: entry.id});
-  return [...new Map(paths.map(d => [conversationEnvironmentKey(d.environment, conversationPathKey(d.cwd)), d])).values()].map(({cwd, environment}) => {
-    const key = conversationEnvironmentKey(environment, conversationPathKey(cwd));
-    const parts = cwd.replace(/[\\/]+$/, '').split(/[\\/]/);
-    const name = parts.pop() || cwd;
-    return {cwd, key, environment, name, appearance:shortcutPins.icons(environment)?.["directory:" + conversationPathKey(cwd)], parent: (parts.join(cwd.includes('\\') ? '\\' : '/') || '/') + ' · ' + environmentName(environment), pinned: pinnedDirectoryPaths(environment).some(path => conversationPathKey(path) === conversationPathKey(cwd))};
-  });
+function resourceAppearance(environment, id, path) {
+  const icons = resourceIcons.icons(environment);
+  return icons[id] || (path ? icons['directory:' + conversationPathKey(path)] : undefined);
 }
-function renderConversationShortcuts() {
-  if (!window.document) return;
-  const host = $('#conversationShortcuts');
-  const workspaces = shortcutWorkspaces(true);
-  const directories = shortcutDirectories();
-  const selectedScope = conversationVisible() && conversationState.current?.environment === activeEnvironment ? conversationState.current.scope : null;
-  const markup = window.WorkHubUI.conversationShortcuts({
-    workspaces: workspaces.map(workspace => ({id:shortcutWorkspaceKey(workspace), name:workspace.name, appearance:shortcutPins.icons(workspace.environment_id || activeEnvironment)?.["workspace:" + workspace.id], projects:[...new Set(workspace.members.map(m => m.project_name))].join(' · '), environment: environmentName(workspace.environment_id || activeEnvironment), pinned:pinnedWorkspaceIDs(workspace.environment_id || activeEnvironment).includes(workspace.id), archived:workspace.state === 'archived'})),
-    directories,
-    pinnedDirectories: directories.filter(d => d.pinned),
-    kind: host.dataset.shortcutKind,
-    desktopRail: document.documentElement.hasAttribute('data-workhub-desktop') && !window.WorkHubPage?.navigationOnly,
-    pickerOnly: !!window.WorkHubPage?.navigationOnly,
-    selected: selectedScope?.kind === 'workspace' ? conversationEnvironmentKey(selectedScope.environment, selectedScope.id) : null,
-    selectedDirectory: selectedScope?.kind === 'directory' ? directories.find(directory => directory.environment === selectedScope.environment && conversationPathKey(directory.cwd) === conversationPathKey(selectedScope.cwd))?.key : null,
-    ...shortcutPickerState(), environment: uiText("全部环境"),
-  });
-  if (host.dataset.markup !== markup) {
-    const expanded = host.querySelector('#workspaceShortcutPicker')?.open;
-    const focused = host.contains(document.activeElement) ? document.activeElement : null;
-    const focusID = focused?.id;
-    const focusAttribute = ['data-workspace-shortcut', 'data-workspace-shortcut-pin', 'data-directory-shortcut', 'data-directory-shortcut-pin'].find(attribute => focused?.hasAttribute(attribute));
-    const focusValue = focusAttribute && focused.getAttribute(focusAttribute);
-    const selection = focused?.id === 'shortcutSearch' ? [focused.selectionStart, focused.selectionEnd] : null;
-    const top = (host.querySelector('.sidebar-shortcut-list') || host).scrollTop;
-    const resultsTop = host.querySelector('.shortcut-picker-results')?.scrollTop || 0;
-    host.innerHTML = markup; host.dataset.markup = markup;
-    if (expanded) { const picker = host.querySelector('#workspaceShortcutPicker'); picker.dataset.restored = 'true'; picker.open = true; }
-    syncShortcutPickerPanel();
-    const list = host.querySelector('.sidebar-shortcut-list') || host;
-    list.scrollTop = top;
-    host.querySelector('.shortcut-picker-results').scrollTop = resultsTop;
-    if (focused) {
-      const button = focusID ? host.querySelector('#' + focusID) : focusAttribute ? [...host.querySelectorAll('[' + focusAttribute + ']')].find(button => button.getAttribute(focusAttribute) === focusValue && (!button.closest('details') || button.closest('details').open)) : null;
-      (button || host.querySelector('#workspaceShortcutPicker summary')).focus({preventScroll:true});
-      if (selection && button) button.setSelectionRange(...selection);
-    }
+function renderResourceIcons() {
+  for (const node of document.querySelectorAll('[data-resource-icon]')) {
+    const environment = node.dataset.environment || activeEnvironment;
+    node.dataset.environment = environment;
+    const project = node.dataset.resourceIcon.startsWith('project:') && state.projects.find(project => 'project:' + project.id === node.dataset.resourceIcon);
+    const appearance = resourceAppearance(environment, node.dataset.resourceIcon, project?.path);
+    const markup = window.WorkHubUI.resourceIconBadge({name:node.dataset.resourceName, identity:node.dataset.resourceIcon, appearance});
+    if (node.innerHTML !== markup) node.innerHTML = markup;
+    node.dataset.resourceAppearance = JSON.stringify(appearance || {});
   }
 }
-window.addEventListener('workhub:shortcuts-filter', renderConversationShortcuts);
 window.addEventListener('storage', event => {
-  const prefix = 'workhub:shortcut-pins-updated:';
-  if (!event.key?.startsWith(prefix)) return;
-  shortcutPins.reload(event.key.slice(prefix.length)).catch(() => {});
+  const prefix = 'workhub:resource-icons-updated:';
+  if (event.key?.startsWith(prefix)) resourceIcons.reload(event.key.slice(prefix.length)).catch(() => {});
 });
-window.addEventListener('workhub:shortcut-icon-save', async event => {
-  const [kind, key] = JSON.parse(event.detail.key);
-  const workspace = kind === 'workspace' && shortcutWorkspaces().find(workspace => shortcutWorkspaceKey(workspace) === key);
-  const directory = kind === 'directory' && shortcutDirectories().find(directory => directory.key === key);
-  const environment = workspace ? workspace.environment_id || activeEnvironment : directory?.environment;
-  if (!environment || state.busy) return;
-  try { await loadShortcutPins(environment); } catch { return; }
-  const id = workspace ? 'workspace:' + workspace.id : 'directory:' + conversationPathKey(directory.cwd);
-  shortcutPins.setIcon(environment, id, event.detail.value);
-  renderConversationShortcuts();
-  await saveShortcutPins(environment);
+window.addEventListener('workhub:resource-icon-save', async event => {
+  const {environment, key, value, resolve, reject} = event.detail;
+  try { await resourceIcons.save(environment, key, value); resolve(); } catch (error) { reject(error); }
 });
-function refreshConversationShortcuts(force = false) {
-  if (window.WorkHubPage?.restoring || window.WorkHubPage?.active === false || document.documentElement?.hasAttribute('data-workspace-conversation')) return;
-  return Promise.allSettled(conversationEnvironments().flatMap(entry => [loadShortcutPins(entry.id), refreshConversationEnvironment(entry.id, force)]));
+function syncConversationScopePanel() {
+  window.WorkHubUI.syncListFilter($('#sessionScopePicker'), conversationVisible());
+}
+function refreshConversationCatalog(force = false) {
+  if (window.WorkHubPage?.restoring || window.WorkHubPage?.active === false) return;
+  const environments = conversationEnvironments();
+  const icons = environments.map(entry => resourceIcons.load(entry.id));
+  if (document.documentElement?.hasAttribute('data-workspace-conversation')) return Promise.allSettled(icons);
+  return Promise.allSettled([...icons, ...environments.map(entry => refreshConversationEnvironment(entry.id, force))]);
 }
 function refreshConversationEnvironment(environment, force = false) {
   const load = conversationState.catalog(environment);
@@ -272,7 +189,7 @@ function refreshConversationEnvironment(environment, force = false) {
   if (!force && Date.now() - load.checkedAt < 10000) return;
   load.loading = true; load.checkedAt = Date.now();
   const revision = load.revision;
-  renderConversationShortcuts();
+  renderResourceIcons();
   load.pending = (async () => {
     try {
       const result = await conversationRequests.load(api, environment, '', force);
@@ -289,54 +206,6 @@ function refreshConversationEnvironment(environment, force = false) {
     }
   })();
   return load.pending;
-}
-function openWorkspaceShortcut(id) {
-  const workspace = shortcutWorkspaces().find(workspace => shortcutWorkspaceKey(workspace) === id);
-  if (state.busy || !workspace) return;
-  openConversationShortcut({kind:'workspace', id:workspace.id, environment:workspace.environment_id || activeEnvironment, name:workspace.name});
-}
-function openConversationShortcut(scope) {
-  if (state.busy) return;
-  rememberConversationView();
-  const view = conversationViewFor(scope);
-  Object.assign(view, {directory:'', search:'', statusFilter:'all', archived:false, requestedSession:null, creating:false, target:null, pane:'detail', sessions:view.sessions.filter(s => !s.archived), requestID:(view.requestID || 0) + 1, requestKey:null, loading:false, checkedAt:0});
-  openConversationWorkspace(scope);
-}
-function toggleWorkspaceShortcutPin(key) {
-  const workspace = shortcutWorkspaces(true).find(workspace => shortcutWorkspaceKey(workspace) === key);
-  if (state.busy || !workspace) return;
-  const environment = workspace.environment_id || activeEnvironment;
-  if (!shortcutPins.loaded(environment)) return loadShortcutPins(environment).then(() => toggleWorkspaceShortcutPin(key)).catch(() => {});
-  const ids = pinnedWorkspaceIDs(environment), id = workspace.id;
-  if (!ids.includes(id) && workspace.state === 'archived') return;
-  const next = ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id];
-  shortcutPins.setWorkspaces(environment, next);
-  renderConversationShortcuts();
-  return saveShortcutPins(environment);
-}
-function selectedConversationDirectoryKey() {
-  const view = conversationState.current;
-  return view?.directory || (view?.scope.kind === 'directory' ? conversationEnvironmentKey(view.scope.environment, conversationPathKey(view.scope.cwd)) : '');
-}
-function toggleDirectoryShortcutPin(key) {
-  const directory = shortcutDirectories().find(d => d.key === key);
-  if (state.busy || !directory) return;
-  const {cwd, environment} = directory;
-  if (!shortcutPins.loaded(environment)) return loadShortcutPins(environment).then(() => toggleDirectoryShortcutPin(key)).catch(() => {});
-  const paths = pinnedDirectoryPaths(environment);
-  const next = directory.pinned ? paths.filter(path => conversationPathKey(path) !== conversationPathKey(cwd)) : [...paths, cwd];
-  shortcutPins.setDirectories(environment, next);
-  renderConversationShortcuts(); updateDirectoryPinButton();
-  return saveShortcutPins(environment);
-}
-function updateDirectoryPinButton() {
-  const directory = shortcutDirectories().find(d => d.key === selectedConversationDirectoryKey());
-  const button = $('#pinConversationDirectory');
-  button.hidden = !directory;
-  button.setAttribute('aria-pressed', String(!!directory?.pinned));
-  button.querySelector('span').textContent = directory?.pinned ? uiText("取消固定目录") : uiText("固定此目录");
-  button.setAttribute('aria-label', directory?.pinned ? uiText("取消固定目录") : uiText("固定此目录"));
-  button.title = directory?.cwd || '';
 }
 function conversationViewFor(scope) {
   if (scope.kind !== 'all' && !scope.environment) scope = {...scope, environment: conversationScopeEnvironment(scope)};
@@ -424,7 +293,7 @@ function updateConversationNavigation() {
   const node = $('#sessionNavigationStatus');
   node.textContent = text; node.hidden = !text;
   node.setAttribute('aria-label', waiting ? uiText("{0} 个对话待确认", waiting) : running ? uiText("{0} 个对话运行中", running) : uiText("{0} 个对话有新消息", unread));
-  renderConversationShortcuts();
+  renderResourceIcons();
 }
 const conversationStatusMatches = window.WorkHubUI.conversationStatusMatches;
 const patchConversationList = window.WorkHubUI.patchConversationList;
@@ -477,20 +346,19 @@ function renderConversationList() {
   view.listItems = sessions;
   view.listRows = window.WorkHubUI.conversationTree(sessions, {
     navigator: window.WorkHubPage?.navigationOnly && view.scope.kind === 'all' && !view.archived ? {
-      workspaces: shortcutWorkspaces().flatMap(workspace => {
+      workspaces: navigatorWorkspaces().flatMap(workspace => {
         const environment = workspace.environment_id || activeEnvironment;
-        if (!pinnedWorkspaceIDs(environment).includes(workspace.id) || view.environmentFilter && view.environmentFilter !== environment) return [];
-        return [{...workspace, environment, environmentName:environmentName(environment), appearance:shortcutPins.icons(environment)?.["workspace:" + workspace.id]}];
+        if (view.environmentFilter && view.environmentFilter !== environment) return [];
+        return [{...workspace, environment, environmentName:environmentName(environment), appearance:resourceAppearance(environment, "workspace:" + workspace.id)}];
       }),
-      directories: shortcutDirectories().flatMap(directory => {
-        if (!directory.pinned || view.environmentFilter && view.environmentFilter !== directory.environment) return [];
-        const path = conversationPathKey(directory.cwd);
-        const project = conversationWorkspace(directory.environment).projects.find(project =>
-          conversationPathKey(project.path) === path || (project.worktrees || []).some(tree => conversationPathKey(tree.path) === path));
-        return [{...directory, projectID:project?.id, projectName:project?.name, projectRoot:!!project && conversationPathKey(project.path) === path}];
+      directories: conversationEnvironments().flatMap(entry => {
+        if (view.environmentFilter && view.environmentFilter !== entry.id) return [];
+        return conversationWorkspace(entry.id).projects.map(project => ({cwd:project.path, key:conversationEnvironmentKey(entry.id, conversationPathKey(project.path)),
+          environment:entry.id, environmentName:environmentName(entry.id), name:project.name, projectID:project.id, projectName:project.name, projectRoot:true,
+          appearance:resourceAppearance(entry.id, 'project:' + project.id, project.path)}));
       }),
     } : undefined,
-    workspaces: shortcutWorkspaces(true).map(workspace => ({...workspace,environment_id:workspace.environment_id || activeEnvironment})), scope: view.scope,
+    workspaces: navigatorWorkspaces(true).map(workspace => ({...workspace,environment_id:workspace.environment_id || activeEnvironment})), scope: view.scope,
     selected: window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected,
     reveal: view.locateSelection, limits: view.groupLimits, collapsed: view.collapsedGroups,
     filtered: !!text || statusFilter !== 'all' || view.archived,
@@ -604,7 +472,6 @@ function renderConversationBrowser() {
   $('#workspaceConversationTools').hidden = view.scope.kind !== 'workspace';
   $('#linkWorkspaceConversation').dataset.workspace = view.scope.kind === 'workspace' ? view.scope.id : '';
   $('#linkWorkspaceConversation').dataset.environment = conversationScopeEnvironment(view.scope);
-  updateDirectoryPinButton();
   $('#sessionBrowserSearch').value = view.search;
   $('#sessionBrowserArchived').checked = !!view.archived;
   const available = conversationFilteredDirectories().filter(d => !d.disabled && d.target);
@@ -639,8 +506,8 @@ async function refreshSessionWorkspace(force = false) {
   // A dedicated detail page gets metadata with its history. Only the shared
   // navigation loads lists; no full discovery per parallel conversation.
   if (document.documentElement?.hasAttribute('data-workspace-conversation')) return;
-  const shortcuts = refreshConversationShortcuts(force);
-  if (!conversationVisible()) return shortcuts;
+  const catalog = refreshConversationCatalog(force);
+  if (!conversationVisible()) return catalog;
   const terminals = refreshConversationTerminals(force);
   const view = conversationState.current;
   if (!view || view.environment !== activeEnvironment || view.loading || !force && Date.now() - view.checkedAt < 10000) return terminals;
@@ -806,7 +673,7 @@ function closeConversationWorkspace() {
   $('#sessionScopePicker').open = false;
   syncConversationScopePanel();
   closeSessionHistory(false);
-  renderConversationShortcuts();
+  renderResourceIcons();
 }
 function suspendSessionWorkspace() {
   for (const environment of conversationEnvironments()) conversationRequests.invalidate(environment.id);
@@ -827,7 +694,7 @@ function syncSessionWorkspace() {
     refreshSessionWorkspace(false);
   } else if (conversationState.mode === 'page') closeConversationWorkspace();
   updateConversationNavigation();
-  refreshConversationShortcuts();
+  refreshConversationCatalog();
 }
 function openSessionWorkspaceHistory(workspace, session) {
   openConversationWorkspace(workspace ? { kind: 'workspace', id: workspace } : { kind: 'all', name: uiText("全部对话") }, session);
@@ -882,23 +749,7 @@ function browserSessionActivity(id, chat, environment = activeEnvironment) {
   }
   if (conversationVisible()) renderConversationList(); else updateConversationNavigation();
 }
-// Dismiss before the page bridge can consume a navigation click.
 document.addEventListener('click', event => {
-  if (!event.target.closest('#workspaceShortcutPicker')) closeShortcutPicker();
-}, true);
-document.addEventListener('click', event => {
-  const directoryShortcut = event.target.closest('[data-directory-shortcut]');
-  if (directoryShortcut) {
-    const directory = shortcutDirectories().find(d => d.key === directoryShortcut.dataset.directoryShortcut);
-    if (directory) openConversationShortcut({kind:'directory', cwd:directory.cwd, environment:directory.environment, name:directory.cwd});
-    return;
-  }
-  const directoryPin = event.target.closest('[data-directory-shortcut-pin]');
-  if (directoryPin && !directoryPin.disabled) return toggleDirectoryShortcutPin(directoryPin.dataset.directoryShortcutPin);
-  const shortcut = event.target.closest('[data-workspace-shortcut]');
-  if (shortcut) return openWorkspaceShortcut(shortcut.dataset.workspaceShortcut);
-  const pin = event.target.closest('[data-workspace-shortcut-pin]');
-  if (pin && !pin.disabled) return toggleWorkspaceShortcutPin(pin.dataset.workspaceShortcutPin);
   const entry = event.target.closest('[data-action="workspace-conversations"], [data-action="project-conversations"]');
   if (entry) return openConversationWorkspace({ kind: entry.dataset.action === 'workspace-conversations' ? 'workspace' : 'project', id: entry.dataset.id });
   const groupControl = event.target.closest('[data-conversation-group-toggle], [data-conversation-group-more]');
@@ -938,9 +789,7 @@ document.addEventListener('click', event => {
   switch (button.dataset.conversationAction) {
     case 'new': startBrowserConversation(); break;
     case 'link-workspace': $('#linkWorkspaceConversation').click(); break;
-    case 'pin-directory': toggleDirectoryShortcutPin(selectedConversationDirectoryKey()); break;
     case 'refresh': refreshSessionWorkspace(true); break;
-    case 'refresh-shortcuts': refreshConversationShortcuts(true); break;
     case 'clear-search':
       conversationState.current.search = ''; resetConversationListWindow(); $('#sessionBrowserSearch').value = ''; $('#sessionBrowserList').scrollTop = 0;
       renderConversationList(); $('#sessionBrowserSearch').focus(); break;
@@ -989,26 +838,6 @@ $('#sessionsEnvironment').addEventListener('change', event => {
   setConversationDirectory('');
 });
 $('#sessionScopeSearch').addEventListener('input', renderConversationScopes);
-document.addEventListener('input', event => {
-  if (event.target.id !== 'shortcutSearch') return;
-  shortcutPickerState().search = event.target.value;
-  renderConversationShortcuts();
-});
-document.addEventListener('change', event => {
-  if (event.target.id !== 'shortcutArchived') return;
-  shortcutPickerState().archived = event.target.checked;
-  renderConversationShortcuts();
-});
-document.addEventListener('toggle', event => {
-  if (event.target.id !== 'workspaceShortcutPicker') return;
-  syncShortcutPickerPanel();
-  if (!event.target.open) return;
-  if (event.target.dataset.restored) { delete event.target.dataset.restored; return; }
-  $('#shortcutSearch')?.focus({preventScroll:true});
-  if (!state.loaded && !state.refreshing) refresh(true);
-}, true);
-window.addEventListener('resize', syncShortcutPickerPanel);
-window.addEventListener('workhub:page-visibility', event => { if (!event.detail.visible) closeShortcutPicker(); });
 $('#sessionScopePicker').addEventListener('toggle', () => { syncConversationScopePanel(); if ($('#sessionScopePicker').open) { renderConversationScopes(); $('#sessionScopeSearch').focus({preventScroll:true}); } });
 window.addEventListener('resize', syncConversationScopePanel);
 document.addEventListener('scroll', syncConversationScopePanel, true);
@@ -1029,7 +858,6 @@ $('#sessionBrowserNewDirectory').addEventListener('change', event => {
 document.addEventListener('keydown', event => {
   const itemMenu = document.activeElement?.closest('.session-item-menu[open]');
   if (event.key === 'Escape' && itemMenu) { itemMenu.open = false; itemMenu.querySelector('summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
-  if (event.key === 'Escape' && $('#workspaceShortcutPicker')?.open) { closeShortcutPicker(true); event.preventDefault(); event.stopPropagation(); return; }
   if (event.key === 'Escape' && $('#sessionScopePicker').open) { $('#sessionScopePicker').open = false; $('#sessionScopePicker summary').focus(); event.preventDefault(); event.stopPropagation(); return; }
   if (event.key === 'Escape' && event.target.id === 'sessionBrowserSearch' && conversationState.current?.search) {
     conversationState.current.search = ''; resetConversationListWindow(); event.target.value = ''; $('#sessionBrowserList').scrollTop = 0; renderConversationList(); event.preventDefault(); event.stopPropagation(); return;

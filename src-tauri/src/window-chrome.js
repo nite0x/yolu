@@ -57,33 +57,36 @@
   }
   document.addEventListener('DOMContentLoaded', () => {
     if (window !== host) return;
-    const drag = document.createElement('header');
+    const drag = document.querySelector('.workhub-window-drag') || document.createElement('header');
     drag.className = 'workhub-window-drag';
     if (overlay) {
       document.documentElement.setAttribute('data-workhub-window-overlay', '');
       drag.setAttribute('aria-label', window.YoluI18n?.text('窗口标题栏') || '窗口标题栏');
     }
-    const controls = document.createElement('div');
+    const controls = document.getElementById('workhubWindowControls') || document.createElement('div');
     controls.id = 'workhubWindowControls';
     controls.className = 'workhub-window-controls shadcn-scope';
     drag.append(controls);
     if (platform === 'windows') {
       // The startup/error page has no React layout, so provide its menu here.
       // The workspace replaces this fallback when it mounts its shared chrome.
-      const brand = document.createElement('button');
-      brand.type = 'button';
-      brand.className = 'window-brand-trigger';
-      brand.textContent = 'Yolu ▾';
-      brand.setAttribute('aria-label', window.YoluI18n?.text('Yolu 菜单') || 'Yolu 菜单');
-      brand.setAttribute('aria-haspopup', 'menu');
-      const showMenu = () => window.WorkHubDesktopWindow.showMenu();
-      brand.addEventListener('click', showMenu);
-      brand.addEventListener('keydown', event => {
-        if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
-        event.preventDefault();
-        showMenu();
-      });
-      controls.append(brand);
+      if (!controls.hasChildNodes()) {
+        const brand = document.createElement('button');
+        brand.type = 'button';
+        brand.className = 'window-brand-trigger';
+        brand.textContent = 'Yolu ▾';
+        brand.setAttribute('aria-label', window.YoluI18n?.text('Yolu 菜单') || 'Yolu 菜单');
+        brand.setAttribute('aria-haspopup', 'menu');
+        const showMenu = () => window.WorkHubDesktopWindow.showMenu();
+        brand.addEventListener('click', showMenu);
+        brand.addEventListener('keydown', event => {
+          if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+          event.preventDefault();
+          showMenu();
+        });
+        controls.append(brand);
+
+      }
 
       const actions = document.createElement('div');
       actions.className = 'workhub-window-actions';

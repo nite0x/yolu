@@ -31,3 +31,10 @@
 .shortcut-icon-actions { display:flex; gap:8px; margin-top:20px; }
 .shortcut-icon-actions > span { flex:1; }
 .shortcut-icon-actions [type="submit"] { background:var(--yolu-primary,#5964cf); border-color:var(--yolu-primary,#5964cf); color:var(--yolu-surface,#fff); }
+
+.resource-icon-edit { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 3px; border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; }
+.resource-icon-edit:hover { border-color: var(--yolu-border); background: var(--yolu-hover); }
+.resource-icon-edit:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: 2px; }
+.resource-icon-edit .shortcut-badge { width: 28px; height: 28px; font-size: 12px; }
+.shortcut-icon-dialog fieldset:disabled, .shortcut-icon-dialog button:disabled { opacity: .6; }
+.shortcut-icon-dialog [role="alert"] { color: var(--yolu-danger); font-size: 12px; }

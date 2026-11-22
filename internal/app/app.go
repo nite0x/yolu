@@ -5,7 +5,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"worktree-hub/internal/assistant"
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
@@ -17,7 +16,6 @@ import (
 )
 
 type App struct {
-	Assistant           *assistant.Service
 	Execution           *execution.Service
 	Projects            *project.Service
 	Workspaces          *workspace.Service
@@ -31,7 +29,6 @@ type App struct {
 	pickDirectory       func(context.Context) (string, error)
 	directoryPickerBusy atomic.Bool
 	terminalWorktreeMu  sync.RWMutex
-	assistantUse        sync.RWMutex // capability callbacks lease execution resources through teardown
 	browser             *browserAccess
 	voice               *codex.VoiceService
 }
@@ -53,11 +50,6 @@ func openAppForExecution(dataDir, root string, remote *execution.Client) (*App, 
 	if remote == nil {
 		a.voice = codex.NewVoiceService(env.DataDir, codex.OpenLive)
 		a.browser = newBrowserAccess(a)
-		a.Assistant = assistant.New(env.Store, env.DataDir)
-		if err := a.configureAssistant(); err != nil {
-			_ = a.Close()
-			return nil, err
-		}
 		projects.CheckWorktreeIdle = a.checkTerminalWorktree
 		projects.ReserveWorktree = a.reserveWorktree
 	}
@@ -72,11 +64,6 @@ func (a *App) Close() error {
 		if a.voice != nil {
 			a.voice.Close()
 		}
-		if a.Assistant != nil {
-			a.Assistant.Close()
-		}
-		a.assistantUse.Lock()
-		defer a.assistantUse.Unlock()
 		if a.browser != nil {
 			a.browser.close()
 		}

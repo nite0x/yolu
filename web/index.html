@@ -65,21 +65,16 @@
     <nav aria-label="主导航" data-i18n-aria-label="主导航">
       <button type="button" id="openGlobalSearch" class="nav-item" aria-label="全局搜索" title="全局搜索" data-i18n-aria-label="全局搜索" data-i18n-title="全局搜索" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span><span class="nav-text" data-i18n="全局搜索">全局搜索</span></button>
       <button class="nav-item active" data-view="workspaces" aria-label="工作区" title="工作区" data-i18n-title="工作区" data-i18n-aria-label="工作区"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-text" data-i18n="工作区">工作区</span><span class="nav-count" id="workspaceCount">0</span></button>
-      <button type="button" class="nav-item unified-issues" data-view="issues" hidden data-i18n="Issues">Issues</button>
+      <button type="button" id="navigationIssues" class="nav-item unified-issues" aria-label="Issues" title="Issues" data-view="issues" hidden><span class="nav-icon" aria-hidden="true"></span><span class="utility-label">Issues</span></button>
       <button class="nav-item" data-view="projects" aria-label="项目" title="项目" data-i18n-title="项目" data-i18n-aria-label="项目"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-text" data-i18n="项目">项目</span><span class="nav-count" id="projectCount">0</span></button>
       <button class="nav-item" data-view="sessions" aria-label="对话" title="对话" data-i18n-title="对话" data-i18n-aria-label="对话"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="对话">对话</span><span id="sessionNavigationStatus" class="session-navigation-status" role="status"></span></button>
     </nav>
-    <section id="conversationShortcuts" class="conversation-shortcuts shadcn-scope" aria-label="对话快捷入口" data-i18n-aria-label="对话快捷入口"></section>
     <footer class="sync workspace-status sidebar-footer" aria-label="工作台状态" data-i18n-aria-label="工作台状态">
       <div class="sidebar-status-copy">
         <div class="sidebar-status-line"><span class="live-dot updating" id="syncDot" aria-hidden="true"></span><span id="syncText" role="status" data-i18n="更新中…">更新中…</span></div>
         <div class="sidebar-bottom"><span id="platformLabel" data-i18n="本机工作台">本机工作台</span><span class="version">v0.2</span></div>
       </div>
       <div class="sidebar-footer-actions">
-        <button type="button" id="openYoluAssistant" class="nav-item" aria-label="Yolu 助手" aria-haspopup="dialog" aria-expanded="false" aria-keyshortcuts="Alt+Shift+Y" title="Yolu 助手 (Alt+Shift+Y)" data-i18n-title="Yolu 助手 (Alt+Shift+Y)" data-i18n-aria-label="Yolu 助手">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 3 1.9 6.1L17 11l-6.1 1.9L9 19l-1.9-6.1L1 11l6.1-1.9L9 3ZM19 2v6m-3-3h6m-3 10v4m-2-2h4"/></svg>
-          <span class="assistant-launcher-status" aria-hidden="true"></span>
-        </button>
         <span id="refreshControl" class="shadcn-scope"></span>
         <button type="button" class="sidebar-settings nav-item" data-view="settings" title="设置" aria-label="设置" data-i18n-title="设置" data-i18n-aria-label="设置"><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9.7 4.3.6-2.3h3.4l.6 2.3 1.9 1.1 2.3-.6 1.7 3-1.7 1.7v2.2l1.7 1.7-1.7 3-2.3-.6-1.9 1.1-.6 2.3h-3.4l-.6-2.3-1.9-1.1-2.3.6-1.7-3 1.7-1.7V9.5L3.8 7.8l1.7-3 2.3.6Z" transform="translate(0 1)"/><circle cx="12" cy="12" r="3"/></svg></button>
       </div>
@@ -87,7 +82,7 @@
   </aside>
   <div class="shell">
     <main>
-      <div class="page-heading"><div><div class="eyebrow" id="eyebrow">WORKSPACES</div><div class="resource-detail-title"><a href="#/workspaces" id="backToWorkspaces" class="resource-breadcrumb-link" aria-label="返回工作区列表" data-i18n-aria-label="返回工作区列表" data-i18n="工作区" hidden>工作区</a><span id="workspaceBreadcrumbSeparator" class="resource-breadcrumb-divider" aria-hidden="true" hidden>/</span><h1 id="pageTitle" tabindex="-1" data-i18n="工作区">工作区</h1><span id="workspaceSwitcherTrigger" class="shadcn-scope" hidden></span></div><p id="pageSubtitle" data-i18n="围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。">围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。</p></div><span id="newWorkspaceButton" class="shadcn-scope"></span><div id="workspacePageActions" hidden></div></div>
+      <div class="page-heading"><div><div class="eyebrow" id="eyebrow">WORKSPACES</div><div class="resource-detail-title"><a href="#/workspaces" id="backToWorkspaces" class="resource-breadcrumb-link" aria-label="返回工作区列表" data-i18n-aria-label="返回工作区列表" data-i18n="工作区" hidden>工作区</a><span id="workspaceBreadcrumbSeparator" class="resource-breadcrumb-divider" aria-hidden="true" hidden>/</span><span id="workspaceTitleIcon" hidden></span><h1 id="pageTitle" tabindex="-1" data-i18n="工作区">工作区</h1><span id="workspaceSwitcherTrigger" class="shadcn-scope" hidden></span></div><p id="pageSubtitle" data-i18n="围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。">围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。</p></div><span id="newWorkspaceButton" class="shadcn-scope"></span><div id="workspacePageActions" hidden></div></div>
       <div id="offlineFeedback" class="shadcn-scope"></div>
       <section id="stats" class="stats" aria-label="工作台统计" data-i18n-aria-label="工作台统计"></section>
       <section id="issuesPage" class="issues-page shadcn-scope" aria-labelledby="issuesHeading" hidden>
@@ -107,7 +102,6 @@
         <div class="panel-toolbar" id="panelToolbar"><div class="panel-title" id="panelTitle" role="heading" aria-level="1" tabindex="-1" data-i18n="全部工作区">全部工作区</div><div class="toolbar-actions"><div class="shadcn-scope" id="projectEnvironmentWrap" hidden></div><div id="searchField" class="shadcn-scope"></div><span id="projectAddButton" class="shadcn-scope" hidden></span></div></div>
         <section id="workspaceDetailPane" class="workspace-detail-pane workspace-pane"><div id="workspaceHeadingSlot"></div><section id="workspaceProjectsView" class="workspace-projects-view" aria-label="项目工作区" data-i18n-aria-label="项目工作区"><div id="content" aria-live="polite"><div class="loading" data-i18n="正在读取本地状态…">正在读取本地状态…</div></div></section></section>
       </section>
-      <section id="globalAssistantPage" aria-label="Yolu 助手" tabindex="-1" hidden data-i18n-aria-label="Yolu 助手"><div id="globalAssistantRoot"></div></section>
       <section id="sessionsPage" class="sessions-page" aria-label="对话" hidden data-i18n-aria-label="对话"><div id="sessionPageMount"></div></section>
     </main>
   </div>

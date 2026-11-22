@@ -23,3 +23,10 @@
 #projectListFilters #projectEnvironmentWrap select { width: 100%; }
 :where(html:not([data-workhub-desktop])) .projects-page #searchField { width: min(14rem,100%); }
 .list-create-button { color: var(--muted-foreground); }
+
+.list-search-plain, .list-search-plain:focus-within { border-color: transparent; background: transparent; box-shadow: none; }
+.list-search-plain .list-search-field > svg { width: 16px; height: 16px; }
+.list-search-plain .list-search-field input { background: transparent; text-overflow: ellipsis; }
+.list-search-plain .list-filter { margin-right: 0; }
+.list-search-plain .list-filter > summary svg { width: 16px; height: 16px; }
+.list-search-actions { display: flex; flex: none; align-items: center; gap: 2px; }

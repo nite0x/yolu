@@ -19,7 +19,7 @@ func (a *App) secureHandler(next http.Handler) http.Handler {
 		if a.Execution.Remote != nil {
 			r = r.WithContext(execution.WithClient(r.Context(), a.Execution.Remote))
 		}
-		if a.environments != nil && strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/api/environments") && !strings.HasPrefix(r.URL.Path, "/api/assistant/") && !strings.HasPrefix(r.URL.Path, "/api/voice/") && r.URL.Path != "/api/workspace-inventory" && r.URL.Path != "/api/dialogs/directory" && r.URL.Path != "/api/shortcut-pins" && r.URL.Path != "/api/settings/language" && r.URL.Path != "/api/settings/chat-input" && r.URL.Path != "/api/settings/browser-access" {
+		if a.environments != nil && strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/api/environments") && !strings.HasPrefix(r.URL.Path, "/api/voice/") && r.URL.Path != "/api/workspace-inventory" && r.URL.Path != "/api/dialogs/directory" && r.URL.Path != "/api/resource-icons" && r.URL.Path != "/api/settings/language" && r.URL.Path != "/api/settings/chat-input" && r.URL.Path != "/api/settings/browser-access" {
 			if id := r.Header.Get("X-Environment-ID"); id != "" && id != "local" {
 				app, err := a.environments.get(id)
 				if err != nil {

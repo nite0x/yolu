@@ -68,7 +68,7 @@ Create a conversation in a specific available project or workspace directory. An
 
 ### Voice dictation
 
-Select the microphone button in a workspace conversation or Yolu Assistant to dictate into the current draft. Allow microphone access when prompted. Select **Stop dictation**, review or edit the text, then send it. Existing draft text is retained. Closing the pane stops recording.
+Select the microphone button in a workspace conversation to dictate into the current draft. Allow microphone access when prompted. Select **Stop dictation**, review or edit the text, then send it. Existing draft text is retained. Closing the pane stops recording.
 
 Dictation uses the locally installed Codex daemon's V3 WebRTC support and its existing ChatGPT login. Sign in with `codex login` in the user account running Yolu. Codex handles authentication and speech recognition. Audio travels directly from your browser or desktop webview to the Codex voice service. On Linux desktops without WebRTC, Codex's packaged native voice component captures the host microphone and sends the audio. Microphone access in browsers requires localhost or a secure context such as HTTPS. If the installed Codex version or account cannot start voice, the composer displays the error and keeps the draft. Abandoned signaling sessions expire after ten minutes.
 
@@ -102,7 +102,7 @@ The new-conversation entry also offers a terminal mode. Choose an available dire
 
 Switching pages or closing a terminal view leaves its process running. Reconnect from the existing-terminal list, or explicitly end the process to stop it and its children. The backend owns terminal processes and retains a bounded output buffer; stopping or restarting the backend ends those processes and does not restore them afterward.
 
-Pinned workspace and directory shortcuts retain their execution environment and can have custom icons and colors. Pinning is navigation metadata, not exclusive ownership of a directory.
+Workspace and project collections retain their execution environment. Edit their icons and colors from their detail headers. The navigator shows these resources without pinning.
 
 ## Execution environments and WSL
 

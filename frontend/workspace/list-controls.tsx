@@ -4,32 +4,33 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { uiText } from "../i18n"
 
-export function ListCreateButton({ label, showLabel, ...props }: ComponentProps<typeof Button> & { label: string; showLabel?: boolean }) {
-  if (showLabel) return <Button type="button" size="sm" className="resource-list-create" {...props}><Plus aria-hidden="true" />{label}</Button>
+export function ListCreateButton({ label, showLabel, icon, ...props }: ComponentProps<typeof Button> & { label: string; showLabel?: boolean; icon?: ReactNode }) {
+  if (showLabel) return <Button type="button" size="sm" className="resource-list-create" aria-label={label} title={label} {...props}>{icon ?? <Plus aria-hidden="true" />}{label}</Button>
   return <Button type="button" variant="ghost" size="icon-sm" className="list-create-button size-[28px] rounded-[5px]" aria-label={label} title={label} {...props}>
-    <Plus className="size-[15px]" aria-hidden="true" />
+    {icon ?? <Plus className="size-[15px]" aria-hidden="true" />}
   </Button>
 }
 
-export function ListSearch({ id, className = "", input, label, placeholder, clear, filter }: {
-  id?: string; className?: string; input: string; label: string; placeholder: string;
+export function ListSearch({ id, className = "", input, label, placeholder, clear, filter, variant = "default", actions }: {
+  id?: string; className?: string; variant?: "default" | "plain"; actions?: ReactNode; input: string; label: string; placeholder: string;
   clear: ButtonHTMLAttributes<HTMLButtonElement> & { [attribute: `data-${string}`]: string | undefined }; filter: ReactNode;
 }) {
-  return <div id={id} className={`list-search ${className}`}>
+  return <div id={id} className={`list-search ${variant === "plain" ? "list-search-plain" : ""} ${className}`}>
     <div className="list-search-field">
       <Search aria-hidden="true" />
       <Input id={input} aria-label={label} type="search" placeholder={placeholder} autoComplete="off" className="h-[32px] rounded-none border-0 px-[28px] text-xs shadow-none focus-visible:ring-0 md:text-xs" />
       <button {...clear} type="button" className="list-search-clear" aria-label={uiText("清除搜索")} title={uiText("清除搜索")} hidden><X aria-hidden="true" /></button>
     </div>
     {filter}
+    {actions && <div className="list-search-actions">{actions}</div>}
   </div>
 }
 
-export function ListFilter({ id, label, descriptionID, description, menuClass = "", children }: {
-  id: string; label: string; descriptionID?: string; description?: string; menuClass?: string; children: ReactNode;
+export function ListFilter({ id, label, descriptionID, description, menuClass = "", icon, children }: {
+  id: string; label: string; descriptionID?: string; description?: string; menuClass?: string; icon?: ReactNode; children: ReactNode;
 }) {
   return <details id={id} className="list-filter">
-    <summary aria-label={label} title={label} aria-describedby={descriptionID}><SlidersHorizontal aria-hidden="true" />
+    <summary aria-label={label} title={label} aria-describedby={descriptionID}>{icon ?? <SlidersHorizontal aria-hidden="true" />}
       {descriptionID && <span id={descriptionID} className="sr-only">{description}</span>}
     </summary>
     <div className={`list-filter-menu ${menuClass}`} popover="manual">{children}</div>

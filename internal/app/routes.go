@@ -43,8 +43,8 @@ func (a *App) handler() http.Handler {
 		}
 		httpx.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
-	mux.HandleFunc("GET /api/shortcut-pins", a.shortcutPinsHandler)
-	mux.HandleFunc("PUT /api/shortcut-pins", a.shortcutPinsHandler)
+	mux.HandleFunc("GET /api/resource-icons", a.resourceIconsHandler)
+	mux.HandleFunc("PUT /api/resource-icons", a.resourceIconsHandler)
 	mux.HandleFunc("GET /api/settings/language", a.languageHandler)
 	mux.HandleFunc("PUT /api/settings/language", a.languageHandler)
 	mux.HandleFunc("GET /api/settings/appearance", a.appearanceHandler)
@@ -53,9 +53,6 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/chat-input", a.chatInputHandler)
 	mux.HandleFunc("GET /api/settings/browser-access", a.browserAccessHandler)
 	mux.HandleFunc("PUT /api/settings/browser-access", a.browserAccessHandler)
-	if a.Assistant != nil {
-		a.Assistant.RegisterRoutes(mux)
-	}
 	if a.voice != nil {
 		a.voiceRoutes(mux)
 	}

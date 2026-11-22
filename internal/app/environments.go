@@ -61,9 +61,6 @@ func environmentID(distro, user string) string {
 }
 func (h *environmentHub) Close() {
 	h.local.Execution.Closing.Store(true)
-	if h.local.Assistant != nil {
-		h.local.Assistant.Close()
-	}
 	h.mu.Lock()
 	apps := make([]*App, 0, len(h.apps))
 	for _, app := range h.apps {
@@ -71,8 +68,7 @@ func (h *environmentHub) Close() {
 		apps = append(apps, app)
 	}
 	h.mu.Unlock()
-	// Closing waits for capability leases. Their callbacks may still need the
-	// hub to publish progress or resolve environment identities while exiting.
+	// Close environment applications after releasing the hub lock.
 	for _, app := range apps {
 		_ = app.Close()
 	}
@@ -259,19 +255,12 @@ func (h *environmentHub) reconnectHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if old := h.apps[id]; old != nil {
-		if !old.assistantUse.TryLock() {
-			h.mu.Unlock()
-			httpx.WriteError(w, 409, "有项目操作正在执行，请完成后重试")
-			return
-		}
 		if old.Execution.Closing.Load() {
-			old.assistantUse.Unlock()
 			h.mu.Unlock()
 			httpx.WriteError(w, 409, "有项目操作正在执行，请完成后重试")
 			return
 		}
 		old.Execution.Closing.Store(true)
-		old.assistantUse.Unlock()
 		// Retain the closing entry until disposal completes so concurrent
 		// lookups cannot start a replacement app against its still-open store.
 		h.mu.Unlock()

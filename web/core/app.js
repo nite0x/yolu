@@ -10,62 +10,6 @@ let workspaceListMounted = false;
 const projectListMemory = new Map();
 let projectListEnvironment = null;
 let lastWorkspaceSelection = null;
-let assistantContext = null;
-const embeddedAssistant = document.documentElement.hasAttribute('data-workspace-assistant');
-const assistantRequest = (path, options) => api(path, {...options, environment:'local'});
-const assistantOptions = {
-  getContext: () => {
-    const {label, environmentLabel, ...context} = assistantContext || {environment_id:activeEnvironment};
-    return context;
-  },
-  clearContext: () => { assistantContext = {environment_id:'local'}; },
-  contextLabel: () => {
-    const environment = assistantContext?.environment_id || activeEnvironment;
-    const label = assistantContext?.label;
-    return [label, environment === 'local' ? '' : assistantContext?.environmentLabel || environmentName(environment)].filter(Boolean).join(' · ');
-  },
-  openResource: async resource => {
-    if (!resource || !['workspace', 'project', 'conversation'].includes(resource.kind) || !/^[a-zA-Z0-9_-]+$/.test(resource.id) || typeof resource.environment_id !== 'string') throw new Error(uiText("资源信息无效，请重新查询。"));
-    const environment = resource.environment_id;
-    if ((embeddedAssistant || window.WorkHubPage) && window.parent !== window) {
-      const snapshot = resource.kind === 'conversation'
-        ? {route:'/sessions',environment,title:resource.name,conversation:{scope:{kind:'all',environment},selected:conversationEnvironmentKey(environment,resource.id),pane:'detail'}}
-        : {route:(resource.kind === 'workspace' ? '/workspaces/' : '/projects/') + resource.id,environment,title:resource.name};
-      postAssistant('workhub:page-open', {snapshot});
-    } else if (resource.kind === 'conversation') {
-      await selectEnvironment(environment, '/sessions');
-      if (activeEnvironment === environment) openConversationWorkspace({kind:'all',environment}, resource.id);
-    } else await openConversationWorkspaceDetail(resource.kind === 'workspace' ? 'workspace' : 'project', resource.id, environment);
-  },
-};
-function postAssistant(type, detail = {}) { window.parent.postMessage({type, ...detail}, location.origin); }
-if (embeddedAssistant) {
-  assistantOptions.close = () => postAssistant('workhub:assistant-close');
-  assistantOptions.onActivity = activity => postAssistant('workhub:assistant-activity', {activity});
-  let previousContext;
-  window.addEventListener('message', event => {
-    if (event.origin !== location.origin || event.source !== window.parent || event.data?.type !== 'workhub:assistant-show') return;
-    const context = event.data.context;
-    if (!context) return;
-    const key = JSON.stringify([context.environment_id, context.workspace_id, context.project_id]);
-    if (key !== previousContext) assistantContext = context;
-    previousContext = key;
-    document.documentElement.removeAttribute('data-workspace-inactive');
-    const page = $('#globalAssistantPage');
-    page.hidden = false;
-    page.focus({preventScroll:true});
-    openAssistantConversation();
-    window.dispatchEvent(new CustomEvent('workhub:chat-layout', {detail:{visible:true}}));
-  });
-  window.addEventListener('workhub:assistant-hide', () => {
-    window.dispatchEvent(new CustomEvent('workhub:chat-layout', {detail:{phase:'before'}}));
-    document.documentElement.setAttribute('data-workspace-inactive', '');
-    void window.WorkHubAssistant.flushDraft();
-  });
-}
-function openAssistantConversation() {
-  window.WorkHubAssistant.openGlobal(assistantRequest, assistantOptions);
-}
 function syncWorkspacePageLayout(workspaces, detail) {
   const heading = $('.page-heading');
   const pane = $('#workspaceDetailPane');
@@ -141,7 +85,7 @@ async function refresh(force = false) {
   let nextRefresh = 10000;
   state.refreshing = true;
   const revision = environmentRevision;
-  const needsScopedState = state.view !== 'workspaces' || !!state.selectedWorkspace || !!$('#workspaceShortcutPicker')?.open;
+  const needsScopedState = state.view !== 'workspaces' || !!state.selectedWorkspace;
   $('#refreshButton').disabled = true;
   try {
     const suffix = force ? '?refresh=1' : '';
@@ -206,7 +150,7 @@ async function refresh(force = false) {
     if (revision !== environmentRevision) return;
     state.refreshing = false; $('#refreshButton').disabled = false;
     if (!needsScopedState && (state.view !== 'workspaces' || state.selectedWorkspace)) nextRefresh = 0;
-    refreshTimer = setTimeout(() => { if (!embeddedAssistant && !document.hidden && window.WorkHubPage?.active !== false) refresh(); }, nextRefresh);
+    refreshTimer = setTimeout(() => { if (!document.hidden && window.WorkHubPage?.active !== false) refresh(); }, nextRefresh);
     window.dispatchEvent(new CustomEvent('workhub:workspace-refreshed'));
   }
 }
@@ -239,15 +183,10 @@ function readRoute() {
   projectListEnvironment = null;
   const rawRoute = location.hash.slice(1);
   const route = rawRoute.split('?')[0];
-  if (route === '/assistant' && state.view !== 'assistant') {
-    const workspace = state.view === 'workspaces' && state.workspaces.find(item => item.id === state.selectedWorkspace);
-    const project = state.view === 'projects' && projectDetailOpen && state.projects.find(item => item.id === state.selectedProject);
-    assistantContext = {environment_id:activeEnvironment, ...(workspace ? {workspace_id:workspace.id} : project ? {project_id:project.id} : {}), label:workspace?.name || project?.name || ''};
-  }
   const project = route.match(/^\/projects\/([a-zA-Z0-9_-]+)(?:\/(git|worktrees))?$/);
   if (project) state.selectedProject = project[1];
   projectDetailOpen = !!project;
-  state.view = route === '/assistant' ? 'assistant' : route === '/settings' ? 'settings' : route === '/issues' ? 'issues' : route === '/projects' || project ? 'projects' : route === '/sessions' ? 'sessions' : 'workspaces';
+  state.view = route === '/settings' ? 'settings' : route === '/issues' ? 'issues' : route === '/projects' || project ? 'projects' : route === '/sessions' ? 'sessions' : 'workspaces';
   $('#workspaceListFilters').open = false;
   const match = route.match(/^\/workspaces\/([a-zA-Z0-9_-]+)$/);
   state.selectedWorkspace = match ? match[1] : null;
@@ -280,7 +219,6 @@ function render() {
   saveWorkspaceListView();
   saveProjectListView();
   if (typeof saveWorkspaceDetail === 'function') saveWorkspaceDetail();
-  const assistantView = state.view === 'assistant';
   const settingsView = state.view === 'settings';
   const issuesView = state.view === 'issues';
   const sessionsView = state.view === 'sessions';
@@ -309,22 +247,21 @@ function render() {
   rememberResourceVisit(workspace);
   $('#workspacePageActions').hidden = !workspace;
   if (workspace) {
+    $('#workspaceTitleIcon').innerHTML = window.WorkHubUI.resourceIcon({kind:'workspace',id:workspace.id,name:workspace.name,environment:activeEnvironment,editable:true});
     $('#workspacePageActions').innerHTML = window.WorkHubUI.workspaceActions(workspace, environmentName());
   }
-  document.title = assistantView ? uiText("Yolu 助手") : sessionsView ? uiText("对话 · Yolu") : issuesView ? "Issues · Yolu" : settingsView ? uiText("设置 · Yolu") : workspace ? workspace.name + ' · Yolu' : projectsView ? (projectDetailOpen ? state.projects.find(p => p.id === state.selectedProject)?.name || uiText("项目") : uiText("项目")) + ' · Yolu' : workspaceListView ? uiText("工作区") + ' · Yolu' : 'Yolu';
+  document.title = sessionsView ? uiText("对话 · Yolu") : issuesView ? "Issues · Yolu" : settingsView ? uiText("设置 · Yolu") : workspace ? workspace.name + ' · Yolu' : projectsView ? (projectDetailOpen ? state.projects.find(p => p.id === state.selectedProject)?.name || uiText("项目") : uiText("项目")) + ' · Yolu' : workspaceListView ? uiText("工作区") + ' · Yolu' : 'Yolu';
   $('#backToWorkspaces').hidden = !detailView;
   $('#workspaceBreadcrumbSeparator').hidden = !detailView;
   $('#workspaceSwitcherTrigger').hidden = !workspace;
-  $('.page-heading').hidden = issuesView || projectsView || assistantView || workspaceListView;
+  $('#workspaceTitleIcon').hidden = !workspace;
+  $('.page-heading').hidden = issuesView || projectsView || workspaceListView;
   $('#stats').hidden = true;
   $('#panelToolbar').hidden = false;
   $('#newButton').hidden = !workspaceListView;
   $('#settingsPage').hidden = !settingsView;
   $('#issuesPage').hidden = !issuesView;
-  $('#workContent').hidden = settingsView || issuesView || sessionsView || assistantView;
-  $('#globalAssistantPage').hidden = !assistantView;
-  document.body.classList.toggle('assistant-page-open', assistantView);
-  if (assistantView) openAssistantConversation();
+  $('#workContent').hidden = settingsView || issuesView || sessionsView;
   $('#sessionsPage').hidden = !sessionsView;
   document.body.classList.toggle('sessions-page-open', sessionsView);
   $('#workspaceCount').textContent = workspaceInventory.loaded ? workspaceInventory.workspaces.filter(q => q.state !== 'archived').length : '…';
@@ -360,7 +297,7 @@ function render() {
   syncProjectPage();
   renderSettings();
   if (typeof syncSessionWorkspace === 'function') syncSessionWorkspace();
-  if (settingsView || issuesView || sessionsView || assistantView) { if (typeof syncWorkspaceDetail === 'function') syncWorkspaceDetail(null); return; }
+  if (settingsView || issuesView || sessionsView) { if (typeof syncWorkspaceDetail === 'function') syncWorkspaceDetail(null); return; }
   $('#stats').innerHTML = '';
   const focusedRow = workspaceListView && document.activeElement?.closest?.('#workspaceListContent [data-action="open-workspace"]');
   const focusedDirectory = document.activeElement?.matches('[data-directory-path]') && document.activeElement.dataset.directoryPath === resourceLocation.directory;
@@ -379,6 +316,7 @@ function render() {
   if (projectListView) restoreProjectListPosition(returningToProjects || !!focusedProject);
   if (focusedDirectory && !document.body.classList.contains('project-tool-page')) resourceLocation.locate = true;
   locateResourceDirectory();
+  if (typeof renderResourceIcons === 'function') renderResourceIcons();
 }
 
 async function handleAction(action, target) {
@@ -458,7 +396,6 @@ document.addEventListener('click', event => {
   }
   if (action) handleAction(action.dataset.action, action);
   const nav = event.target.closest('[data-view]'); if (nav) navigate('/' + nav.dataset.view);
-  if (!window.WorkHubPage && event.target.closest('#openYoluAssistant')) navigate('/assistant');
   if (event.target.closest('.close-dialog') && !event.target.closest('dialog')?.hasAttribute('data-block-close')) event.target.closest('dialog').close();
 });
 $('#newButton').addEventListener('click', () => openWorkspace());
@@ -487,10 +424,6 @@ document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('c
 
 $('#copyCommand').addEventListener('click', () => copy($('#commandText').value));
 window.addEventListener('DOMContentLoaded', async () => {
-  if (embeddedAssistant) {
-    postAssistant('workhub:assistant-ready');
-    return;
-  }
   readRoute();
   render();
   // Hosted pages restore their scope/selection before starting any data work.
@@ -498,7 +431,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   window.dispatchEvent(new CustomEvent('workhub:workspace-ready'));
   if (!window.WorkHubPage) await refresh();
 });
-document.addEventListener('visibilitychange', () => { if (!embeddedAssistant && !document.hidden && window.WorkHubPage?.active !== false) refresh(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && window.WorkHubPage?.active !== false) refresh(); });
 
 // Keep the impact and any failure visible until the user closes the dialog.
 let removalContext;

@@ -141,7 +141,7 @@ export function CodexUsage({ portal }: { portal: HTMLElement }) {
     <Popover.Trigger asChild><button type="button" className="codex-quota-trigger" data-tone={tone} aria-label={uiText("{0} Codex 额度，{1}", environmentName, summary)} title={uiText("{0} Codex 额度 · {1}", environmentName, summary)}>
       <Gauge aria-hidden="true" /><span className="codex-quota-copy"><span>{uiText("Codex 额度")}</span><span className="codex-quota-summary">{summary}</span></span><ChevronRight className="codex-quota-chevron" aria-hidden="true" />
     </button></Popover.Trigger>
-    <Popover.Portal container={portal}><Popover.Content className="codex-quota-popover shadcn-scope" side="right" align="end" sideOffset={12} collisionPadding={16} aria-labelledby={title}>
+    <Popover.Portal container={portal}><Popover.Content className="codex-quota-popover shadcn-scope" side="bottom" align="end" sideOffset={12} collisionPadding={16} aria-labelledby={title}>
       <div className="codex-quota-heading"><h2 id={title}>{uiText("Codex 额度")}</h2><button type="button" className="codex-quota-icon" aria-label={uiText("刷新 Codex 额度")} disabled={loading || resetBusy} onClick={() => setRevision(n => n + 1)}><RefreshCw className={loading ? "codex-quota-spinning" : ""} aria-hidden="true" /></button><Popover.Close className="codex-quota-icon" aria-label={uiText("关闭额度详情")} disabled={resetBusy}><X aria-hidden="true" /></Popover.Close></div>
       {environments.length > 1 ? <label className="codex-quota-environment">{uiText("执行环境")}<select value={environment} disabled={resetBusy} onChange={event => {setEnvironment(event.target.value); setResetAttempt(restoreAttempt(event.target.value)); setSelectedCard(""); setConfirmCard(null); setResetNotice(null)}}>{environments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select></label> : <p className="codex-quota-environment">{environmentName}</p>}
       <p className="codex-quota-note">{uiText("显示此环境中登录的 Codex 账号额度，不同周期分别计算。")}</p>
@@ -178,7 +178,7 @@ export function mountCodexUsage(sidebar: HTMLElement) {
   host.className = "codex-quota-mount shadcn-scope"
   const utilities = sidebar.querySelector(".navigation-utilities")
   if (utilities) utilities.append(host)
-  else sidebar.querySelector(".sidebar-footer")?.before(host)
+  else sidebar.prepend(host)
   let portal = document.body
   try { if (window.parent !== window && window.parent.location.origin === window.location.origin) portal = window.parent.document.body } catch { /* Use the local document when embedded elsewhere. */ }
   const root = createRoot(host)

@@ -16,7 +16,7 @@ import { Branch, EmptyState, SourceOptions, StatusBadge, TreeStatus, canOpenMemb
 import type { GitOverview, PickerRow, Project, Workspace, Worktree } from "./types"
 import type { ProjectOpenTool } from "./shared"
 import {readElicitation} from "../chat/approval"
-import { ConversationList, ConversationScopes, ConversationShortcuts } from "./session-browser"
+import { ConversationList, ConversationScopes } from "./session-browser"
 import { conversationContext } from "./conversation-context"
 import { workspaceMatches } from "./workspace-signals"
 import type { WorkspaceFilter } from "./workspace-signals"
@@ -27,7 +27,8 @@ import { setupConversationResize, conversationPathKey, conversationEnvironmentKe
 import { createConversationFiles } from "./conversation-files"
 import { createSessionRequests } from "./session-requests"
 import { conversationDefaults } from "./conversation-defaults"
-import { createShortcutPins } from "./shortcut-pins"
+import { createResourceIcons } from "./resource-icons"
+import { ResourceIcon, ShortcutBadge } from "./shortcut-icons"
 import { createConversationList, conversationStatusMatches, patchConversationList } from "./conversation-list"
 import { createConversationState } from "./conversation-state"
 import { conversationTree } from "./conversation-tree"
@@ -41,7 +42,9 @@ export const workspaceUI = {
   createConversationState,
   conversationTree,
   createConversationList, conversationStatusMatches, patchConversationList,
-  createShortcutPins,
+  createResourceIcons,
+  resourceIcon: (props: Parameters<typeof ResourceIcon>[0]) => renderToStaticMarkup(<ResourceIcon {...props} />),
+  resourceIconBadge: (props: Parameters<typeof ShortcutBadge>[0]) => renderToStaticMarkup(<ShortcutBadge {...props} />),
   conversationDefaults,
   renderCreationChoices,
   mountGitView, resetGitView, scrollToGitSection, projectChoiceReady, projectChoiceSummary, notifyWorkspace,
@@ -54,7 +57,6 @@ export const workspaceUI = {
   agyDiagnostics: (results: Parameters<typeof AgyDiagnosticsResults>[0]["results"]) => renderToStaticMarkup(<AgyDiagnosticsResults results={results} />),
   workspaceReview: (items: Parameters<typeof WorkspaceReviewItems>[0]["items"]) => renderToStaticMarkup(<WorkspaceReviewItems items={items} />),
   conversationContext,
-  conversationShortcuts: (props: Parameters<typeof ConversationShortcuts>[0]) => renderToStaticMarkup(<ConversationShortcuts {...props} />),
   conversationList: (props: Parameters<typeof ConversationList>[0]) => renderToStaticMarkup(<ConversationList {...props} />),
   conversationScopes: (scopes: Parameters<typeof ConversationScopes>[0]["scopes"], selected?: Parameters<typeof ConversationScopes>[0]["selected"]) => renderToStaticMarkup(<ConversationScopes scopes={scopes} selected={selected} />),
   readElicitation,

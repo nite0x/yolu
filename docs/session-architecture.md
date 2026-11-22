@@ -120,8 +120,6 @@ Startup migration deduplicates old `workspace_sessions` into the independent ind
 
 Session catalog queries reuse matching pages/index scans; explicit refresh and session changes invalidate cached results. Workspace cleanup receives an injected directory-reservation callback. It checks managed/native sessions and terminals, then retains the control lock through deletion to prevent a new managed session starting between the check and removal. WSL checks and deletion remain on the owning execution side.
 
-## Global Yolu Assistant conversations
+## Historical assistant data
 
-Global assistant conversations use an explicit `yolu` kind and application-local identity, independent of native Codex threads and workspace/project selection. Their tables are `assistant_conversations`, `assistant_messages` and `assistant_runs`. They reuse the existing SQLite migration/export/import infrastructure and namespaced `conversation_drafts`. Native `sessions`, directory discovery, workspace pins and coding-session controls retain their existing routing.
-
-The primary local application owns `/api/assistant/conversations` and its `/{conversation}`, `/{conversation}/runs` and `/{conversation}/stop` endpoints. The routes retain authentication, CSRF, same-origin checks and read-only mode. Environment headers do not relocate global history to a remote environment. Provider communication uses the authenticated local Codex CLI through the shared live client and tool-disabled ephemeral threads. Reconnection reads persisted snapshots. Unfinished runs become interrupted after restart/import and retain their input and request receipt. See [the specification](features/global-assistant/spec.md#phase-1-implementation-contract) for bounds and recovery behavior.
+The global assistant UI, provider and HTTP routes have been removed. Historical SQLite tables remain compatible with existing databases and backups; no assistant service is started. Native coding conversations keep their existing session and draft lifecycle.

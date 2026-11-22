@@ -1,7 +1,7 @@
 import { uiText, uiLocale } from "../i18n";
 import { ConversationKindSwitch } from "./conversation-surface"
-import { ShortcutBadge, ShortcutIconSettingsButton, defaultShortcutIcon, type ShortcutIcon } from "./shortcut-icons"
-import { Plus, Search, ArrowLeft, X, ChevronDown, ChevronRight, Pin, PinOff, GitBranch, RotateCw, Check, Folder, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, type LucideIcon } from "lucide-react"
+import { ShortcutBadge } from "./shortcut-icons"
+import { Plus, Search, ArrowLeft, X, ChevronDown, ChevronRight, Pin, PinOff, GitBranch, RotateCw, Check, Folder, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, ListFilter as ListFilterIcon, type LucideIcon } from "lucide-react"
 import { ListCreateButton, ListFilter, ListSearch } from "./list-controls"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,27 +17,24 @@ export function SessionBrowser() {
   return <><div className="session-browser shadcn-scope" id="sessionBrowser" data-pane="list" hidden>
     <div className="session-browser-body">
       <aside className="session-browser-list" id="sessionBrowserListPane" aria-label={uiText("对话列表")}><div className="session-browser-list-tools">
-        <div className="session-browser-list-heading"><div className="session-browser-list-title"><strong>{uiText("对话")}</strong><span id="sessionBrowserCount" role="status" aria-live="polite" /></div>
-          <div className="session-browser-heading-actions">
-            <ListCreateButton id="newBrowserSession" data-conversation-action="new" label={uiText("新建对话")} />
-            <Button type="button" variant="ghost" size="icon-sm" className="size-[28px] rounded-[5px]" id="newBrowserSplitSession" data-conversation-action="new" data-conversation-placement="split" aria-label={uiText("在右侧分栏新建")}><Columns2 className="size-[15px]" aria-hidden="true" /></Button>
-          </div>
-        </div>
+        <span id="sessionBrowserCount" className="sr-only" role="status" aria-live="polite" />
         <p id="sessionBrowserContext" className="sr-only" />
-        <ListSearch id="sessionBrowserScopeBar" input="sessionBrowserSearch" label={uiText("搜索对话、项目或分支")} placeholder={uiText("搜索对话…")} clear={{ id:"sessionSearchClear", "data-conversation-action":"clear-search" }} filter={
-          <ListFilter id="sessionScopePicker" label={uiText("切换对话范围")} descriptionID="sessionScopeLabel" description={uiText("全部对话")} menuClass="session-scope-menu">
+        <ListSearch variant="plain" id="sessionBrowserScopeBar" input="sessionBrowserSearch" label={uiText("搜索对话、项目或分支")} placeholder={uiText("搜索对话…")} clear={{ id:"sessionSearchClear", "data-conversation-action":"clear-search" }} filter={
+          <ListFilter id="sessionScopePicker" label={uiText("切换对话范围")} descriptionID="sessionScopeLabel" description={uiText("全部对话")} menuClass="session-scope-menu" icon={<ListFilterIcon aria-hidden="true" />}>
             <Label className="sr-only" htmlFor="sessionScopeSearch">{uiText("切换对话范围")}</Label><Input id="sessionScopeSearch" className="h-[32px] text-[12px] shadow-none focus-visible:ring-2 focus-visible:ring-ring/20" type="search" placeholder={uiText("搜索工作区、项目或目录")} /><Button type="button" variant="ghost" size="sm" data-conversation-action="all" id="sessionScopeAll" hidden>{uiText("查看全部对话")}</Button>
           <div id="sessionScopeOptions" />
           <div className="session-scope-filters">
             <label id="sessionEnvironmentField" className="session-environment-label" hidden><span>{uiText("执行环境")}</span><NativeSelect id="sessionsEnvironment" aria-label={uiText("筛选对话环境")}><option value="">{uiText("全部环境")}</option></NativeSelect></label>
             <label className="session-browser-archive"><input id="sessionBrowserArchived" type="checkbox" aria-label={uiText("查看已归档对话")} /><span>{uiText("仅查看已归档对话")}</span></label>
             <div id="sessionStatusFilters" className="session-status-filters" role="group" aria-label={uiText("按对话状态筛选")}>{[["all", uiText("全部")], ["running", uiText("进行中")], ["waiting", uiText("待确认")], ["unread", uiText("未读")]].map(([value, label]) => <button key={value} type="button" data-conversation-status={value} aria-pressed={value === "all"}>{label}<span data-status-count={value} hidden /></button>)}</div>
-            <Button type="button" variant="ghost" size="sm" id="pinConversationDirectory" data-conversation-action="pin-directory" hidden><Pin aria-hidden="true" /><span>{uiText("固定此目录")}</span></Button>
             <Button type="button" variant="ghost" size="sm" id="sessionClearFilters" data-conversation-action="clear-filters" hidden>{uiText("清除筛选")}</Button>
             <div id="workspaceConversationTools" hidden><Button type="button" variant="ghost" size="sm" className="justify-start text-xs" id="linkWorkspaceConversation" data-session-action="picker" aria-label={uiText("关联已有对话")}>{uiText("关联已有对话")}</Button></div>
           </div>
           </ListFilter>
-        } />
+        } actions={<>
+          <ListCreateButton id="newBrowserSplitSession" data-conversation-action="new" data-conversation-placement="split" label={uiText("在右侧分栏新建")} icon={<Columns2 aria-hidden="true" />} />
+          <ListCreateButton id="newBrowserSession" data-conversation-action="new" label={uiText("新建对话")} icon={<SquarePen aria-hidden="true" />} />
+        </>} />
         <p id="sessionActiveFilterLabel" className="session-active-filter-label" hidden />
       </div><div id="sessionBrowserError" role="alert" hidden /><div id="sessionBrowserList" aria-label={uiText("对话结果")} /></aside>
       <div id="sessionBrowserResize" className="session-browser-resize" role="separator" tabIndex={0} aria-label={uiText("调整对话列表宽度")} aria-orientation="vertical" aria-controls="sessionBrowserListPane" aria-valuemin={220} aria-valuemax={520} aria-valuenow={280} />
@@ -60,65 +57,6 @@ export function SessionBrowser() {
       </section>
     </div>
   </div><dialog id="conversationFilesDialog" className="conversation-files-dialog shadcn-scope" aria-labelledby="conversationFilesTitle" /></>
-}
-interface ShortcutWorkspace { environment?: string; appearance?: ShortcutIcon; id: string; name: string; projects: string; pinned: boolean; archived: boolean }
-interface ShortcutDirectory { appearance?: ShortcutIcon; key?: string; environment?: string; cwd: string; name: string; parent: string; pinned: boolean }
-export function ConversationShortcuts({ workspaces, directories, pinnedDirectories, selected, selectedDirectory, search, archived, environment, kind, desktopRail, pickerOnly }: {
-  workspaces: ShortcutWorkspace[]; directories: ShortcutDirectory[]; pinnedDirectories: ShortcutDirectory[];
-  selected?: string | null; selectedDirectory?: string | null; search: string; archived: boolean; environment: string;
-  kind?: "workspace" | "directory";
-  desktopRail?: boolean;
-  pickerOnly?: boolean;
-}) {
-  const pinned = workspaces.filter(workspace => workspace.pinned && !workspace.archived)
-  const query = search.trim().toLowerCase()
-  const matches = (values: string[]) => values.join(" ").toLowerCase().includes(query)
-  const visibleWorkspaces = workspaces.filter(workspace => (archived || !workspace.archived) && matches([workspace.name, workspace.projects, workspace.environment || ""]))
-  const visibleDirectories = directories.filter(directory => matches([directory.cwd, directory.name, directory.parent]))
-  const title = kind === "workspace" ? uiText("固定工作区") : kind === "directory" ? uiText("固定项目目录") : uiText("固定入口")
-  const searchLabel = kind === "workspace" ? uiText("搜索工作区") : kind === "directory" ? uiText("搜索项目目录") : uiText("搜索工作区或目录")
-  const pickerTitle = kind ? uiText("管理{0}", title) : uiText("管理固定入口")
-  const label = <Label htmlFor="shortcutSearch">{searchLabel}</Label>
-  const heading = <div className="workspace-shortcuts-heading"><h2 id="shortcutPinnedTitle"><Pin aria-hidden="true" />{title}</h2>
-      {!desktopRail && <ShortcutIconSettingsButton />}
-      <details id="workspaceShortcutPicker" className="workspace-shortcut-picker"><summary aria-label={pickerTitle} title={desktopRail ? pickerTitle : kind ? title : uiText("固定工作区或目录")} aria-controls="shortcutPickerPanel">{desktopRail ? <Pin aria-hidden="true" /> : <Plus aria-hidden="true" />}</summary>
-        <div className="workspace-shortcut-options" id="shortcutPickerPanel" popover="manual" data-no-window-drag="">
-          {desktopRail ? <div className="shortcut-picker-heading">{label}<ShortcutIconSettingsButton /></div> : label}
-          <Input id="shortcutSearch" type="search" placeholder={kind === "directory" ? uiText("目录名或路径") : uiText("工作区名、项目名或路径")} defaultValue={search} />
-          <p className="shortcut-picker-caption">{kind === "directory" ? uiText("{0} · 已固定 {1} 个目录", environment, pinnedDirectories.length) : uiText("{0} · {1} 个未归档工作区 · 已固定 {2} 个", environment, workspaces.filter(workspace => !workspace.archived).length, pinned.length)}</p>
-          {kind !== "directory" && <label className="shortcut-archive-toggle"><input id="shortcutArchived" type="checkbox" defaultChecked={archived} />{uiText("显示归档工作区")}</label>}
-          <div className="shortcut-picker-results">
-            {kind !== "directory" && <><h3>{uiText("工作区")}</h3><div role="group" aria-label={uiText("固定工作区")}>{visibleWorkspaces.length ? visibleWorkspaces.map(workspace => <button key={workspace.id} type="button" data-workspace-shortcut-pin={workspace.id} aria-pressed={workspace.pinned} disabled={workspace.archived && !workspace.pinned} title={workspace.archived ? uiText("取消归档后可固定") : workspace.projects}>
-              <span><span className="shortcut-option-title">{workspace.name}{workspace.archived && <small>{" "}{uiText("· 已归档")}</small>}</span><small>{workspace.projects}{workspace.environment && ` · ${workspace.environment}`}</small></span><span className="shortcut-option-state">{workspace.pinned ? <><Check aria-hidden="true" />{uiText("已固定")}</> : uiText("固定")}</span>
-            </button>) : <p className="conversation-shortcuts-empty">{query ? uiText("没有匹配的工作区") : uiText("暂无工作区")}</p>}</div></>}
-            {kind !== "workspace" && <><h3>{uiText("目录")}</h3><div role="group" aria-label={uiText("固定目录")}>{visibleDirectories.length ? visibleDirectories.map(directory => <button key={directory.key || directory.cwd} type="button" data-directory-shortcut-pin={directory.key || directory.cwd} aria-pressed={directory.pinned} title={directory.cwd}>
-              <span><span className="shortcut-option-title"><Folder aria-hidden="true" />{directory.name}</span><small>{directory.parent}</small></span><span className="shortcut-option-state">{directory.pinned ? <><Check aria-hidden="true" />{uiText("已固定")}</> : uiText("固定")}</span>
-            </button>) : <p className="conversation-shortcuts-empty">{query ? uiText("没有匹配的目录") : uiText("暂无已登记的工作目录")}</p>}</div></>}
-          </div>
-        </div>
-      </details>
-  </div>
-  const list = <>
-    {kind !== "directory" && (pinned.length ? <ul aria-label={uiText("固定工作区")}>{pinned.map(workspace => <li key={workspace.id} className="conversation-shortcut-row">
-      <button type="button" className="conversation-shortcut-open" data-shortcut-icon-key={JSON.stringify(["workspace", workspace.id])} data-shortcut-name={workspace.name} data-shortcut-icon={JSON.stringify(workspace.appearance || defaultShortcutIcon(JSON.stringify(["workspace", workspace.id])))} aria-label={uiText("工作区：{0} · {1} · {2}", workspace.name, workspace.environment || "", workspace.projects)} data-workspace-shortcut={workspace.id} aria-current={selected === workspace.id ? "true" : undefined} title={uiText("{0}\n{1}\n{2}\n打开工作区对话", workspace.name, workspace.projects, workspace.environment || "")}>
-        <ShortcutBadge name={workspace.name} identity={JSON.stringify(["workspace", workspace.id])} appearance={workspace.appearance} /><span className="conversation-shortcut-copy"><span className="conversation-shortcut-title">{workspace.name}<small className="shortcut-entry-kind">{uiText("工作区对话")}</small></span><span className="conversation-shortcut-context">{workspace.projects || uiText("工作区对话")}{workspace.environment && ` · ${workspace.environment}`}</span></span>
-      </button>
-      <button type="button" className="conversation-shortcut-pin" data-workspace-shortcut-pin={workspace.id} aria-label={uiText("取消固定工作区：{0}", workspace.name)} title={uiText("取消固定工作区")}><PinOff aria-hidden="true" /></button>
-    </li>)}</ul> : !desktopRail && <p className="conversation-shortcuts-empty">{kind ? uiText("点击 + 固定工作区") : uiText("点击 + 固定工作区或目录")}</p>)}
-    {kind !== "workspace" && pinnedDirectories.length > 0 && <>{!kind && !desktopRail && <h3 className="shortcut-directory-heading">{uiText("目录")}</h3>}<ul aria-label={uiText("固定项目目录")}>{pinnedDirectories.map(directory => <li key={directory.key || directory.cwd} className="conversation-shortcut-row">
-      <button type="button" className="conversation-shortcut-open" data-shortcut-icon-key={JSON.stringify(["directory", directory.key || directory.cwd])} data-shortcut-name={directory.name} data-shortcut-icon={JSON.stringify(directory.appearance || defaultShortcutIcon(JSON.stringify(["directory", directory.key || directory.cwd])))} aria-label={uiText("目录：{0} · {1}", directory.name, directory.parent)} data-directory-shortcut={directory.key || directory.cwd} aria-current={selectedDirectory === (directory.key || directory.cwd) ? "true" : undefined} title={`${directory.cwd}\n${directory.parent}`}><ShortcutBadge name={directory.name} identity={JSON.stringify(["directory", directory.key || directory.cwd])} appearance={directory.appearance} /><span className="conversation-shortcut-copy"><span className="conversation-shortcut-title">{directory.name}</span><span className="conversation-shortcut-context">{directory.parent}</span></span></button>
-      <button type="button" className="conversation-shortcut-pin" data-directory-shortcut-pin={directory.key || directory.cwd} aria-label={uiText("取消固定目录：{0}", directory.cwd)} title={uiText("取消固定目录")}><PinOff aria-hidden="true" /></button>
-    </li>)}</ul></>}
-    {!desktopRail && kind === "directory" && pinnedDirectories.length === 0 && <p className="conversation-shortcuts-empty">{uiText("点击 + 固定项目目录")}</p>}
-  </>
-  const iconCatalog = pickerOnly ? [
-    ...pinned.map(item => ({ key: JSON.stringify(["workspace", item.id]), name: item.name, title: item.name, appearance: item.appearance })),
-    ...pinnedDirectories.map(item => ({ key: JSON.stringify(["directory", item.key || item.cwd]), name: item.name, title: item.cwd, appearance: item.appearance })),
-  ] : undefined
-  return <section className={desktopRail ? "sidebar-shortcut-rail" : undefined} aria-labelledby="shortcutPinnedTitle"
-    data-shortcut-icon-catalog={iconCatalog ? JSON.stringify(iconCatalog) : undefined}>
-    {heading}{pickerOnly ? null : desktopRail ? <div className="sidebar-shortcut-list">{list}</div> : list}
-  </section>
 }
 export function ConversationList({ sessions, rows, selected, showDirectory, showContext = true, loading, workspaceID, filtered, error, canCreate = true, parallel = false, parallelSessions = [], parallelFull = false, now = Date.now(), onSelect }: { onSelect?: (id: string) => void; sessions: Session[]; rows?: ConversationTreeRow[]; selected?: string | null; showDirectory: boolean; showContext?: boolean; loading?: boolean; workspaceID?: string; filtered?: boolean; error?: boolean; canCreate?: boolean; parallel?: boolean; parallelSessions?: string[]; parallelFull?: boolean; now?: number }) {
   if (!sessions.length && !rows?.length) return <div className="session-browser-empty-list" role="status">
@@ -194,7 +132,7 @@ export function ConversationList({ sessions, rows, selected, showDirectory, show
     return <div className="session-browser-groups session-browser-workspaces">{[...sections.values()].map(({group, rows}) => <section className="session-browser-group" key={group.key} data-conversation-group={group.key} aria-label={`${group.name}${group.environmentName ? ` · ${group.environmentName}` : ""}`}>
       {rows.filter(row => row.kind === "group").map(row => <h3 className="session-workspace-heading" key={row.key}>
         {group.href ? <a href={group.href} className="session-collection-link" data-collection-href={group.href} data-collection-environment={group.environment} title={group.name}>
-          {group.pinned && group.pinKey ? <ShortcutBadge name={group.pinName || group.name} identity={group.pinKey} appearance={group.pinIcon} /> : <Folder aria-hidden="true" />}
+          {group.identity ? <ShortcutBadge name={group.iconName || group.name} identity={group.identity} appearance={group.icon} /> : <Folder aria-hidden="true" />}
           <span className="session-workspace-name">{group.name}</span>
           {group.environmentName && <small>{group.environmentName}</small>}
         </a> : null}

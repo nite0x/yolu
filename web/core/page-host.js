@@ -22,7 +22,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       return fetch(path,options).finally(() => reads.clear());
     }
     if (/[?&]refresh=1(?:&|$)/.test(path)) {reads.clear(); return fetch(path,options);}
-    const cacheable = /^\/api\/(state|workspace-inventory|environments|shortcut-pins)(\?|$)/.test(path) || /^\/api\/sessions\?(archived=true)?$/.test(path) || path === '/api/sessions/search';
+    const cacheable = /^\/api\/(state|workspace-inventory|environments|resource-icons)(\?|$)/.test(path) || /^\/api\/sessions\?(archived=true)?$/.test(path) || path === '/api/sessions/search';
     if (options.signal || !cacheable) return fetch(path,options);
     const key = JSON.stringify([path,options.headers]), cached = reads.get(key);
     if (cached && (!cached.updated || Date.now() - cached.updated < 1000)) return cached.promise.then(response => response.clone());
@@ -36,13 +36,27 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     for (const [key,value] of reads) if (value.updated && Date.now() - value.updated >= 1000) reads.delete(key);
     return entry.promise.then(response => response.clone());
   }};
+  // Browser and desktop use the same top bar. Native initialization reuses
+  // these containers and adds only operating-system window controls.
+  let header = document.querySelector('.workhub-window-drag');
+  if (!header) {
+    header = document.createElement('header');
+    header.className = 'workhub-window-drag';
+    header.setAttribute('aria-label',uiText("窗口标题栏"));
+    document.body.prepend(header);
+  }
+  if (!document.getElementById('workhubWindowControls')) {
+    const controls = document.createElement('div');
+    controls.id = 'workhubWindowControls';
+    controls.className = 'workhub-window-controls shadcn-scope';
+    header.append(controls);
+  }
   const pages = document.getElementById('workspacePages');
   const navigationToggle = document.getElementById('workspaceNavigationToggle');
   navigationToggle.addEventListener('click', () => {
     compactNavigationOpen = !compactNavigationOpen;
     renderLayout();
   });
-  const assistant = document.getElementById('workspaceAssistant');
   const searchToken = document.querySelector('meta[name="csrf-token"]').content;
   const search = window.WorkHubLayout.createGlobalSearch(document.getElementById('globalSearch'), {
     async read(path, environment) {
@@ -51,12 +65,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       return response.json();
     },
     navigate(snapshot) {
-      closeAssistant(false);
       dispatchOpen({snapshot});
       currentPage()?.frame.focus({preventScroll:true});
     },
   });
-  let assistantFrame, assistantReady = false, assistantContext, assistantReturnFocus, assistantActivity = '';
   const paneChrome = document.createElement('div');
   paneChrome.className = 'workspace-pane-chrome'; pages.append(paneChrome);
   const versions = page => [page, ...(page.alternate ? [page.alternate] : [])];
@@ -76,7 +88,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   };
   function normalize(value) {
     const snapshot = value && typeof value === 'object' ? value : {};
-    const route = typeof snapshot.route === 'string' && /^\/(workspaces(?:\/[\w-]+)?|projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|issues|assistant)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/workspaces';
+    const route = typeof snapshot.route === 'string' && /^\/(workspaces(?:\/[\w-]+)?|projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|issues)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/workspaces';
     return {...snapshot, route, environment:typeof snapshot.environment === 'string' ? snapshot.environment : 'local', title:typeof snapshot.title === 'string' ? snapshot.title.slice(0,200) : uiText("工作区"), kind:route.split('/')[1].split('?')[0]};
   }
   function send(page,type,detail = {}) {
@@ -106,6 +118,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       ready:!!page?.ready,
       home:() => openPage({route:'/workspaces',environment:page?.snapshot.environment}),
       search:trigger => search.open(trigger),
+      issues:() => openPage({route:'/issues',environment:page?.snapshot.environment}),
+      issuesActive:!conversationsPresented && page?.snapshot.route === '/issues',
+      refresh:async () => {
+        const targets = [navigation,page].filter(target => target?.ready && target.visible);
+        await Promise.allSettled(targets.map(target => target.frame.contentWindow.WorkHubPage?.refresh?.()));
+      },
       appMenu:window.WorkHubDesktopWindow ? () => window.WorkHubDesktopWindow.showMenu(!!page?.ready) : undefined,
     });
   }
@@ -132,88 +150,18 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   function renderNavigationModal() {
     const open = !!(navigation?.visible && (navigation.modalOpen || !sharedLayout()));
-    const assistantModal = !assistant.hidden && innerWidth <= 760;
-    if (assistantModal) assistant.setAttribute('aria-modal', 'true');
-    else assistant.removeAttribute('aria-modal');
     navigation?.wrapper.toggleAttribute('data-modal',open);
-    navigation?.wrapper.toggleAttribute('inert',assistantModal);
-    pages.toggleAttribute('inert',open || assistantModal);
-    if (navigation) navigation.resizeHandle.hidden = !navigation.visible || open || assistantModal;
-  }
-  function syncAssistantLaunchers() {
-    const status = assistantActivity === 'waiting' ? uiText("助手有操作待确认") : assistantActivity === 'running' ? uiText("助手正在运行") : '';
-    for (const page of [...allPages(), navigation]) {
-      const launcher = page?.ready && page.frame.contentDocument?.getElementById('openYoluAssistant');
-      if (!launcher) continue;
-      launcher.setAttribute('aria-expanded', String(!assistant.hidden));
-      launcher.dataset.activity = assistantActivity;
-      if (status) launcher.setAttribute('aria-description', status);
-      else launcher.removeAttribute('aria-description');
-    }
+    pages.toggleAttribute('inert',open);
+    if (navigation) navigation.resizeHandle.hidden = !navigation.visible || open;
   }
   function currentPage() {
     return conversationsPresented ? group.pages.find(page => page.id === group.focused) || group.pages[0] : workspace;
-  }
-  function showAssistant(source, environment) {
-    if (!assistant.hidden) return;
-    const page = source && source !== navigation ? source : currentPage();
-    const bridge = page?.frame.contentWindow?.WorkHubPage;
-    const snapshot = environment ? {environment} : (bridge?.snapshot?.() || page?.snapshot);
-    const match = snapshot?.route?.match(/^\/(workspaces|projects)\/([\w-]+)/);
-    const scope = snapshot?.conversation?.scope;
-    const workspaceID = match?.[1] === 'workspaces' ? match[2] : scope?.kind === 'workspace' ? scope.id : snapshot?.terminal?.workspaceID;
-    const projectID = match?.[1] === 'projects' ? match[2] : scope?.kind === 'project' ? scope.id : snapshot?.terminal?.projectID;
-    const environmentID = snapshot?.sessionEnvironment || scope?.environment || snapshot?.environment || 'local';
-    assistantContext = {environment_id: environmentID, workspace_id: workspaceID, project_id: projectID,
-      environmentLabel: bridge?.environmentName?.(environmentID) || environmentID,
-      label: match ? snapshot.title : workspaceID || projectID ? snapshot.context?.split(' · ')[0] || snapshot.title || workspaceID || projectID : ''};
-    const frame = (source || page)?.frame;
-    const element = frame?.contentDocument?.activeElement;
-    assistantReturnFocus = {frame, element};
-    assistant.hidden = false;
-    renderNavigationModal();
-    syncAssistantLaunchers();
-    showAssistantFrame();
-    if (assistantFrame) return;
-    assistantFrame = document.createElement('iframe');
-    assistantFrame.title = uiText("Yolu 助手");
-    assistantFrame.src = '/?workspace-page=assistant#/assistant';
-    assistant.append(assistantFrame);
-  }
-  function showAssistantFrame() {
-    if (assistantReady && !assistant.hidden) {
-      assistantFrame.contentWindow.postMessage({type:'workhub:assistant-show', context:assistantContext},location.origin);
-    }
-  }
-  function closeAssistant(restoreFocus = true) {
-    if (assistant.hidden) return;
-    assistantFrame?.contentWindow?.dispatchEvent(new CustomEvent('workhub:assistant-hide'));
-    assistant.hidden = true;
-    renderNavigationModal();
-    syncAssistantLaunchers();
-    const {frame, element} = assistantReturnFocus || {};
-    assistantReturnFocus = undefined;
-    if (restoreFocus) {
-      if (frame?.getClientRects().length && element?.isConnected && element.getClientRects().length) element.focus({preventScroll:true});
-      else currentPage()?.frame.focus({preventScroll:true});
-    }
-  }
-  function toggleAssistant(source) {
-    if (assistant.hidden) showAssistant(source);
-    else closeAssistant();
   }
   function workspaceKeydown(event) {
     if (event.defaultPrevented || event.isComposing || event.repeat) return;
     if (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
       event.preventDefault();
       search.open(event.currentTarget.activeElement);
-    } else if (event.code === 'KeyY' && event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey) {
-      event.preventDefault();
-      const source = [...allPages(), navigation].find(page => page?.frame.contentDocument === event.currentTarget);
-      toggleAssistant(source);
-    } else if (event.key === 'Escape' && !assistant.hidden && event.currentTarget === assistantFrame?.contentDocument) {
-      event.preventDefault();
-      closeAssistant();
     } else if (event.key === 'Escape' && compactNavigationOpen && !navigation?.modalOpen) {
       event.preventDefault();
       compactNavigationOpen = false;
@@ -312,7 +260,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const page = createPage({...current?.snapshot,route:'/sessions',environment:current?.snapshot.environment || 'local',conversation:{...current?.snapshot.conversation,scope:pageScope(current?.snapshot || {}),pane:'list'}},'shared-navigation');
     page.frame.className = 'workspace-navigation-frame'; page.frame.removeAttribute('role'); page.frame.title = uiText("工作台导航与对话列表"); page.frame.hidden = false;
     const listSize = document.createElement('div'); listSize.className = 'workspace-shared-list-size'; listSize.setAttribute('aria-hidden','true');
-    listSize.innerHTML = uiText("<div class=\"workspace-list-placeholder\"><strong>对话</strong><div class=\"workspace-list-placeholder-search\"></div><p>正在读取对话…</p></div>");
+    listSize.innerHTML = uiText("<div class=\"workspace-list-placeholder\"><div class=\"workspace-list-placeholder-search\"></div><p>正在读取对话…</p></div>");
     const resizeHandle = document.createElement('div'); resizeHandle.className = 'workspace-shared-list-resize'; resizeHandle.setAttribute('role','separator'); resizeHandle.tabIndex = 0;
     resizeHandle.setAttribute('aria-label',uiText("调整共享对话列表宽度")); resizeHandle.setAttribute('aria-orientation','vertical'); resizeHandle.setAttribute('aria-controls',wrapper.id);
     resizeHandle.title = uiText("拖动调整对话列表宽度，双击恢复默认");
@@ -414,7 +362,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   function openPage(snapshot) {
     const clean = normalize(snapshot);
     compactNavigationOpen = false;
-    if (clean.route === '/assistant') { showAssistant(undefined, clean.environment); return; }
     if (clean.route === '/sessions' || isTerminal(clean)) {
       conversationsVisible = true;
       if (!group.pages.length) {
@@ -461,27 +408,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('message',event => {
     if (event.origin !== location.origin || !event.data || typeof event.data !== 'object') return;
     const message = event.data;
-    if (assistantFrame && assistantFrame.contentWindow === event.source) {
-      if (message.type === 'workhub:assistant-ready') {
-        assistantReady = true;
-        assistantFrame.contentDocument?.addEventListener('keydown', workspaceKeydown);
-        showAssistantFrame();
-      } else if (message.type === 'workhub:assistant-close') closeAssistant();
-      else if (message.type === 'workhub:assistant-activity') {
-        assistantActivity = ['waiting', 'running'].includes(message.activity) ? message.activity : '';
-        syncAssistantLaunchers();
-      } else if (message.type === 'workhub:page-open' && !assistant.hidden) {
-        closeAssistant(false);
-        dispatchOpen(message);
-        currentPage()?.frame.focus({preventScroll:true});
-      }
-      return;
-    }
     if (navigation?.frame.contentWindow === event.source) {
       if (message.type === 'workhub:page-ready') {
         navigation.ready = true;
         navigation.frame.contentDocument?.addEventListener('keydown', workspaceKeydown);
-        syncAssistantLaunchers();
         send(navigation,'workhub:page-restore',{snapshot:navigation.snapshot,active:!!navigation.visible}); renderLayout();
       } else if (message.type === 'workhub:page-restored') {
         navigation.restored = true;
@@ -491,7 +421,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         navigation.modalOpen = message.open === true;
         renderNavigationModal();
       }
-      else if (message.type === 'workhub:assistant-toggle' && navigation.visible) toggleAssistant(navigation);
       else if (message.type === 'workhub:global-search' && navigation.visible) search.open(navigation.frame.contentDocument?.getElementById('openGlobalSearch'));
       else if (message.type === 'workhub:conversation-select') {
         if (message.initial && (!conversationsVisible || group.pages.some(page => isPaneView(page.snapshot)))) return;
@@ -507,14 +436,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (message.type === 'workhub:page-ready') {
       page.ready = true;
       page.frame.contentDocument?.addEventListener('keydown', workspaceKeydown);
-      syncAssistantLaunchers();
-      if (page === workspace && !assistantReady) {
-        page.frame.contentWindow.WorkHubPage?.readAssistantActivity?.().then(activity => {
-          if (assistantReady) return;
-          assistantActivity = activity;
-          syncAssistantLaunchers();
-        }).catch(() => {});
-      }
       send(page,'workhub:page-pane',{split:page !== workspace && grouped(group),shared:page !== workspace});
       send(page,'workhub:page-restore',{snapshot:page.snapshot,active:!!page.visible});
       renderLayout();
@@ -535,8 +456,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (page === workspace && clean.route === '/sessions') openPage(clean);
       else if (displayed) update();
       if (isTerminal(clean)) send(navigation,'workhub:terminals-changed');
-    } else if (message.type === 'workhub:assistant-toggle' && page.visible) toggleAssistant(page);
-    else if (message.type === 'workhub:global-search' && page.visible) search.open(page.frame.contentDocument?.getElementById('openGlobalSearch'));
+    } else if (message.type === 'workhub:global-search' && page.visible) search.open(page.frame.contentDocument?.getElementById('openGlobalSearch'));
     else if (message.type === 'workhub:terminals-changed') send(navigation,'workhub:terminals-changed');
     else if (message.type === 'workhub:conversation-kind') switchCreation(group,page,message.kind,message.snapshot);
     else if (message.type === 'workhub:page-open') dispatchOpen(message,group,page === workspace ? group.focused : page.id);
@@ -556,28 +476,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (appliedURL === location.href) return;
     appliedURL = location.href;
     const route = location.hash.slice(1), environment = new URLSearchParams(location.search).get('environment') || 'local';
-    if (route === '/assistant') {
-      showAssistant(undefined, environment);
-      const url = new URL(location.href);
-      url.hash = conversationsVisible ? '/sessions' : workspace.snapshot.route;
-      history.replaceState(null, '', url);
-      appliedURL = location.href;
-      return;
-    }
     openPage({route,environment});
   }
   window.addEventListener('hashchange',followURL);
   window.addEventListener('popstate',followURL);
   const initial = {route:location.hash.slice(1),environment:new URLSearchParams(location.search).get('environment') || 'local'};
-  const assistantLink = initial.route === '/assistant';
-  if (assistantLink) {
-    const url = new URL(location.href);
-    url.hash = '/workspaces';
-    history.replaceState(null, '', url);
-  }
-  const workspace = createPage({...initial,route:initial.route === '/sessions' || assistantLink ? '/workspaces' : initial.route},'workspace');
+  const workspace = createPage({...initial,route:initial.route === '/sessions' ? '/workspaces' : initial.route},'workspace');
   sharedListWidth?.subscribe(paintConversationListWidth);
   mountPage(workspace);
-  openPage(assistantLink ? {...initial, route:'/workspaces'} : initial);
-  if (assistantLink) showAssistant(undefined, initial.environment);
+  openPage(initial);
 })();

@@ -22,11 +22,11 @@ html[data-workhub-desktop] .sidebar nav .nav-item { position: relative; justify-
 html:not([data-workspace-page]) #openGlobalSearch,
 html[data-workhub-platform] #openGlobalSearch { display: none; }
 html[data-workhub-desktop] .sidebar .nav-icon { display: flex; flex: none; align-items: center; justify-content: center; }
-html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,#refreshButton,.codex-quota-trigger,.conversation-shortcut-open) {
+html[data-workhub-desktop] .sidebar :where(.nav-item,#refreshButton,.codex-quota-trigger) {
   width: var(--yolu-rail-control-size);
   height: var(--yolu-rail-control-size);
 }
-html[data-workhub-desktop] .sidebar :is(.nav-icon,.workspace-shortcut-picker > summary,.sidebar-settings,#openYoluAssistant,#refreshButton,.codex-quota-trigger) > svg {
+html[data-workhub-desktop] .sidebar :where(.nav-icon,.sidebar-settings,#refreshButton,.codex-quota-trigger) > svg {
   width: var(--yolu-rail-icon-size);
   height: var(--yolu-rail-icon-size);
   stroke-width: 1.8;
@@ -46,17 +46,7 @@ html[data-workhub-desktop] .sidebar .session-navigation-status {
 html[data-workhub-desktop] .sidebar .session-navigation-status:empty { display: none; }
 html[data-workhub-desktop] .sidebar .sidebar-footer { justify-content: center; padding: 0; }
 html[data-workhub-desktop] .sidebar-footer-actions { flex-direction: column; gap: var(--yolu-rail-gap); }
-html[data-workhub-desktop] .sidebar :is(.sidebar-settings,#openYoluAssistant) { align-items: center; justify-content: center; padding: 0; }
-#openYoluAssistant { position: relative; }
-#openYoluAssistant[aria-expanded="true"] { background: var(--yolu-rail-selected); color: var(--yolu-rail-active); }
-.assistant-launcher-status { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; }
-#openYoluAssistant[data-activity="running"] .assistant-launcher-status { background: var(--yolu-primary); }
-#openYoluAssistant[data-activity="waiting"] .assistant-launcher-status { background: var(--yolu-warning); }
-
-html[data-workspace-assistant] :is(.sidebar,.sidebar-resize) { display: none !important; }
-html[data-workspace-assistant] body .shell { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
-html[data-workspace-assistant] .shell main { display: flex; flex-direction: column; padding: 0; }
-html[data-workspace-assistant] main > :not(#globalAssistantPage) { display: none !important; }
+html[data-workhub-desktop] .sidebar :is(.sidebar-settings) { align-items: center; justify-content: center; padding: 0; }
 html[data-workhub-desktop] .sidebar .codex-quota-mount { display: flex; justify-content: center; margin-top: auto; padding: 10px 0 var(--yolu-rail-gap); }
 html[data-workhub-desktop] .sidebar .codex-quota-trigger { justify-content: center; min-height: 0; padding: 0; }
 html[data-workhub-desktop] .sidebar .codex-quota-trigger :is(.codex-quota-copy,.codex-quota-chevron) { display: none; }
@@ -80,56 +70,9 @@ html[data-workhub-desktop] :is(.workspaces-page,.projects-page:not(.project-tool
   html[data-workhub-desktop]:not([data-workspace-conversation]) .session-browser-mobile-back { display: block; }
 }
 
-html[data-workhub-desktop] #conversationShortcuts {
-  display: flex;
-  flex: 1;
-  margin: var(--yolu-rail-gap) 0 0;
-  padding: 0;
-  border: 0;
-  overflow: visible;
-}
-.sidebar-shortcut-rail { display: flex; flex-direction: column; min-height: 0; width: 100%; }
-.sidebar-shortcut-rail .workspace-shortcuts-heading {
-  justify-content: center;
-  margin: 0 0 var(--yolu-rail-gap);
-  flex-shrink: 0;
-}
-.sidebar-shortcut-rail #shortcutPinnedTitle { display: none; }
-.sidebar-shortcut-rail .workspace-shortcut-options {
-  position: fixed;
-  inset: auto;
-  width: min(340px, calc(100vw - 80px));
-  margin: 0;
-  background: var(--yolu-surface,#fff);
-}
-.shortcut-picker-heading { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
-.sidebar-shortcut-list {
-  min-height: 0;
-  padding: 1px 0 2px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-.sidebar-shortcut-list ul { justify-items: center; gap: var(--yolu-rail-gap); }
-.sidebar-shortcut-list ul + ul { margin-top: var(--yolu-rail-gap); padding-top: var(--yolu-rail-gap); border-top: 1px solid var(--yolu-rail-selected); }
-.sidebar-shortcut-list .conversation-shortcut-open {
-  justify-content: center;
-  padding: 4px;
-}
-.sidebar-shortcut-list :is(.conversation-shortcut-copy,.conversation-shortcut-pin) { display: none; }
-html[data-workhub-desktop] .sidebar-shortcut-list .shortcut-badge {
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  background: color-mix(in srgb, currentColor 9%, transparent);
-  box-shadow: none;
-  filter: saturate(.5);
-  font-size: 10px;
-}
-
-html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary, #refreshButton,.codex-quota-trigger) { position: relative; }
-html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,#refreshButton,.codex-quota-trigger):focus-visible { outline: 2px solid var(--yolu-ring,#818cf8); outline-offset: 1px; }
-html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,#refreshButton,.codex-quota-trigger):focus-visible::after {
+html[data-workhub-desktop] .sidebar :where(.nav-item, #refreshButton,.codex-quota-trigger) { position: relative; }
+html[data-workhub-desktop] .sidebar :where(.nav-item,#refreshButton,.codex-quota-trigger):focus-visible { outline: 2px solid var(--yolu-ring,#818cf8); outline-offset: 1px; }
+html[data-workhub-desktop] .sidebar :where(.nav-item,#refreshButton,.codex-quota-trigger):focus-visible::after {
   content: attr(title);
   position: absolute;
   z-index: 1;

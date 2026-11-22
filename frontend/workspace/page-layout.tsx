@@ -1,9 +1,10 @@
 import { uiText } from "../i18n";
-import { useLayoutEffect, useRef } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { flushSync } from "react-dom"
-import { ChevronDown, ListTodo, Search } from "lucide-react"
+import { ChevronDown, ListTodo, Search, CircleDot, RefreshCw } from "lucide-react"
 import { DropdownMenu } from "radix-ui"
+import { CodexUsage } from "./codex-usage"
 import { setupSplitResize } from "./split-resize"
 
 export { setupSplitResize }
@@ -37,8 +38,12 @@ interface WindowChromeProps {
   home: () => void
   search?: (trigger: HTMLButtonElement) => void
   appMenu?: () => void
+  issues?: () => void
+  issuesActive?: boolean
+  refresh?: () => Promise<void>
 }
 function WindowChrome(props: WindowChromeProps) {
+  const [refreshing, setRefreshing] = useState(false)
   const appMenu = props.appMenu
   const trigger = <button type="button" className="window-brand-trigger" aria-label={uiText("Yolu 菜单")} title={uiText("Yolu 菜单")} aria-haspopup="menu" onClick={appMenu} onKeyDown={appMenu ? event => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
@@ -63,7 +68,17 @@ function WindowChrome(props: WindowChromeProps) {
   </DropdownMenu.Root>
   return <>{brand}{props.search && <button type="button" className="window-search-trigger" aria-label={uiText("全局搜索")} title={uiText("全局搜索")} aria-haspopup="dialog" aria-controls="globalSearch" aria-keyshortcuts="Meta+K Control+K" onClick={event => props.search?.(event.currentTarget)}>
     <Search size={14} aria-hidden="true" /><span>{uiText("搜索或跳转…")}</span><kbd aria-hidden="true">{navigator.platform.startsWith("Mac") ? "⌘ K" : "Ctrl K"}</kbd>
-  </button>}</>
+  </button>}
+    <div className="window-utilities" role="toolbar" aria-label={uiText("工作台工具")}>
+      <button type="button" className="window-utility-button window-issues" aria-label="Issues" title="Issues" aria-current={props.issuesActive ? "page" : undefined} disabled={!props.ready} onClick={props.issues}><CircleDot aria-hidden="true" /><span>Issues</span></button>
+      <button type="button" className="window-utility-button" aria-label={uiText("刷新 Git 状态")} title={uiText("刷新 Git 状态")} disabled={!props.ready || refreshing} onClick={async () => {
+        if (refreshing) return
+        setRefreshing(true)
+        try { await props.refresh?.() } finally { setRefreshing(false) }
+      }}><RefreshCw className={refreshing ? "codex-quota-spinning" : undefined} aria-hidden="true" /></button>
+      <CodexUsage portal={document.body} />
+    </div>
+  </>
 }
 export function renderChrome(container: HTMLElement, props: WindowChromeProps) {
   let root = roots.get(container)

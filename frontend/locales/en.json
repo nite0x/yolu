@@ -1905,5 +1905,10 @@
   "固定的对话集合": "Pinned conversation groups",
   "展开或折叠 {0} 的对话": "Expand or collapse conversations for {0}",
   "请在浏览器中打开 Linear": "Open Linear in your browser.",
-  "无法打开 Linear": "Could not open Linear."
+  "无法打开 Linear": "Could not open Linear.",
+  "编辑图标": "Edit icon",
+  "编辑图标：{0}": "Edit icon: {0}",
+  "保存图标失败：": "Could not save icon:",
+  "保存中…": "Saving…",
+  "工作台工具": "Workspace tools"
 }

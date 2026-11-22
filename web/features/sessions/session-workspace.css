@@ -5,8 +5,6 @@
 .sessions-page-open #eyebrow, .sessions-page-open .page-footer { display: none; }
 .sessions-page, #sessionPageMount { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .session-browser { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--background, var(--yolu-surface,#fff)); overflow: hidden; container-type: inline-size; }
-.session-scope-filters #pinConversationDirectory, .session-scope-filters #sessionClearFilters { justify-content: flex-start; width: fit-content; font-size: 12px; }
-.session-scope-filters #pinConversationDirectory[aria-pressed="true"] { color: var(--primary); background: var(--secondary); }
 .session-environment-label { margin: 0; display: grid; gap: 7px; min-width: 0; font-size: 12px; color: var(--muted-foreground); }
 .session-environment-label > div { min-width: 0; flex: 1; }
 .session-environment-label select { width: 100%; }
@@ -28,11 +26,6 @@
 .session-browser-resize:hover::after, .session-browser-resize:focus-visible::after, .session-browser[data-resizing] .session-browser-resize::after { left: 2px; width: 3px; background: var(--primary); }
 .session-browser[data-resizing], .session-browser[data-resizing] * { cursor: col-resize !important; user-select: none; }
 .session-browser-list-tools { padding: 10px 10px 8px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
-.session-browser-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.session-browser-list-title { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
-.session-browser-list-heading strong { flex-shrink: 0; font-size: 14px; font-weight: 650; color: var(--foreground); }
-.session-browser-heading-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; flex-shrink: 0; }
-.session-browser-heading-actions > button { padding: 6px; color: var(--muted-foreground); }
 .session-active-filter-label { font-size: 11px; margin: 0; padding: 4px 7px; border-radius: 4px; color: var(--primary); background: var(--secondary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .session-status-filters { display: flex; align-items: center; gap: 2px; min-width: 0; padding: 3px; border-radius: 7px; background: var(--muted); }
 .session-status-filters button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; min-height: 28px; padding: 3px 2px; border: 0; border-radius: 5px; font-size: 11px; line-height: 1.4; white-space: nowrap; color: var(--muted-foreground); background: transparent; }
@@ -41,20 +34,19 @@
 .session-status-filters [data-status-count] { font-size: 10px; font-variant-numeric: tabular-nums; }
 .session-status-filters [data-conversation-status="waiting"] [data-status-count] { color: var(--yolu-warning,#9a5a12); }
 .session-status-filters button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-#sessionBrowserCount { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
 #sessionBrowserError { margin: 0 12px 8px; padding: 9px; font-size: 12px; white-space: pre-wrap; color: var(--destructive); background: var(--muted); border-radius: 6px; }
-#sessionBrowserList { overflow-y: auto; min-height: 0; flex: 1; padding: 0 7px 12px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; overflow-anchor: none; }
+#sessionBrowserList { overflow-y: auto; overflow-x: hidden; min-width: 0; min-height: 0; flex: 1; padding: 0 7px 12px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; overflow-anchor: none; }
 .session-list-spacer { flex-shrink: 0; pointer-events: none; overflow-anchor: none; }
 .session-list-more { margin: 0; padding: 12px 4px 4px; text-align: center; color: var(--muted-foreground); font-size: 11px; }
-.session-browser-items { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; }
+.session-browser-items { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 2px; }
 .session-browser-group-heading { display: flex; align-items: center; gap: 5px; margin: 0; padding: 13px 10px 5px; color: var(--muted-foreground); font-size: 11px; line-height: 1.6; font-weight: 500; }
 .session-browser-group-heading svg { width: 11px; height: 11px; }
 .session-browser-group-heading > span { margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums; }
-.session-workspace-heading { margin: 0; }
-.session-workspace-heading > button { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: 100%; min-height: 38px; padding: 8px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--foreground); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.session-workspace-heading { margin: 0; min-width: 0; max-width: 100%; }
+.session-workspace-heading > button { display: flex; align-items: center; flex-wrap: nowrap; min-width: 0; gap: 6px; width: 100%; min-height: 38px; padding: 8px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--foreground); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .session-workspace-heading > button:hover { background: var(--accent); }
 .session-workspace-heading svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--muted-foreground); }
-.session-workspace-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.session-workspace-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .session-workspace-count, .session-workspace-heading small { color: var(--muted-foreground); font-size: 10px; font-weight: 400; }
 .session-workspace-heading small { max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-browser-workspaces .session-browser-items { padding-left: 18px; }
@@ -149,52 +141,9 @@
 
 /* Global shortcuts use the remaining sidebar height; navigation and settings stay put. */
 .sidebar > nav, .sidebar > .brand, .sidebar > .nav-label { flex-shrink: 0; }
-.conversation-shortcuts { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 18px -5px 16px; padding: 14px 5px 4px; border-top: 1px solid var(--yolu-border,#d9e1f0); scrollbar-width: thin; }
-.conversation-shortcuts > section + section { margin-top: 20px; }
-.conversation-shortcuts h2 { margin: 0 8px 8px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--yolu-muted-ink,#64748b); }
-.conversation-shortcuts h2 svg { width: 12px; height: 12px; }
-.conversation-shortcuts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
-.conversation-shortcut-row { position: relative; min-width: 0; border-radius: 7px; }
-.conversation-shortcut-open { display: flex; align-items:center; gap:8px; width: 100%; position: relative; padding: 8px 27px 8px 9px; border: 0; border-radius: 7px; background: transparent; color: var(--yolu-foreground,#334155); text-align: left; cursor: pointer; }
-.conversation-shortcut-open:hover, .conversation-shortcut-row:focus-within { background: var(--yolu-hover,#e8edf9); }
-.conversation-shortcut-open[aria-current="true"] { background: var(--yolu-selected,#e1e7ff); color: var(--yolu-primary,#4f46b9); }
-.conversation-shortcut-title, .conversation-shortcut-context { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conversation-shortcut-title { font-size: 12px; font-weight: 500; line-height: 1.7; }
-.conversation-shortcut-context { font-size: 10px; line-height: 1.6; color: var(--yolu-muted-ink,#71809a); }
-.conversation-shortcut-pin { position: absolute; right: 3px; top: 15px; width: 23px; height: 25px; border: 0; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: var(--yolu-muted-ink,#687795); background: var(--yolu-hover,#e8edf9); opacity: 0; cursor: pointer; }
-.conversation-shortcut-pin svg { width: 13px; height: 13px; }
-.conversation-shortcut-row:hover .conversation-shortcut-pin, .conversation-shortcut-row:focus-within .conversation-shortcut-pin { opacity: 1; }
-.conversation-shortcut-pin:disabled { opacity: .5; cursor: progress; }
-.conversation-shortcuts-empty { margin: 4px 8px; font-size: 11px; line-height: 1.8; color: var(--yolu-faint-ink,#7b879e); }
-.workspace-shortcuts-heading { display: flex; align-items: center; justify-content: space-between; position: relative; margin-bottom: 8px; }
-.workspace-shortcuts-heading h2 { margin-bottom: 0; margin-right:auto; }
-.workspace-shortcut-picker > summary { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 5px; color: var(--yolu-muted-ink,#687795); cursor: pointer; list-style: none; }
-.workspace-shortcut-picker > summary::-webkit-details-marker { display: none; }
-.workspace-shortcut-picker > summary:hover { background: var(--yolu-selected,#e1e7ff); }
-.workspace-shortcut-picker > summary svg { width: 14px; height: 14px; }
-.workspace-shortcut-options { position: absolute; z-index: 10; right: 0; top: 100%; width: 100%; max-height: min(540px, 60dvh); display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--yolu-border,#d9e1f0); border-radius: 7px; background: var(--yolu-subtle,#f8faff); box-shadow: 0 5px 16px #33415518; }
-.workspace-shortcut-options[popover]:not(:popover-open) { display: none; }
-.workspace-shortcut-options:popover-open { position: fixed; inset: auto; margin: 0; width: min(340px, calc(100vw - 24px)); color: var(--yolu-foreground,#334155); }
-.workspace-shortcut-options > label { font-size: 12px; color: var(--yolu-foreground,#334155); }
-.workspace-shortcut-options > input { min-width: 0; width: 100%; flex-shrink: 0; font-size: 12px; }
-.shortcut-picker-caption { margin: 0; font-size: 11px; line-height: 1.6; color: var(--yolu-muted-ink,#64748b); }
-.shortcut-archive-toggle { display: flex; align-items: center; gap: 6px; }
-.shortcut-picker-results { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
-.shortcut-picker-results h3, .shortcut-directory-heading { margin: 8px; font-size: 11px; font-weight: 600; color: var(--yolu-muted-ink,#64748b); }
-.shortcut-picker-results button { display: flex; justify-content: space-between; gap: 8px; align-items: center; width: 100%; padding: 8px; border: 0; border-radius: 5px; background: transparent; color: var(--yolu-foreground,#334155); text-align: left; font-size: 12px; cursor: pointer; }
-.shortcut-picker-results button:hover, .shortcut-picker-results button:focus-visible { background: var(--yolu-selected,#e1e7ff); }
-.shortcut-picker-results button:focus-visible, .workspace-shortcut-picker > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-.shortcut-picker-results button:disabled { opacity: .55; cursor: default; }
-.shortcut-picker-results button > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.shortcut-picker-results button small { display: block; font-size: 10px; color: var(--yolu-muted-ink,#71809a); overflow-wrap: anywhere; }
-.shortcut-option-title > small { display: inline; }
-.shortcut-option-title svg, .conversation-shortcut-title svg { display: inline; vertical-align: -2px; margin-right: 4px; width: 13px; height: 13px; }
-.shortcut-option-state { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; font-size: 10px; color: var(--yolu-primary,#4f46b9); }
-.shortcut-option-state svg { width: 12px; height: 12px; }
 .sidebar .sidebar-settings { margin: 0; padding: 5px; width: 28px; height: 28px; min-width: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; }
-@media (hover: none) { .conversation-shortcut-pin { opacity: 1; } }
+@media (hover: none) { }
 @media (max-width: 760px) {
-  .conversation-shortcuts { display: none; }
   .sidebar .sidebar-settings { flex: none; font-size: 14px; }
 }
 .session-browser-environment { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 10px; }
@@ -278,9 +227,6 @@ html[data-workspace-navigation][data-workspace-single] .parallel-list-item:has(.
 /* A host-managed conversation never renders another list, even during mode changes. */
 html[data-workspace-conversation] .session-browser-list,
 html[data-workspace-conversation] .ui-narrow-list{display:none!important}
-
-.conversation-shortcut-copy { flex:1; min-width:0; }
-.conversation-shortcut-open:focus-visible { outline:2px solid var(--yolu-ring,#818cf8); outline-offset:-2px; }
 .shortcut-icon-settings { display:flex; align-items:center; justify-content:center; flex:none; width:24px; height:26px; padding:4px; border:0; border-radius:5px; color:var(--yolu-muted-ink,#687795); background:transparent; cursor:pointer; }
 .shortcut-icon-settings svg { width:15px; height:15px; }
 .shortcut-icon-settings:hover { background:var(--yolu-selected,#e1e7ff); }
@@ -288,7 +234,7 @@ html[data-workspace-conversation] .ui-narrow-list{display:none!important}
 
 .session-workspace-heading:has(.session-collection-link) { display: flex; align-items: center; }
 .session-collection-link {
-  display: flex; flex: 1; min-width: 0; align-items: center; gap: 6px;
+  display: flex; flex: 1; min-width: 0; overflow: hidden; align-items: center; gap: 6px;
   padding: 6px 7px; border-radius: var(--yolu-chip-radius,8px);
 }
 .session-collection-link > svg { width: 15px; height: 15px; flex: none; }

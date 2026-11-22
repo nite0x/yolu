@@ -2,7 +2,7 @@ import { uiText } from "../i18n";
 import { useState } from "react"
 import { createRoot } from "react-dom/client"
 import { flushSync } from "react-dom"
-import { Folder, Code2, Terminal, Rocket, Bug, Sparkles, Database, Globe, Layers, Briefcase, FlaskConical, Palette } from "lucide-react"
+import { Folder, Code2, Terminal, Rocket, Bug, Sparkles, Database, Globe, Layers, Briefcase, FlaskConical } from "lucide-react"
 
 const icons = { folder: Folder, code: Code2, terminal: Terminal, rocket: Rocket, bug: Bug, sparkles: Sparkles, database: Database, globe: Globe, layers: Layers, briefcase: Briefcase, flask: FlaskConical }
 const iconNames = { folder: uiText("文件夹"), code: uiText("代码"), terminal: uiText("终端"), rocket: uiText("火箭"), bug: uiText("问题修复"), sparkles: uiText("灵感"), database: uiText("数据库"), globe: uiText("网站"), layers: uiText("组件"), briefcase: uiText("工作"), flask: uiText("试验") }
@@ -20,49 +20,65 @@ export function ShortcutBadge({name, identity, appearance}: {name: string; ident
   const initials = words.length > 1 ? words.slice(0, 2).map(word => Array.from(word)[0]).join("") : Array.from(name).slice(0, 2).join("")
   return <span className="shortcut-badge" data-color={value.color} aria-hidden="true">{Icon ? <Icon /> : initials.toUpperCase()}</span>
 }
-export function ShortcutIconSettingsButton() {
-  return <button type="button" id="shortcutIconSettings" className="shortcut-icon-settings" data-shortcut-icon-settings aria-label={uiText("设置固定入口图标")} title={uiText("设置固定入口图标")}><Palette aria-hidden="true" /></button>
+export function ResourceIcon({kind, id, name, environment = "local", appearance, editable = false}: {
+  kind: "workspace" | "project"; id: string; name: string; environment?: string; appearance?: ShortcutIcon; editable?: boolean
+}) {
+  const identity = `${kind}:${id}`
+  const badge = <ShortcutBadge name={name} identity={identity} appearance={appearance} />
+  const data = {"data-resource-icon": identity, "data-resource-name": name, "data-environment": environment, "data-resource-appearance": JSON.stringify(appearance || {})}
+  return editable ? <button type="button" className="resource-icon-edit" data-resource-icon-edit {...data} aria-label={uiText("编辑图标：{0}", name)} title={uiText("编辑图标：{0}", name)}>{badge}</button> : <span {...data}>{badge}</span>
 }
-type Entry = {key: string; name: string; title: string; appearance: ShortcutIcon}
-function IconEditor({entries, close, save}: {entries: Entry[]; close: () => void; save: (entry: Entry, value: ShortcutIcon) => void}) {
-  const [selected, setSelected] = useState(entries[0]?.key || "")
-  const entry = entries.find(item => item.key === selected)
-  const [value, setValue] = useState(entry?.appearance || defaultShortcutIcon(""))
-  if (!entry) return <><h2 id="shortcutIconTitle">{uiText("设置固定入口图标")}</h2><p>{uiText("先固定一个工作区或项目目录，再为它设置图标。")}</p><button type="button" onClick={close}>{uiText("关闭")}</button></>
-  return <form onSubmit={event => {event.preventDefault(); save(entry, value)}}>
-    <h2 id="shortcutIconTitle">{uiText("设置固定入口图标")}</h2>
-    <label htmlFor="shortcutIconEntry">{uiText("固定入口")}</label>
-    <select id="shortcutIconEntry" value={selected} onChange={event => {const next = entries.find(item => item.key === event.target.value)!; setSelected(next.key); setValue(next.appearance)}}>{entries.map(item => <option key={item.key} value={item.key}>{item.title}</option>)}</select>
+type Entry = {key: string; name: string; appearance: ShortcutIcon; environment: string}
+function IconEditor({entry, close, save}: {entry: Entry; close: () => void; save: (value: ShortcutIcon) => Promise<void>}) {
+  const [value, setValue] = useState({...defaultShortcutIcon(entry.key), ...entry.appearance})
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState("")
+  return <form onSubmit={async event => {
+    event.preventDefault()
+    if (pending) return
+    setPending(true); setError("")
+    try { await save(value); close() } catch (error) { setError((error as Error).message) } finally { setPending(false) }
+  }} aria-busy={pending}>
+    <h2 id="shortcutIconTitle">{uiText("编辑图标")}</h2>
     <div className="shortcut-icon-preview"><ShortcutBadge name={entry.name} identity={entry.key} appearance={value} /><span>{entry.name}</span></div>
-    <fieldset><legend>{uiText("图标")}</legend><div className="shortcut-icon-options"><button type="button" aria-label={uiText("名称缩写")} aria-pressed={value.icon === "auto"} onClick={() => setValue(current => ({...current, icon:"auto"}))}>{uiText("自动")}</button>{Object.entries(icons).map(([key, Icon]) => <button key={key} type="button" aria-label={iconNames[key as keyof typeof iconNames]} aria-pressed={value.icon === key} onClick={() => setValue(current => ({...current, icon:key}))}><Icon aria-hidden="true" /></button>)}</div></fieldset>
-    <fieldset><legend>{uiText("颜色")}</legend><div className="shortcut-icon-options">{Object.entries(colors).map(([key, label]) => <button key={key} type="button" aria-label={label} aria-pressed={value.color === key} onClick={() => setValue(current => ({...current, color:key}))}><span className="shortcut-color-swatch shortcut-badge" data-color={key} aria-hidden="true" /></button>)}</div></fieldset>
-    <div className="shortcut-icon-actions"><button type="button" onClick={() => setValue(defaultShortcutIcon(entry.key))}>{uiText("恢复默认")}</button><span /><button type="button" onClick={close}>{uiText("取消")}</button><button type="submit">{uiText("保存")}</button></div>
+    <fieldset disabled={pending}><legend>{uiText("图标")}</legend><div className="shortcut-icon-options"><button type="button" aria-label={uiText("名称缩写")} aria-pressed={value.icon === "auto"} onClick={() => setValue(current => ({...current, icon:"auto"}))}>{uiText("自动")}</button>{Object.entries(icons).map(([key, Icon]) => <button key={key} type="button" aria-label={iconNames[key as keyof typeof iconNames]} aria-pressed={value.icon === key} onClick={() => setValue(current => ({...current, icon:key}))}><Icon aria-hidden="true" /></button>)}</div></fieldset>
+    <fieldset disabled={pending}><legend>{uiText("颜色")}</legend><div className="shortcut-icon-options">{Object.entries(colors).map(([key, label]) => <button key={key} type="button" aria-label={label} aria-pressed={value.color === key} onClick={() => setValue(current => ({...current, color:key}))}><span className="shortcut-color-swatch shortcut-badge" data-color={key} aria-hidden="true" /></button>)}</div></fieldset>
+    {error && <p role="alert">{error}</p>}
+    <div className="shortcut-icon-actions"><button type="button" disabled={pending} onClick={() => setValue(defaultShortcutIcon(entry.key))}>{uiText("恢复默认")}</button><span /><button type="button" disabled={pending} onClick={close}>{uiText("取消")}</button><button type="submit" disabled={pending}>{pending ? uiText("保存中…") : uiText("保存")}</button></div>
   </form>
 }
-export function setupShortcutIcons(sidebar: HTMLElement) {
-  // The shared navigation iframe is clipped to the list. Put modal
-  // settings in the same-origin workspace document so the whole window can show it.
+export function setupResourceIcons(container: HTMLElement) {
   let hostDocument = document
-  try { if (window.parent !== window && window.parent.location?.origin === window.location.origin && window.parent.document?.body) hostDocument = window.parent.document } catch { /* Standalone or externally embedded page. */ }
+  try { if (window.parent !== window && window.parent.location?.origin === window.location.origin && window.parent.document?.body) hostDocument = window.parent.document } catch { /* Use this document outside the application host. */ }
   const dialog = hostDocument.createElement("dialog")
   dialog.className = "shortcut-icon-dialog"
   dialog.setAttribute("aria-labelledby", "shortcutIconTitle")
   hostDocument.body.append(dialog)
   const root = createRoot(dialog)
   let trigger: HTMLElement | null = null
-  const close = () => {dialog.close(); root.render(null); if (trigger?.isConnected) trigger.focus({preventScroll:true})}
+  let saving = false
+  const close = () => {
+    dialog.close(); root.render(null)
+    const replacement = [...container.querySelectorAll<HTMLElement>("[data-resource-icon-edit]")].find(button => button.dataset.resourceIcon === trigger?.dataset.resourceIcon && button.dataset.environment === trigger?.dataset.environment)
+    const target = trigger?.isConnected ? trigger : replacement
+    target?.focus({preventScroll:true})
+  }
   const click = (event: MouseEvent) => {
-    if (!(event.target instanceof Element) || !event.target.closest("[data-shortcut-icon-settings]")) return
-    trigger = event.target.closest<HTMLElement>("[data-shortcut-icon-settings]")
-    const catalog = sidebar.querySelector<HTMLElement>("[data-shortcut-icon-catalog]")?.dataset.shortcutIconCatalog
-    const entries: Entry[] = catalog ? JSON.parse(catalog) : [...sidebar.querySelectorAll<HTMLElement>("[data-shortcut-icon-key]")].map(node => ({key: node.dataset.shortcutIconKey!, name: node.dataset.shortcutName!, title: node.title.replace(/\n/g, " · "), appearance: JSON.parse(node.dataset.shortcutIcon || "{}") as ShortcutIcon}))
-    flushSync(() => root.render(<IconEditor entries={entries} close={close} save={(entry, value) => {
-      window.dispatchEvent(new CustomEvent("workhub:shortcut-icon-save", {detail:{key:entry.key, value}})); close()
+    if (!(event.target instanceof Element)) return
+    const button = event.target.closest<HTMLElement>("[data-resource-icon-edit]")
+    if (!button) return
+    trigger = button
+    const entry: Entry = {key:button.dataset.resourceIcon!, name:button.dataset.resourceName!, environment:button.dataset.environment!, appearance:JSON.parse(button.dataset.resourceAppearance || "{}")}
+    flushSync(() => root.render(<IconEditor key={entry.environment + entry.key} entry={entry} close={close} save={async value => {
+      saving = true
+      try {
+        await new Promise<void>((resolve, reject) => window.dispatchEvent(new CustomEvent("workhub:resource-icon-save", {detail:{...entry, value, resolve, reject}})))
+      } finally { saving = false }
     }} />))
     dialog.showModal()
   }
-  const cancel = (event: Event) => {event.preventDefault(); close()}
+  const cancel = (event: Event) => {event.preventDefault(); if (!saving) close()}
   dialog.addEventListener("cancel", cancel)
-  sidebar.addEventListener("click", click)
-  return () => {sidebar.removeEventListener("click", click); dialog.removeEventListener("cancel", cancel); root.unmount(); dialog.remove()}
+  container.addEventListener("click", click)
+  return () => {container.removeEventListener("click", click); dialog.removeEventListener("cancel", cancel); root.unmount(); dialog.remove()}
 }

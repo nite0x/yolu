@@ -84,32 +84,10 @@ html[data-workhub-desktop] .workspace-tab-item[data-active=true] .workspace-tab-
 
 /* Sidebar controls share a flat selection surface. */
 html[data-workhub-desktop] .sidebar nav .nav-item { padding: 0; }
-html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,:where(#refreshButton),.codex-quota-trigger:not([data-tone="low"])) {
-  border-radius: 10px;
-  color: var(--yolu-rail-muted);
-  transition: background-color .15s, color .15s;
-}
-html[data-workhub-desktop] .sidebar :is(.nav-item,.workspace-shortcut-picker > summary,:where(#refreshButton),.codex-quota-trigger:not([data-tone="low"])):hover,
-html[data-workhub-desktop] .sidebar .nav-item.active,
-html[data-workhub-desktop][data-workspace-navigation] .sidebar .nav-item[data-view="sessions"],
-html[data-workhub-desktop] .sidebar .workspace-shortcut-picker[open] > summary,
-html[data-workhub-desktop] .sidebar-shortcut-list .conversation-shortcut-open[aria-current="true"] {
-  background: var(--yolu-rail-selected);
-  color: var(--yolu-rail-active);
-  box-shadow: none;
-}
 html[data-workspace-navigation]:not([data-workhub-desktop]) .sidebar .nav-item[data-view="sessions"] { background: var(--yolu-surface, #fff); color: var(--yolu-foreground, #182a2b); box-shadow: var(--yolu-elevation-sm); }
 html[data-workspace-navigation]:not([data-workhub-desktop]) .sidebar .nav-item[data-view="sessions"] .nav-icon { color: var(--yolu-primary, #1f5f5a); }
 html[data-workhub-desktop] .sidebar .nav-icon { color: inherit; }
 html[data-workhub-desktop] .sidebar .nav-count { font-variant-numeric: tabular-nums; }
-
-.conversation-shortcuts { margin-top: 14px; border-top-color: transparent; }
-.conversation-shortcuts h2 { margin-inline: 10px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--yolu-faint-ink, #8a9a95); }
-.conversation-shortcut-row, .conversation-shortcut-open { border-radius: var(--yolu-chip-radius); }
-.conversation-shortcut-open:hover, .conversation-shortcut-row:focus-within { background: var(--yolu-hover, #e4ebe6); }
-html[data-workhub-desktop] .sidebar-shortcut-list :is(.conversation-shortcut-row:focus-within,.conversation-shortcut-open:hover) { background: var(--yolu-rail-selected); }
-.conversation-shortcut-open[aria-current="true"] { background: var(--yolu-surface, #fff); color: var(--yolu-foreground, #182a2b); box-shadow: var(--yolu-elevation-sm); }
-.conversation-shortcut-pin { background: transparent; }
 .shortcut-badge { border-radius: 9px; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 10%, transparent); }
 .sidebar-footer { border-top-color: transparent; }
 html[data-workhub-desktop] .sidebar-footer { border-top-color: transparent; }
@@ -184,34 +162,26 @@ html[data-workspace-navigation] .sidebar {
 }
 html[data-workhub-desktop][data-workspace-navigation] .sidebar .brand { display: none; }
 html[data-workspace-navigation] .sidebar :is(.brand,.nav-label,.sidebar-toggle,[data-view="projects"],[data-view="sessions"]) { display: none; }
-html[data-workspace-navigation]:not([data-workhub-platform]) .sidebar .brand {
-  display: flex; justify-content: flex-start; gap: 7px; padding: 0 3px; margin: 0 0 3px; font-size: 14px;
-}
-html[data-workspace-navigation]:not([data-workhub-platform]) .sidebar .brand-mark { width: 18px; height: 18px; }
-html[data-workspace-navigation]:not([data-workhub-platform]) .sidebar .brand span { display: inline; }
-html[data-workspace-navigation] .sidebar .brand small { display: none; }
-html[data-workspace-navigation] .sidebar > nav { display: flex; gap: 4px; padding: 3px; margin: 0; border-radius: 8px; background: var(--yolu-subtle); }
-html[data-workspace-navigation] .sidebar > nav .nav-item {
-  flex: 1; width: auto; min-width: 0; height: 32px; padding: 0 5px;
-  justify-content: center; font-size: var(--yolu-font-size-compact);
-}
-html[data-workspace-navigation] .sidebar > nav :is(.nav-icon,.nav-count) { display: none; }
-html[data-workspace-navigation] .sidebar > nav .nav-text { display: inline; }
-html[data-workspace-navigation] .sidebar > nav .nav-item.active { background: var(--yolu-surface); color: var(--yolu-foreground); box-shadow: var(--yolu-elevation-sm); }
-html[data-workspace-navigation] .navigation-utilities { display: flex; align-items: center; gap: 4px; padding: 0 2px; }
-html[data-workspace-navigation] .navigation-utilities :is(#openGlobalSearch,#openYoluAssistant,#refreshButton,.codex-quota-trigger) {
-  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0;
-}
-html[data-workspace-navigation] .navigation-utilities :is(.nav-text,.codex-quota-copy,.codex-quota-chevron) { display: none; }
-html[data-workspace-navigation] .sidebar .codex-quota-mount { margin: 0 0 0 auto; padding: 0; }
-html[data-workspace-navigation] #conversationShortcuts { display: block; flex: none; margin: 0; padding: 0 4px; border: 0; }
+html[data-workspace-navigation] .sidebar :is(.brand,nav,#refreshControl) { display: none; }
 html[data-workspace-navigation] .sidebar #sessionsPage { flex: 1; min-height: 0; }
-html[data-workspace-navigation] .sidebar .session-browser-list { background: transparent; }
-html[data-workspace-navigation] .sidebar .session-browser-list-tools { padding: 5px 4px; }
-html[data-workspace-navigation] .sidebar .sidebar-footer { padding: 4px 0; border-top: 1px solid var(--yolu-border); justify-content: flex-start; }
+html[data-workspace-navigation] .sidebar :is(.session-browser,.session-browser-list) { background: transparent; }
+html[data-workspace-navigation] .sidebar .session-browser-list-tools { gap: 0; padding: 2px 4px 10px; border-bottom: 0; }
+html[data-workspace-navigation] .sidebar #sessionBrowserList { padding: 0 2px 12px; scrollbar-width: thin; scrollbar-color: var(--yolu-border-strong) transparent; }
+html[data-workspace-navigation] .sidebar .session-browser-group + .session-browser-group { margin-top: 10px; }
+html[data-workspace-navigation] .sidebar .session-workspace-heading { min-height: 34px; padding-block: 2px; }
+html[data-workspace-navigation] .sidebar .session-collection-link { gap: 8px; border-radius: 7px; padding: 4px; }
+html[data-workspace-navigation] .sidebar .session-collection-link .shortcut-badge { width: 23px; height: 23px; border-radius: 7px; font-size: 10px; flex-shrink: 0; }
+html[data-workspace-navigation] .sidebar .session-collection-link:hover { background: var(--yolu-hover); }
+html[data-workspace-navigation] .sidebar .session-workspace-name { font-size: var(--yolu-font-size-compact); font-weight: 600; }
+html[data-workspace-navigation] .sidebar .session-browser-items { padding-left: 23px; }
+html[data-workspace-navigation] .sidebar .session-browser-item { padding: 7px 8px; border-radius: 7px; }
+html[data-workspace-navigation] .sidebar .session-browser-item-title { font-size: var(--yolu-font-size-compact); font-weight: 450; }
+html[data-workspace-navigation] .sidebar .session-browser-item-time { font-size: 10px; opacity: .8; }
+html[data-workspace-navigation] .sidebar .session-workspace-more { width: calc(100% - 31px); margin-left: 31px; padding-block: 7px; font-size: 11px; }
+html[data-workspace-navigation] .sidebar .sidebar-footer { padding: 7px 4px; border-top: 1px solid var(--yolu-border); justify-content: flex-start; flex-shrink: 0; }
 html[data-workspace-navigation] .sidebar .sidebar-footer-actions { flex-direction: row; }
-html[data-workspace-navigation] .sidebar .sidebar-settings { gap: 6px; width: auto; padding: 0 7px; font-size: var(--yolu-font-size-compact); }
-html[data-workspace-navigation] .sidebar .sidebar-settings::after { content: attr(aria-label); }
+html[data-workspace-navigation] .sidebar .sidebar-settings { gap: 7px; width: auto; padding: 0 7px; font-size: var(--yolu-font-size-label); white-space: nowrap; }
+html[data-workspace-navigation] .sidebar .sidebar-settings::after { content: attr(aria-label); position: static; transform: none; padding: 0; background: transparent; color: inherit; }
 html[data-workspace-navigation] .sidebar .sidebar-settings svg { width: 15px; height: 15px; }
 .issues-page { max-width: 920px; padding: 24px; }
 .issues-page p { color: var(--yolu-muted-ink); }

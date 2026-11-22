@@ -1,10 +1,10 @@
 import { uiText } from "../i18n";
 import { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { PanelLeftClose, PanelLeftOpen, ListTodo, FolderGit2, MessagesSquare, Sparkles } from "lucide-react"
+import { PanelLeftClose, PanelLeftOpen, ListTodo, FolderGit2, MessagesSquare, CircleDot } from "lucide-react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { setupSplitResize } from "./split-resize"
-import { setupShortcutIcons } from "./shortcut-icons"
+import { setupResourceIcons } from "./shortcut-icons"
 import { mountCodexUsage } from "./codex-usage"
 
 const storageKey = "workhub:sidebar-collapsed:v1"
@@ -93,7 +93,7 @@ export function mountWorkspaceSidebar() {
   const sidebar = document.querySelector<HTMLElement>(".sidebar")
   if (!sidebar) return
   sidebar.id = "workspaceSidebar"
-  for (const [view, Icon] of [["workspaces", ListTodo], ["projects", FolderGit2], ["sessions", MessagesSquare], ["assistant", Sparkles]] as const) {
+  for (const [view, Icon] of [["workspaces", ListTodo], ["projects", FolderGit2], ["sessions", MessagesSquare], ["issues", CircleDot]] as const) {
     const icon = sidebar.querySelector(`[data-view="${view}"] .nav-icon`)
     if (icon) icon.innerHTML = renderToStaticMarkup(<Icon aria-hidden="true" size={18} />)
   }
@@ -101,18 +101,13 @@ export function mountWorkspaceSidebar() {
   if (unified) {
     sidebar.querySelector<HTMLElement>(".unified-issues")!.hidden = false
     sidebar.querySelector(".sidebar-footer")?.before(document.getElementById("sessionsPage")!)
-    const utilities = document.createElement("div")
-    utilities.className = "navigation-utilities"
-    sidebar.querySelector("#conversationShortcuts")?.before(utilities)
-    for (const id of ["openGlobalSearch", "openYoluAssistant", "refreshControl"]) {
-      const control = document.getElementById(id)
-      if (control) utilities.append(control)
-    }
+    sidebar.querySelector("nav")!.hidden = true
   }
-  const disposePins = setupShortcutIcons(sidebar)
-  const disposeUsage = mountCodexUsage(sidebar)
+  const disposeIcons = setupResourceIcons(document.body)
+  const hosted = document.documentElement.hasAttribute("data-workspace-page")
+  const disposeUsage = hosted ? () => {} : mountCodexUsage(sidebar)
   if (unified || document.documentElement.hasAttribute("data-workhub-desktop")) {
-    window.addEventListener("pagehide", () => { disposeUsage(); disposePins() }, { once: true })
+    window.addEventListener("pagehide", () => { disposeUsage(); disposeIcons() }, { once: true })
     return
   }
   document.body.classList.toggle("sidebar-collapsed", preferredCollapse())
@@ -120,5 +115,5 @@ export function mountWorkspaceSidebar() {
   sidebar.querySelector(".brand")?.after(host)
   const root = createRoot(host); root.render(<SidebarToggle />)
   const disposeResize = setupSidebarResize(sidebar)
-  window.addEventListener("pagehide", () => { disposeUsage(); disposePins(); disposeResize(); root.unmount() }, { once: true })
+  window.addEventListener("pagehide", () => { disposeUsage(); disposeIcons(); disposeResize(); root.unmount() }, { once: true })
 }
