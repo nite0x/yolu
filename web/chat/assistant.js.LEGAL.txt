@@ -103,6 +103,7 @@ lucide-react/dist/esm/icons/file-image.mjs:
 lucide-react/dist/esm/icons/file-text.mjs:
 lucide-react/dist/esm/icons/file.mjs:
 lucide-react/dist/esm/icons/folder-open.mjs:
+lucide-react/dist/esm/icons/folder.mjs:
 lucide-react/dist/esm/icons/gauge.mjs:
 lucide-react/dist/esm/icons/git-branch.mjs:
 lucide-react/dist/esm/icons/git-fork.mjs:

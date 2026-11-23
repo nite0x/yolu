@@ -146,13 +146,14 @@ export function createConversationFiles(document: Document, request: BrowserRequ
     }
   })
   window.addEventListener("workhub:binding-files", event => {
-    const detail = (event as CustomEvent<DirectoryContext & {session:string;environment:string;file?:string;mode?:"working"|"index"}>).detail
+    const detail = (event as CustomEvent<DirectoryContext & {session:string;environment:string;file?:string;mode?:"all"|"working"|"index"}>).detail
     if (!current || detail.session !== current.session || detail.environment !== current.environment || !props) return
     restore()
-    const changedRoot = props.path !== detail.path
-    props = {...props,path:detail.path,project:detail.project,binding:detail.id,git:detail.git,initialMode:detail.mode || "all",
-      reference:detail.file ? {path:detail.file,mode:detail.mode,version:++referenceVersion} : undefined}
-    if (changedRoot) mountFileBrowser(mount)
+    const nextMode = detail.mode || "all"
+    const changedView = props.path !== detail.path || (!detail.file && props.initialMode !== nextMode)
+    props = {...props,path:detail.path,project:detail.project,binding:detail.id,git:detail.git,initialMode:nextMode,
+      reference:detail.file ? {path:detail.file,mode:detail.mode === "all" ? undefined : detail.mode,version:++referenceVersion} : undefined}
+    if (changedView) mountFileBrowser(mount)
     open()
   })
   return {

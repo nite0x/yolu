@@ -164,7 +164,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       return {...current, title:session?.name || uiText("对话"), conversation:{...current.conversation, selected:key, pane:'detail'}};
     }
     const collection = target.closest('[data-collection-href]');
-    if (collection) return {route:collection.dataset.collectionHref.slice(1),environment:collection.dataset.collectionEnvironment || activeEnvironment,title:collection.title};
+    if (collection) return {route:collection.dataset.collectionHref.slice(1),environment:collection.dataset.collectionEnvironment || activeEnvironment,title:collection.dataset.collectionName};
     const directoryProject = target.closest('[data-action="jump-project"]');
     if (directoryProject) return {route:directoryProject.hash.slice(1), environment:activeEnvironment};
     const projectButton = target.closest('[data-action="select-project"]');
@@ -204,12 +204,15 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       event.preventDefault(); event.stopImmediatePropagation();
       $('#sessionScopePicker').open = false;
       const view = window.WorkHubConversations.current;
-      const scope = projectCreate ? {kind:'project',id:projectCreate.dataset.id,environment:activeEnvironment} : view?.scope || {kind:'all'};
+      const environment = projectCreate?.dataset.environment || activeEnvironment;
+      const globalCreate = create.id === 'newBrowserSession';
+      const scope = projectCreate ? {kind:'project',id:projectCreate.dataset.id,environment} : !globalCreate && view?.scope || {kind:'all'};
       const directory = projectCreate ? {
-        key:conversationEnvironmentKey(activeEnvironment,conversationPathKey(projectCreate.dataset.path)),
-        environment:activeEnvironment, cwd:projectCreate.dataset.path, target:{project_id:projectCreate.dataset.id},
-      } : view ? defaultConversationDirectory({...view,creationDirectory:view.directory || ''}) : null;
-      post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:directory?.environment || activeEnvironment,title:uiText("新建对话"),terminal:{projectID:directory?.target?.project_id,cwd:directory?.cwd},conversation:{scope,directory:projectCreate ? '' : view?.directory || '',creationDirectory:directory?.key || '',environmentFilter:projectCreate ? '' : view?.environmentFilter || '',selected:null,creating:true,pane:'detail'}}});
+        key:conversationEnvironmentKey(environment,conversationPathKey(projectCreate.dataset.path)),
+        environment, cwd:projectCreate.dataset.path, target:{project_id:projectCreate.dataset.id},
+      } : view && !globalCreate ? defaultConversationDirectory({...view,creationDirectory:view.directory || ''}) : null;
+      const keepFilters = !projectCreate && !globalCreate;
+      post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:directory?.environment || environment,title:uiText("新建对话"),terminal:{projectID:directory?.target?.project_id,cwd:directory?.cwd},conversation:{scope,directory:keepFilters ? view?.directory || '' : '',creationDirectory:directory?.key || '',environmentFilter:keepFilters ? view?.environmentFilter || '' : '',selected:null,creating:true,pane:'detail'}}});
       return;
     }
     if (event.target.closest('.brand[href="/"]') && !(event.metaKey || event.ctrlKey)) {

@@ -48,7 +48,9 @@ type bindingView struct {
 }
 
 type bindingGit struct {
-	Files []project.ChangedFile `json:"files"`
+	Files     []project.ChangedFile `json:"files"`
+	Additions int                   `json:"additions,omitempty"`
+	Deletions int                   `json:"deletions,omitempty"`
 }
 
 const maxSessionBindings = 24
@@ -152,7 +154,8 @@ func (a *Service) inspectBinding(ctx context.Context, input bindingInput, files 
 			if err != nil {
 				v.Warning = "无法监测 Git 文件状态：" + err.Error()
 			} else {
-				v.Git = &bindingGit{Files: changed}
+				additions, deletions := project.ReadDirectoryDiffStats(ctx, v.Directory, changed)
+				v.Git = &bindingGit{Files: changed, Additions: additions, Deletions: deletions}
 			}
 		} else {
 			branch, err := execution.Git(ctx, v.Directory, "symbolic-ref", "--short", "HEAD")

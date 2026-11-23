@@ -40,7 +40,9 @@ func (a *Service) configureCodexThread(ctx context.Context, client codex.LiveCli
 			fs[canonical] = "read"
 		}
 	}
-	fs[plan.Cwd] = "read"
+	// A conversation with no primary binding owns its default directory.
+	// A primary binding below supersedes this grant with its confirmed access.
+	fs[plan.Cwd] = model.SessionBindingWrite
 	for _, binding := range plan.Bindings {
 		fs[binding.Directory] = binding.Access
 		if binding.ProjectID != "" {
@@ -74,6 +76,7 @@ func (a *Service) configureCodexThread(ctx context.Context, client codex.LiveCli
 	config["permissions"] = map[string]any{profile: map[string]any{
 		"filesystem": fs, "network": map[string]bool{"enabled": false},
 	}}
+	config["default_permissions"] = profile
 	for _, feature := range []string{"hooks", "plugins", "apps", "multi_agent", "multi_agent_v2", "enable_fanout", "skill_mcp_dependency_install"} {
 		config["features."+feature] = false
 	}

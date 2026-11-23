@@ -273,51 +273,14 @@ func (a *Service) readAgySessionHistory(ctx context.Context, record model.Sessio
 		c.Close()
 	}()
 
-	reducer := newACPUpdateReducer("hist")
-	callDone := make(chan error, 1)
-	var setup acp.SessionSetupResult
-	go func() {
-		callDone <- c.Call(loadCtx, "session/load", map[string]any{
-			"sessionId":  record.ID,
-			"cwd":        record.Cwd,
-			"mcpServers": []any{},
-		}, &setup)
-	}()
-
-	var loadErr error
-	for {
-		select {
-		case msg, ok := <-c.Events():
-			if !ok {
-				goto finished
-			}
-			if msg.Method == "session/update" {
-				reducer.applyRaw(msg.Params, record.ID)
-			}
-		case loadErr = <-callDone:
-			// Drain any notifications buffered right before the RPC reply arrived.
-			drainTimer := time.NewTimer(30 * time.Millisecond)
-			for {
-				select {
-				case msg, ok := <-c.Events():
-					if !ok {
-						drainTimer.Stop()
-						goto finished
-					}
-					if msg.Method == "session/update" {
-						reducer.applyRaw(msg.Params, record.ID)
-					}
-				case <-drainTimer.C:
-					goto finished
-				}
-			}
-		case <-loadCtx.Done():
-			return history, loadCtx.Err()
-		}
-	}
-finished:
-	if loadErr != nil {
-		return history, loadErr
+	reducer := newACPUpdateReducer()
+	setup, err := loadAgyReplay(loadCtx, c, record.ID, map[string]any{
+		"sessionId":  record.ID,
+		"cwd":        record.Cwd,
+		"mcpServers": []any{},
+	}, reducer)
+	if err != nil {
+		return history, err
 	}
 	a.cacheAgyCatalog(setup)
 	cat := agy.CatalogFromSetup(setup)
@@ -327,13 +290,59 @@ finished:
 		history.Session.Name = reducer.title
 	}
 	history.Entries = reducer.entries()
-	for _, entry := range history.Entries {
+	for i := range history.Entries {
+		entry := &history.Entries[i]
 		if entry.Kind == "user" {
 			history.HasUserMessage = true
-			break
+		}
+		if entry.Status == "inProgress" {
+			entry.Status = "interrupted"
+			if entry.Kind == "assistant" {
+				entry.Status = "completed"
+			}
 		}
 	}
 	return history, nil
+}
+
+// Use the same ACP replay for reading history and locating the next turn.
+func loadAgyReplay(ctx context.Context, c acp.Client, sessionID string, params map[string]any, reducer *acpUpdateReducer) (acp.SessionSetupResult, error) {
+	callDone := make(chan error, 1)
+	var setup acp.SessionSetupResult
+	go func() {
+		callDone <- c.Call(ctx, "session/load", params, &setup)
+	}()
+
+	events := c.Events()
+	var drained <-chan time.Time
+	for {
+		select {
+		case msg, ok := <-events:
+			if !ok {
+				events = nil
+				if callDone == nil {
+					return setup, nil
+				}
+				continue
+			}
+			if msg.Method == "session/update" {
+				reducer.applyRaw(msg.Params, sessionID)
+			}
+		case err := <-callDone:
+			if err != nil || events == nil {
+				return setup, err
+			}
+			callDone = nil
+			// ACP notifications and replies arrive on separate channels.
+			timer := time.NewTimer(30 * time.Millisecond)
+			defer timer.Stop()
+			drained = timer.C
+		case <-drained:
+			return setup, nil
+		case <-ctx.Done():
+			return acp.SessionSetupResult{}, ctx.Err()
+		}
+	}
 }
 
 func (a *Service) DriveAgyChat(ctx context.Context, run *ChatRun, plan model.LaunchPlan, text string, images ...string) {
@@ -380,6 +389,7 @@ func (a *Service) DriveAgyChat(ctx context.Context, run *ChatRun, plan model.Lau
 	}
 
 	c := run.acpClient
+	replay := newACPUpdateReducer()
 	var setup acp.SessionSetupResult
 	if run.acpSetup != nil {
 		setup = *run.acpSetup
@@ -404,40 +414,7 @@ func (a *Service) DriveAgyChat(ctx context.Context, run *ChatRun, plan model.Lau
 		if len(plan.AdditionalDirectories) > 0 {
 			resumeParams["additionalDirectories"] = plan.AdditionalDirectories
 		}
-		err = c.Call(resumeCtx, "session/resume", resumeParams, &setup)
-		if err != nil {
-			// Fall back to session/load while discarding historical replay events.
-			loadDone := make(chan error, 1)
-			go func() {
-				loadDone <- c.Call(resumeCtx, "session/load", resumeParams, &setup)
-			}()
-			for {
-				select {
-				case _, ok := <-c.Events():
-					if !ok {
-						err = fmt.Errorf("Antigravity 连接已关闭")
-						goto resumeReady
-					}
-				case err = <-loadDone:
-					drain := time.NewTimer(25 * time.Millisecond)
-					for {
-						select {
-						case _, ok := <-c.Events():
-							if !ok {
-								drain.Stop()
-								goto resumeReady
-							}
-						case <-drain.C:
-							goto resumeReady
-						}
-					}
-				case <-resumeCtx.Done():
-					err = resumeCtx.Err()
-					goto resumeReady
-				}
-			}
-		}
-	resumeReady:
+		setup, err = loadAgyReplay(resumeCtx, c, run.session, resumeParams, replay)
 		endResume()
 		if err != nil {
 			if acp.IsAuthRequired(err) {
@@ -463,14 +440,17 @@ func (a *Service) DriveAgyChat(ctx context.Context, run *ChatRun, plan model.Lau
 		return
 	}
 	chatCtx := buildAgyChatContext(plan, cat, run.settings)
-	turnID := "acp-" + run.state.ID
+	reducer := newACPUpdateReducer()
+	reducer.turnSeq = replay.turnSeq
+	reducer.live = true
+	reducer.startTurn(text, images, "")
 	run.change(func(s *ChatState) {
 		s.Context = &chatCtx
-		s.TurnID = turnID
+		s.TurnID = reducer.currentTurn()
 		s.Status = "running"
+		s.Entries = reducer.entries()
 	})
 
-	reducer := newACPUpdateReducer(turnID)
 	promptBlocks := agyPromptBlocks(text, images)
 	type promptOutcome struct {
 		res acp.PromptResult
@@ -767,28 +747,45 @@ func makeACPPermissionApproval(msg acp.Message) (ChatApproval, error) {
 }
 
 type acpUpdateReducer struct {
-	baseTurn  string
-	turnSeq   int
-	msgSeq    int
-	list      []HistoryEntry
-	byID      map[string]int
-	lastKind  string
-	lastMsgID string
-	title     string
+	turnSeq       int
+	assistantSeq  int
+	toolSeq       int
+	list          []HistoryEntry
+	byID          map[string]int
+	assistantIDs  map[string]string
+	lastKind      string
+	lastMsgID     string
+	userMessageID string
+	title         string
+	live          bool
 }
 
-func newACPUpdateReducer(baseTurn string) *acpUpdateReducer {
+func newACPUpdateReducer() *acpUpdateReducer {
 	return &acpUpdateReducer{
-		baseTurn: baseTurn,
-		byID:     map[string]int{},
+		byID:         map[string]int{},
+		assistantIDs: map[string]string{},
 	}
 }
 
 func (r *acpUpdateReducer) currentTurn() string {
-	if r.turnSeq == 0 {
-		return r.baseTurn
-	}
-	return fmt.Sprintf("%s-%d", r.baseTurn, r.turnSeq)
+	return fmt.Sprintf("hist-%d", r.turnSeq)
+}
+
+func (r *acpUpdateReducer) startTurn(text string, images []string, messageID string) {
+	r.turnSeq++
+	r.assistantSeq = 0
+	r.toolSeq = 0
+	clear(r.byID)
+	clear(r.assistantIDs)
+	r.userMessageID = messageID
+	r.upsert(HistoryEntry{
+		ID:     "user",
+		TurnID: r.currentTurn(),
+		Kind:   "user",
+		Text:   boundedChatText(text),
+		Images: images,
+		Status: "completed",
+	})
 }
 
 func (r *acpUpdateReducer) entries() []HistoryEntry {
@@ -811,31 +808,22 @@ func (r *acpUpdateReducer) applyRaw(raw json.RawMessage, sessionID string) strin
 func (r *acpUpdateReducer) apply(u acp.SessionUpdate) string {
 	switch u.KindName() {
 	case "user_message_chunk":
+		// The submitted prompt already supplies the user entry during a live turn.
+		if r.live {
+			return ""
+		}
 		text, images := decodeACPContentBlock(u.Content)
 		if text == "" && len(images) == 0 {
 			return ""
 		}
-		if r.lastKind != "user" {
-			r.turnSeq++
-			r.msgSeq++
-			id := u.MessageID
-			if id == "" {
-				id = fmt.Sprintf("user-%d", r.msgSeq)
-			}
-			r.lastKind = "user"
-			r.lastMsgID = id
-			r.byID[id] = len(r.list)
-			r.list = append(r.list, HistoryEntry{
-				ID:     id,
-				TurnID: r.currentTurn(),
-				Kind:   "user",
-				Text:   boundedChatText(text),
-				Images: images,
-				Status: "completed",
-			})
+		if r.lastKind != "user" || (u.MessageID != "" && r.userMessageID != "" && u.MessageID != r.userMessageID) {
+			r.startTurn(text, images, u.MessageID)
 			return ""
 		}
-		idx := r.byID[r.lastMsgID]
+		if r.userMessageID == "" {
+			r.userMessageID = u.MessageID
+		}
+		idx := r.byID["user"]
 		r.list[idx].Text = boundedChatText(r.list[idx].Text + text)
 		r.list[idx].Images = append(r.list[idx].Images, images...)
 
@@ -844,30 +832,25 @@ func (r *acpUpdateReducer) apply(u acp.SessionUpdate) string {
 		if text == "" && len(images) == 0 {
 			return ""
 		}
-		id := u.MessageID
+		id := r.assistantIDs[u.MessageID]
+		if u.MessageID == "" && r.lastKind == "assistant" {
+			id = r.lastMsgID
+		}
 		if id != "" {
-			if idx, ok := r.byID[id]; ok {
-				r.list[idx].Text = boundedChatText(r.list[idx].Text + text)
-				r.list[idx].Images = append(r.list[idx].Images, images...)
-				r.lastKind = "assistant"
-				r.lastMsgID = id
-				return ""
-			}
-		} else if r.lastKind == "assistant" {
-			if idx, ok := r.byID[r.lastMsgID]; ok {
-				r.list[idx].Text = boundedChatText(r.list[idx].Text + text)
-				r.list[idx].Images = append(r.list[idx].Images, images...)
-				return ""
-			}
+			idx := r.byID[id]
+			r.list[idx].Text = boundedChatText(r.list[idx].Text + text)
+			r.list[idx].Images = append(r.list[idx].Images, images...)
+			r.lastKind = "assistant"
+			r.lastMsgID = id
+			return ""
 		}
-		r.msgSeq++
-		if id == "" {
-			id = fmt.Sprintf("assistant-%d", r.msgSeq)
+		// ACP can omit messageId. Key assistant entries by their position in the turn.
+		r.assistantSeq++
+		id = fmt.Sprintf("assistant-%d", r.assistantSeq)
+		if u.MessageID != "" {
+			r.assistantIDs[u.MessageID] = id
 		}
-		r.lastKind = "assistant"
-		r.lastMsgID = id
-		r.byID[id] = len(r.list)
-		r.list = append(r.list, HistoryEntry{
+		r.upsert(HistoryEntry{
 			ID:     id,
 			TurnID: r.currentTurn(),
 			Kind:   "assistant",
@@ -933,10 +916,10 @@ func (r *acpUpdateReducer) upsert(entry HistoryEntry) {
 }
 
 func (r *acpUpdateReducer) applyToolCall(u acp.SessionUpdate) {
-	id := u.ToolCallID
-	if id == "" {
-		r.msgSeq++
-		id = fmt.Sprintf("tool-%d", r.msgSeq)
+	id := "tool:" + u.ToolCallID
+	if u.ToolCallID == "" {
+		r.toolSeq++
+		id = fmt.Sprintf("tool-%d", r.toolSeq)
 	}
 	existingIdx, exists := r.byID[id]
 	var entry HistoryEntry

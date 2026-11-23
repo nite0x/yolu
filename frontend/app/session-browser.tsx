@@ -6,7 +6,7 @@ import { ListCreateButton, ListFilter, ListSearch } from "./list-controls"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { NativeSelect } from "./shared"
+import { Check as Checkbox, NativeSelect } from "./shared"
 import { SessionHistoryPanel, type Session } from "./sessions"
 
 import type { ConversationTreeRow } from "./conversation-tree"
@@ -23,8 +23,17 @@ export function SessionBrowser() {
         <span id="sessionBrowserCount" className="sr-only" role="status" aria-live="polite" />
         <p id="sessionBrowserContext" className="sr-only" />
         <ListSearch variant="plain" id="sessionBrowserScopeBar" input="sessionBrowserSearch" label={uiText("搜索对话、项目或分支")} placeholder={uiText("搜索对话…")} clear={{ id:"sessionSearchClear", "data-conversation-action":"clear-search" }} filter={
-          <ListFilter id="sessionScopePicker" label={uiText("切换对话范围")} descriptionID="sessionScopeLabel" description={uiText("全部对话")} menuClass="session-scope-menu" icon={<ListFilterIcon aria-hidden="true" />}>
-            <Label className="sr-only" htmlFor="sessionScopeSearch">{uiText("切换对话范围")}</Label><Input id="sessionScopeSearch" className="h-[32px] text-[12px] shadow-none focus-visible:ring-2 focus-visible:ring-ring/20" type="search" placeholder={uiText("搜索项目或目录")} /><Button type="button" variant="ghost" size="sm" data-conversation-action="all" id="sessionScopeAll" hidden>{uiText("查看全部对话")}</Button>
+          <ListFilter id="sessionScopePicker" label={uiText("筛选对话")} descriptionID="sessionScopeLabel" description={uiText("全部对话")} menuClass="session-scope-menu" icon={<ListFilterIcon aria-hidden="true" />}>
+          <Label className="sr-only" htmlFor="sessionScopeSearch">{uiText("切换对话范围")}</Label><Input id="sessionScopeSearch" className="h-[32px] text-[12px] shadow-none focus-visible:ring-2 focus-visible:ring-ring/20" type="search" placeholder={uiText("搜索项目或目录")} />
+          <div id="sessionSidebarModes" className="session-sidebar-modes" role="group" aria-label={uiText("对话列表显示方式")} hidden>
+            <Button type="button" size="sm" variant="ghost" data-conversation-list-mode="recent" aria-controls="sessionBrowserList" aria-pressed={false}>{uiText("按时间")}</Button>
+            <Button type="button" size="sm" variant="ghost" data-conversation-list-mode="grouped" aria-controls="sessionBrowserList" aria-pressed={true}>{uiText("分组")}</Button>
+          </div>
+          <div id="sessionSidebarProjectDisplay" role="group" aria-label={uiText("项目分组显示")} hidden>
+            <Checkbox name="icons" defaultChecked label={uiText("显示项目图标")} />
+            <Checkbox name="counts" defaultChecked label={uiText("显示项目对话数量")} />
+          </div>
+          <Button type="button" variant="ghost" size="sm" data-conversation-action="all" id="sessionScopeAll" hidden>{uiText("查看全部对话")}</Button>
           <div id="sessionScopeOptions" />
           <div className="session-scope-filters">
             <label id="sessionEnvironmentField" className="session-environment-label" hidden><span>{uiText("执行环境")}</span><NativeSelect id="sessionsEnvironment" aria-label={uiText("筛选对话环境")}><option value="">{uiText("全部环境")}</option></NativeSelect></label>
@@ -37,10 +46,6 @@ export function SessionBrowser() {
           <ListCreateButton id="newBrowserSplitSession" data-conversation-action="new" data-conversation-placement="split" label={uiText("在右侧分栏新建")} icon={<Columns2 aria-hidden="true" />} />
           <ListCreateButton id="newBrowserSession" data-conversation-action="new" label={uiText("新建对话")} icon={<SquarePen aria-hidden="true" />} />
         </>} />
-        <div id="sessionSidebarModes" className="session-sidebar-modes" role="group" aria-label={uiText("对话列表显示方式")} hidden>
-          <Button type="button" size="sm" variant="ghost" data-conversation-list-mode="recent" aria-controls="sessionBrowserList" aria-pressed={false}>{uiText("按时间")}</Button>
-          <Button type="button" size="sm" variant="ghost" data-conversation-list-mode="grouped" aria-controls="sessionBrowserList" aria-pressed={true}>{uiText("分组")}</Button>
-        </div>
         <div id="sessionActiveFilterLabel" className="session-active-filter-label" hidden><span id="sessionActiveFilterText" /><button type="button" data-conversation-action="clear-scope-filters" aria-label={uiText("清除范围与筛选")} title={uiText("清除范围与筛选")}><X aria-hidden="true" /></button></div>
       </div><div id="sessionBrowserError" role="alert" hidden /><div id="sessionBrowserList" aria-label={uiText("对话结果")} /></aside>
       <div id="sessionBrowserResize" className="session-browser-resize" role="separator" tabIndex={0} aria-label={uiText("调整对话列表宽度")} aria-orientation="vertical" aria-controls="sessionBrowserListPane" aria-valuemin={220} aria-valuemax={520} aria-valuenow={280} />
@@ -63,7 +68,7 @@ export function SessionBrowser() {
     </div>
   </div><dialog id="conversationFilesDialog" className="conversation-files-dialog shadcn-scope" aria-labelledby="conversationFilesTitle" /></>
 }
-export function ConversationList({ sessions, rows, selected, showDirectory, showContext = true, loading, filtered, error, canCreate = true, parallel = false, parallelSessions = [], parallelFull = false, now = Date.now(), onSelect, sidebarMode }: { onSelect?: (id: string) => void; sessions: Session[]; rows?: ConversationTreeRow[]; selected?: string | null; showDirectory: boolean; showContext?: boolean; loading?: boolean; filtered?: boolean; error?: boolean; canCreate?: boolean; parallel?: boolean; parallelSessions?: string[]; parallelFull?: boolean; now?: number; sidebarMode?: SidebarMode }) {
+export function ConversationList({ sessions, rows, selected, search = "", showDirectory, showContext = true, loading, filtered, error, canCreate = true, parallel = false, parallelSessions = [], parallelFull = false, now = Date.now(), onSelect, sidebarMode }: { onSelect?: (id: string) => void; sessions: Session[]; rows?: ConversationTreeRow[]; selected?: string | null; search?: string; showDirectory: boolean; showContext?: boolean; loading?: boolean; filtered?: boolean; error?: boolean; canCreate?: boolean; parallel?: boolean; parallelSessions?: string[]; parallelFull?: boolean; now?: number; sidebarMode?: SidebarMode }) {
   if (!sessions.length && !rows?.length) return <div className="session-browser-empty-list" role="status">
     {loading ? <RotateCw className="session-list-loading" aria-hidden="true" /> : error ? <CircleAlert aria-hidden="true" /> : filtered ? <Search aria-hidden="true" /> : <MessageSquare aria-hidden="true" />}
     <strong>{loading ? uiText("正在读取对话…") : error ? uiText("暂时无法读取对话") : filtered ? uiText("没有匹配的对话") : uiText("还没有对话")}</strong>
@@ -101,6 +106,12 @@ export function ConversationList({ sessions, rows, selected, showDirectory, show
     const isParallel = parallel && parallelSessions.includes(s.browser_key || s.id)
     const general = isGeneralConversationDirectory(s.cwd)
     const directory = general ? uiText("普通对话") : s.cwd.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() || s.cwd
+    const branch = s.context?.branch || ""
+    const branchMatch = search ? branch.toLowerCase().indexOf(search) : -1
+    const pathMatch = search ? s.cwd.toLowerCase().indexOf(search) : -1
+    const matchValue = branchMatch >= 0 ? branch : s.cwd
+    const matchStart = Math.max(0, (branchMatch >= 0 ? branchMatch : pathMatch) - 8)
+    const matchLabel = branchMatch >= 0 ? "分支 · {0}" : "工作目录 · {0}"
     const key = s.browser_key || s.id
     const date = s.updated_at ? new Date(s.updated_at * 1000) : null
     const dateLabel = date ? date >= today ? date.toLocaleTimeString(uiLocale(), {hour: "2-digit", minute: "2-digit", hour12: false}) : date >= yesterday ? uiText("昨天") : date.toLocaleDateString(uiLocale(), {year: date.getFullYear() !== today.getFullYear() ? "numeric" : undefined, month: "numeric", day: "numeric"}) : ""
@@ -116,7 +127,10 @@ export function ConversationList({ sessions, rows, selected, showDirectory, show
         {s.unread && !status && <span className="session-browser-unread-dot" role="img" aria-label={uiText("有新消息")} title={uiText("有新消息")} />}
         <time className="session-browser-item-time" title={date?.toLocaleString(uiLocale(), {hour12: false})} dateTime={date?.toISOString()}>{dateLabel}</time>
       </span>
-      {sidebarMode === "recent" ? <span className="session-browser-item-meta">
+      {branchMatch >= 0 || pathMatch >= 0 ? <span className="session-browser-item-meta">
+        <span className="session-browser-item-directory session-browser-item-search-match" title={uiText(matchLabel, matchValue)}>{uiText(matchLabel, (matchStart ? "…" : "") + matchValue.slice(matchStart))}</span>
+        {showEnvironment && <span className="session-browser-environment" title={environmentName}>{environmentName}</span>}
+      </span> : sidebarMode === "recent" ? <span className="session-browser-item-meta">
         <span className="session-browser-item-directory" title={!general && s.cwd || undefined}>{row?.projectName || directory || uiText("未选择项目")}</span>
         {showEnvironment && <span className="session-browser-environment" title={environmentName}>{environmentName}</span>}
       </span> : (showProject || showPath || showEnvironment) && <span className="session-browser-item-meta">
@@ -127,7 +141,7 @@ export function ConversationList({ sessions, rows, selected, showDirectory, show
         {showEnvironment && <span className="session-browser-environment" title={environmentName}>{environmentName}</span>}
       </span>}
       {s.error && !rowError ? <span className="table-message">{s.error}</span> : null}
-    </button>{parallel ? <Button type="button" variant="ghost" size="icon-sm" className="parallel-list-add" data-conversation-parallel={key} data-conversation-terminal={s.terminal ? s.id : undefined} data-parallel-open={isParallel || undefined} disabled={s.available === false || parallelFull && !isParallel} aria-label={isParallel ? uiText("定位对话：{0}", s.name) : uiText("将对话加入并列：{0}", s.name)} title={isParallel ? `${uiText("已并列")} · ${uiText("定位到对应栏")}` : parallelFull ? uiText("最多并列三个对话，可在栏标题中更换") : uiText("加入右侧并列")}>
+    </button>{parallel ? <Button type="button" variant="ghost" size="icon-sm" className="parallel-list-add transition-colors" data-conversation-parallel={key} data-conversation-terminal={s.terminal ? s.id : undefined} data-parallel-open={isParallel || undefined} disabled={s.available === false || parallelFull && !isParallel} aria-label={isParallel ? uiText("定位对话：{0}", s.name) : uiText("将对话加入并列：{0}", s.name)} title={isParallel ? `${uiText("已并列")} · ${uiText("定位到对应栏")}` : parallelFull ? uiText("最多并列三个对话，可在栏标题中更换") : uiText("加入右侧并列")}>
       {isParallel ? <Columns2 aria-hidden="true" /> : <Plus aria-hidden="true" />}
     </Button> : null}</li>
   }
@@ -142,22 +156,32 @@ export function ConversationList({ sessions, rows, selected, showDirectory, show
     const labels = {project: uiText("项目"), independent: uiText("独立对话")}
     return <div className="session-browser-groups session-browser-workspaces">{[...sections.values()].map(({group, rows}) => {
       const environmentName = sidebarMode && group.environment === "local" ? undefined : group.environmentName
+      const count = <span className={group.href ? "session-workspace-count session-collection-count" : "session-workspace-count"} title={uiText("{0} 个对话", group.total)}>{group.total}</span>
       return <section className="session-browser-group" key={group.key} data-conversation-group={group.key} aria-label={[group.name, environmentName].filter(Boolean).join(" · ")}>
       {rows.filter(row => row.kind === "section").map(row => <h2 className="session-collection-section-heading" key={row.key} data-conversation-list-row={row.key} data-divided={row.divided || undefined}>{labels[row.section]}</h2>)}
-      {rows.filter(row => row.kind === "group").map(row => <h3 className="session-workspace-heading" key={row.key}>
-        {group.href ? <a href={group.href} className="session-collection-link" data-collection-href={group.href} data-collection-environment={group.environment} title={group.name}>
-          {group.identity ? <ShortcutBadge name={group.iconName || group.name} identity={group.identity} appearance={group.icon} /> : <Folder aria-hidden="true" />}
-          <span className="session-workspace-name">{group.name}</span>
-          {environmentName && <small>{environmentName}</small>}
-        </a> : null}
+      {rows.filter(row => row.kind === "group").map(row => <h3 className={group.href ? "session-workspace-heading session-collection-heading" : "session-workspace-heading"} key={row.key}>
         <button type="button" data-conversation-group-toggle={group.key} data-conversation-list-row={row.key} aria-expanded={!group.collapsed}
+          data-current-conversation={group.collapsed && group.containsSelection || undefined}
+          aria-description={group.collapsed && group.containsSelection ? uiText("当前对话所在项目") : undefined}
           aria-label={group.href ? uiText("展开或折叠 {0} 的对话", group.name) : undefined} className={group.href ? "session-collection-toggle" : undefined}
           title={group.name}>
-          {group.collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
-          {!group.href ? <span className="session-workspace-name">{group.name}</span> : null}
-          <span className="session-workspace-count">{group.total}</span>
-          {!group.href && environmentName && <small>{environmentName}</small>}
+          {group.href && (group.identity ? <ShortcutBadge name={group.iconName || group.name} identity={group.identity} appearance={group.icon} /> : <Folder className="session-collection-fallback-icon" aria-hidden="true" />)}
+          <span className="session-workspace-name">{group.name}</span>
+          {environmentName && <small>{environmentName}</small>}
+          {!group.href && <>{count}{group.collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}</>}
         </button>
+        {group.href && <span className="session-collection-actions">
+          {count}
+          <Button asChild variant="ghost" size="icon-sm" className="session-collection-details w-full transition-colors">
+            <a href={group.href} data-collection-href={group.href} data-collection-environment={group.environment} data-collection-name={group.name}
+              aria-label={uiText("打开项目详情：{0}", group.name)} title={uiText("打开项目详情：{0}", group.name)}><Folder aria-hidden="true" /></a>
+          </Button>
+          <Button type="button" variant="ghost" size="icon-sm" className="session-collection-create w-full transition-colors"
+            data-action="project-conversation-new" data-id={group.projectID} data-path={group.projectPath} data-environment={group.environment}
+            disabled={!canCreate} aria-label={uiText("为 {0} 新建对话", group.name)} title={uiText("为 {0} 新建对话", group.name)}>
+            <SquarePen aria-hidden="true" />
+          </Button>
+        </span>}
       </h3>)}
       <ul className={group.collection === "independent" ? "session-browser-items session-browser-items-flat" : "session-browser-items"}>{rows.filter(row => row.kind === "session").map(row => renderSession(row.session, row))}</ul>
       {rows.filter(row => row.kind === "more").map(row => <button type="button" className="session-workspace-more" key={row.key} data-conversation-group-more={group.key} data-conversation-list-row={row.key}>{uiText("更多对话（{0}）", group.total - group.shown)}</button>)}

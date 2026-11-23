@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react"
-import { CircleAlert, FolderOpen, GitBranch, Plus, Terminal, X } from "lucide-react"
+import { ChevronDown, CircleAlert, FileDiff, Folder, FolderOpen, GitBranch, Plus, Terminal, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect, NativeSelectOption as Option } from "@/components/ui/native-select"
@@ -17,7 +17,7 @@ type Binding = BindingInput & {
   id: string; directory: string; project_name?: string; branch?: string; worktree_id?: string;
   status: "pending" | "configuring" | "ready" | "error" | "unsupported";
   error?: string; warning?: string; conflicts?: {id: string; name: string; cwd: string}[];
-  git?: {files?: ChangedFile[]}; observed?: string[]; attributed?: string[]; activities?: Entry[];
+  git?: {files?: ChangedFile[]; additions?: number; deletions?: number}; observed?: string[]; attributed?: string[]; activities?: Entry[];
 }
 type BindingSet = {
   cwd?: string; native_resume_requires_confirmation?: boolean; bindings: Binding[]; capabilities?: {
@@ -62,9 +62,20 @@ const json = (method: string, body: unknown): RequestInit => ({method, body:JSON
 const failure = (error: unknown) => error instanceof Error ? error.message : String(error)
 const labelFor = (binding: BindingInput, projects: ProjectOption[]) => projects.find(project => project.id === binding.project_id)?.name || binding.directory?.split(/[\\/]/).filter(Boolean).at(-1) || uiText("本地目录")
 const emptyBindings: Binding[] = []
+const formatCount = (value: number) => value.toLocaleString("en-US")
 function observedPath(directory: string, file: string) {
   const root = conversationPathKey(directory)
   return conversationPathKey(file).startsWith(root + "/") ? file.slice(root.length + 1) : file
+}
+function bindingHasChanges(binding: Binding) {
+  return (binding.git?.files?.length || 0) > 0 || (binding.git?.additions || 0) > 0 || (binding.git?.deletions || 0) > 0
+}
+function bindingStatusLabel(binding: Binding) {
+  if (binding.status === "ready") return binding.access === "read" ? uiText("只读") : uiText("可修改")
+  if (binding.status === "error") return uiText("异常")
+  if (binding.status === "unsupported") return uiText("未授权")
+  if (binding.status === "configuring") return uiText("配置中")
+  return uiText("待配置")
 }
 
 export function useSessionDirectories(controller: ChatController, session: Session | null, provider: string, busy: boolean) {
@@ -72,6 +83,7 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
   const [error, setError] = useState("")
   const [prompt, setPrompt] = useState<Prompt>()
   const [detail, setDetail] = useState("")
+  const [scope, setScope] = useState<"all" | "changes">("all")
   const [planned, setPlanned] = useState<BindingInput[]>([])
   const [primary, setPrimary] = useState<SessionTarget>({})
   const [dismissed, setDismissed] = useState("")
@@ -170,9 +182,16 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
       setDetail("")
     } catch (error) { setError(failure(error)) }
   }
-  function showFiles(binding: Binding, path?: string) {
-    const file = binding.git?.files?.find(file => file.path === path)
-    const mode = file ? !file.working.trim() && !file.untracked ? "index" : "working" : undefined
+  function showFiles(binding: Binding, path?: string, defaultMode?: "all" | "working" | "index") {
+    const files = binding.git?.files || []
+    const file = path ? files.find(item => item.path === path) : undefined
+    const hasWorking = files.some(item => item.untracked || item.working.trim())
+    const hasIndex = files.some(item => !item.untracked && item.index.trim())
+    const mode = file
+      ? (!file.working.trim() && !file.untracked ? "index" : "working")
+      : defaultMode === "working"
+        ? (hasWorking ? "working" : hasIndex ? "index" : "all")
+        : defaultMode
     window.dispatchEvent(new CustomEvent("workhub:binding-files", {detail:{session:session?.id, environment, id:binding.id, path:binding.directory, project:binding.project_id, git:!!binding.git, file:path,mode}}))
   }
   async function send(text: string, images: string[]) {
@@ -201,40 +220,86 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
     }
   }
 
-  const bar = <div className="session-context-strip" aria-label={uiText("对话项目与目录")}>
-    <div className="session-context-chips">
-      {session ? bindings.map(binding => <Button key={binding.id} type="button" size="xs" variant="outline"
-        className="session-context-chip" data-role={binding.role} data-status={binding.status}
-        aria-expanded={detail === binding.id} aria-label={uiText("查看 {0} 的目录详情", binding.project_name || labelFor(binding, projects))}
-        onClick={() => setDetail(detail === binding.id ? "" : binding.id)}>
-        {binding.status === "error" || binding.status === "unsupported" ? <CircleAlert aria-hidden="true" /> : <GitBranch aria-hidden="true" />}
-        <span>{binding.project_name || labelFor(binding, projects)}</span>
-        {binding.branch && <small>{binding.branch}</small>}
-        <small>{binding.status === "ready" ? binding.access === "read" ? uiText("只读") : uiText("可修改") : binding.status === "error" ? uiText("异常") : binding.status === "unsupported" ? uiText("未授权") : uiText("待配置")}</small>
-      </Button>) : planned.map(binding => <span className="session-context-chip session-context-draft" key={binding.directory}>
-        {labelFor(binding, projects)}<small>{uiText("待配置")}</small>
+  const changedCount = bindings.filter(bindingHasChanges).length
+  const visibleBindings = scope === "changes" ? bindings.filter(bindingHasChanges) : bindings
+  const header = <>
+    {session && bindings.length > 0 ? <label className="session-dir-filter">
+      <select value={scope} aria-label={uiText("筛选关联目录")} onChange={event => setScope(event.target.value === "changes" ? "changes" : "all")}>
+        <option value="all">{uiText("全部目录")}</option>
+        <option value="changes">{changedCount > 0 ? uiText("有改动 ({0})", changedCount) : uiText("有改动")}</option>
+      </select>
+      <ChevronDown aria-hidden="true" />
+    </label> : <strong className="session-dir-heading">{uiText("关联目录")}</strong>}
+    {!readOnly && !session?.archived && <Button type="button" size="xs" variant="ghost" className="session-dir-add" aria-label={uiText("添加项目或目录")} onClick={() => setPrompt({purpose:uiText("为此对话添加参考或开发目录。")})}><Plus aria-hidden="true" />{uiText("添加项目")}</Button>}
+  </>
+  const directoryList = <div className="session-context-strip session-dir-list" role="group" aria-label={uiText("对话项目与目录")}>
+    {session ? visibleBindings.map(binding => {
+      const name = binding.project_name || labelFor(binding, projects)
+      const open = detail === binding.id
+      const additions = binding.git?.additions || 0
+      const deletions = binding.git?.deletions || 0
+      const fileCount = binding.git?.files?.length || 0
+      const hasChanges = additions > 0 || deletions > 0 || fileCount > 0
+      const alertText = !open ? [binding.error, binding.warning, binding.conflicts?.length && uiText("共享写入目录 · {0}", binding.conflicts.map(conflict => conflict.name || conflict.id).join("、"))].filter(Boolean).join(" · ") : ""
+      return <div className="session-dir-item" key={binding.id} data-expanded={open || undefined}>
+        <div className="session-dir-row-bar">
+          <button type="button" className="session-context-chip session-dir-row" data-role={binding.role} data-status={binding.status}
+            aria-expanded={open} aria-label={uiText("查看 {0} 的目录详情", name)} title={binding.branch ? `${name} · ${binding.branch}\n${binding.directory}` : `${name}\n${binding.directory}`}
+            onClick={() => setDetail(open ? "" : binding.id)}>
+            <span className="session-dir-icon" aria-hidden="true">
+              {binding.status === "error" || binding.status === "unsupported" ? <CircleAlert /> : binding.git || binding.branch ? <GitBranch /> : <Folder />}
+            </span>
+            <span className="session-dir-identity">
+              <span className="session-dir-name">{name}</span>
+              {binding.branch && <><span className="session-dir-sep" aria-hidden="true">·</span><span className="session-context-branch session-dir-branch">{binding.branch}</span></>}
+            </span>
+            <span className="session-dir-trailing">
+              {(additions > 0 || deletions > 0) ? <span className="session-dir-diff" aria-label={uiText("新增 {0} 行，删除 {1} 行", additions, deletions)}>
+                {additions > 0 && <span className="session-dir-added">+{formatCount(additions)}</span>}
+                {deletions > 0 && <span className="session-dir-deleted">-{formatCount(deletions)}</span>}
+              </span> : fileCount > 0 ? <span className="session-dir-file-count">{uiText("{0} 个改动", fileCount)}</span> : null}
+              <small className="session-dir-badge" data-status={binding.status} data-access={binding.access}>{bindingStatusLabel(binding)}</small>
+            </span>
+          </button>
+          <button type="button" className="session-dir-quick-action" title={hasChanges ? uiText("查看改动") : uiText("查看文件")}
+            aria-label={hasChanges ? uiText("查看 {0} 的改动", name) : uiText("查看 {0} 的文件", name)}
+            onClick={() => showFiles(binding, undefined, hasChanges ? "working" : "all")}>
+            {hasChanges ? <FileDiff aria-hidden="true" /> : <FolderOpen aria-hidden="true" />}
+          </button>
+        </div>
+        {alertText && <p className="session-dir-inline-alert" role="status">{alertText}</p>}
+        {open && <BindingDetails binding={binding} close={() => setDetail("")}
+          edit={readOnly || session?.archived ? undefined : () => setPrompt({binding,initial:binding,purpose:uiText("更新此目录的访问范围或工作目录。")})}
+          remove={readOnly || session?.archived ? undefined : () => void remove(binding)}
+          showFiles={path => showFiles(binding, path, path ? undefined : hasChanges ? "working" : "all")}
+          openProject={binding.project_id && controller.options.openProject ? () => controller.options.openProject?.(binding.project_id!,binding.directory) : undefined}
+          openTerminal={environment === "local" && controller.options.openTerminal ? () => controller.options.openTerminal?.(binding) : undefined} />}
+      </div>
+    }) : planned.map(binding => <div className="session-dir-item" key={binding.directory}>
+      <div className="session-dir-row-bar session-context-chip session-context-draft session-dir-draft">
+        <span className="session-dir-icon" aria-hidden="true"><Folder /></span>
+        <span className="session-dir-identity"><span className="session-dir-name">{labelFor(binding, projects)}</span></span>
+        <span className="session-dir-trailing"><small className="session-dir-badge" data-status="pending">{uiText("待配置")}</small></span>
         <Button type="button" size="icon-xs" variant="ghost" aria-label={uiText("移除 {0}", labelFor(binding, projects))} onClick={() => {
           plannedRef.current = plannedRef.current.filter(item => item !== binding); setPlanned(plannedRef.current);
         }}><X aria-hidden="true" /></Button>
-      </span>)}
-      {session && !bindings.length && <span className="session-context-empty">{uiText(data ? "未绑定项目目录" : "正在读取目录…")}</span>}
-    </div>
-    {!readOnly && !session?.archived && <Button type="button" size="sm" variant="ghost" aria-label={uiText("添加项目或目录")} onClick={() => setPrompt({purpose:uiText("为此对话添加参考或开发目录。")})}><Plus aria-hidden="true" />{uiText("添加项目")}</Button>}
+      </div>
+    </div>)}
+    {session && bindings.length > 0 && !visibleBindings.length && <div className="session-dir-empty-filter">
+      <span className="session-context-empty">{uiText("当前关联目录没有未提交改动")}</span>
+      <Button type="button" size="xs" variant="ghost" onClick={() => setScope("all")}>{uiText("查看全部目录")}</Button>
+    </div>}
+    {session && !bindings.length && !error && <span className="session-context-empty">{uiText(data ? "未绑定项目目录" : "正在读取目录…")}</span>}
+    {!session && !planned.length && <span className="session-context-empty">{uiText("未绑定项目目录")}</span>}
   </div>
-  const selected = bindings.find(binding => binding.id === detail)
   return {
-    send, target, bar,
-    details: <>
+    send, target, header,
+    context: <>
+      {directoryList}
       {error && <p className="session-context-error" role="alert">{error}</p>}
-      {selected && <BindingDetails binding={selected} close={() => setDetail("")}
-        edit={readOnly || session?.archived ? undefined : () => setPrompt({binding:selected,initial:selected,purpose:uiText("更新此目录的访问范围或工作目录。")})}
-        remove={readOnly || session?.archived ? undefined : () => void remove(selected)}
-        showFiles={path => showFiles(selected,path)}
-        openProject={selected.project_id && controller.options.openProject ? () => controller.options.openProject?.(selected.project_id!,selected.directory) : undefined}
-        openTerminal={environment === "local" && controller.options.openTerminal ? () => controller.options.openTerminal?.(selected) : undefined} />}
-      {prompt && <BindingDialog prompt={prompt} request={request} environment={environment} provider={provider} session={session?.id}
-        projects={projects} hasPrimary={!!target.project_id || !!target.cwd || [...bindings,...planned].some(binding => binding.role === "primary")} save={save} cancel={() => closePrompt()} confirm={() => closePrompt(true)} />}
     </>,
+    dialog: prompt && <BindingDialog prompt={prompt} request={request} environment={environment} provider={provider} session={session?.id}
+      projects={projects} hasPrimary={!!target.project_id || !!target.cwd || [...bindings,...planned].some(binding => binding.role === "primary")} save={save} cancel={() => closePrompt()} confirm={() => closePrompt(true)} />,
     cwd: data?.cwd,
     managed: !session || !!data?.native_resume_requires_confirmation || !data && session.source === "workbench",
     composer: !readOnly && !session?.archived && <DraftProjectSuggestions controller={controller} projects={projects}

@@ -15,6 +15,9 @@ export interface ConversationGroup {
   identity?: string
   iconName?: string
   collection?: CollectionKind
+  projectID?: string
+  projectPath?: string
+  containsSelection?: boolean
   collapsed: boolean
   total: number
   shown: number
@@ -26,13 +29,13 @@ export type ConversationTreeRow = { key: string; group: ConversationGroup } & (
 )
 interface TreeOptions {
   selected?: string | null
+  selectedSession?: Session
   reveal?: string | null
   limits: Record<string, number>
   collapsed: string[]
   filtered: boolean
   recent?: boolean
   navigator?: {
-    includeEmpty?: boolean
     directories: {cwd: string; key: string; environment: string; environmentName?: string; name: string; projectID?: string; projectName?: string; projectRoot?: boolean; appearance?: ShortcutIcon}[]
   }
 }
@@ -49,18 +52,20 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
   for (const directory of options.navigator?.directories || []) {
     const {cwd, environment, projectID, projectName, projectRoot} = directory
     const path = conversationPathKey(cwd)
-    const matching = sessions.filter(session => {
-      if ((session.environment_id || "local") !== environment || filed.has(sessionIdentity(session))) return false
+    const matchesDirectory = (session: Session) => {
+      if ((session.environment_id || "local") !== environment) return false
       const owner = session.primary_project_id || session.terminal?.projectID || session.context?.projectID
       return owner ? owner === projectID && (!!projectRoot || conversationPathKey(session.cwd) === path) : conversationPathKey(session.cwd) === path
-    })
+    }
+    const matching = sessions.filter(session => !filed.has(sessionIdentity(session)) && matchesDirectory(session))
     for (const session of matching) filed.add(sessionIdentity(session))
-    if (!matching.length && (options.filtered || options.navigator?.includeEmpty === false)) continue
+    if (!matching.length) continue
     const key = JSON.stringify([environment, "project", projectID || path])
     const name = projectName || directory.name
     const href = projectID ? `#/projects/${encodeURIComponent(projectID)}` : undefined
     groups.set(key, {group: {key, name, environment, environmentName:directory.environmentName, collapsed:options.collapsed.includes(key), total:0, shown:0, showContext:false,
-      collection:"project", href, icon:directory.appearance, identity:projectID ? `project:${projectID}` : directory.key, iconName:directory.name}, sessions:matching})
+      collection:"project", projectID, projectPath:cwd, href, icon:directory.appearance, identity:projectID ? `project:${projectID}` : directory.key, iconName:directory.name,
+      containsSelection:options.selectedSession ? matchesDirectory(options.selectedSession) : matching.some(session => sessionIdentity(session) === options.selected)}, sessions:matching})
   }
   if (options.navigator) {
     const independent = sessions.filter(session => !filed.has(sessionIdentity(session)))
@@ -89,7 +94,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
       rows.push({key: JSON.stringify(["section", group.collection]), group, kind: "section", section: group.collection, divided: !!previousCollection})
       previousCollection = group.collection
     }
-    if (options.filtered || options.reveal && sessions.some(session => sessionIdentity(session) === options.reveal)) group.collapsed = false
+    if (options.reveal && sessions.some(session => sessionIdentity(session) === options.reveal)) group.collapsed = false
     const limit = options.limits[group.key] || 3
     const visible = sessions.filter((session, index) => group.collection === "independent" || options.filtered || index < limit || session.pinned || session.unread || sessionIdentity(session) === options.selected || ["starting", "running", "waiting", "stopping", "handoff"].includes(session.chat_status || ""))
     group.total = sessions.length

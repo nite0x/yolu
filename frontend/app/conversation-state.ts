@@ -35,6 +35,7 @@ export interface ConversationView {
   listRows?: ConversationTreeRow[]
   groupLimits: Record<string, number>
   collapsedGroups: string[]
+  filteredGroupState?: {key: string; collapsedGroups: string[]}
   listHeights?: Map<string, number>
   requestID?: number
   requestKey?: string | null

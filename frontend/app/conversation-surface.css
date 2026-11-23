@@ -23,8 +23,8 @@ html[data-workspace-pane][data-workspace-focused] .conversation-active-indicator
 .conversation-header-context .chat-workspace-project{max-width:14ch;color:inherit;font-weight:400}
 .conversation-header-context .chat-workspace-branch{max-width:18ch}
 .conversation-header-context .chat-workspace-branch::before{content:"·";flex-shrink:0}
-.conversation-surface-header .chat-workspace-context{min-width:0;font-size:12px;color:var(--muted-foreground)}
-.conversation-surface-header .chat-workspace-context>summary{list-style:none}
+.conversation-surface-header .chat-workspace-context{flex:none;font-size:12px;color:var(--muted-foreground)}
+.conversation-surface-header .chat-workspace-context>summary{display:inline-flex;list-style:none;border-radius:9999px}
 .conversation-surface-header .chat-workspace-context[open]>summary{background:var(--accent);color:var(--primary)}
 .conversation-surface-header .chat-workspace-context>summary::-webkit-details-marker{display:none}
 .conversation-surface-header .chat-workspace-context>summary:hover{background:var(--accent)}
@@ -33,18 +33,30 @@ html[data-workspace-pane][data-workspace-focused] .conversation-active-indicator
 .conversation-surface-header .chat-workspace-project{flex:0 1 auto;font-weight:400;color:inherit}
 .conversation-surface-header .chat-workspace-branch{flex:1}
 .conversation-surface-header .chat-workspace-project>span,.conversation-surface-header .chat-workspace-branch>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.conversation-context-popover{position:absolute;z-index:50;top:calc(100% + 4px);right:12px;box-sizing:border-box;width:min(440px,calc(100cqw - 24px));max-width:calc(100vw - 24px);max-height:min(520px,calc(100dvh - 120px));overflow:auto;padding:12px;border:1px solid var(--border);border-radius:var(--yolu-pane-radius,12px);background:var(--background);color:var(--foreground);box-shadow:var(--yolu-elevation-float,0 8px 28px #0002);font-size:12px;line-height:1.5;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
-.conversation-context-popover-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.conversation-context-popover{position:absolute;z-index:50;top:calc(100% + 6px);right:12px;box-sizing:border-box;width:min(400px,calc(100cqw - 24px));max-width:calc(100vw - 24px);max-height:min(540px,calc(100dvh - 120px));overflow:auto;padding:10px;border:1px solid var(--border);border-radius:16px;background:var(--background);color:var(--foreground);box-shadow:var(--yolu-elevation-float,0 10px 30px rgb(0 0 0 / 0.12));font-size:12px;line-height:1.5;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.conversation-context-popover-heading{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;padding:0 2px}
+.conversation-context-popover-header{display:flex;align-items:center;justify-content:space-between;gap:6px;flex:1;min-width:0}
+.conversation-context-popover-heading>.conversation-icon-button{width:28px;height:28px;min-width:28px;padding:5px;border-radius:9999px;color:var(--muted-foreground)}
+.conversation-context-popover-heading>.conversation-icon-button:hover{color:var(--foreground)}
 .conversation-context-popover .chat-workspace-path{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--font-mono);font-size:12px;user-select:text}
 .conversation-context-popover .chat-workspace-links{display:flex;flex-wrap:wrap;gap:4px 8px;min-width:0}
 .conversation-context-popover .chat-workspace-link{appearance:none;display:inline;border:0;padding:0;background:transparent;font:inherit;text-align:left;color:var(--foreground);cursor:pointer;white-space:normal;overflow-wrap:anywhere}
 .conversation-context-popover .chat-workspace-link:hover{text-decoration:underline;color:var(--primary)}
 .conversation-context-popover .chat-workspace-link:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
-.conversation-context-popover .chat-context-facts{display:grid;grid-template-columns:80px minmax(0,1fr);gap:8px;margin:0 0 12px;padding:0;border:0;background:transparent}
+.conversation-context-popover .chat-context-facts{display:grid;grid-template-columns:72px minmax(0,1fr);gap:6px 10px;margin:8px 0 0;padding:8px 2px 2px;border:0;border-top:1px solid var(--border);background:transparent}
 .conversation-context-popover .chat-context-facts dt{color:var(--muted-foreground)}
 .conversation-context-popover .chat-context-facts dd{margin:0;min-width:0}
+.chat-context-footer{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:8px;padding:8px 2px 2px;border-top:1px solid var(--border)}
+.chat-context-footer-row{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;flex-wrap:wrap}
+.chat-context-meta{min-width:0;flex:1 1 auto}
+.chat-context-meta>summary{display:inline-flex;align-items:center;gap:4px;padding:4px 6px;border-radius:8px;color:var(--muted-foreground);font-size:12px;cursor:pointer;list-style:none;user-select:none}
+.chat-context-meta>summary::-webkit-details-marker{display:none}
+.chat-context-meta>summary:hover{background:var(--accent);color:var(--foreground)}
+.chat-context-meta>summary:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.chat-context-meta>summary svg{width:13px;height:13px;flex-shrink:0;transition:transform .15s ease}
+.chat-context-meta[open]>summary svg{transform:rotate(180deg)}
 .chat-context-directory{display:block;white-space:pre-wrap;font-family:var(--font-mono)}
-.conversation-context-popover .chat-workspace-resume{display:flex;margin-top:12px}
+.conversation-context-popover .chat-workspace-resume{display:inline-flex;margin-top:0}
 .conversation-surface-header .chat-status{display:inline-flex;align-items:center;flex-shrink:0;white-space:nowrap;justify-content:center;border:1px solid transparent;border-radius:9999px;font-size:12px;line-height:16px;font-weight:500;gap:4px;padding:2px 8px;background:var(--secondary);color:var(--secondary-foreground)}
 .conversation-surface-header .chat-status[data-state=running],.conversation-surface-header .chat-status[data-state=starting],.conversation-surface-header .chat-status[data-state=waiting]{background:var(--secondary);color:var(--primary)}
 .conversation-surface-header .chat-status[data-state=failed],.conversation-surface-header .chat-status[data-state=conflict]{color:var(--destructive)}
@@ -58,12 +70,9 @@ html[data-workspace-pane][data-workspace-focused] .conversation-active-indicator
 .conversation-icon-button:active{transform:scale(.9)}
 .conversation-icon-button[data-zoomed=true] .conversation-zoom-in,.conversation-icon-button:not([data-zoomed=true]) .conversation-zoom-out{display:none}
 html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.chat-panel-header{background:color-mix(in srgb,var(--primary) 7%,var(--background))}
-@container chat-panel (max-width:780px){
-  .conversation-surface-header .chat-panel-toolbar{row-gap:0}
-  .conversation-surface-header .chat-panel-heading:has(.conversation-header-context){display:contents}
-  .conversation-surface-header .chat-panel-heading:has(.conversation-header-context) .chat-panel-title{grid-column:1;grid-row:1;max-width:100%}
-  .conversation-surface-header .chat-panel-actions{grid-column:2;grid-row:1}
-  .conversation-header-context{grid-column:1/-1;grid-row:2;min-height:20px;max-width:min(100%,32ch)}
+@container (max-width:480px){
+  .conversation-surface-header .chat-panel-heading:has(.conversation-header-context) .chat-panel-title{max-width:100%}
+  .conversation-header-context{display:none}
 }
 .creation-choices{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;max-height:144px;overflow-y:auto;padding:2px}
 .creation-choices>button{display:inline-flex;align-items:center;gap:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;appearance:none;border:1px solid var(--border,var(--yolu-border,#e2e6f0));border-radius:7px;background:var(--background,var(--yolu-surface,#fff));color:var(--foreground,var(--yolu-foreground,#334155));font:inherit;font-size:12px;line-height:20px;font-weight:500;padding:6px 10px;cursor:pointer}

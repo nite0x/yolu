@@ -48,11 +48,12 @@
 .session-browser-group-heading svg { width: 11px; height: 11px; }
 .session-browser-group-heading > span { margin-left: auto; font-size: 10px; font-variant-numeric: tabular-nums; }
 .session-workspace-heading { margin: 0; min-width: 0; max-width: 100%; }
-.session-workspace-heading > button { display: flex; align-items: center; flex-wrap: nowrap; min-width: 0; gap: 6px; width: 100%; min-height: 38px; padding: 8px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--foreground); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
-.session-workspace-heading > button:hover { background: var(--accent); }
+.session-workspace-heading > [data-conversation-group-toggle] { display: flex; align-items: center; flex-wrap: nowrap; min-width: 0; gap: 6px; width: 100%; min-height: 38px; padding: 8px 7px; border: 0; border-radius: 5px; background: transparent; color: var(--foreground); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.session-workspace-heading > [data-conversation-group-toggle]:hover { background: var(--accent); }
 .session-workspace-heading svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--muted-foreground); }
 .session-workspace-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .session-workspace-count, .session-workspace-heading small { color: var(--muted-foreground); font-size: 10px; font-weight: 400; }
+.session-workspace-count { font-size: var(--yolu-font-size-label); font-variant-numeric: tabular-nums; }
 .session-workspace-heading small { max-width: 38%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-browser-workspaces .session-browser-items { padding-left: 18px; }
 .session-workspace-more { display: block; width: calc(100% - 18px); min-height: 36px; margin-left: 18px; padding: 7px 11px; border: 0; border-radius: 5px; color: var(--muted-foreground); background: transparent; font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
@@ -78,6 +79,7 @@
 .session-browser-item-status[data-state="failed"], .session-browser-item-status[data-state="unknown"] { color: var(--destructive); }
 .session-browser-item-status:is([data-state="running"], [data-state="starting"], [data-state="stopping"]) svg { animation: session-list-spin 1s linear infinite; }
 .session-browser-item-directory { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-browser-item-search-match { font-size: var(--yolu-font-size-label); }
 .session-browser-context { margin: 0; font-size: 11px; line-height: 1.6; color: var(--muted-foreground); overflow-wrap: anywhere; }
 .session-browser-items > li { position: relative; min-width: 0; }
 .session-item-menu, .ui-session-menu { position: absolute; top: 3px; right: 5px; z-index: 1; }
@@ -221,13 +223,22 @@ html[data-workspace-conversation] .session-browser[data-pane="list"] .session-br
 html[data-workspace-conversation] .session-browser[data-pane="detail"] .session-browser-list { display:none; }
 
 .has-session-menu .session-browser-item{padding-right:36px}
-.parallel-list-add[data-slot]{position:absolute;right:5px;top:3px;width:26px;height:26px;color:var(--muted-foreground);opacity:0;visibility:hidden}
-.parallel-list-add[data-parallel-open]{color:var(--primary)}
-.parallel-list-item:hover .parallel-list-add:not(:disabled), .parallel-list-item:focus-within .parallel-list-add:not(:disabled){opacity:1;visibility:visible}
-.parallel-list-item:has(.parallel-list-add:not(:disabled)):is(:hover,:focus-within) .session-browser-item-time{visibility:hidden}
-@media (hover:none){.parallel-list-add[data-slot]:not(:disabled){opacity:1;visibility:visible}.parallel-list-item:has(.parallel-list-add:not(:disabled)) .session-browser-item-time{visibility:hidden}.session-browser-item{min-height:44px}}
-html[data-workspace-navigation][data-workspace-single] .parallel-list-item:has(.session-browser-item[aria-pressed="true"]) .session-browser-item-time{visibility:visible}
-.parallel-list-add svg{width:14px;height:14px}
+.parallel-list-add[data-slot] { position: absolute; right: 5px; top: 3px; width: 26px; height: 26px; border-radius: 7px; color: var(--muted-foreground); visibility: var(--parallel-action-visibility, hidden); }
+.parallel-list-add[data-parallel-open] { color: var(--primary); }
+.parallel-list-item .session-browser-item-time { visibility: var(--parallel-time-visibility, visible); }
+.parallel-list-item:has(> .parallel-list-add:enabled):is(:hover, :focus-within) {
+  --parallel-action-visibility: visible;
+  --parallel-time-visibility: hidden;
+}
+@media (hover: none) {
+  .parallel-list-item:has(> .parallel-list-add:enabled) { --parallel-action-visibility: visible; --parallel-time-visibility: hidden; }
+  .session-browser-item { min-height: 44px; }
+}
+html[data-workspace-navigation][data-workspace-single] .parallel-list-item:has(> .session-browser-item[aria-pressed="true"]) {
+  --parallel-action-visibility: hidden;
+  --parallel-time-visibility: visible;
+}
+.parallel-list-add svg { width: 14px; height: 14px; }
 
 /* A host-managed conversation never renders another list, even during mode changes. */
 html[data-workspace-conversation] .session-browser-list,
@@ -237,12 +248,30 @@ html[data-workspace-conversation] .ui-narrow-list{display:none!important}
 .shortcut-icon-settings:hover { background:var(--yolu-selected,#e1e7ff); }
 .shortcut-icon-settings:focus-visible { outline:2px solid var(--yolu-ring,#818cf8); }
 
-.session-workspace-heading:has(.session-collection-link) { display: flex; align-items: center; }
-.session-collection-link {
-  display: flex; flex: 1; min-width: 0; overflow: hidden; align-items: center; gap: 6px;
-  padding: 6px 7px; border-radius: var(--yolu-chip-radius,8px);
+.session-collection-heading { --session-project-action-size: 32px; display: grid; grid-template-columns: minmax(0,1fr); }
+.session-collection-heading > * { grid-area: 1 / 1; }
+.session-collection-heading > .session-collection-toggle { padding-inline-end: calc(2 * var(--session-project-action-size)); }
+.session-collection-heading > .session-collection-toggle[data-current-conversation] { background: color-mix(in srgb, var(--yolu-selected) 65%, transparent); }
+.session-collection-toggle[data-current-conversation] .session-workspace-name { color: var(--yolu-primary-ink); }
+.session-collection-toggle .shortcut-badge { width: 20px; height: 20px; flex: none; }
+.session-collection-actions {
+  display: grid; grid-auto-flow: column; grid-auto-columns: var(--session-project-action-size); align-items: center; justify-items: center;
+  justify-self: end; pointer-events: none;
 }
-.session-collection-link > svg { width: 15px; height: 15px; flex: none; }
-.session-collection-link:hover { background: var(--yolu-hover); }
-.session-workspace-heading button.session-collection-toggle { width: auto; flex: none; padding-inline: 6px; }
-.session-collection-link .shortcut-badge { width: 20px; height: 20px; flex: none; }
+.session-collection-actions :is(a, button) { pointer-events: auto; }
+[data-hide-project-counts] .session-collection-count,
+[data-hide-project-icons] .session-collection-toggle > :is(.shortcut-badge, .session-collection-fallback-icon) { display: none; }
+@media (hover: hover) {
+  .session-collection-details { grid-area: 1 / 1; }
+  .session-collection-actions > :is(.session-collection-count, .session-collection-create) { grid-area: 1 / 2; }
+  .session-collection-actions :is(a, button) { opacity: 0; pointer-events: none; }
+  .session-collection-heading:is(:hover, :has(:focus-visible)) .session-collection-actions :is(a, button) { opacity: 1; pointer-events: auto; }
+  .session-collection-heading:is(:hover, :has(:focus-visible)) .session-collection-count { visibility: hidden; }
+}
+@media (hover: none) {
+  #sessionBrowserList:not([data-hide-project-counts]) .session-collection-heading > .session-collection-toggle { padding-inline-end: calc(3 * var(--session-project-action-size)); }
+}
+@media (hover: none) and (pointer: coarse) {
+  .session-collection-heading { --session-project-action-size: 40px; }
+  .session-collection-heading > .session-collection-toggle, .session-collection-actions :is(a, button) { min-height: 44px; }
+}

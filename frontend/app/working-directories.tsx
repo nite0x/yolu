@@ -80,11 +80,10 @@ export function WorkingDirectoryRow({
           <ProjectOpenActions project={project} path={path} tool={tool} disabled={!usable} primary={primary} />
           <Action action="changes-open" {...context} disabled={!usable} aria-label={uiText("文件与改动")} title={uiText("文件与改动")}>{uiText("改动")}</Action>
           <Action action="project-terminal" {...context} disabled={!usable} size="icon-sm" className="directory-terminal" title={terminalLabel} aria-label={terminalLabel}><Terminal aria-hidden="true" /></Action>
+          <Action action="project-conversation-new" {...context} disabled={!usable} aria-label={uiText("为 {0} 新建对话", name)}>{uiText("新建对话")}</Action>
           <details className={`workspace-more directory-more`}>
             <summary aria-label={uiText("{0} 更多操作", name)}><MoreHorizontal aria-hidden="true" /></summary>
             <div className="workspace-more-menu">
-              <Action action="project-conversation-new" {...context} disabled={!usable}>{uiText("新建对话…")}</Action>
-              <hr />
               <Action action="git-open" {...context} disabled={!usable}>{uiText("Git 操作")}</Action>
               <Action action="project-open-remote" {...context} disabled={!usable}>{uiText("打开远端仓库")}</Action>
               {!primary && !tree?.bare ? <Action action="remove-worktree" {...context}>{uiText("移除 Worktree")}</Action> : null}

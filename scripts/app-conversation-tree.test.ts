@@ -49,13 +49,16 @@ test("project groups reveal selected conversations and honor limits, collapse an
   assert.equal(listed(conversationTree(items,setup({collapsed:[key]}))).length,0)
   assert(listed(conversationTree(items,setup({collapsed:[key],reveal:"e",selected:"e"}))).some(row => row.session.id === "e"))
   assert.equal(listed(conversationTree(items,setup({limits:{[key]:4}}))).length,4)
-  assert.equal(listed(conversationTree(items,setup({collapsed:[key],filtered:true}))).length,5)
+  assert.equal(listed(conversationTree(items,setup({filtered:true}))).length,5)
+  const filtered = conversationTree(items,setup({collapsed:[key],filtered:true,selectedSession:session("outside the results","app")}))
+  assert.equal(listed(filtered).length,0)
+  assert.equal(filtered.find(row => row.kind === "group")?.group.containsSelection,true)
 })
 
-test("unfiltered grouping keeps empty projects and recent mode uses registered project name", () => {
+test("grouping omits empty projects and recent mode uses registered project name", () => {
   const item = session("existing","app",{context:{project:"Application",projectID:"app",cwd:"/repo/app",kind:"Project",branch:"main"}})
   const grouped = conversationTree([item],setup())
-  assert(grouped.some(row => row.kind === "group" && row.group.name === "api" && row.group.total === 0))
+  assert(!grouped.some(row => row.kind === "group" && row.group.name === "api"))
   const recent = listed(conversationTree([item],setup({recent:true})))
   assert.equal(recent[0].projectName,"Application")
 })

@@ -76,7 +76,6 @@ html[data-workspace-navigation] .sidebar .nav-item:not([data-view="sessions"]){b
 html[data-workspace-navigation] .sidebar .nav-item[data-view="sessions"]{background:var(--accent-soft);color:var(--yolu-primary-ink,#454b9b)}
 
 html[data-workspace-conversation] .session-browser{border:0;border-radius:0}
-html[data-workspace-navigation][data-workspace-single] .session-browser-item[aria-pressed="true"] + .parallel-list-add{display:none}
 
 /* Flush connection feedback shares the conversation card's outer corners. */
 html:is([data-workspace-navigation],[data-workspace-conversation]) #offlineFeedback{flex:none}

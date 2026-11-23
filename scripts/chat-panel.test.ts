@@ -565,6 +565,18 @@ test("working details dismiss with Escape, outside click and close without repla
     const input = h.input();
     h.type("保留当前草稿");
     context.open = true;
+    const add = context.querySelector<HTMLButtonElement>('[aria-label="添加项目或目录"]')!;
+    assert(add.closest(".conversation-context-popover"));
+    add.click();
+    const dialog = () => h.w.document.querySelector<HTMLDialogElement>(".session-binding-dialog[open]");
+    await until(dialog);
+    dialog()!.dispatchEvent(new h.w.Event("pointerdown", {bubbles:true}));
+    const escape = new h.w.KeyboardEvent("keydown", {key:"Escape", bubbles:true, cancelable:true});
+    dialog()!.dispatchEvent(escape);
+    assert.equal(escape.defaultPrevented, false);
+    assert.equal(context.open, true);
+    dialog()!.dispatchEvent(new h.w.Event("cancel", {cancelable:true}));
+    await until(() => !dialog());
     summary.dispatchEvent(new h.w.KeyboardEvent("keydown", {key:"Escape", bubbles:true, cancelable:true}));
     assert.equal(context.open, false);
     assert.equal(h.w.document.activeElement, summary);
@@ -1737,8 +1749,15 @@ test("project mentions ask before attaching and show configured directories as p
     assert.equal(calls.some(call => call.path.endsWith("/bindings") && call.method === "POST"),false);
     submit();
     await until(() => document.querySelector(".session-context-chip[data-status=pending]"));
-    const binding = document.querySelector(".session-context-chip[data-status=pending]")!;
+    const binding = document.querySelector<HTMLButtonElement>(".session-context-chip[data-status=pending]")!;
     assert.match(binding.textContent || "", /yolu-web.*main.*待配置/);
+    const workingDetails = binding.closest("details")!;
+    assert.equal(workingDetails.open, false);
+    workingDetails.open = true;
+    binding.click();
+    const bindingDetails = () => workingDetails.querySelector(".session-binding-details");
+    await until(bindingDetails);
+    assert.match(bindingDetails()!.textContent || "", /\/repos\/backend/);
     assert.match(h.input().value, /@yolu-web/);
     assert.deepEqual(calls.find(call => call.path.endsWith("/bindings") && call.method === "POST")?.body, {project_id:"backend",directory:"/repos/backend",access:"read",role:"additional",allow_shared:false});
     assert.equal(calls.some(call => call.path.endsWith("/chat") && call.method === "POST"),false);
@@ -1832,4 +1851,58 @@ test("a conflicting binding can create an independent worktree and confirm its a
     assert.equal(writes[0].directory, worktree);
     assert.equal(writes[0].allow_shared, false);
   } finally {h.dispose();}
+});
+
+test("working details lists associated directories vertically with diff stats, change filter and quick file jump", async () => {
+  const bindings = [
+    {
+      id: "agent", project_id: "p1", project_name: "noah-mind-agent", directory: "/repos/agent",
+      branch: "feature/memory", status: "ready", role: "primary", access: "write",
+      git: {additions: 73865, deletions: 1, files: [{path: "a.go", index: " ", working: "M", untracked: false}]},
+    },
+    {
+      id: "mcp", project_id: "p2", project_name: "noah-mind-mcp", directory: "/repos/mcp",
+      branch: "codex/t2-customer", status: "ready", role: "additional", access: "read",
+      git: {additions: 0, deletions: 0, files: []},
+    },
+  ];
+  const fileEvents: any[] = [];
+  const h = mount(true, [], {
+    async request(path) {
+      if (path.endsWith("/bindings")) return {bindings} as any;
+      if (path.endsWith("/history")) return {session, entries: []} as any;
+      return idleChat() as any;
+    },
+  });
+  const {document} = h.w;
+  const onFiles = (event: Event) => fileEvents.push((event as CustomEvent).detail);
+  h.w.addEventListener("workhub:binding-files", onFiles);
+  try {
+    await until(() => document.querySelectorAll(".session-dir-row").length === 2);
+    const context = document.querySelector<HTMLDetailsElement>(".chat-workspace-context")!;
+    context.open = true;
+    const rows = [...context.querySelectorAll<HTMLButtonElement>(".session-dir-row")];
+    assert.match(rows[0].textContent || "", /noah-mind-agent.*feature\/memory.*\+73,865.*-1/);
+    assert.doesNotMatch(rows[1].textContent || "", /\+\d/);
+    const filter = context.querySelector<HTMLSelectElement>(".session-dir-filter select")!;
+    filter.value = "changes";
+    filter.dispatchEvent(new h.w.Event("change", {bubbles: true}));
+    await until(() => context.querySelectorAll(".session-dir-row").length === 1);
+    assert.match(context.querySelector(".session-dir-row")!.textContent || "", /noah-mind-agent/);
+    context.querySelector<HTMLButtonElement>('[aria-label="查看 noah-mind-agent 的改动"]')!.click();
+    assert.equal(fileEvents.length, 1);
+    assert.equal(fileEvents[0].id, "agent");
+    assert.equal(fileEvents[0].mode, "working");
+    filter.value = "all";
+    filter.dispatchEvent(new h.w.Event("change", {bubbles: true}));
+    await until(() => context.querySelectorAll(".session-dir-row").length === 2);
+    context.querySelector<HTMLButtonElement>('[aria-label="查看 noah-mind-mcp 的文件"]')!.click();
+    assert.equal(fileEvents.length, 2);
+    assert.equal(fileEvents[1].id, "mcp");
+    assert.equal(fileEvents[1].mode, "all");
+    assert.deepEqual(h.errors, []);
+  } finally {
+    h.w.removeEventListener("workhub:binding-files", onFiles);
+    h.dispose();
+  }
 });

@@ -41,10 +41,15 @@ func writableRoots(plan model.LaunchPlan) []string {
 		return uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
 	}
 	dirs := []string{}
+	hasPrimary := false
 	for _, b := range plan.Bindings {
+		hasPrimary = hasPrimary || b.Role == model.SessionBindingPrimary
 		if b.Access == model.SessionBindingWrite {
 			dirs = append(dirs, b.Directory)
 		}
+	}
+	if !hasPrimary && plan.Cwd != "" {
+		dirs = append(dirs, plan.Cwd)
 	}
 	return dirs
 }

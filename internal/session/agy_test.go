@@ -156,6 +156,7 @@ func (f *fakeACPClient) emitUpdate(upd acp.SessionUpdate) {
 
 func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
+	const prompt = "帮我检查测试并修复问题"
 	fakeACP := newFakeACPClient(q.Path)
 	a.openAgy = func(context.Context, ...string) (acp.Client, acp.InitializeResult, error) {
 		return fakeACP, acp.InitializeResult{AgentInfo: acp.AgentInfo{Name: "Antigravity ACP Server", Version: "1.5.12"}}, nil
@@ -179,7 +180,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 		"provider":   "agy",
 		"project_id": q.ProjectID,
 		"cwd":        q.Path,
-		"text":       "帮我检查测试并修复问题",
+		"text":       prompt,
 		"request_id": "agy-create-1",
 	}
 	code, raw = call(t, a, "POST", "/api/sessions/new", createInput)
@@ -216,24 +217,33 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 		t.Fatalf("expected antigravity systemPrompt metadata in session/new: %+v", fakeACP.newParams)
 	}
 
-	// 3. Stream thought (must be hidden), assistant text, command tool call, diff tool call
+	// 3. Stream the prompt echo, private thought, assistant text and diff.
+	userUpdate := acp.SessionUpdate{
+		SessionUpdate: "user_message_chunk",
+		MessageID:     "live-user",
+		Content:       mustJSON(t, map[string]string{"type": "text", "text": prompt}),
+	}
+	fakeACP.emitUpdate(userUpdate)
 	fakeACP.emitUpdate(acp.SessionUpdate{
 		SessionUpdate: "agent_thought_chunk",
 		Content:       json.RawMessage(`{"type":"text","text":"SECRET_INTERNAL_THOUGHT"}`),
 	})
-	fakeACP.emitUpdate(acp.SessionUpdate{
+	assistantUpdate := acp.SessionUpdate{
 		SessionUpdate: "agent_message_chunk",
+		MessageID:     "live-assistant",
 		Content:       json.RawMessage(`{"type":"text","text":"正在检查代码"}`),
-	})
+	}
+	fakeACP.emitUpdate(assistantUpdate)
 	oldText := "old line"
-	fakeACP.emitUpdate(acp.SessionUpdate{
+	toolUpdate := acp.SessionUpdate{
 		SessionUpdate: "tool_call",
 		ToolCallID:    "edit-1",
 		Title:         "Edit main.go",
 		Kind:          "edit",
 		Status:        "completed",
 		Content:       mustJSON(t, []acp.ToolCallContent{{Type: "diff", Path: "main.go", OldText: &oldText, NewText: "new line"}}),
-	})
+	}
+	fakeACP.emitUpdate(toolUpdate)
 
 	// 4. Permission approval round-trip
 	permRaw, _ := json.Marshal(acp.PermissionRequest{
@@ -304,13 +314,22 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	}
 
 	// 5. History replay via session/load
-	fakeACP.replayOnLoad = []acp.SessionUpdate{
-		{SessionUpdate: "user_message_chunk", Content: json.RawMessage(`{"type":"text","text":"你好 AGY"}`)},
-		{SessionUpdate: "agent_message_chunk", Content: json.RawMessage(`{"type":"text","text":"你好，已完成检查。"}`)},
-	}
+	userUpdate.MessageID = ""
+	assistantUpdate.MessageID = ""
+	fakeACP.replayOnLoad = []acp.SessionUpdate{userUpdate, assistantUpdate, toolUpdate}
 	code, raw = call(t, a, "GET", "/api/sessions/agy-session-1/history", nil)
-	if code != 200 || !strings.Contains(string(raw), "你好，已完成检查。") {
+	var history SessionHistory
+	if code != 200 || json.Unmarshal(raw, &history) != nil || len(history.Entries) != 3 || len(doneState.Entries) != 3 {
 		t.Fatalf("agy history failed: %d %s", code, raw)
+	}
+	for i, saved := range history.Entries {
+		live := doneState.Entries[i]
+		if saved.ID != live.ID || saved.TurnID != live.TurnID || saved.Text != live.Text || saved.Status != "completed" {
+			t.Fatalf("replayed entry differs from the completed live entry: %+v versus %+v", saved, live)
+		}
+	}
+	if history.Entries[0].Text != prompt {
+		t.Fatalf("expected one copy of the user prompt, got %+v", history.Entries[0])
 	}
 
 	// 6. Sessions listing works even when Codex is offline
@@ -354,7 +373,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 
 	// 9. Continue existing AGY session and stop via session/cancel
 	code, raw = call(t, a, "POST", "/api/sessions/agy-session-1/chat", map[string]any{
-		"text":       "继续执行第二步",
+		"text":       prompt,
 		"request_id": "agy-turn-2",
 	})
 	if code != 202 {
@@ -372,6 +391,10 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	if secondRun == nil {
 		t.Fatal("second AGY turn did not reach running state")
 	}
+	secondState := secondRun.snapshot()
+	if len(secondState.Entries) != 1 || secondState.Entries[0].Text != prompt || secondState.TurnID == doneState.TurnID {
+		t.Fatalf("expected the repeated prompt to start a distinct turn: %+v", secondState)
+	}
 	code, raw = call(t, a, "POST", "/api/sessions/agy-session-1/chat/stop", map[string]any{"run_id": "agy-turn-2"})
 	if code != 200 {
 		t.Fatalf("stop agy chat failed: %d %s", code, raw)
@@ -385,6 +408,14 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	}
 	if secondRun.snapshot().Status != "interrupted" {
 		t.Fatalf("expected interrupted after stop, got %+v", secondRun.snapshot())
+	}
+	fakeACP.replayOnLoad = append(fakeACP.replayOnLoad, userUpdate)
+	code, raw = call(t, a, "GET", "/api/sessions/agy-session-1/history", nil)
+	if code != 200 || json.Unmarshal(raw, &history) != nil || len(history.Entries) != 4 {
+		t.Fatalf("expected two distinct turns in AGY history: %d %s", code, raw)
+	}
+	if saved := history.Entries[3]; saved.ID != secondState.Entries[0].ID || saved.TurnID != secondState.TurnID || saved.Text != prompt {
+		t.Fatalf("replayed repeated prompt differs from its live entry: %+v", saved)
 	}
 }
 

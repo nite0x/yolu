@@ -75,7 +75,7 @@ func TestSessionBindingProfileManageRestoreAndDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding := getBindings(t, a, "session")[0]
-	if len(binding.Git.Files) != 2 || len(binding.Observed) != 1 || binding.Observed[0] != "new.txt" || len(binding.Attributed) != 1 {
+	if len(binding.Git.Files) != 2 || binding.Git.Additions != 2 || binding.Git.Deletions != 0 || len(binding.Observed) != 1 || binding.Observed[0] != "new.txt" || len(binding.Attributed) != 1 {
 		t.Fatalf("changes were not distinguished: %+v", binding)
 	}
 	if code, raw := call(t, a, "GET", base+"/"+bindingID+"/diff?path=new.txt", nil); code != 200 || !strings.Contains(string(raw), "during turn") {
@@ -109,9 +109,17 @@ func TestSessionBindingProfileManageRestoreAndDiff(t *testing.T) {
 		t.Fatalf("did not switch effective cwd: %+v", state.Context)
 	}
 	c.mu.Lock()
+	created := c.threadParams["thread/start"]
 	start := c.threadParams["thread/resume"]
 	turn := c.startParams
 	c.mu.Unlock()
+	for method, params := range map[string]map[string]any{"thread/start": created, "thread/resume": start} {
+		profileID, _ := params["permissions"].(string)
+		config, _ := params["config"].(map[string]any)
+		if profileID == "" || config["default_permissions"] != profileID {
+			t.Errorf("%s: default_permissions = %v, want selected profile %q", method, config["default_permissions"], profileID)
+		}
+	}
 	profileID := start["permissions"].(string)
 	profile := start["config"].(map[string]any)["permissions"].(map[string]any)[profileID].(map[string]any)
 	fs := profile["filesystem"].(map[string]string)

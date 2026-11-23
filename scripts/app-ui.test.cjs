@@ -118,7 +118,7 @@ test('desktop project controls stay in the list through search, refresh and page
   const toolbar = h.$('#projectListPane #panelToolbar');
   const search = h.$('#projectListPane #search');
   const projectList = h.$('#projectListPane');
-  assert(toolbar.querySelector('#projectAddButton button'));
+  assert.equal(toolbar.querySelector('#projectAddButton button').closest('[hidden]'), null);
   assert(toolbar.querySelector('.list-search #projectFilters .project-filters'));
   assert(toolbar.querySelector('#projectFilters #projectEnvironment'));
   search.focus();
@@ -137,6 +137,8 @@ test('desktop project controls stay in the list through search, refresh and page
   await h.window.refresh(true);
   assert.equal(h.$('#projectListPane #panelToolbar'), toolbar);
   assert.match(h.$('.project-list-empty').textContent, /没有已登记的项目/);
+  h.click('#projectAddButton button');
+  assert.equal(h.$('#projectDialog').open, true);
 });
 
 test('folder selection fills the project path, preserves drafts on cancellation and reports failures', async t => {
@@ -847,7 +849,7 @@ test('message shortcuts and drafts retain their concrete creation directory', as
   const sent = h.requests.filter(r => r.url.endsWith('/chat') && r.options.method === 'POST');
   assert.equal(sent.length, 1); assert.equal(sent[0].body.text, '继续检查'); assert(sent[0].body.request_id);
   h.click('#newBrowserSession');
-  assert.equal(h.$('#sessionBrowserNewDirectory').value, '/repo/app');
+  assert.equal(h.$('#sessionBrowserNewDirectory').value, '');
   h.change('#sessionBrowserNewDirectory', '/workspace/workspace/app');
   assert.equal(h.currentSession().target.cwd,'/workspace/workspace/app');
   h.input('#sessionChatInput', '保留这份草稿');
@@ -1462,8 +1464,10 @@ test('cross-environment scopes and creation targets preserve ownership without c
   assert.equal(h.currentSession().environment, 'remote');
   h.click('#newBrowserSession'); await settle();
   const choices = [...h.$('#sessionBrowserNewDirectory').options];
-  assert(choices.some(o => o.textContent.includes('WSL')));
-  h.change('#sessionBrowserNewDirectory', choices.find(o => o.value.includes('/workspace/workspace/app')).value); await settle();
+  assert.equal(h.$('#sessionBrowserNewDirectory').value, '');
+  const remoteWorktree = choices.find(o => o.value.includes('/workspace/workspace/app') && o.textContent.includes('WSL'));
+  assert(remoteWorktree);
+  h.change('#sessionBrowserNewDirectory', remoteWorktree.value); await settle();
   assert.equal(h.currentSession().environment, 'remote');
   assert.equal(h.$('#projectEnvironment').value, 'local');
   assert.equal(h.window.WorkHubConversations.current.targetEnvironment,'remote');
@@ -2070,6 +2074,12 @@ test('page bridge delegates sidebar conversation navigation before changing the 
   assert.equal(scoped.conversation.scope.kind,'project');
   assert.equal(scoped.conversation.scope.id,'backend');
   assert.equal(h.window.location.hash,'#/projects/backend');
+  await h.navigate('/projects/app');
+  h.click('[data-directory-path="/workspace/workspace/app"] [data-action="project-conversation-new"]'); await settle();
+  const draft = host.messages.findLast(message=>message.type==='workhub:page-open');
+  assert.equal(draft.create,true);
+  assert.equal(draft.snapshot.conversation.scope.id,'app');
+  assert.equal(draft.snapshot.conversation.creationDirectory,'/workspace/workspace/app');
   h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-active',active:false}}));
   assert.equal(h.window.WorkHubPage.active,false);
   assert(h.document.documentElement.hasAttribute('data-workspace-inactive'));
@@ -2210,6 +2220,22 @@ test('shared conversation list browses scopes without reading hidden history and
  assert.match(h.$('[data-parallel-open]').title,/已并列/);
  assert(h.$('[data-parallel-open] svg'));
  assert.equal(h.$('[data-conversation-session="session-1"]').dataset.parallelMember,'true');
+ const picker = h.$('#sessionScopePicker');
+ const modes = h.$('#sessionSidebarModes');
+ assert(picker.contains(modes));
+ assert.equal(modes.hidden,false);
+ for (const mode of ['recent','grouped']) {
+   picker.open = true; await settle();
+   const option = modes.querySelector(`[data-conversation-list-mode="${mode}"]`);
+   option.focus();
+   option.click();
+   assert.equal(option.getAttribute('aria-pressed'),'true');
+   assert.equal(h.window.localStorage.getItem('workhub:conversation-list-mode:v1'),mode);
+   assert.equal(h.$('#sessionSidebarProjectDisplay').hidden, mode === 'recent');
+   assert.equal(picker.open,false);
+   assert.equal(h.document.activeElement,picker.querySelector('summary'));
+   assert.equal(h.$('[data-conversation-session="session-1"]').dataset.parallelMember,'true');
+ }
  h.click('[data-conversation-session="session-1"]'); await settle();
  assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-select').snapshot.conversation.selected,'session-1');
  h.click('[data-conversation-parallel="session-1"]'); await settle();
@@ -2226,14 +2252,15 @@ test('shared conversation list browses scopes without reading hidden history and
  assert.equal(historyRequests(),before);
 });
 
-for (const scope of [{kind:'directory',cwd:'/workspace/workspace/app',environment:'local'}, {kind:'project',id:'app',environment:'local'}]) test(`shared new conversation preserves an explicit draft across pages (${scope.kind})`, async t => {
+for (const scope of [{kind:'directory',cwd:'/workspace/workspace/app',environment:'local'}, {kind:'project',id:'app',environment:'local'}]) test(`split new conversation preserves an explicit draft across pages (${scope.kind})`, async t => {
  const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
  const post = (h,data) => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
  post(nav,{type:'workhub:page-navigation'});
  post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,directory:'/workspace/workspace/app',pane:'list'}}});
  await settle();await settle();
- assert.equal(nav.$('#newBrowserSession').disabled,false);
- nav.click('#newBrowserSession');await settle();
+ post(nav,{type:'workhub:conversation-group',canSplit:true,sessions:[],selected:'',split:false});
+ assert.equal(nav.$('#newBrowserSplitSession').disabled,false);
+ nav.click('#newBrowserSplitSession');await settle();
  const opened = host.messages.findLast(message=>message.type==='workhub:page-open').snapshot;
  assert.equal(opened.conversation.creating,true);
  assert.equal(opened.conversation.selected,null);
@@ -2250,6 +2277,120 @@ for (const scope of [{kind:'directory',cwd:'/workspace/workspace/app',environmen
  post(draft,{type:'workhub:page-restore',active:true,snapshot:saved});await settle();await settle();
  assert.equal(draft.currentSession().session,null);
  assert.equal(draft.currentSession().target.cwd,'/workspace/workspace/app');
+});
+
+test('grouped navigation expands by project name, saves display preferences and opens project actions', async t => {
+  const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
+  const post = (h,data) => h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post(nav,{type:'workhub:page-navigation'});
+  post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+  await settle(); await settle();
+  const projectAction = '.session-workspace-heading [data-action="project-conversation-new"]';
+  assert(nav.$(projectAction + '[data-id="app"]'));
+  assert.equal(nav.$(projectAction + '[data-id="backend"]'),null);
+  const projectHeading = () => nav.$(projectAction + '[data-id="app"]').closest('.session-workspace-heading');
+  const toggle = () => projectHeading().querySelector('[data-conversation-group-toggle]');
+  assert(toggle().querySelector('.session-workspace-name'));
+  assert.equal(toggle().querySelector('.lucide-chevron-down, .lucide-chevron-right'),null);
+  assert.equal(projectHeading().querySelector('.session-workspace-count').textContent,'1');
+  assert.equal(toggle().getAttribute('aria-expanded'),'true');
+  toggle().querySelector('.session-workspace-name').click();
+  assert.equal(projectHeading().closest('section').querySelector('[data-conversation-session]'),null);
+  assert.equal(projectHeading().querySelector('.session-workspace-count').textContent,'1');
+  assert.equal(toggle().getAttribute('aria-expanded'),'false');
+  toggle().querySelector('.session-workspace-name').click();
+  assert(projectHeading().closest('section').querySelector('[data-conversation-session]'));
+  assert.equal(host.messages.some(message=>message.type==='workhub:page-open'),false);
+  const displayKey = 'workhub:conversation-project-display:v1';
+  const options = '#sessionSidebarProjectDisplay';
+  const list = nav.$('#sessionBrowserList');
+  for (const option of ['icons', 'counts']) assert.equal(nav.$(`${options} input[name="${option}"]`).checked,true);
+  nav.click(`${options} input[name="icons"]`);
+  assert.equal(list.hasAttribute('data-hide-project-icons'),true);
+  assert.equal(list.hasAttribute('data-hide-project-counts'),false);
+  nav.click(`${options} input[name="counts"]`);
+  assert.equal(list.hasAttribute('data-hide-project-counts'),true);
+  const savedDisplay = nav.window.localStorage.getItem(displayKey);
+  assert.deepEqual(JSON.parse(savedDisplay),{icons:false,counts:false});
+  nav.window.dispatchEvent(new nav.window.StorageEvent('storage',{key:displayKey,newValue:'{"icons":true,"counts":false}'}));
+  assert.equal(list.hasAttribute('data-hide-project-icons'),false);
+  assert.equal(list.hasAttribute('data-hide-project-counts'),true);
+  const reopened = await harness(t,false,{pageHost:host.window,storage:{[displayKey]:savedDisplay}});
+  assert.equal(reopened.$('#sessionBrowserList').hasAttribute('data-hide-project-icons'),true);
+  assert.equal(reopened.$('#sessionBrowserList').hasAttribute('data-hide-project-counts'),true);
+  const details = projectHeading().querySelector('[data-collection-href]');
+  assert(details.nextElementSibling.matches('[data-action="project-conversation-new"]'));
+  details.click(); await settle();
+  const opened = () => host.messages.findLast(message=>message.type==='workhub:page-open').snapshot;
+  assert.equal(opened().route,'/projects/app');
+  assert.equal(opened().environment,'local');
+  nav.click(projectAction + '[data-id="app"]'); await settle();
+  assert.equal(opened().conversation.scope.id,'app');
+  assert.equal(opened().conversation.creationDirectory,'/repo/app');
+
+  post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'project',id:'app'},directory:'/repo/app',pane:'list'}}});
+  await settle(); await settle();
+  nav.click('#newBrowserSession'); await settle();
+  const independent = opened();
+  assert.equal(independent.conversation.scope.kind,'all');
+  assert.equal(independent.conversation.directory,'');
+  assert.equal(independent.conversation.creationDirectory,'');
+  const draft = await harness(t,false,{pageHost:host.window});
+  post(draft,{type:'workhub:page-restore',active:true,snapshot:independent});
+  await settle(); await settle();
+  assert.deepEqual({...draft.currentSession().target},{});
+  assert.match(draft.$('#sessionBrowserDirectoryChoices [aria-pressed="true"]').textContent,/默认目录/);
+  draft.click('#sessionBrowserDirectoryChoices [data-creation-choice="/repo/backend"]');
+  assert.equal(draft.currentSession().target.project_id,'backend');
+});
+
+test('search group overrides preserve saved expansion, explain matches and support keyboard browsing', async t => {
+  const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
+  nav.sessions.push({id:'backend-session', name:'Service review', cwd:'/repo/backend', primary_project_id:'backend'});
+  const post = data => nav.window.dispatchEvent(new nav.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+  await settle(); await settle();
+  post({type:'workhub:conversation-group',selected:'session-1',sessions:[],split:false});
+
+  const group = name => nav.$(`[data-conversation-group-toggle][title="${name}"]`);
+  const session = () => nav.$('[data-conversation-session="session-1"]');
+  const search = query => nav.input('#sessionBrowserSearch',query);
+  const move = key => nav.document.activeElement.dispatchEvent(new nav.window.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
+  group('Backend').click();
+  search('feature/workspace');
+  assert.equal(session().querySelector('.session-browser-item-search-match').textContent,'分支 · feature/workspace');
+  group('App').click();
+  assert.equal(group('App').getAttribute('aria-expanded'),'false');
+  assert.equal(group('App').getAttribute('aria-description'),'当前对话所在项目');
+  assert.equal(session(),null);
+  nav.$('#sessionBrowserSearch').focus(); move('ArrowDown');
+  assert.equal(nav.document.activeElement,group('App'));
+
+  search('');
+  assert.equal(group('App').getAttribute('aria-expanded'),'true');
+  assert.equal(group('Backend').getAttribute('aria-expanded'),'false');
+  assert.equal(session().querySelector('.session-browser-item-search-match'),null);
+  nav.$('#sessionBrowserSearch').focus(); move('ArrowDown');
+  assert.equal(nav.document.activeElement,session());
+  move('ArrowDown');
+  assert.equal(nav.document.activeElement,group('Backend'));
+  move('ArrowUp');
+  assert.equal(nav.document.activeElement,session());
+
+  search('/workspace/workspace/app');
+  assert.equal(session().querySelector('.session-browser-item-search-match').title,'工作目录 · /workspace/workspace/app');
+  group('App').click();
+  search('Billing');
+  assert.equal(group('App').getAttribute('aria-expanded'),'true','a new query reveals its matches');
+  search('');
+  group('App').click();
+  assert(group('App').hasAttribute('data-current-conversation'));
+  assert(!group('Backend').hasAttribute('data-current-conversation'));
+  search('Billing');
+  assert.equal(group('App').getAttribute('aria-expanded'),'true','search can find results in a normally collapsed group');
+  search('');
+  assert.equal(group('App').getAttribute('aria-expanded'),'false');
 });
 
 test('running terminals share the conversation list, retain scope and reconnect by process identity', async t => {

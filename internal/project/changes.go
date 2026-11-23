@@ -1,10 +1,15 @@
 package project
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"worktree-hub/internal/execution"
@@ -79,6 +84,94 @@ func ReadDirectoryChanges(ctx context.Context, directory string) ([]ChangedFile,
 		return nil, err
 	}
 	return changedFiles(raw), nil
+}
+
+func parseNumstat(raw string) (additions int, deletions int) {
+	for _, line := range strings.Split(raw, "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.SplitN(line, "\t", 3)
+		if len(fields) < 2 || fields[0] == "-" || fields[1] == "-" {
+			continue
+		}
+		if added, err := strconv.Atoi(fields[0]); err == nil && added > 0 {
+			additions += added
+		}
+		if deleted, err := strconv.Atoi(fields[1]); err == nil && deleted > 0 {
+			deletions += deleted
+		}
+	}
+	return additions, deletions
+}
+
+func countLocalFileLines(path string) int {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > 512<<10 {
+		return 0
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 512<<10))
+	if err != nil || len(data) == 0 || bytes.IndexByte(data, 0) >= 0 {
+		return 0
+	}
+	lines := bytes.Count(data, []byte{'\n'})
+	if data[len(data)-1] != '\n' {
+		lines++
+	}
+	return lines
+}
+
+// ReadDirectoryDiffStats returns aggregate line additions and deletions for the
+// directory's uncommitted changes (staged, unstaged, and local untracked text files).
+func ReadDirectoryDiffStats(ctx context.Context, directory string, files []ChangedFile) (additions int, deletions int) {
+	if len(files) == 0 {
+		return 0, 0
+	}
+	hasTracked := false
+	for _, f := range files {
+		if !f.Untracked {
+			hasTracked = true
+			break
+		}
+	}
+	if hasTracked {
+		raw, err := execution.Git(ctx, directory, "diff", "--numstat", "--no-ext-diff", "--no-textconv", "HEAD")
+		if err == nil {
+			a, d := parseNumstat(raw)
+			additions += a
+			deletions += d
+		} else {
+			if cached, err := execution.Git(ctx, directory, "diff", "--numstat", "--no-ext-diff", "--no-textconv", "--cached"); err == nil {
+				a, d := parseNumstat(cached)
+				additions += a
+				deletions += d
+			}
+			if working, err := execution.Git(ctx, directory, "diff", "--numstat", "--no-ext-diff", "--no-textconv"); err == nil {
+				a, d := parseNumstat(working)
+				additions += a
+				deletions += d
+			}
+		}
+	}
+	if execution.RemoteClient(ctx) == nil {
+		scanned := 0
+		for _, f := range files {
+			if !f.Untracked {
+				continue
+			}
+			if scanned >= 256 || ctx.Err() != nil {
+				break
+			}
+			scanned++
+			additions += countLocalFileLines(filepath.Join(directory, filepath.FromSlash(f.Path)))
+		}
+	}
+	return additions, deletions
 }
 
 func ReadDirectoryDiff(ctx context.Context, directory, file, mode string) (any, error) {

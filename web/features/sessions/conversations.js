@@ -14,6 +14,8 @@ window.WorkHubConversations = conversationState;
 const conversationListRenderKeys = new WeakMap();
 const conversationHost = $('#sessionBrowser');
 const conversationListModeKey = 'workhub:conversation-list-mode:v1';
+const conversationProjectDisplayKey = 'workhub:conversation-project-display:v1';
+const conversationProjectDisplay = $('#sessionSidebarProjectDisplay');
 let conversationListMode = 'grouped';
 try { if (localStorage.getItem(conversationListModeKey) === 'recent') conversationListMode = 'recent'; } catch { /* Keep the default when storage is unavailable. */ }
 let conversationTerminals = [], conversationTerminalLoad = null, conversationTerminalsCheckedAt = 0;
@@ -320,23 +322,31 @@ function renderConversationList() {
   const recent = sidebarMode === 'recent';
   const modeSwitcher = $('#sessionSidebarModes');
   modeSwitcher.hidden = !sidebarMode;
+  conversationProjectDisplay.hidden = sidebarMode !== 'grouped';
   for (const button of modeSwitcher.querySelectorAll('[data-conversation-list-mode]')) {
     button.setAttribute('aria-pressed', String(button.dataset.conversationListMode === sidebarMode));
   }
   const text = view.search.trim().toLowerCase();
-  const matching = items.map(session => {
+  const annotatedItems = items.map(session => {
     const overview = conversationOverview(session.environment_id || activeEnvironment);
     const context = window.WorkHubUI.conversationContext(session.cwd, overview, session.primary_project_id);
     return {...(session.terminal ? session : sessionWithUnread(session)), context};
-  }).filter(session => !text || [session.name, session.terminal ? uiText("终端") : '', session.cwd, session.environment_name, session.context.project, session.context.branch].join(' ').toLowerCase().includes(text));
+  });
+  const matching = annotatedItems.filter(session => !text || [session.name, session.terminal ? uiText("终端") : '', session.cwd, session.environment_name, session.context.project, session.context.branch].join(' ').toLowerCase().includes(text));
   const statusFilter = view.statusFilter || 'all';
+  const filtered = !!text || statusFilter !== 'all' || view.archived;
+  if (filtered) {
+    const key = JSON.stringify([text,statusFilter,view.archived]);
+    if (view.filteredGroupState?.key !== key) view.filteredGroupState = {key,collapsedGroups:[]};
+  } else view.filteredGroupState = undefined;
+  const groupState = view.filteredGroupState || view;
   const sessions = matching.filter(s => conversationStatusMatches(s, statusFilter)).sort((a,b) =>
     (recent ? 0 : Number(!!b.pinned)-Number(!!a.pinned)) || (b.updated_at||0)-(a.updated_at||0));
+  const selected = window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected;
   view.listItems = sessions;
   view.listRows = window.WorkHubUI.conversationTree(sessions, {
     recent,
     navigator: sidebarMode === 'grouped' ? {
-      includeEmpty: view.scope.kind === 'all' && !view.archived && !view.directory,
       directories: conversationEnvironments().flatMap(entry => {
         if (view.environmentFilter && view.environmentFilter !== entry.id) return [];
         return conversationOverview(entry.id).projects.map(project => ({cwd:project.path, key:conversationEnvironmentKey(entry.id, conversationPathKey(project.path)),
@@ -344,11 +354,11 @@ function renderConversationList() {
           appearance:resourceAppearance(entry.id, 'project:' + project.id, project.path)}));
       }),
     } : undefined,
-    selected: window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected,
-    reveal: view.locateSelection, limits: view.groupLimits, collapsed: view.collapsedGroups,
-    filtered: !!text || statusFilter !== 'all' || view.archived,
+    selected,
+    selectedSession: selected ? annotatedItems.find(session => conversationSessionKey(session) === selected) : undefined,
+    reveal: view.locateSelection, limits: view.groupLimits, collapsed: groupState.collapsedGroups, filtered,
   });
-  if (view.locateSelection) view.collapsedGroups = view.collapsedGroups.filter(key => !view.listRows.some(row => row.kind === 'session' && row.group.key === key && conversationSessionKey(row.session) === view.locateSelection));
+  if (view.locateSelection) groupState.collapsedGroups = groupState.collapsedGroups.filter(key => !view.listRows.some(row => row.kind === 'session' && row.group.key === key && conversationSessionKey(row.session) === view.locateSelection));
   const {loaded, start, end, before, after, scrollTarget} = conversationList.range(view);
   for (const button of document.querySelectorAll('[data-conversation-status]')) {
     const status = button.dataset.conversationStatus;
@@ -369,12 +379,12 @@ function renderConversationList() {
   $('#sessionActiveFilterLabel').title = directoryPath || '';
   const picker = $('#sessionScopePicker');
   picker.toggleAttribute('data-active', !!(directoryPath || filterLabels.length || view.scope.kind !== 'all'));
-  picker.querySelector('summary').title = [conversationScopeName(view.scope), directoryPath, ...filterLabels].filter(Boolean).join(' · ');
+  picker.querySelector('summary').title = [uiText("筛选对话"), conversationScopeName(view.scope), directoryPath, ...filterLabels].filter(Boolean).join(' · ');
   const showContext = !view.directory && view.scope.kind !== 'directory' && new Set(items.map(session => conversationPathKey(session.cwd))).size > 1;
   const list = $('#sessionBrowserList');
   list.setAttribute('aria-busy',String(initialLoading || view.loading));
   const rows = view.listRows.slice(start, end);
-  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, sidebarMode, parallel:!!sidebarMode, parallelSessions:window.WorkHubPage?.parallelSessions || [], parallelFull:!!window.WorkHubPage?.parallelFull, selected: window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected, showDirectory: showContext, showContext, loading: initialLoading, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
+  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, sidebarMode, parallel:!!sidebarMode, parallelSessions:window.WorkHubPage?.parallelSessions || [], parallelFull:!!window.WorkHubPage?.parallelFull, selected, search:text, showDirectory: showContext, showContext, loading: initialLoading, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
   const emptyError = !!view.error && !items.length && !view.loading;
   const renderKey = JSON.stringify([new Date().toDateString(), emptyError, props, before, after, loaded, sessions.length]);
   if (conversationListRenderKeys.get(list) !== renderKey) {
@@ -444,9 +454,28 @@ $('#sessionSidebarModes').addEventListener('click', event => {
   if (!mode || !window.WorkHubPage?.navigationOnly) return;
   try { localStorage.setItem(conversationListModeKey, mode); } catch { /* Keep the current window preference. */ }
   setConversationListMode(mode);
+  const picker = $('#sessionScopePicker');
+  picker.open = false;
+  picker.querySelector('summary').focus({preventScroll:true});
+});
+function applyConversationProjectDisplay(saved = null) {
+  let preferences;
+  try { preferences = JSON.parse(saved); } catch { /* Use defaults for malformed preferences. */ }
+  for (const option of conversationProjectDisplay.querySelectorAll('input')) {
+    option.checked = preferences?.[option.name] !== false;
+    $('#sessionBrowserList').toggleAttribute(`data-hide-project-${option.name}`, !option.checked);
+  }
+}
+try { applyConversationProjectDisplay(localStorage.getItem(conversationProjectDisplayKey)); } catch { /* Keep both options visible without storage. */ }
+conversationProjectDisplay.addEventListener('change', () => {
+  const preferences = Object.fromEntries([...conversationProjectDisplay.querySelectorAll('input')].map(option => [option.name, option.checked]));
+  const saved = JSON.stringify(preferences);
+  applyConversationProjectDisplay(saved);
+  try { localStorage.setItem(conversationProjectDisplayKey, saved); } catch { /* Keep the current window preference. */ }
 });
 window.addEventListener('storage', event => {
   if (event.key === conversationListModeKey || event.key === null) setConversationListMode(event.newValue === 'recent' ? 'recent' : 'grouped');
+  if (event.key === conversationProjectDisplayKey || event.key === null) applyConversationProjectDisplay(event.newValue);
 });
 function renderConversationBrowser() {
   const view = conversationState.current;
@@ -472,7 +501,7 @@ function renderConversationBrowser() {
   const terminalKind = $('[data-conversation-kind="terminal"]');
   terminalKind.disabled = (view.targetEnvironment || activeEnvironment) !== 'local' || !view.target?.cwd || !!sessionHistoryState?.submitting;
   terminalKind.title = terminalKind.disabled ? uiText("请选择本机工作目录后再切换终端") : uiText("在当前栏切换为终端");
-  $('#sessionBrowserNewDirectoryField').hidden = !view.creating || creationDirectories.length < 2;
+  $('#sessionBrowserNewDirectoryField').hidden = !view.creating || view.scope.kind !== 'all' && creationDirectories.length < 2;
   if (view.creating) {
     $('#sessionBrowserNewDirectory').innerHTML = creationDirectories.map(d => `<option value="${esc(d.key)}" title="${esc(d.cwd)}">${esc(d.label)}</option>`).join('');
     $('#sessionBrowserNewDirectory').value = view.creationDirectory || '';
@@ -683,7 +712,7 @@ function updateConversationCreationActions() {
 }
 function conversationCreationDirectories(view) {
   const dirs = conversationDirectories(view.scope, view.environmentFilter).filter(d => !d.disabled && d.target);
-  if (view.scope.kind === 'all') dirs.unshift({key:'', cwd:'', environment:view.environmentFilter || view.environment, label:uiText("普通对话"), target:{}});
+  if (view.scope.kind === 'all') dirs.unshift({key:'', cwd:'', environment:view.environmentFilter || view.environment, label:uiText("默认目录（无需项目）"), target:{}});
   return dirs;
 }
 function conversationDirectoryPreference(view) {
@@ -733,10 +762,13 @@ function browserSessionActivity(id, chat, environment = activeEnvironment) {
 }
 document.addEventListener('click', event => {
   const entry = event.target.closest('[data-action="project-conversations"], [data-action="project-conversation-new"]');
-  if (entry && !entry.disabled) {
-    openConversations({kind:'project',id:entry.dataset.id});
-    if (entry.dataset.action === 'project-conversation-new') {
-      conversationState.current.creationDirectory = conversationEnvironmentKey(activeEnvironment,conversationPathKey(entry.dataset.path));
+  if (entry) {
+    const create = entry.dataset.action === 'project-conversation-new';
+    if (entry.disabled || state.busy || create && sessionReadOnly) return;
+    const environment = entry.dataset.environment || activeEnvironment;
+    openConversations({kind:'project',id:entry.dataset.id,environment});
+    if (create) {
+      conversationState.current.creationDirectory = conversationEnvironmentKey(environment,conversationPathKey(entry.dataset.path));
       startBrowserConversation();
     }
     return;
@@ -747,7 +779,8 @@ document.addEventListener('click', event => {
     const key = groupControl.dataset.conversationGroupToggle || groupControl.dataset.conversationGroupMore;
     const index = view.listRows.findIndex(row => row.key === groupControl.dataset.conversationListRow);
     if (groupControl.hasAttribute('data-conversation-group-toggle')) {
-      view.collapsedGroups = view.collapsedGroups.includes(key) ? view.collapsedGroups.filter(value => value !== key) : [...view.collapsedGroups,key];
+      const groupState = view.filteredGroupState || view;
+      groupState.collapsedGroups = groupState.collapsedGroups.includes(key) ? groupState.collapsedGroups.filter(value => value !== key) : [...groupState.collapsedGroups,key];
       view.locateSelection = null;
     } else view.groupLimits[key] = (view.groupLimits[key] || 3) + conversationBatchSize;
     renderConversationList();
@@ -776,7 +809,13 @@ document.addEventListener('click', event => {
   const button = event.target.closest('[data-conversation-action]');
   if (!button || button.disabled || state.busy) return;
   switch (button.dataset.conversationAction) {
-    case 'new': startBrowserConversation(); break;
+    case 'new':
+      if (button.id === 'newBrowserSession') {
+        selectConversationScope({kind:'all',name:uiText("全部对话")});
+        conversationState.current.environmentFilter = '';
+        conversationState.current.creationDirectory = '';
+      }
+      startBrowserConversation(); break;
     case 'refresh': refreshConversations(true); break;
     case 'clear-search':
       conversationState.current.search = ''; resetConversationListWindow(); $('#sessionBrowserSearch').value = ''; $('#sessionBrowserList').scrollTop = 0;
@@ -856,12 +895,19 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && event.target.id === 'sessionBrowserSearch' && conversationState.current?.search) {
     conversationState.current.search = ''; resetConversationListWindow(); event.target.value = ''; $('#sessionBrowserList').scrollTop = 0; renderConversationList(); event.preventDefault(); event.stopPropagation(); return;
   }
-  const item = event.target.closest('[data-conversation-session]');
-  if (!item && !(event.target.id === 'sessionBrowserSearch' && event.key === 'ArrowDown')) return;
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key) || event.metaKey || event.ctrlKey || event.altKey) return;
+  const grouped = window.WorkHubPage?.navigationOnly && conversationListMode === 'grouped';
+  const item = event.target.closest(grouped ? '[data-conversation-session], [data-conversation-group-toggle], [data-conversation-group-more]' : '[data-conversation-session]');
+  const fromSearch = event.target.id === 'sessionBrowserSearch' && event.key === 'ArrowDown';
+  if (!item && !fromSearch) return;
   const view = conversationState.current;
-  const positions = view.listRows.map((row,index) => row.kind === 'session' ? index : -1).filter(index => index >= 0);
+  const positions = view?.listRows?.flatMap((row,index) => row.kind === 'session' || grouped && row.kind !== 'section' ? [index] : []) || [];
   if (!positions.length) return;
+  if (fromSearch) {
+    focusConversationListIndex(positions.find(index => view.listRows[index].kind === 'session') ?? positions[0]);
+    event.preventDefault();
+    return;
+  }
   const index = positions.findIndex(index => view.listRows[index].key === item?.dataset.conversationListRow);
   const lastLoaded = positions.filter(index => index < view.loadedCount).length - 1;
   const next = event.key === 'Home' ? 0 : event.key === 'End' ? lastLoaded : index + ({ArrowDown:1,ArrowUp:-1,PageDown:conversationBatchSize,PageUp:-conversationBatchSize})[event.key];

@@ -21,17 +21,18 @@ export function ConversationHeader({title, titleID, titleHint, context, actions,
 
 // Keep native details semantics and stable DOM for terminal controllers, while
 // showing secondary context above the thread without changing header height.
-export function ConversationWorkingContext({id, children}: {id?: string; children: ReactNode}) {
+export function ConversationWorkingContext({id, header, children}: {id?: string; header?: ReactNode; children: ReactNode}) {
   const details = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
+    const inDialog = (event: Event) => event.target instanceof Element && event.target.closest("dialog[open]")
     const closeOutside = (event: PointerEvent) => {
-      if (details.current?.open && !event.composedPath().includes(details.current)) details.current.open = false
+      if (details.current?.open && !event.composedPath().includes(details.current) && !inDialog(event)) details.current.open = false
     }
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !details.current?.open) return
+      if (event.key !== "Escape" || event.defaultPrevented || !details.current?.open || inDialog(event)) return
       event.preventDefault()
       details.current.open = false
-      details.current.querySelector<HTMLElement>("summary")?.focus()
+      details.current.querySelector<HTMLElement>(":scope > summary")?.focus()
     }
     document.addEventListener("pointerdown", closeOutside)
     document.addEventListener("keydown", closeOnEscape)
@@ -43,7 +44,10 @@ export function ConversationWorkingContext({id, children}: {id?: string; childre
   return <details ref={details} id={id} className="chat-workspace-context">
     <summary className="conversation-icon-button" aria-label={uiText("工作详情")} title={uiText("工作详情")}><ListTree aria-hidden="true" /></summary>
     <section className="conversation-context-popover" aria-label={uiText("工作详情")}>
-      <div className="conversation-context-popover-heading"><strong>{uiText("工作详情")}</strong><ConversationIconButton label={uiText("关闭工作详情")} onClick={() => {if (details.current) details.current.open = false; details.current?.querySelector<HTMLElement>("summary")?.focus()}}><X aria-hidden="true" /></ConversationIconButton></div>
+      <div className="conversation-context-popover-heading">
+        <div className="conversation-context-popover-header">{header ?? <strong>{uiText("工作详情")}</strong>}</div>
+        <ConversationIconButton label={uiText("关闭工作详情")} onClick={() => {if (details.current) details.current.open = false; details.current?.querySelector<HTMLElement>(":scope > summary")?.focus()}}><X aria-hidden="true" /></ConversationIconButton>
+      </div>
       {children}
     </section>
   </details>

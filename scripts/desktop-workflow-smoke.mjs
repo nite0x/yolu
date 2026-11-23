@@ -166,8 +166,12 @@ try {
     provider: 'codex', request_id: 'projectless', text: 'Review this task without a checkout.',
   }, 202);
   const plain = '/api/sessions/' + projectless.session.id;
+  const defaultDirectory = path.join(data, 'conversation-directories');
+  assert(projectless.session.cwd.startsWith(defaultDirectory + path.sep));
   assert.equal((await settledChat(plain)).status, 'completed');
   assert.deepEqual((await request(plain + '/bindings')).bindings, []);
+  await request(plain + '/chat', 'POST', { request_id: 'projectless-follow-up', text: 'Continue in the same directory.' }, 202);
+  assert.equal((await settledChat(plain)).status, 'completed');
   await request(plain + '/bindings', 'POST', { directory: notes, access: 'read', role: 'primary' });
   assert.equal((await request(plain + '/bindings')).bindings[0].directory, notes);
   assert.equal((await request(base + '/bindings')).bindings.length, 2);
@@ -188,6 +192,10 @@ try {
   const calls = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
   const resumed = calls.find(call => call.rpc === 'thread/resume' && call.params.threadId === session.id && call.params.permissions);
   assert(resumed && JSON.stringify(resumed.params.config).includes(secondary.path), 'Codex received the additional directory in its filesystem profile');
+  const standalone = calls.find(call => call.rpc === 'thread/resume' && call.params.threadId === projectless.session.id && call.params.permissions);
+  assert.equal(standalone?.params.cwd, projectless.session.cwd);
+  assert.equal(standalone.params.config.default_permissions, standalone.params.permissions);
+  assert.equal(standalone.params.config.permissions[standalone.params.permissions].filesystem[projectless.session.cwd], 'write');
   const fixtureData = JSON.parse(await readFile(fixtureFile, 'utf8'));
   await writeFile(fixtureFile, JSON.stringify({ ...fixtureData, requestDirectory: notes }));
   await request(base + '/chat', 'POST', { request_id: 'native-approval', text: '[request-directory] Read the design notes.' }, 202);

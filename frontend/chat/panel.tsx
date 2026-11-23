@@ -3,7 +3,7 @@ import {ConversationHeader, ConversationPaneButtons, ConversationWorkingContext}
 import {useChatState} from "./use-chat-state";
 import {memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from "react";
 import {ExportedMessageRepository, MessageNotSentError, type ThreadMessage} from "@assistant-ui/react";
-import {PlusIcon, RefreshCwIcon, SearchIcon, TerminalIcon} from "lucide-react";
+import {ChevronDownIcon, PlusIcon, RefreshCwIcon, SearchIcon, TerminalIcon} from "lucide-react";
 import {ConversationPanel, ConversationFeedback, ConversationRunIndicator, useConversationRuntime} from "./conversation-panel";
 import {TooltipIconButton} from "@/components/assistant-ui/elements/tooltip-icon-button";
 import {Alert, AlertDescription} from "@/components/ui/alert";
@@ -212,31 +212,35 @@ export function ChatPanel({controller}: {controller: ChatController}) {
             </>}
             {!readOnly && state.session && controller.options.newConversation && <TooltipIconButton tooltip={uiText("新建对话")} aria-label={uiText("新建对话")} onClick={controller.options.newConversation}><PlusIcon /></TooltipIconButton>}
             <ChatFileToggle />
-            <ConversationWorkingContext>
-          <dl className="chat-context-facts grid gap-2 text-xs">
-            <dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd>
-            <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openProject?.(context.projectID!,path)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
-            {context.branch && <><dt>{uiText("分支")}</dt><dd>{context.branch}</dd></>}
-            <dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd><code className="chat-workspace-path">{displayPath || uiText("普通对话")}</code></dd>
-            <dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd>
-            {additionalDirectories.length > 0 && <><dt>{uiText("额外工作目录")}</dt><dd>{additionalDirectories.map(directory => <code key={directory} className="chat-context-directory">{directory}</code>)}</dd></>}
-          </dl>
-          {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
-          {!readOnly && state.session && <Button type="button" size="sm" variant="outline" className="chat-workspace-resume" disabled={!state.session.available} onClick={() => void controller.resume()}><TerminalIcon aria-hidden="true" />{uiText("在终端继续")}</Button>}
-        {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
+            <ConversationWorkingContext header={directories.header}>
+              {directories.context}
+              <div className="chat-context-footer">
+                <div className="chat-context-footer-row">
+                  <details className="chat-context-meta">
+                    <summary><span>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</span><span aria-hidden="true">·</span><span>{uiText("会话信息")}</span><ChevronDownIcon aria-hidden="true" /></summary>
+                    <dl className="chat-context-facts grid gap-2 text-xs">
+                      <dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd>
+                      <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openProject?.(context.projectID!,path)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
+                      {context.branch && <><dt>{uiText("分支")}</dt><dd>{context.branch}</dd></>}
+                      <dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd><code className="chat-workspace-path">{displayPath || uiText("普通对话")}</code></dd>
+                      <dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd>
+                      {additionalDirectories.length > 0 && <><dt>{uiText("额外工作目录")}</dt><dd>{additionalDirectories.map(directory => <code key={directory} className="chat-context-directory">{directory}</code>)}</dd></>}
+                    </dl>
+                  </details>
+                  {!readOnly && state.session && <Button type="button" size="xs" variant="outline" className="chat-workspace-resume" disabled={!state.session.available} onClick={() => void controller.resume()}><TerminalIcon aria-hidden="true" />{uiText("在终端继续")}</Button>}
+                </div>
+                {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
+                {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
+              </div>
             </ConversationWorkingContext>
             <ChatSessionMenu controller={controller} portal={panel} onSearch={() => setSearchOpen(true)} />
             <ParallelPaneControls />
         </>}
-        context={<>
-
+        context={(context.project || context.branch) && <>
           <span className="chat-workspace-project" title={context.project}>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openProject?.(context.projectID!,path)}>{context.project}</button> : <span>{context.project || uiText("工作目录")}</span>}</span>
           {context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><span>{context.branch}</span></span>}
         </>}>
-
-
-        {directories.bar}
-        {directories.details}
+        {directories.dialog}
         {state.session && <ChatSearch controller={controller} container={reading.container} open={searchOpen} onClose={closeSearch} />}
       </ConversationHeader>}
       onKeyDownCapture={event => {
