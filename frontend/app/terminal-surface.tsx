@@ -33,20 +33,19 @@ export function mountTerminalSurface(command: (command: string) => void) {
           <ConversationIconButton id="reconnectTerminal" label={uiText("重连终端")}><RefreshCw aria-hidden="true" /></ConversationIconButton>
           <details id="terminalActionMenu" className="terminal-action-menu"><summary className="conversation-icon-button" aria-label={uiText("更多终端操作")} title={uiText("更多终端操作")}><MoreHorizontal aria-hidden="true" /></summary><div><button id="stopTerminal" className="danger" type="button">{uiText("结束进程")}</button></div></details>
         </span>
-        <ConversationWorkingContext id="terminalDirectoryContext">
+        <ConversationPaneButtons split canZoom zoomed={false} command={command} zoomID="zoomTerminal" closeID="closeTerminalView" />
+      </>}
+      context={<ConversationWorkingContext id="terminalDirectoryContext" trigger={<>
+        <span className="chat-workspace-project"><span id="terminalDirectoryName">{uiText("工作目录")}</span></span>
+        <span id="terminalBranch" className="chat-workspace-branch" hidden><span id="terminalBranchName" /></span>
+      </>}>
         <button id="terminalContext" className="chat-workspace-link" type="button">{uiText("打开项目")}</button>
         <code id="terminalContextPath" className="chat-workspace-path" />
         <div className="terminal-project-fields">
           <label>{uiText("选择项目")}<select id="terminalProject" form="terminalForm" /></label>
           <small id="terminalDirectoryPath" />
         </div>
-        </ConversationWorkingContext>
-        <ConversationPaneButtons split canZoom zoomed={false} command={command} zoomID="zoomTerminal" closeID="closeTerminalView" />
-      </>}
-      context={<>
-        <span className="chat-workspace-project"><span id="terminalDirectoryName">{uiText("工作目录")}</span></span>
-        <span id="terminalBranch" className="chat-workspace-branch" hidden><span id="terminalBranchName" /></span>
-      </>}>
+      </ConversationWorkingContext>}>
 
       <div id="terminalSearchBar" className="terminal-search-bar" role="search" hidden><input id="terminalSearch" type="search" placeholder={uiText("搜索终端输出")} aria-label={uiText("搜索终端输出")} /><button id="terminalSearchNext" type="button">{uiText("查找")}</button><ConversationIconButton id="closeTerminalSearch" label={uiText("关闭终端搜索")}><X aria-hidden="true" /></ConversationIconButton></div>
     </ConversationHeader>

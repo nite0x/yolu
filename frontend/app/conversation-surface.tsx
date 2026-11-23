@@ -1,6 +1,6 @@
 import { uiText } from "../i18n";
 import {useEffect, useRef, type ComponentProps, type ReactNode} from "react"
-import {ListTree, Maximize2, Minimize2, X} from "lucide-react"
+import {ChevronDown, ListTree, Maximize2, Minimize2, X} from "lucide-react"
 
 export function ConversationKindSwitch({kind, id, uiID, terminalID}: {kind: "ui" | "terminal"; id?: string; uiID?: string; terminalID?: string}) {
   return <div id={id} className="conversation-kind-switch" role="group" aria-label={uiText("对话形式")}>
@@ -13,7 +13,7 @@ export function ConversationHeader({title, titleID, titleHint, context, actions,
   return <header className="chat-panel-header conversation-surface-header">
     <div className="chat-panel-toolbar">
       <div className="chat-panel-heading"><h2 id={titleID} tabIndex={-1} className="chat-panel-title" title={titleHint}>{title}</h2>{context && <div className="conversation-header-context">{context}</div>}</div>
-      <div className="chat-panel-actions"><span className="conversation-active-indicator" aria-label={uiText("当前对话栏")}>{uiText("当前")}</span>{actions}</div>
+      <div className="chat-panel-actions">{actions}</div>
     </div>
     {children}
   </header>
@@ -21,7 +21,7 @@ export function ConversationHeader({title, titleID, titleHint, context, actions,
 
 // Keep native details semantics and stable DOM for terminal controllers, while
 // showing secondary context above the thread without changing header height.
-export function ConversationWorkingContext({id, header, children}: {id?: string; header?: ReactNode; children: ReactNode}) {
+export function ConversationWorkingContext({id, trigger, triggerTitle, header, children}: {id?: string; trigger?: ReactNode; triggerTitle?: string; header?: ReactNode; children: ReactNode}) {
   const details = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
     const inDialog = (event: Event) => event.target instanceof Element && event.target.closest("dialog[open]")
@@ -41,8 +41,15 @@ export function ConversationWorkingContext({id, header, children}: {id?: string;
       document.removeEventListener("keydown", closeOnEscape)
     }
   }, [])
+  const label = triggerTitle ? `${triggerTitle} · ${uiText("工作详情")}` : uiText("工作详情")
   return <details ref={details} id={id} className="chat-workspace-context">
-    <summary className="conversation-icon-button" aria-label={uiText("工作详情")} title={uiText("工作详情")}><ListTree aria-hidden="true" /></summary>
+    <summary className={trigger ? "conversation-context-trigger" : "conversation-icon-button"} aria-label={uiText("工作详情")} title={label}>
+      {trigger ? <>
+        <span className="conversation-context-summary">{trigger}</span>
+        <ChevronDown className="conversation-context-chevron" aria-hidden="true" />
+        <ListTree className="conversation-context-fallback-icon" aria-hidden="true" />
+      </> : <ListTree aria-hidden="true" />}
+    </summary>
     <section className="conversation-context-popover" aria-label={uiText("工作详情")}>
       <div className="conversation-context-popover-heading">
         <div className="conversation-context-popover-header">{header ?? <strong>{uiText("工作详情")}</strong>}</div>
@@ -64,6 +71,7 @@ export function ConversationStatusBadge({children, ...props}: ComponentProps<"sp
 export function ConversationPaneButtons({split, canZoom, zoomed, command, zoomID, closeID}: {split: boolean; canZoom: boolean; zoomed: boolean; command?: (command: string) => void; zoomID?: string; closeID?: string}) {
   const label = zoomed ? uiText("恢复分栏") : uiText("放大当前对话")
   return <>
+    <span className="conversation-pane-divider" aria-hidden="true" hidden={!split} />
     <ConversationIconButton id={zoomID} hidden={!split || !canZoom} label={label} data-zoomed={zoomed} onClick={command ? () => command("zoom") : undefined}><Maximize2 className="conversation-zoom-in" aria-hidden="true" /><Minimize2 className="conversation-zoom-out" aria-hidden="true" /></ConversationIconButton>
     <ConversationIconButton id={closeID} hidden={!split} label={uiText("关闭当前对话栏")} onClick={command ? () => command("close") : undefined}><X aria-hidden="true" /></ConversationIconButton>
   </>

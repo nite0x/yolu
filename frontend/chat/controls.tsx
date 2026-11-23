@@ -208,12 +208,12 @@ export function ChatSessionMenu({controller, portal, onSearch}: ControlsProps & 
   };
   return <Popover.Root open={!!editor} onOpenChange={open => {if (!open && !s.managing) setEditor(null);}}>
     <Popover.Anchor asChild><span className="inline-flex"><DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger asChild><TooltipIconButton ref={trigger} className={readOnly ? "chat-readonly-menu-trigger" : undefined} data-chat-menu-trigger tooltip={uiText("更多对话操作")} aria-label={uiText("更多对话操作")} disabled={s.managing}><MoreHorizontalIcon /></TooltipIconButton></DropdownMenu.Trigger>
+      <DropdownMenu.Trigger asChild><TooltipIconButton ref={trigger} data-chat-menu-trigger tooltip={uiText("更多对话操作")} aria-label={uiText("更多对话操作")} disabled={s.managing}><MoreHorizontalIcon /></TooltipIconButton></DropdownMenu.Trigger>
       <DropdownMenu.Portal container={portal.current}><DropdownMenu.Content className={`${overlayClass} chat-session-menu`} align="end" sideOffset={8} collisionPadding={12} onCloseAutoFocus={event => {if (editor || searchSelected.current) event.preventDefault(); searchSelected.current = false;}}>
-        <DropdownMenu.Item className="chat-menu-item chat-menu-secondary-action" onSelect={() => {searchSelected.current = true; onSearch();}}><SearchIcon />{uiText("查找消息")}</DropdownMenu.Item>
-        <DropdownMenu.Item className="chat-menu-item chat-menu-secondary-action" disabled={s.loading} onSelect={() => void controller.history()}><RefreshCwIcon />{uiText("刷新历史")}</DropdownMenu.Item>
+        <DropdownMenu.Item className="chat-menu-item" onSelect={() => {searchSelected.current = true; onSearch();}}><SearchIcon />{uiText("查找消息")}</DropdownMenu.Item>
+        <DropdownMenu.Item className="chat-menu-item" disabled={s.loading} onSelect={() => void controller.history()}><RefreshCwIcon />{uiText("刷新历史")}</DropdownMenu.Item>
         {!readOnly && <>
-        <DropdownMenu.Separator className="chat-menu-secondary-action my-1 border-t" />
+        <DropdownMenu.Separator className="my-1 border-t" />
         <DropdownMenu.Item className="chat-menu-item" onSelect={() => openEditor("rename")}><PencilIcon />{uiText("重命名")}</DropdownMenu.Item>
         <DropdownMenu.Item className="chat-menu-item" onSelect={() => void controller.manage(s.session?.pinned ? "unpin" : "pin")}>{s.session.pinned ? <PinOffIcon /> : <PinIcon />}{s.session.pinned ? uiText("取消固定") : uiText("固定对话")}</DropdownMenu.Item>
         {s.capabilities.fork && <DropdownMenu.Item className="chat-menu-item" disabled={s.chat.busy || s.submitting || s.session.archived} onSelect={() => openEditor("fork")}><GitForkIcon />{uiText("从历史分叉")}</DropdownMenu.Item>}

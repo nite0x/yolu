@@ -91,11 +91,9 @@ html[data-workhub-desktop] .workspace-pane { border: 0; }
 html[data-workhub-desktop][data-workspace-conversation] body .shell { border-radius: 0; box-shadow: none; }
 body[data-workspace-conversations] .workspace-page[data-focused=true] {
   border-color: transparent;
-  box-shadow: inset 0 2px color-mix(in srgb, var(--yolu-primary, #1f5f5a) 38%, transparent);
 }
 html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.chat-panel-header {
   background: color-mix(in srgb, var(--yolu-primary) 5%, var(--background));
-  box-shadow: inset 0 2px var(--yolu-primary);
 }
 
 /* A persistent hairline separates parallel conversations. The full 8px gutter

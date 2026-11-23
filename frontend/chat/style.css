@@ -50,17 +50,19 @@
 .chat-menu-item[data-highlighted] { background: var(--accent); color: var(--accent-foreground); }
 .chat-menu-item[data-disabled] { opacity: .45; pointer-events: none; }
 .chat-menu-item > svg { width: 14px; height: 14px; }
-.chat-menu-secondary-action { display: none; }
 /* Button utilities are important. Match the app's base-layer overrides so
-   narrow toolbar visibility wins without changing the shared Button. */
+   icon-only toolbar buttons stay uniform without changing the shared Button. */
 @layer base {
-  .conversation-surface-header .aui-button-icon { width: 32px !important; min-width: 32px !important; height: 32px !important; }
-  .chat-readonly-menu-trigger { display: none !important; }
+  .conversation-surface-header .aui-button-icon { width: 32px !important; min-width: 32px !important; height: 32px !important; border-radius: 8px; color: var(--yolu-secondary-ink, var(--foreground)); }
+  .conversation-surface-header .aui-button-icon:hover { color: var(--yolu-foreground, var(--foreground)); }
+  .chat-file-toggle-slot #toggleConversationFiles { width: 32px !important; min-width: 32px !important; height: 32px !important; gap: 0 !important; padding: 6px !important; border-radius: 8px !important; font-size: 0 !important; color: var(--yolu-secondary-ink, var(--foreground)); }
+  .chat-file-toggle-slot #toggleConversationFiles:hover { color: var(--yolu-foreground, var(--foreground)); }
+  .chat-file-toggle-slot #toggleConversationFiles[aria-expanded="true"] { background: var(--accent) !important; color: var(--primary) !important; }
   @container chat-panel (max-width: 620px) {
-    .chat-panel-secondary-action { display: none !important; }
     .chat-panel-actions > .chat-status[data-compact-idle="true"] { display: none !important; }
-    .chat-readonly-menu-trigger { display: flex !important; }
-    .chat-file-toggle-slot #toggleConversationFiles { width: 32px !important; min-width: 32px !important; height: 32px !important; gap: 0 !important; padding: 6px !important; font-size: 0 !important; }
+  }
+  @media (pointer: coarse) {
+    .chat-file-toggle-slot #toggleConversationFiles { width: 40px !important; min-width: 40px !important; height: 40px !important; }
   }
 }
 .chat-context-disclosure { cursor: pointer; padding: 2px 0; }
@@ -91,9 +93,6 @@
 @container (max-width: 620px) {
   .chat-panel-heading .chat-panel-directory { display: none; }
   .chat-panel-actions > .chat-status { max-width: 90px; overflow: hidden; }
-}
-@container chat-panel (max-width: 620px) {
-  .chat-menu-secondary-action { display: flex; }
 }
 
 /* Creation uses the shared terminal/UI welcome layout without a nested card. */

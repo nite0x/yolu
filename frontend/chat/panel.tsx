@@ -3,7 +3,7 @@ import {ConversationHeader, ConversationPaneButtons, ConversationWorkingContext}
 import {useChatState} from "./use-chat-state";
 import {memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from "react";
 import {ExportedMessageRepository, MessageNotSentError, type ThreadMessage} from "@assistant-ui/react";
-import {ChevronDownIcon, PlusIcon, RefreshCwIcon, SearchIcon, TerminalIcon} from "lucide-react";
+import {ChevronDownIcon, PlusIcon, TerminalIcon} from "lucide-react";
 import {ConversationPanel, ConversationFeedback, ConversationRunIndicator, useConversationRuntime} from "./conversation-panel";
 import {TooltipIconButton} from "@/components/assistant-ui/elements/tooltip-icon-button";
 import {Alert, AlertDescription} from "@/components/ui/alert";
@@ -128,12 +128,9 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   const readOnly = !!controller.options.readOnly;
   const panel = useRef<HTMLElement>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const searchTrigger = useRef<HTMLButtonElement>(null);
   const closeSearch = () => {
     setSearchOpen(false); controller.setSearch("");
-    const trigger = searchTrigger.current;
-    if (trigger && getComputedStyle(trigger).display !== "none") trigger.focus();
-    else panel.current?.querySelector<HTMLButtonElement>('[data-chat-menu-trigger]')?.focus();
+    panel.current?.querySelector<HTMLButtonElement>('[data-chat-menu-trigger]')?.focus();
   };
   const state = useSyncExternalStore(controller.subscribe, controller.getViewSnapshot);
   const attachments = useMemo(() => new ChatAttachmentAdapter((name, data) => controller.options.request("/api/chat-attachments", {method: "POST", body: JSON.stringify({name, data})})), [controller]);
@@ -201,45 +198,42 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       {state.capabilities.handoff && state.chat.can_handoff && !state.chat.busy && <Button type="button" size="sm" variant="outline" disabled={state.submitting} onClick={() => void controller.handoff()}>{uiText("在这里继续（等终端本轮结束）")}</Button>}
     </ConversationFeedback>;
   const terminal = state.terminal;
+  const contextSummary = (context.project || context.branch) && <>
+    <span className="chat-workspace-project" title={context.project}><span>{context.project || uiText("工作目录")}</span></span>
+    {context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><span>{context.branch}</span></span>}
+  </>;
+  const contextTitle = [context.project || (context.branch ? uiText("工作目录") : ""), context.branch].filter(Boolean).join(" · ");
   return <ChatMediaProvider controller={controller} entries={entries}><ChatChangePathsProvider value={changePaths}>
     <ConversationPanel runtime={runtime} panelRef={panel} reading={reading}
       header={<ConversationHeader title={state.session ? state.session.name || uiText("未命名对话") : <ConversationDraftTitle controller={controller} />} titleID="assistantChatTitle" titleHint={state.session?.name}
         actions={<>
             {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
-            {state.session && <>
-              <TooltipIconButton ref={searchTrigger} className="chat-panel-secondary-action" tooltip={uiText("查找消息")} aria-label={uiText("查找消息")} aria-expanded={searchOpen} onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}><SearchIcon /></TooltipIconButton>
-              <TooltipIconButton className="chat-panel-secondary-action" tooltip={uiText("刷新历史")} aria-label={uiText("刷新历史")} disabled={state.loading} onClick={() => void controller.history()}><RefreshCwIcon className={state.loading ? "animate-spin motion-reduce:animate-none" : ""} /></TooltipIconButton>
-            </>}
             {!readOnly && state.session && controller.options.newConversation && <TooltipIconButton tooltip={uiText("新建对话")} aria-label={uiText("新建对话")} onClick={controller.options.newConversation}><PlusIcon /></TooltipIconButton>}
             <ChatFileToggle />
-            <ConversationWorkingContext header={directories.header}>
-              {directories.context}
-              <div className="chat-context-footer">
-                <div className="chat-context-footer-row">
-                  <details className="chat-context-meta">
-                    <summary><span>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</span><span aria-hidden="true">·</span><span>{uiText("会话信息")}</span><ChevronDownIcon aria-hidden="true" /></summary>
-                    <dl className="chat-context-facts grid gap-2 text-xs">
-                      <dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd>
-                      <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openProject?.(context.projectID!,path)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
-                      {context.branch && <><dt>{uiText("分支")}</dt><dd>{context.branch}</dd></>}
-                      <dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd><code className="chat-workspace-path">{displayPath || uiText("普通对话")}</code></dd>
-                      <dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd>
-                      {additionalDirectories.length > 0 && <><dt>{uiText("额外工作目录")}</dt><dd>{additionalDirectories.map(directory => <code key={directory} className="chat-context-directory">{directory}</code>)}</dd></>}
-                    </dl>
-                  </details>
-                  {!readOnly && state.session && <Button type="button" size="xs" variant="outline" className="chat-workspace-resume" disabled={!state.session.available} onClick={() => void controller.resume()}><TerminalIcon aria-hidden="true" />{uiText("在终端继续")}</Button>}
-                </div>
-                {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
-                {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
-              </div>
-            </ConversationWorkingContext>
             <ChatSessionMenu controller={controller} portal={panel} onSearch={() => setSearchOpen(true)} />
             <ParallelPaneControls />
         </>}
-        context={(context.project || context.branch) && <>
-          <span className="chat-workspace-project" title={context.project}>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openProject?.(context.projectID!,path)}>{context.project}</button> : <span>{context.project || uiText("工作目录")}</span>}</span>
-          {context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><span>{context.branch}</span></span>}
-        </>}>
+        context={<ConversationWorkingContext trigger={contextSummary} triggerTitle={contextTitle || undefined} header={directories.header}>
+          {directories.context}
+          <div className="chat-context-footer">
+            <div className="chat-context-footer-row">
+              <details className="chat-context-meta">
+                <summary><span>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</span><span aria-hidden="true">·</span><span>{uiText("会话信息")}</span><ChevronDownIcon aria-hidden="true" /></summary>
+                <dl className="chat-context-facts grid gap-2 text-xs">
+                  <dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd>
+                  <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openProject?.(context.projectID!,path)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
+                  {context.branch && <><dt>{uiText("分支")}</dt><dd>{context.branch}</dd></>}
+                  <dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd><code className="chat-workspace-path">{displayPath || uiText("普通对话")}</code></dd>
+                  <dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd>
+                  {additionalDirectories.length > 0 && <><dt>{uiText("额外工作目录")}</dt><dd>{additionalDirectories.map(directory => <code key={directory} className="chat-context-directory">{directory}</code>)}</dd></>}
+                </dl>
+              </details>
+              {!readOnly && state.session && <Button type="button" size="xs" variant="outline" className="chat-workspace-resume" disabled={!state.session.available} onClick={() => void controller.resume()}><TerminalIcon aria-hidden="true" />{uiText("在终端继续")}</Button>}
+            </div>
+            {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
+            {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
+          </div>
+        </ConversationWorkingContext>}>
         {directories.dialog}
         {state.session && <ChatSearch controller={controller} container={reading.container} open={searchOpen} onClose={closeSearch} />}
       </ConversationHeader>}

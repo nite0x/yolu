@@ -1,0 +1,177 @@
+<section id="yolu-top-bar-preview" aria-label="Yolu 顶栏方案">
+  <div class="yolu-window">
+    <div class="yolu-titlebar">
+      <div class="yolu-brand">
+        <span class="yolu-window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <img width="16" height="16" alt="" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDI0IiBoZWlnaHQ9IjEwMjQiIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiPgogIDx0aXRsZT5Zb2x1PC90aXRsZT4KICA8cmVjdCB3aWR0aD0iMTAyNCIgaGVpZ2h0PSIxMDI0IiByeD0iMjI0IiBmaWxsPSIjMjAzRjQyIi8+CiAgPHBhdGggZmlsbD0iIzlERDhDQSIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTIzMiA0OCkgc2NhbGUoMS40NSkiIGQ9Ik02MzMgOTBDNjUwIDkwIDY2MyAxMDUgNjYzIDEyMkM2NjMgMTM0IDY1OSAxNDcgNjU4IDE1NkM2NTcgMTY1IDY2MyAxNzEgNjcxIDE2Nkw2ODYgMTU1QzcwNiAxNDEgNzI1IDE0OSA3MzIgMTY2Qzc0NiAxOTkgNzA2IDIzNSA2NzUgMjYyTDYwMyAzMjRDNTc3IDM0NyA1NjYgMzY4IDU2NiAzOTdWNDg2QzU2NiA1MjMgNTM4IDU1MiA1MDEgNTUyQzQ2MyA1NTIgNDM0IDUyMiA0MzQgNDg2VjQxNUM0MzQgMzkxIDQyMSAzNzEgMzk5IDM1NEwzMzggMzAzQzMxMCAyNzkgMjkzIDI0OSAyOTMgMjE3QzI5MyAxNzAgMzI5IDEzNCAzNjkgMTMyQzM5NiAxMzEgNDE2IDE0NSA0MzQgMTY5TDQ2NSAyMTVDNDgxIDIzOCA0OTkgMjUyIDUyMCAyNTNDNTQ4IDI1NCA1NzIgMjMwIDU4NyAyMDBDNTk5IDE3NiA2MDEgMTQ3IDYwMiAxMjVDNjAzIDEwNSA2MTQgOTAgNjMzIDkwWiIvPgo8L3N2Zz4K" />
+        <span>Yolu</span><i data-lucide="chevron-down" aria-hidden="true"></i>
+      </div>
+      <button class="yolu-switch cursor-interaction" type="button" aria-label="全局搜索，搜索或跳转" aria-keyshortcuts="Meta+K Control+K" aria-expanded="false" aria-controls="yolu-global-search">
+        <i data-lucide="search" aria-hidden="true"></i><span>搜索或跳转…</span><kbd aria-hidden="true">⌘ K</kbd>
+      </button>
+      <section id="yolu-global-search" aria-label="全局搜索" hidden>
+        <input type="search" aria-label="搜索工作区、项目和对话" placeholder="搜索工作区、项目、对话…" autocomplete="off" />
+        <div class="yolu-recent">最近打开</div>
+        <div class="yolu-group" role="group" aria-label="工作区">
+          <div class="yolu-group-heading" hidden>工作区</div>
+          <button class="yolu-result cursor-interaction" type="button" data-kind="workspace"><i data-lucide="list-todo" aria-hidden="true"></i><span class="yolu-result-title">桌面布局调整</span><span class="yolu-result-kind">工作区</span></button>
+        </div>
+        <div class="yolu-group" role="group" aria-label="项目">
+          <div class="yolu-group-heading" hidden>项目</div>
+          <button class="yolu-result cursor-interaction" type="button" data-kind="project"><i data-lucide="folders" aria-hidden="true"></i><span class="yolu-result-title">Yolu 桌面端</span><span class="yolu-result-kind">项目</span></button>
+        </div>
+        <div class="yolu-group" role="group" aria-label="对话">
+          <div class="yolu-group-heading" hidden>对话</div>
+          <button class="yolu-result cursor-interaction" type="button" data-kind="conversation"><i data-lucide="message-square" aria-hidden="true"></i><span class="yolu-result-title">排查桌面卡顿原因</span><span class="yolu-result-kind">对话</span></button>
+        </div>
+        <p class="yolu-empty" role="status" hidden>没有匹配的结果</p>
+      </section>
+    </div>
+    <div class="yolu-panes">
+      <div class="yolu-rail" aria-hidden="true"><i data-lucide="list-todo"></i><i data-lucide="folders"></i></div>
+      <div class="yolu-list" aria-hidden="true">
+        <div class="yolu-pane-line"><strong>对话</strong><span class="yolu-meta">47</span><i class="yolu-end" data-lucide="plus"></i></div>
+        <div class="yolu-list-search"><i data-lucide="search"></i><span>搜索对话…</span></div>
+        <div class="yolu-selected">排查电脑卡顿原因</div>
+      </div>
+      <div class="yolu-detail" aria-live="polite">
+        <div class="yolu-pane-line"><strong class="yolu-detail-title">排查电脑卡顿原因</strong><span class="yolu-status yolu-end">本轮已完成</span></div>
+        <div class="yolu-dir"><i data-lucide="folder" aria-hidden="true"></i><span>工作目录</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+<style>
+  #yolu-top-bar-preview {
+    --yolu-mock-canvas: light-dark(#f3f3f3, #212224);
+    --yolu-mock-surface: light-dark(#fdfdfd, #292b2e);
+    --yolu-mock-ink: light-dark(#24292f, #eef0f2);
+    --yolu-mock-muted: light-dark(#586271, #b3bbc5);
+    --yolu-mock-line: light-dark(#e2e4e8, #3a3e44);
+    --yolu-mock-hover: light-dark(#edf1f4, #343942);
+    --yolu-mock-ring: light-dark(#21695c, #9dd8ca);
+    --yolu-mock-shadow: light-dark(#1d293329, #0007);
+    color: var(--yolu-mock-ink);
+    font: 13px/1.35 system-ui, sans-serif;
+    container-type: inline-size;
+  }
+  #yolu-top-bar-preview [hidden] { display: none !important; }
+  #yolu-top-bar-preview .yolu-window { background: var(--yolu-mock-canvas); border: 1px solid var(--yolu-mock-line); border-radius: 10px; }
+  #yolu-top-bar-preview .yolu-titlebar { position: relative; display: grid; grid-template-columns: minmax(136px, 1fr) minmax(144px, 272px) minmax(136px, 1fr); gap: 8px; align-items: center; min-height: 36px; padding-inline: 8px; }
+  #yolu-top-bar-preview .yolu-brand, #yolu-top-bar-preview .yolu-window-dots, #yolu-top-bar-preview .yolu-pane-line, #yolu-top-bar-preview .yolu-dir, #yolu-top-bar-preview .yolu-list-search { display: flex; align-items: center; gap: 6px; }
+  #yolu-top-bar-preview .yolu-brand { color: var(--yolu-mock-muted); font-weight: 600; }
+  #yolu-top-bar-preview .yolu-window-dots { margin-inline-end: 24px; }
+  #yolu-top-bar-preview .yolu-window-dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--yolu-mock-line); }
+  #yolu-top-bar-preview svg { width: 14px; height: 14px; flex: none; }
+  #yolu-top-bar-preview button, #yolu-top-bar-preview input { font: inherit; color: inherit; }
+  #yolu-top-bar-preview :is(button, input):focus-visible { outline: 2px solid var(--yolu-mock-ring); outline-offset: 1px; }
+  #yolu-top-bar-preview .yolu-switch { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 3px 8px; border: 1px solid var(--yolu-mock-line); border-radius: 7px; background: var(--yolu-mock-surface); text-align: start; }
+  #yolu-top-bar-preview .yolu-switch:hover, #yolu-top-bar-preview .yolu-switch[aria-expanded="true"] { background: var(--yolu-mock-hover); }
+  #yolu-top-bar-preview kbd { margin-inline-start: auto; color: var(--yolu-mock-muted); font: inherit; font-size: 11px; white-space: nowrap; }
+  #yolu-top-bar-preview .yolu-panes { display: grid; grid-template-columns: 34px minmax(110px, 24%) minmax(0, 1fr); gap: 6px; padding: 6px 7px 7px; min-height: 147px; }
+  #yolu-top-bar-preview .yolu-rail { display: grid; gap: 16px; justify-items: center; align-content: start; padding-block: 14px; color: var(--yolu-mock-muted); }
+  #yolu-top-bar-preview .yolu-list, #yolu-top-bar-preview .yolu-detail { min-width: 0; padding: 10px; border: 1px solid var(--yolu-mock-line); border-radius: 11px; background: var(--yolu-mock-surface); }
+  #yolu-top-bar-preview .yolu-meta, #yolu-top-bar-preview .yolu-status, #yolu-top-bar-preview .yolu-dir, #yolu-top-bar-preview .yolu-list-search, #yolu-top-bar-preview .yolu-recent, #yolu-top-bar-preview .yolu-group-heading, #yolu-top-bar-preview .yolu-result-kind { color: var(--yolu-mock-muted); font-size: 11px; }
+  #yolu-top-bar-preview .yolu-end { margin-inline-start: auto; white-space: nowrap; }
+  #yolu-top-bar-preview .yolu-dir { margin-top: 11px; }
+  #yolu-top-bar-preview .yolu-list-search, #yolu-top-bar-preview .yolu-selected { margin-top: 8px; padding: 5px 6px; border-radius: 6px; background: var(--yolu-mock-hover); }
+  #yolu-top-bar-preview .yolu-selected { font-size: 12px; }
+  #yolu-top-bar-preview .yolu-detail-title, #yolu-top-bar-preview .yolu-selected { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #yolu-top-bar-preview:has(#yolu-global-search:not([hidden])) .yolu-panes { min-height: 232px; }
+  #yolu-global-search { position: absolute; z-index: 1; top: calc(100% + 3px); left: 50%; transform: translateX(-50%); width: min(420px, calc(100% - 16px)); padding: 8px; border: 1px solid var(--yolu-mock-line); border-radius: 10px; background: var(--yolu-mock-surface); box-shadow: 0 6px 18px var(--yolu-mock-shadow); }
+  #yolu-global-search input { display: block; box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid var(--yolu-mock-line); border-radius: 6px; background: var(--yolu-mock-canvas); }
+  #yolu-global-search :is(.yolu-recent, .yolu-group-heading) { margin: 7px 6px 2px; }
+  #yolu-global-search .yolu-result { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 4px 6px; border: 0; border-radius: 5px; background: transparent; text-align: start; }
+  #yolu-global-search .yolu-result:hover { background: var(--yolu-mock-hover); }
+  #yolu-global-search .yolu-result svg { color: var(--yolu-mock-muted); }
+  #yolu-global-search .yolu-result-kind { margin-inline-start: auto; }
+  #yolu-global-search .yolu-empty { margin: 8px 6px 4px; }
+  @container (max-width: 500px) {
+    #yolu-top-bar-preview .yolu-titlebar { grid-template-columns: auto minmax(0, 1fr); }
+    #yolu-top-bar-preview .yolu-window-dots { margin-inline-end: 4px; }
+    #yolu-top-bar-preview .yolu-window-dots i { width: 7px; height: 7px; }
+  }
+  @container (max-width: 430px) {
+    #yolu-top-bar-preview .yolu-panes { grid-template-columns: 26px minmax(0, 1fr); }
+    #yolu-top-bar-preview .yolu-list { display: none; }
+  }
+</style>
+<script>
+  (() => {
+    const preview = document.getElementById('yolu-top-bar-preview');
+    const trigger = preview.querySelector('.yolu-switch');
+    const picker = preview.querySelector('#yolu-global-search');
+    const query = picker.querySelector('input');
+    const groups = [...picker.querySelectorAll('.yolu-group')];
+    const results = [...picker.querySelectorAll('.yolu-result')];
+    const empty = picker.querySelector('.yolu-empty');
+    const recent = picker.querySelector('.yolu-recent');
+    const detail = preview.querySelector('.yolu-detail');
+    const list = preview.querySelector('.yolu-list');
+    const currentConversation = list.querySelector('.yolu-selected');
+
+    function filter() {
+      const term = query.value.trim().toLowerCase();
+      const searching = Boolean(term);
+      groups.forEach(group => {
+        const groupResults = [...group.querySelectorAll('.yolu-result')];
+        groupResults.forEach(result => {
+          result.hidden = !result.textContent.toLowerCase().includes(term);
+          result.querySelector('.yolu-result-kind').hidden = searching;
+        });
+        group.hidden = groupResults.every(result => result.hidden);
+        group.querySelector('.yolu-group-heading').hidden = !searching;
+      });
+      recent.hidden = searching;
+      empty.hidden = groups.some(group => !group.hidden);
+    }
+
+    function showPicker(open) {
+      trigger.setAttribute('aria-expanded', String(open));
+      picker.hidden = !open;
+      if (open) {
+        query.value = '';
+        filter();
+        query.focus();
+      } else {
+        trigger.focus();
+      }
+    }
+
+    trigger.addEventListener('click', () => showPicker(picker.hidden));
+    query.addEventListener('input', filter);
+    picker.addEventListener('keydown', event => {
+      if (event.isComposing) return;
+      const matches = results.filter(result => !result.hidden);
+      if (event.key === 'Enter' && event.target === query) matches[0]?.click();
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+      event.preventDefault();
+      const index = event.target === query && event.key === 'ArrowUp' ? matches.length : matches.indexOf(event.target);
+      const next = index + (event.key === 'ArrowDown' ? 1 : -1);
+      (matches[next] ?? query).focus();
+    });
+    preview.addEventListener('keydown', event => {
+      if (event.isComposing) return;
+      if (event.key === 'Escape' && !picker.hidden) {
+        event.preventDefault();
+        showPicker(false);
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        showPicker(picker.hidden);
+      }
+    });
+    results.forEach(result => result.addEventListener('click', () => {
+      const isConversation = result.dataset.kind === 'conversation';
+      const title = result.querySelector('.yolu-result-title').textContent;
+      const status = detail.querySelector('.yolu-status');
+      detail.querySelector('.yolu-detail-title').textContent = title;
+      detail.querySelector('.yolu-dir').hidden = !isConversation;
+      status.textContent = isConversation ? '本轮已完成' : result.querySelector('.yolu-result-kind').textContent;
+      list.hidden = !isConversation;
+      detail.style.gridColumn = isConversation ? '' : '2 / -1';
+      if (isConversation) currentConversation.textContent = title;
+      showPicker(false);
+    }));
+  })();
+</script>

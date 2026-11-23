@@ -1,0 +1,183 @@
+<div id="yolu-sidebar-preview" class="viz-dotted-background" lang="zh-CN">
+  <div class="preview-window">
+    <nav class="preview-sidebar" aria-label="Yolu 对话侧栏">
+      <h2>对话</h2>
+      <section aria-labelledby="preview-workspaces">
+        <h3 id="preview-workspaces">工作区</h3>
+        <div class="preview-resource">
+          <button class="preview-row cursor-interaction" type="button" data-view="workspace">
+            <i data-lucide="list-todo" aria-hidden="true"></i><span>桌面布局调整</span>
+          </button>
+          <button class="preview-disclosure cursor-interaction" type="button" aria-label="桌面布局调整的对话" aria-expanded="true" aria-controls="preview-workspace-chats">
+            <span class="preview-closed"><i data-lucide="chevron-right" aria-hidden="true"></i></span>
+            <span class="preview-open"><i data-lucide="chevron-down" aria-hidden="true"></i></span>
+          </button>
+        </div>
+        <ul class="preview-chats preview-nested" id="preview-workspace-chats">
+          <li><button class="preview-row cursor-interaction" type="button" data-view="layout">梳理侧栏的交互</button></li>
+        </ul>
+      </section>
+      <section aria-labelledby="preview-projects">
+        <h3 id="preview-projects">项目</h3>
+        <div class="preview-resource">
+          <button class="preview-row cursor-interaction" type="button" data-view="project" aria-current="page">
+            <i data-lucide="folder-git-2" aria-hidden="true"></i><span>Yolu</span>
+          </button>
+          <button class="preview-disclosure cursor-interaction" type="button" aria-label="Yolu 的对话" aria-expanded="true" aria-controls="preview-project-chats">
+            <span class="preview-closed"><i data-lucide="chevron-right" aria-hidden="true"></i></span>
+            <span class="preview-open"><i data-lucide="chevron-down" aria-hidden="true"></i></span>
+          </button>
+        </div>
+        <ul class="preview-chats preview-nested" id="preview-project-chats">
+          <li><button class="preview-row cursor-interaction" type="button" data-view="build">排查构建失败</button></li>
+        </ul>
+      </section>
+      <section aria-labelledby="preview-independent">
+        <h3 id="preview-independent">独立对话</h3>
+        <ul class="preview-chats">
+          <li><button class="preview-row cursor-interaction" type="button" data-view="organize"><i data-lucide="message-square" aria-hidden="true"></i><span>整理 Yolu 里的项目</span></button></li>
+          <li><button class="preview-row cursor-interaction" type="button" data-view="compare"><i data-lucide="message-square" aria-hidden="true"></i><span>比较两种备份方式</span></button></li>
+        </ul>
+      </section>
+    </nav>
+    <section class="preview-main" aria-label="主区域" aria-live="polite">
+      <div class="preview-context">项目详情</div>
+      <h2 class="preview-title">Yolu</h2>
+      <dl class="preview-directory">
+        <div><dt>工作目录</dt><dd>主目录</dd></div>
+        <div><dt>分支</dt><dd><code>main</code></dd></div>
+      </dl>
+    </section>
+  </div>
+</div>
+<style>
+  #yolu-sidebar-preview {
+    --preview-rail: light-dark(#f3f5f4, #202523);
+    --preview-main: light-dark(#fff, #262b29);
+    --preview-ink: light-dark(#182a2b, #e7efeb);
+    --preview-muted: light-dark(#536461, #abbcb5);
+    --preview-border: light-dark(#dce4e0, #3a4742);
+    --preview-hover: light-dark(#e6eeea, #303c36);
+    --preview-selected: light-dark(#d9ebe3, #31493e);
+    --preview-accent: light-dark(#245b50, #a1deca);
+    --preview-icon: light-dark(#e1ebe6, #314039);
+    padding: 16px;
+    font: 14px/1.5 system-ui, sans-serif;
+    color: var(--preview-ink);
+  }
+  #yolu-sidebar-preview .preview-window {
+    display: grid;
+    grid-template-columns: minmax(220px, 256px) minmax(0, 1fr);
+    max-width: 590px;
+    margin-inline: auto;
+    border: 1px solid var(--preview-border);
+    border-radius: 12px;
+    background: var(--preview-main);
+    overflow: hidden;
+  }
+  #yolu-sidebar-preview .preview-sidebar {
+    padding: 12px 8px;
+    min-width: 0;
+    border-inline-end: 1px solid var(--preview-border);
+    background: var(--preview-rail);
+  }
+  #yolu-sidebar-preview h2 { margin: 0; font: 600 15px/1.45 system-ui, sans-serif; }
+  #yolu-sidebar-preview .preview-sidebar > h2 { padding: 2px 8px 9px; border-bottom: 1px solid var(--preview-border); }
+  #yolu-sidebar-preview .preview-sidebar section + section { margin-top: 9px; }
+  #yolu-sidebar-preview h3 {
+    margin: 9px 0 2px;
+    padding-inline: 8px;
+    font: 600 12px/1.5 system-ui, sans-serif;
+    color: var(--preview-muted);
+  }
+  #yolu-sidebar-preview .preview-resource { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px; }
+  #yolu-sidebar-preview button {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-height: 34px;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+  }
+  #yolu-sidebar-preview .preview-row { width: 100%; min-width: 0; }
+  #yolu-sidebar-preview .preview-row span { min-width: 0; }
+  #yolu-sidebar-preview button:hover { background: var(--preview-hover); }
+  #yolu-sidebar-preview button[aria-current="page"] { background: var(--preview-selected); color: var(--preview-accent); }
+  #yolu-sidebar-preview button:focus-visible { outline: 2px solid var(--preview-accent); outline-offset: -2px; }
+  #yolu-sidebar-preview .preview-resource .preview-row { font-weight: 600; }
+  #yolu-sidebar-preview svg { flex: none; width: 15px; height: 15px; }
+  #yolu-sidebar-preview .preview-resource .preview-row svg {
+    box-sizing: content-box;
+    padding: 4px;
+    border-radius: 6px;
+    background: var(--preview-icon);
+    color: var(--preview-accent);
+  }
+  #yolu-sidebar-preview .preview-disclosure { justify-content: center; width: 34px; color: var(--preview-muted); }
+  #yolu-sidebar-preview .preview-disclosure span { display: flex; }
+  #yolu-sidebar-preview [aria-expanded="true"] .preview-closed,
+  #yolu-sidebar-preview [aria-expanded="false"] .preview-open,
+  #yolu-sidebar-preview [hidden] { display: none; }
+  #yolu-sidebar-preview .preview-chats { list-style: none; margin: 0; padding: 0; }
+  #yolu-sidebar-preview .preview-nested { margin-inline-start: 19px; padding-inline-start: 3px; border-inline-start: 1px solid var(--preview-border); }
+  #yolu-sidebar-preview .preview-main { min-width: 0; padding: 24px; overflow-wrap: anywhere; }
+  #yolu-sidebar-preview .preview-context,
+  #yolu-sidebar-preview dt { color: var(--preview-muted); font-size: 12px; }
+  #yolu-sidebar-preview .preview-title { margin-top: 4px; font-size: 19px; }
+  #yolu-sidebar-preview .preview-directory { margin: 16px 0 0; }
+  #yolu-sidebar-preview .preview-directory div { display: grid; grid-template-columns: minmax(4em, auto) minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--preview-border); }
+  #yolu-sidebar-preview dd { margin: 0; }
+  @media (max-width: 500px) {
+    #yolu-sidebar-preview .preview-window { grid-template-columns: minmax(0, 1fr); }
+    #yolu-sidebar-preview .preview-sidebar { border-inline-end: 0; border-bottom: 1px solid var(--preview-border); }
+    #yolu-sidebar-preview .preview-main { padding: 14px 16px; }
+  }
+  @media (pointer: coarse) {
+    #yolu-sidebar-preview button { min-height: 44px; }
+    #yolu-sidebar-preview .preview-disclosure { width: 44px; }
+  }
+</style>
+<script>
+  (() => {
+    const root = document.getElementById("yolu-sidebar-preview");
+    const main = root.querySelector(".preview-main");
+    const context = main.querySelector(".preview-context");
+    const title = main.querySelector(".preview-title");
+    const directory = main.querySelector(".preview-directory");
+    const entry = directory.querySelector("dd");
+    const branch = directory.querySelector("code");
+    const views = {
+      workspace: { context: "工作区详情", directory: "Yolu worktree", branch: "feature/sidebar" },
+      project: { context: "项目详情", directory: "主目录", branch: "main" },
+      layout: { context: "工作区对话 · 桌面布局调整" },
+      build: { context: "项目对话 · Yolu" },
+      organize: { context: "独立对话" },
+      compare: { context: "独立对话" }
+    };
+    root.addEventListener("click", event => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const listID = button.getAttribute("aria-controls");
+      if (listID) {
+        const expanded = button.getAttribute("aria-expanded") === "true";
+        button.setAttribute("aria-expanded", String(!expanded));
+        document.getElementById(listID).hidden = expanded;
+        return;
+      }
+      const view = views[button.dataset.view];
+      if (!view) return;
+      root.querySelector("[aria-current='page']").removeAttribute("aria-current");
+      button.setAttribute("aria-current", "page");
+      context.textContent = view.context;
+      title.textContent = button.textContent.trim();
+      directory.hidden = !view.directory;
+      entry.textContent = view.directory || "";
+      branch.textContent = view.branch || "";
+    });
+  })();
+</script>

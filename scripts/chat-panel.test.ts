@@ -540,17 +540,18 @@ test("official Markdown and tool components render existing history and expose c
   } finally {h.dispose();}
 });
 
-test("the project summary navigates directly and working details remain separate", async () => {
+test("the project summary opens working details and its project link navigates directly", async () => {
   const opened: [string, string | undefined][] = [];
   const h = mount(true, [], {openProject: (id, path) => {opened.push([id, path]);}});
   try {
     await until(() => h.input());
     const context = h.w.document.querySelector<HTMLDetailsElement>(".chat-workspace-context")!;
     const heading = h.w.document.querySelector(".chat-panel-heading")!;
-    assert(context.closest(".chat-panel-actions"));
-    assert(!heading.contains(context));
-    heading.querySelector<HTMLButtonElement>('[aria-label="打开项目详情：项目"]')!.click();
-    assert.equal(context.open, false);
+    assert(heading.contains(context));
+    assert(!context.closest(".chat-panel-actions"));
+    assert.match(context.querySelector("summary")?.textContent || "", /项目/);
+    context.open = true;
+    context.querySelector<HTMLButtonElement>('[aria-label="打开项目详情：项目"]')!.click();
     assert.deepEqual(opened, [["p","/workspace/project"]]);
     assert.deepEqual(h.errors, []);
   } finally { h.dispose(); }
@@ -614,7 +615,10 @@ test("chat chrome identifies the project with expandable working directory detai
     const context = h.w.document.querySelector<HTMLElement>(".chat-workspace-context")!;
     assert.match(context.textContent || "", /执行环境本机/);
     assert.match(context.textContent || "", /\/workspace\/project/);
-    assert(h.w.document.querySelector('[aria-label="刷新历史"]'));
+    assert(h.w.document.querySelector('[aria-label="更多对话操作"]'));
+    assert.equal(h.w.document.querySelector('.chat-panel-actions [aria-label="查找消息"]'), null);
+    assert.equal(h.w.document.querySelector('.chat-panel-actions [aria-label="刷新历史"]'), null);
+    assert.equal(h.w.document.querySelector('.conversation-active-indicator'), null);
     assert.deepEqual(h.errors, []);
   } finally { h.dispose(); }
 });
@@ -770,7 +774,9 @@ for (const change of ["new-message", "streaming", "already-unread"]) test(`reope
     viewport().scrollTop = 360; viewport().dispatchEvent(new h.w.Event("scroll"));
     if (change === "already-unread") {
       entries.push({id: "unread", turn_id: "next", kind: "assistant", text: "尚未阅读的新消息"});
-      h.w.document.querySelector<HTMLButtonElement>('[aria-label="刷新历史"]')!.click();
+      openSessionMenu(h);
+      await until(() => h.w.document.querySelector('[role="menuitem"]'));
+      [...h.w.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === "刷新历史")!.click();
       await until(() => h.w.document.body.textContent?.includes("有新消息 · 回到最新"));
       assert.equal(viewport().scrollTop, 360);
     }
@@ -1169,7 +1175,9 @@ test("conversation search finds command output even while execution details are 
  const h=mount(true,[{id:'command',turn_id:'turn',kind:'command',command:'npm test',status:'completed',output:'unique-result-123'}]);
  try{
   await until(()=>h.w.document.querySelector('.aui-tool-group-trigger'));
-  h.w.document.querySelector<HTMLButtonElement>('[aria-label="查找消息"]')!.click();
+  openSessionMenu(h);
+  await until(()=>h.w.document.querySelector('[role="menuitem"]'));
+  [...h.w.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item=>item.textContent==='查找消息')!.click();
   await until(()=>h.w.document.querySelector('[aria-label="查找对话内容"]'));
   const search=h.w.document.querySelector<HTMLInputElement>('[aria-label="查找对话内容"]')!;
   Object.getOwnPropertyDescriptor(h.w.HTMLInputElement.prototype,'value')!.set!.call(search,'unique-result-123');
@@ -1179,7 +1187,7 @@ test("conversation search finds command output even while execution details are 
   search.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
   await until(()=>!h.w.document.querySelector('[aria-label="查找对话内容"]'));
   assert.equal(h.w.document.querySelector('[data-search-hit]'),null);
-  assert.equal(h.w.document.activeElement?.getAttribute('aria-label'),'查找消息');assert.deepEqual(h.errors,[]);
+  assert.equal(h.w.document.activeElement?.getAttribute('aria-label'),'更多对话操作');assert.deepEqual(h.errors,[]);
  }finally{h.dispose();}
 });
 
@@ -1213,13 +1221,12 @@ function openSessionMenu(h: ReturnType<typeof mount>) {
   button.focus(); button.dispatchEvent(new h.w.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}));
 }
 
-for (const readOnly of [false,true]) test(`compact conversation menu keeps search, refresh and focus usable (readOnly=${readOnly})`, async () => {
+for (const readOnly of [false,true]) test(`conversation menu keeps search, refresh and focus usable (readOnly=${readOnly})`, async () => {
   const h = mount(true,[],{readOnly});
   try {
-    await until(()=>h.w.document.querySelector('#assistantChatTitle') && !h.w.document.querySelector('[aria-label="刷新历史"]')?.hasAttribute('disabled'));
+    await until(()=>h.w.document.querySelector('#assistantChatTitle') && h.w.document.querySelector('[aria-label="更多对话操作"]') && h.calls.some(call=>call.path.includes('/history')));
+    await tick();
     if (!readOnly) {h.type('保留当前草稿'); await tick();}
-    // The browser's container query hides this trigger in a narrow pane.
-    h.w.document.querySelector<HTMLElement>('[aria-label="查找消息"]')!.style.display='none';
     openSessionMenu(h);
     await until(()=>h.w.document.querySelector('[role="menuitem"]'));
     const items = () => [...h.w.document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
@@ -1614,7 +1621,7 @@ test("typing and identical project refreshes leave the chat panel mounted withou
  const overview={projects:[project]};
  const h=mount(true,[],{overview});
  try {
-  await until(()=>h.input() && !h.w.document.querySelector('[aria-label="刷新历史"]')?.hasAttribute('disabled'));
+  await until(()=>h.input() && h.calls.some(call=>call.path.includes('/history')));
   await tick();
   const before=(h.w as any).__panelRenders;
   for(const text of ['独','独立','独立输入']) {h.type(text);await tick();}
