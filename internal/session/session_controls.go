@@ -17,15 +17,16 @@ import (
 )
 
 type ChatContext struct {
-	Model                 string   `json:"model"`
-	Effort                string   `json:"reasoningEffort"`
-	Mode                  string   `json:"mode,omitempty"`
-	ServiceTier           string   `json:"serviceTier,omitempty"`
-	Cwd                   string   `json:"cwd"`
-	ApprovalPolicy        any      `json:"approvalPolicy,omitempty"`
-	ApprovalsReviewer     string   `json:"approvalsReviewer,omitempty"`
-	Sandbox               any      `json:"sandbox,omitempty"`
-	AdditionalDirectories []string `json:"additional_directories"`
+	ActivePermissionProfile *codexPermissionProfile `json:"activePermissionProfile,omitempty"`
+	Model                   string                  `json:"model"`
+	Effort                  string                  `json:"reasoningEffort"`
+	Mode                    string                  `json:"mode,omitempty"`
+	ServiceTier             string                  `json:"serviceTier,omitempty"`
+	Cwd                     string                  `json:"cwd"`
+	ApprovalPolicy          any                     `json:"approvalPolicy,omitempty"`
+	ApprovalsReviewer       string                  `json:"approvalsReviewer,omitempty"`
+	Sandbox                 any                     `json:"sandbox,omitempty"`
+	AdditionalDirectories   []string                `json:"additional_directories"`
 }
 type chatModel = codex.ChatModel
 

@@ -10,79 +10,71 @@ import (
 	"worktree-hub/internal/platform"
 )
 
-func (s *Store) migrateSessions() error {
-	tx, err := s.DB.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	_, err = tx.Exec(`
+func migrateSessions(tx *sql.Tx) error {
+	_, err := tx.Exec(`
 CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS sessions (
  id TEXT PRIMARY KEY, name TEXT NOT NULL, cwd TEXT NOT NULL,
  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, source TEXT NOT NULL,
- last_synced_at INTEGER NOT NULL DEFAULT 0, additional_directories TEXT NOT NULL DEFAULT '[]');
+ last_synced_at INTEGER NOT NULL DEFAULT 0, additional_directories TEXT NOT NULL DEFAULT '[]',
+ title_source TEXT NOT NULL DEFAULT '', title_changed_at INTEGER NOT NULL DEFAULT 0,
+ provider TEXT NOT NULL DEFAULT 'codex',
+ bindings_managed INTEGER NOT NULL DEFAULT 0 CHECK(bindings_managed IN (0,1)));
 CREATE INDEX IF NOT EXISTS sessions_cwd ON sessions(cwd);
 CREATE TABLE IF NOT EXISTS session_organization (session_id TEXT PRIMARY KEY REFERENCES sessions(id), pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS conversation_drafts (key TEXT PRIMARY KEY,payload TEXT NOT NULL,updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS conversation_input_requests (session_id TEXT NOT NULL,request_id TEXT NOT NULL,fingerprint TEXT NOT NULL,status TEXT NOT NULL,PRIMARY KEY(session_id,request_id));
-CREATE TABLE IF NOT EXISTS workspace_session_pins (
- workspace_id TEXT NOT NULL REFERENCES workspaces(id),
- session_id TEXT NOT NULL REFERENCES sessions(id), PRIMARY KEY(workspace_id,session_id));
 CREATE TABLE IF NOT EXISTS conversation_create_requests (
  request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, session_id TEXT NOT NULL DEFAULT '');`)
 	if err != nil {
 		return err
 	}
-	var migrated int
-	if err := tx.QueryRow(`SELECT count(*) FROM schema_migrations WHERE version='sessions_index_v1'`).Scan(&migrated); err != nil {
+	columns, err := tableColumns(tx, "sessions")
+	if err != nil {
 		return err
 	}
-	if migrated == 0 {
-		if err := backfillSessions(tx); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`INSERT INTO schema_migrations(version) VALUES('sessions_index_v1')`); err != nil {
-			return err
-		}
-	}
-	var titleColumns int
-	if err := tx.QueryRow(`SELECT count(*) FROM pragma_table_info('sessions') WHERE name='title_source'`).Scan(&titleColumns); err != nil {
-		return err
-	}
-	if titleColumns == 0 {
-		if _, err := tx.Exec(`ALTER TABLE sessions ADD COLUMN title_source TEXT NOT NULL DEFAULT '';
-ALTER TABLE sessions ADD COLUMN title_changed_at INTEGER NOT NULL DEFAULT 0;
-UPDATE sessions SET title_source='legacy' WHERE name<>'';`); err != nil {
-			return err
+	for _, column := range []struct{ name, definition string }{
+		{"last_synced_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"additional_directories", "TEXT NOT NULL DEFAULT '[]'"},
+		{"title_source", "TEXT NOT NULL DEFAULT ''"},
+		{"title_changed_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"provider", "TEXT NOT NULL DEFAULT 'codex'"},
+		{"bindings_managed", "INTEGER NOT NULL DEFAULT 0 CHECK(bindings_managed IN (0,1))"},
+	} {
+		if !columns[column.name] {
+			if _, err := tx.Exec("ALTER TABLE sessions ADD COLUMN " + column.name + " " + column.definition); err != nil {
+				return err
+			}
 		}
 	}
-	var providerColumns int
-	if err := tx.QueryRow(`SELECT count(*) FROM pragma_table_info('sessions') WHERE name='provider'`).Scan(&providerColumns); err != nil {
-		return err
+	if !columns["title_source"] {
+		_, err = tx.Exec(`UPDATE sessions SET title_source='legacy' WHERE name<>''`)
 	}
-	if providerColumns == 0 {
-		if _, err := tx.Exec(`ALTER TABLE sessions ADD COLUMN provider TEXT NOT NULL DEFAULT 'codex';`); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-// Keep legacy tables intact for old exports and launch adapters. Only explicit
-// manual links become pins; discovered directory matches are never ownership.
-func backfillSessions(tx *sql.Tx) error {
-	_, err := tx.Exec(`
-INSERT OR IGNORE INTO sessions(id,name,cwd,created_at,updated_at,source)
- SELECT session_id,name,cwd,created_at,updated_at,source FROM workspace_sessions ORDER BY updated_at DESC;
-INSERT OR IGNORE INTO workspace_session_pins(workspace_id,session_id)
- SELECT workspace_id,session_id FROM workspace_sessions WHERE source='manual';
-INSERT OR IGNORE INTO conversation_create_requests(request_id,fingerprint,session_id)
- SELECT 'workspace:' || workspace_id || ':' || request_id,'',session_id FROM session_create_requests;`)
 	return err
 }
 
 func (s *Store) SaveSession(v model.Session, observedAt ...int64) error {
+	return saveSession(s.DB, v, observedAt...)
+}
+
+func (s *Store) SaveSessionWithBindings(v model.Session, bindings []model.SessionProjectBinding, observedAt ...int64) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := saveSession(tx, v, observedAt...); err != nil {
+		return err
+	}
+	if err := insertSessionBindings(tx, v.ID, bindings); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func saveSession(db interface {
+	Exec(string, ...any) (sql.Result, error)
+}, v model.Session, observedAt ...int64) error {
 	started := time.Now().UnixNano()
 	if len(observedAt) > 0 {
 		started = observedAt[0]
@@ -92,7 +84,7 @@ func (s *Store) SaveSession(v model.Session, observedAt ...int64) error {
 	if v.Name != "" && v.TitleSource == "" {
 		v.TitleSource = v.Provider
 	}
-	_, err := s.DB.Exec(`INSERT INTO sessions(id,name,cwd,created_at,updated_at,source,last_synced_at,title_source,title_changed_at,provider)
+	_, err := db.Exec(`INSERT INTO sessions(id,name,cwd,created_at,updated_at,source,last_synced_at,title_source,title_changed_at,provider)
  VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
  name=CASE WHEN excluded.name<>'' AND sessions.title_changed_at<excluded.title_changed_at THEN excluded.name ELSE sessions.name END,
  title_source=CASE WHEN excluded.name<>'' AND sessions.name<>excluded.name AND sessions.title_changed_at<excluded.title_changed_at THEN excluded.title_source ELSE sessions.title_source END,
@@ -168,41 +160,6 @@ func (s *Store) SaveSessionDirectories(id string, directories []string) error {
 		return err
 	}
 	return MustAffected(s.DB.Exec(`UPDATE sessions SET additional_directories=? WHERE id=?`, string(raw), id))
-}
-
-func (s *Store) PinnedSessionIDs(workspace string) (map[string]bool, error) {
-	rows, err := s.DB.Query(`SELECT session_id FROM workspace_session_pins WHERE workspace_id=?`, workspace)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]bool{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		out[id] = true
-	}
-	return out, rows.Err()
-}
-
-// SessionWorkspaceLinks supplies explicit workspace membership for an aggregate list.
-func (s *Store) SessionWorkspaceLinks() (map[string][]string, error) {
-	rows, err := s.DB.Query(`SELECT session_id,workspace_id FROM workspace_session_pins ORDER BY session_id,workspace_id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	links := map[string][]string{}
-	for rows.Next() {
-		var session, workspace string
-		if err := rows.Scan(&session, &workspace); err != nil {
-			return nil, err
-		}
-		links[session] = append(links[session], workspace)
-	}
-	return links, rows.Err()
 }
 
 func (s *Store) OrganizeSession(id string, pinned, archived bool) error {

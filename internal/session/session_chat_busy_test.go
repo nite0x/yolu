@@ -15,7 +15,7 @@ import (
 
 func TestChatStatePollingOnlyBlocksConfirmedTerminalOwners(t *testing.T) {
 	a, q, _, endpoint := chatFixture(t)
-	fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Members[0].Path}})
+	fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Path}})
 	for _, probeErr := range []error{
 		errors.New("无法读取 Codex 终端参数：invalid argument"),
 		nil,

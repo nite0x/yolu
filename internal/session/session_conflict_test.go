@@ -20,9 +20,9 @@ func TestInstalledCodexToolTurnDoesNotConflict(t *testing.T) {
 	}
 	a := testApp(t)
 	p := register(t, a, "Probe", repo(t, "probe", "master"))
-	_, q, _ := create(t, a, p, nil, "probe")
+	q := newTestDirectory(t, a, p, "probe")
 	a.terminalConflict = terminalSessionConflict
-	code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "这是工具执行回归测试。请调用 shell 工具执行 pwd; sleep 3; printf WORKTREE_HUB_TOOL_OK。不修改文件，然后回复 WORKTREE_HUB_TOOL_OK。", "request_id": "tool-probe"})
+	code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "这是工具执行回归测试。请调用 shell 工具执行 pwd; sleep 3; printf WORKTREE_HUB_TOOL_OK。不修改文件，然后回复 WORKTREE_HUB_TOOL_OK。", "request_id": "tool-probe", "project_id": p, "cwd": q.Path})
 	if code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}

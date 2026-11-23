@@ -22,8 +22,14 @@ import (
 	"worktree-hub/internal/platform"
 )
 
-// Run starts the desktop host, HTTP service, or workspace helper.
+// Run starts the desktop host, HTTP service, or a command-line mode.
 func Run() {
+	if len(os.Args) > 1 && os.Args[1] == "--mcp" {
+		if err := runMCP(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--codex-live" {
 		platform.ConfigureCommandEnvironment()
 		if home, err := os.UserHomeDir(); err == nil {
@@ -35,11 +41,11 @@ func Run() {
 		}
 		return
 	}
-	if len(os.Args) > 1 && os.Args[1] == "--workspace-agent" {
+	if len(os.Args) > 1 && os.Args[1] == "--execution-agent" {
 		if home, err := os.UserHomeDir(); err == nil {
 			_ = os.Setenv("PATH", filepath.Join(home, ".local", "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
 		}
-		if err := runWorkspaceAgent(os.Stdin, os.Stdout); err != nil {
+		if err := runExecutionAgent(os.Stdin, os.Stdout); err != nil {
 			log.Print(err)
 			os.Exit(1)
 		}
@@ -64,10 +70,10 @@ func Run() {
 	}
 	addr := flag.String("listen", defaultAddress, "local HTTP address")
 	data := flag.String("data", platform.DefaultDataDir(), "SQLite and launcher directory")
-	root := flag.String("root", defaultRoot, "parent directory for workspaces")
+	root := flag.String("root", defaultRoot, "parent directory for new Worktrees")
 	headless := flag.Bool("headless", runtime.GOOS != "windows", "run without the desktop window")
-	interactive := flag.Bool("interactive-sessions", false, "enable workspace chat (enabled by default; retained for compatibility)")
-	readOnly := flag.Bool("read-only-sessions", false, "disable workspace chat and show session history only")
+	interactive := flag.Bool("interactive-sessions", false, "enable agent chat (enabled by default; retained for compatibility)")
+	readOnly := flag.Bool("read-only-sessions", false, "disable agent chat and show session history only")
 	stopService := flag.Bool("stop", false, "stop the background service when no Git operation is running")
 	prepareUpgrade := flag.Bool("prepare-upgrade", false, "safely stop an existing backend before replacing installed files; succeed when already stopped")
 	desktopStart := flag.Bool("desktop-start", false, "start or reuse the desktop backend and print its JSON handshake")

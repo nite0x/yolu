@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/model"
 )
 
 type titleLiveClient struct {
@@ -130,13 +131,13 @@ func awaitTitleFinished(t *testing.T, a *App) {
 }
 
 func TestFirstInputGeneratesTitleWhileReplyIsRunning(t *testing.T) {
-	a, q, base, endpoint := chatFixture(t)
+	a, _, base, endpoint := chatFixture(t)
 	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('session_title','{"model":"title-model"}')`); err != nil {
 		t.Fatal(err)
 	}
 	c := &titleLiveClient{fakeLiveClient: base, summary: `{"title":"修复对话标题自动更新"}`}
 	useTitleClient(a, c)
-	create := "/api/workspaces/" + q.ID + "/sessions/new"
+	create := "/api/sessions/new"
 	input := map[string]string{"text": "检查一下标题", "request_id": "summary-create"}
 	if code, raw := call(t, a, "POST", create, input); code != 202 {
 		t.Fatalf("%d %s", code, raw)
@@ -189,10 +190,10 @@ func TestFirstInputGeneratesTitleWhileReplyIsRunning(t *testing.T) {
 }
 
 func TestManualRenameDuringTitleGenerationWins(t *testing.T) {
-	a, q, base, _ := chatFixture(t)
+	a, _, base, _ := chatFixture(t)
 	c := &titleLiveClient{fakeLiveClient: base, summary: `{"title":"自动主题"}`, summaryStarted: make(chan struct{}), summaryRelease: make(chan struct{})}
 	useTitleClient(a, c)
-	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "检查标题", "request_id": "manual-summary"}); code != 202 {
+	if code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "检查标题", "request_id": "manual-summary"}); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
@@ -227,10 +228,10 @@ func TestManualRenameDuringTitleGenerationWins(t *testing.T) {
 func TestTitleGenerationContinuesAcrossFirstTurnCompletion(t *testing.T) {
 	for _, status := range []string{"completed", "interrupted", "failed"} {
 		t.Run(status, func(t *testing.T) {
-			a, q, base, endpoint := chatFixture(t)
+			a, _, base, endpoint := chatFixture(t)
 			c := &titleLiveClient{fakeLiveClient: base, summary: `{"title":"首次输入的主题"}`, summaryStarted: make(chan struct{}), summaryRelease: make(chan struct{})}
 			useTitleClient(a, c)
-			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "首次输入", "request_id": "first"}); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "首次输入", "request_id": "first"}); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			select {
@@ -266,10 +267,10 @@ func TestTitleGenerationContinuesAcrossFirstTurnCompletion(t *testing.T) {
 }
 
 func TestCloseChatsCancelsIndependentTitleGeneration(t *testing.T) {
-	a, q, base, _ := chatFixture(t)
+	a, _, base, _ := chatFixture(t)
 	c := &titleLiveClient{fakeLiveClient: base, summary: `{"title":"不应写入"}`, summaryStarted: make(chan struct{}), summaryRelease: make(chan struct{})}
 	useTitleClient(a, c)
-	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "初始标题", "request_id": "closing"}); code != 202 {
+	if code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "初始标题", "request_id": "closing"}); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	select {
@@ -301,10 +302,10 @@ func TestCloseChatsCancelsIndependentTitleGeneration(t *testing.T) {
 func TestTitleGenerationFailureKeepsInitialNameAndCompletedReply(t *testing.T) {
 	for _, summary := range []string{"error", `not json`, `{"title":""}`, `{"title":"https://example.com"}`, `{"title":"第一行\n第二行"}`} {
 		t.Run(summary, func(t *testing.T) {
-			a, q, base, _ := chatFixture(t)
+			a, _, base, _ := chatFixture(t)
 			c := &titleLiveClient{fakeLiveClient: base, summary: summary}
 			useTitleClient(a, c)
-			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "初始标题", "request_id": "failed-summary"}); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "初始标题", "request_id": "failed-summary"}); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
@@ -325,15 +326,15 @@ func TestTitleGenerationFailureKeepsInitialNameAndCompletedReply(t *testing.T) {
 }
 
 func TestCodexTitleUpdatesInitialNameAndPreservesItWithoutName(t *testing.T) {
-	a, q, c, _ := chatFixture(t)
-	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
+	a, _, c, _ := chatFixture(t)
+	endpoint := "/api/sessions/new"
 	text := "这是一条很长的第一条消息，后面还有详细的背景说明和更多处理步骤。"
 	code, raw := call(t, a, "POST", endpoint, map[string]string{"text": text, "request_id": "title-create"})
 	if code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	var result struct {
-		Session WorkspaceSession `json:"session"`
+		Session model.Session `json:"session"`
 	}
 	_ = json.Unmarshal(raw, &result)
 	if result.Session.Name != initialSessionTitle(text) || result.Session.Name == text {
@@ -346,7 +347,7 @@ func TestCodexTitleUpdatesInitialNameAndPreservesItWithoutName(t *testing.T) {
 	if err != nil || stored.Name != "修复消息回显" {
 		t.Fatalf("%+v %v", stored, err)
 	}
-	if err := a.SaveSession("", codex.Session{ID: stored.ID, Cwd: stored.Cwd, Preview: "第一条消息仍在 preview 中"}, "codex"); err != nil {
+	if err := a.SaveSession(codex.Session{ID: stored.ID, Cwd: stored.Cwd, Preview: "第一条消息仍在 preview 中"}, "codex"); err != nil {
 		t.Fatal(err)
 	}
 	stored, _ = a.Execution.Store.Session("session")
@@ -396,13 +397,13 @@ func TestInitialSessionTitleExtractsOnlyShortProse(t *testing.T) {
 }
 
 func TestNewSessionTitleSyncedOnceAndNeverRecomputed(t *testing.T) {
-	a, q, base, endpoint := chatFixture(t)
+	a, _, base, endpoint := chatFixture(t)
 	c := &titleLiveClient{fakeLiveClient: base}
 	useTitleClient(a, c)
 	// A failed generation is attempted once; later messages never retry it.
 	c.summary = "error"
 	input := map[string]string{"text": "## **修复标题同步**\n后面是很长的具体说明", "request_id": "short-title"}
-	create := "/api/workspaces/" + q.ID + "/sessions/new"
+	create := "/api/sessions/new"
 	if code, raw := call(t, a, "POST", create, input); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
@@ -432,7 +433,7 @@ func TestNewSessionTitleSyncedOnceAndNeverRecomputed(t *testing.T) {
 func TestNewSessionKeepsCodexNameAndTitleFailureDoesNotBlockChat(t *testing.T) {
 	for _, mode := range []string{"existing", "failed", "image"} {
 		t.Run(mode, func(t *testing.T) {
-			a, q, base, _ := chatFixture(t)
+			a, _, base, _ := chatFixture(t)
 			c := &titleLiveClient{fakeLiveClient: base, failWrite: mode == "failed"}
 			if mode == "existing" {
 				c.name = "Codex 手动名称"
@@ -443,7 +444,7 @@ func TestNewSessionKeepsCodexNameAndTitleFailureDoesNotBlockChat(t *testing.T) {
 				input["text"] = ""
 				input["images"] = []string{testChatPNG}
 			}
-			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", input); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/sessions/new", input); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			state := awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
@@ -480,7 +481,7 @@ func TestManualRenameSurvivesDelayedEventsAndEmptyMetadata(t *testing.T) {
 	c.event("thread/name/updated", map[string]any{"threadName": "延迟的旧标题"})
 	c.event("turn/completed", map[string]any{"turn": map[string]any{"id": "turn", "status": "completed"}})
 	awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
-	if err := a.SaveSession("", codex.Session{ID: "session", Cwd: c.cwd}, "codex"); err != nil {
+	if err := a.SaveSession(codex.Session{ID: "session", Cwd: c.cwd}, "codex"); err != nil {
 		t.Fatal(err)
 	}
 	stored, _ := a.Execution.Store.Session("session")
@@ -492,7 +493,7 @@ func TestManualRenameSurvivesDelayedEventsAndEmptyMetadata(t *testing.T) {
 func TestTitleGenerationSkipsProtectedNamesAndInputsWithoutProse(t *testing.T) {
 	for _, mode := range []string{"codex", "manual", "image", "context"} {
 		t.Run(mode, func(t *testing.T) {
-			a, q, base, _ := chatFixture(t)
+			a, _, base, _ := chatFixture(t)
 			c := &titleLiveClient{fakeLiveClient: base, summary: `{"title":"不能覆盖"}`}
 			if mode == "codex" {
 				c.name = "已有名称"
@@ -508,7 +509,7 @@ func TestTitleGenerationSkipsProtectedNamesAndInputsWithoutProse(t *testing.T) {
 			if mode == "context" {
 				input["text"] = "<environment_context>\n上下文\n</environment_context>"
 			}
-			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", input); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/sessions/new", input); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })

@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import {ChatController, conversationKey, type ChatOptions} from "../frontend/chat/controller";
 import {convertEntries, convertEntry, idleChat, readSnapshots, mergeEntries, type ChatState, type HistoryPush} from "../frontend/chat/model";
 
-const workspace = {id: "workspace", name: "跨项目工作区", state: "ready", primary_project_id: "p", members: [{project_id:"p", project_name:"项目", path:"/home/test/workspaces/workspace/p"}]};
-const session = {id:"thread", name:"会话", cwd:workspace.members[0].path};
+const target = {project_id:"p",cwd:"/home/test/worktrees/p"};
+const session = {id:"thread", name:"会话", cwd:target.cwd};
 function setup(request: ChatOptions["request"], isNew = false) {
-  return new ChatController({workspace, session: isNew ? null : session, environment:"wsl-ubuntu", request, stream: async () => {throw new Error("offline");}, created() {}, close() {}});
+  return new ChatController({target, session: isNew ? null : session, environment:"wsl-ubuntu", request, stream: async () => {throw new Error("offline");}, created() {}, close() {}});
 }
 
 test("new conversations and existing conversations inherit native settings without fixed overrides", async () => {
@@ -305,16 +305,16 @@ test("chat state updates publish session activity for the surrounding list", asy
   } finally { c.disconnect(); }
 });
 
-test("existing sessions send independently of workspace state and keep retry identity across workspace entry points", async () => {
+test("existing sessions keep retry identity when the caller changes project context", async () => {
   const bodies: any[] = [];
   const c = setup(async (path, options) => {
     assert(path.startsWith("/api/sessions/thread/"));
     if (options?.method === "POST") bodies.push(JSON.parse(String(options.body)));
     throw new Error("offline");
   });
-  c.options.workspace = {...workspace,state:"archived"};
+  c.options.target = {...target,project_id:"other"};
   await assert.rejects(c.send("继续这个会话"));
-  c.options.workspace = {...workspace,id:"another-workspace"};
+  c.options.target = undefined;
   await assert.rejects(c.send("继续这个会话"));
   assert.equal(bodies.length,2);
   assert.equal(bodies[0].request_id,bodies[1].request_id);
@@ -336,12 +336,12 @@ test("a project worktree creates a conversation without a workspace", async () =
 
 
 test("conversation identity depends on environment and session, while new drafts depend on the target", () => {
- const options: ChatOptions = {workspace,session,environment:"local",request:async()=>({} as any),stream:async()=>new Response(),created(){},close(){}};
- assert.equal(conversationKey(options),conversationKey({...options,workspace:{...workspace,id:"other"}}));
- assert.equal(conversationKey(options),conversationKey({...options,workspace:undefined,target:{project_id:"p",cwd:session.cwd}}));
+ const options: ChatOptions = {target,session,environment:"local",request:async()=>({} as any),stream:async()=>new Response(),created(){},close(){}};
+ assert.equal(conversationKey(options),conversationKey({...options,target:{project_id:"other",cwd:"/other"}}));
+ assert.equal(conversationKey(options),conversationKey({...options,target:{project_id:"p",cwd:session.cwd}}));
  assert.notEqual(conversationKey(options),conversationKey({...options,environment:"wsl"}));
- assert.notEqual(conversationKey({...options,session:null}),conversationKey({...options,workspace:{...workspace,id:"other"},session:null}));
- assert.notEqual(conversationKey({...options,workspace:undefined,session:null,target:{project_id:"p",cwd:"/one"}}),conversationKey({...options,workspace:undefined,session:null,target:{project_id:"p",cwd:"/two"}}));
+ assert.notEqual(conversationKey({...options,session:null}),conversationKey({...options,target:{project_id:"other",cwd:"/other"},session:null}));
+ assert.notEqual(conversationKey({...options,session:null,target:{project_id:"p",cwd:"/one"}}),conversationKey({...options,session:null,target:{project_id:"p",cwd:"/two"}}));
 });
 
 test("active-turn input uses steer and recovers a lost acknowledgement without another POST",async()=>{

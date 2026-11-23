@@ -6,16 +6,20 @@ import (
 	"path/filepath"
 	"testing"
 
+	"worktree-hub/internal/model"
 	"worktree-hub/internal/store"
 )
 
-func TestMetadataSnapshotPreservesPathsAndImportsTransactionally(t *testing.T) {
+func TestMetadataSnapshotPreservesSessionDirectoriesAndImportsTransactionally(t *testing.T) {
 	source := testApp(t)
+	const directory = "/saved/worktrees/project"
 	_, err := source.Execution.Store.DB.Exec(`INSERT INTO projects VALUES('p','Project','/original/repo','/original/repo/.git','project','now');
-INSERT INTO workspaces(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('r','Workspace','workspace','notes','codex/workspace','/saved/workspace/workspace','p','creating','now');
-INSERT INTO members(workspace_id,project_id,path,base_commit,state,error) VALUES('r','p','/saved/workspace/workspace/project','baseline','creating','');
-INSERT INTO settings VALUES('terminal','{"kind":"windows-terminal"}');
-INSERT INTO workspace_sessions VALUES('r','session','Title','/saved/workspace/workspace/project',123,456,'manual')`)
+INSERT INTO sessions(id,name,cwd,created_at,updated_at,source,last_synced_at) VALUES('session','Title',?,123,456,'manual',456);
+INSERT INTO settings VALUES('terminal','{"kind":"windows-terminal"}')`, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = source.Execution.Store.BindSessionDirectory(model.SessionProjectBinding{SessionID: "session", ProjectID: "p", Directory: directory, Role: "primary", Access: "write"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,26 +37,19 @@ INSERT INTO workspace_sessions VALUES('r','session','Title','/saved/workspace/wo
 	if err := target.Execution.Store.ImportMetadata(transferred); err != nil {
 		t.Fatal(err)
 	}
-	q, err := target.Execution.Store.Workspace("r")
-	if err != nil {
-		t.Fatal(err)
+	bindings, err := target.Execution.Store.SessionBindings("session")
+	if err != nil || len(bindings) != 1 || bindings[0].Directory != directory || bindings[0].ProjectID != "p" {
+		t.Fatalf("bindings: %+v %v", bindings, err)
 	}
-	if q.Path != "/saved/workspace/workspace" || q.State != "partial" || len(q.Members) != 1 || q.Members[0].State != "failed" {
-		t.Fatalf("import changed workspace or lost interrupted operation: %+v", q)
-	}
-	sessions, err := target.Sessions.StoredSessions("r")
+	sessions, err := target.Execution.Store.Sessions()
 	if err != nil || len(sessions) != 1 || sessions[0].UpdatedAt != 456 {
 		t.Fatalf("sessions: %+v %v", sessions, err)
 	}
 	if err := target.Execution.Store.ImportMetadata(transferred); err == nil {
 		t.Fatal("import overwrote an existing environment")
 	}
-	var state string
-	if err := source.Execution.Store.DB.QueryRow("SELECT state FROM workspaces WHERE id='r'").Scan(&state); err != nil || state != "creating" {
-		t.Fatalf("source database modified: %s %v", state, err)
-	}
 	broken := testApp(t)
-	transferred.Tables["members"][0] = []any{"invalid"}
+	transferred.Tables["session_project_bindings"][0] = []any{"invalid"}
 	if err := broken.Execution.Store.ImportMetadata(transferred); err == nil {
 		t.Fatal("invalid import succeeded")
 	}

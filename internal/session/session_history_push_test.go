@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -209,11 +210,14 @@ func TestHistoryObserverShowsReplayedQuestionsAndExistingWaitingStatus(t *testin
 func TestHistoryEventsAreScopedAndAvailableInReadOnlyMode(t *testing.T) {
 	a := testApp(t)
 	p := register(t, a, "Repo", repo(t, "repo", "master"))
-	_, q, _ := create(t, a, p, nil, "push")
-	if err := a.SaveSession(q.ID, codex.Session{ID: "linked", Cwd: q.Path}, "manual"); err != nil {
+	q := newTestDirectory(t, a, p, "push")
+	if err := a.SaveSession(codex.Session{ID: "linked", Cwd: q.Path}, "manual"); err != nil {
 		t.Fatal(err)
 	}
 	a.Execution.ReadOnlySessions = true
+	a.openSessions = func(context.Context) (codex.SessionClient, error) {
+		return &fakeSessionClient{request: func(string, map[string]any) (any, error) { return nil, sql.ErrNoRows }}, nil
+	}
 	calls := 0
 	a.watchHistory = func(ctx context.Context, id string, emit func(HistoryPush) error) error {
 		calls++
@@ -222,7 +226,7 @@ func TestHistoryEventsAreScopedAndAvailableInReadOnlyMode(t *testing.T) {
 		}
 		return emit(HistoryPush{Connected: true, Entries: []HistoryEntry{{ID: "r", TurnID: "t", Kind: "assistant", Text: "live"}}})
 	}
-	endpoint := "/api/workspaces/" + q.ID + "/sessions/linked/history/events"
+	endpoint := "/api/sessions/linked/history/events"
 	if code, raw := call(t, a, "GET", endpoint, nil); code != 200 || !strings.Contains(string(raw), `"text":"live"`) {
 		t.Fatalf("%d %s", code, raw)
 	}

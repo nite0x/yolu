@@ -10,7 +10,7 @@ import (
 const chatRequestLimit = 12 << 20
 
 // Inline images work across local and remote Codex connections without sharing
-// browser file paths or creating temporary files in the workspace's repositories.
+// browser file paths or creating temporary files in the associated repositories.
 func validateChatImages(images []string) error {
 	if len(images) > 4 {
 		return fmt.Errorf("每条消息最多附加 4 张图片")

@@ -13,7 +13,7 @@ import (
 	"worktree-hub/internal/model"
 )
 
-// Only displayable, bounded snapshots cross the workspace and HTTP boundaries.
+// Only displayable, bounded snapshots cross the execution peer and HTTP boundaries.
 // Snapshots can be coalesced when a reader is slow without losing text deltas.
 type HistoryPush struct {
 	Connected     bool                  `json:"connected"`

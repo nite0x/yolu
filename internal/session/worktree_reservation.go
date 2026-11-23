@@ -7,11 +7,10 @@ import (
 	"os/exec"
 
 	"worktree-hub/internal/codex"
-	"worktree-hub/internal/platform"
 )
 
 // ReserveWorktree excludes chat/terminal starts until a directory removal is
-// complete. Callers acquire this before the workspace metadata lock.
+// complete. Callers acquire this before the environment metadata lock.
 func (a *Service) ReserveWorktree(ctx context.Context, path string) (func(), error) {
 	a.controlMu.Lock()
 	ok := false
@@ -21,16 +20,27 @@ func (a *Service) ReserveWorktree(ctx context.Context, path string) (func(), err
 		}
 	}()
 	uses := func(cwd string, extra []string) bool {
-		if platform.SameWorkspacePath(path, cwd) || platform.Within(path, cwd) {
+		if sameOrNested(path, cwd) {
 			return true
 		}
 		for _, dir := range extra {
-			if platform.SameWorkspacePath(path, dir) || platform.Within(path, dir) {
+			if sameOrNested(path, dir) {
 				return true
 			}
 		}
 		return false
 	}
+	a.chatMu.Lock()
+	for _, run := range a.chats {
+		run.mu.Lock()
+		busy := run.state.Busy && uses(run.cwd, run.directoryRoots)
+		run.mu.Unlock()
+		if busy {
+			a.chatMu.Unlock()
+			return nil, fmt.Errorf("该目录仍有关联的 Agent 运行，请先结束运行")
+		}
+	}
+	a.chatMu.Unlock()
 	a.bridgeMu.Lock()
 	for _, b := range a.bridges {
 		b.mu.Lock()
@@ -61,8 +71,8 @@ func (a *Service) ReserveWorktree(ctx context.Context, path string) (func(), err
 	}
 	c, err := a.openSessions(ctx)
 	if err != nil {
-		// Git-only installations can clean directories without Codex installed.
-		if len(known) == 0 && errors.Is(err, exec.ErrNotFound) {
+		// The host process and bridge checks above still apply to Git-only installations.
+		if errors.Is(err, exec.ErrNotFound) {
 			ok = true
 			return a.controlMu.Unlock, nil
 		}

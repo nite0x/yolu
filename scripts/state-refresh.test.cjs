@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 require('tsx/cjs');
-const { workspaceUI } = require('../frontend/workspace/renderers.tsx');
+const { workspaceUI } = require('../frontend/app/renderers.tsx');
 const { JSDOM } = require('jsdom');
 const markup = html => new JSDOM(html).window.document;
 
@@ -14,7 +14,6 @@ function snapshot(updatedAt = '2026-10-22T05:23:13Z', refreshing = false) {
   return {
     root: '/workspace', terminal: {}, status_refreshing: refreshing,
     projects: [{ id: 'app', name: 'app', path: '/repo/app', has_master: true, refreshing, ...(updatedAt ? { status_updated_at: updatedAt } : {}), worktrees: [tree] }],
-    workspaces: [{ id: 'workspace', name: 'Workspace', state: 'ready', branch: 'codex/workspace', path: '/workspace', primary_project_id: 'app', members: [{ project_id: 'app', project_name: 'app', path: tree.path, state: 'ready', base_commit: '12345678', worktree: { ...tree } }] }]
   };
 }
 
@@ -29,9 +28,9 @@ function harness({ fullPage = false, readOnly = false } = {}) {
         content: selector === 'meta[name="ui-language"]' ? 'zh-CN' : selector === 'meta[name="session-mode"]' ? (readOnly ? 'read-only' : 'interactive') : 'token',
         value: '', checked: false, hidden: false, writes: 0, scrollTop: 0, dataset: {},
         style: {setProperty() {}}, getBoundingClientRect() { return {width: 0}; },
-        append() {}, insertBefore() {}, setAttribute() {}, removeAttribute() {}, toggleAttribute() {}, getAttribute() { return null; }, hasAttribute() { return false; },
+        append() {}, insertBefore() {}, setAttribute() {}, removeAttribute() {}, toggleAttribute() {}, getAttribute() { return null; }, replaceChildren() {}, hasAttribute() { return false; },
         querySelector: element, contains() { return false; }, closest() { return null; },
-        classList: { toggle() {}, remove() {} }, addEventListener() {}, querySelectorAll() { return []; },
+        classList: { toggle() {}, remove() {}, add() {}, contains() { return false; } }, addEventListener() {}, querySelectorAll() { return []; },
         get innerHTML() { return html; },
         set innerHTML(value) { html = value; this.writes++; }
       });
@@ -53,19 +52,14 @@ function harness({ fullPage = false, readOnly = false } = {}) {
       querySelectorAll: selector => selector === '#content time[data-status-path]' ? times : [],
       addEventListener() {}
     },
-    window: { WorkHubUI: workspaceUI, dispatchEvent() {}, addEventListener(event, handler) { if (event === 'DOMContentLoaded') ready.push(handler); } }, location: { hash: '#/workspaces/workspace', search: '' }, URLSearchParams, DOMException, CustomEvent: class {},
+    window: { WorkHubUI: workspaceUI, dispatchEvent() {}, addEventListener(event, handler) { if (event === 'DOMContentLoaded') ready.push(handler); } }, location: { hash: '#/projects/app', search: '' }, URLSearchParams, DOMException, CustomEvent: class {},
     setTimeout: (callback, delay) => { timers.push(delay); return timers.length; },
-    clearTimeout() {}, renderSettings() {}, refreshWorkspaceProjectPicker() {},
-    renderWorkspaceSessions() { return ''; }, refreshWorkspaceSessions() {},
+    clearTimeout() {}, renderSettings() {}, loadGit() {}, loadWorktree() {},
     fetch: async (url, options) => {
       requests.push({ url, options });
       if (failure) throw failure;
       if (url.startsWith('/api/shortcut-pins?')) return { ok: true, json: async () => ({workspaces:[], directories:[], initialized:true}) };
       if (url === '/api/environments') return { ok: true, json: async () => ({ environments: [{ id: 'local', name: '本机' }], distributions: [], platform: result?.terminal?.platform, wsl_supported: result?.terminal?.platform === 'darwin' ? false : undefined }) };
-      if (url.startsWith('/api/workspace-inventory')) return { ok: true, json: async () => ({
-        workspaces: result.workspaces.map(q => ({ ...structuredClone(q), environment_id: 'local', environment_name: '本机', connected: true })),
-        environments: [{ id: 'local', name: '本机', connected: true }], project_count: result.projects.length, status_refreshing: result.status_refreshing,
-      }) };
       if (url.endsWith('/sessions') || url.startsWith('/api/sessions?')) return { ok: true, json: async () => ({ sessions: [] }) };
       return { ok: true, json: async () => structuredClone(result) };
     }
@@ -77,10 +71,12 @@ function harness({ fullPage = false, readOnly = false } = {}) {
       // This VM exercises business scripts; component mounting is checked in a browser.
       .filter(match => !match[0].includes('data-ui-bundle')).map(match => match[1])
       .filter(file => !readOnly || !['features/sessions/session-chat.js', 'features/sessions/session-create.js'].includes(file))]
-    : ['core/core.js', 'features/projects/projects.js', 'features/workspaces/workspaces.js', 'core/app.js', 'core/resource-navigation.js'];
+    : ['core/core.js', 'features/projects/projects.js', 'core/app.js', 'core/resource-navigation.js'];
   for (const file of scripts) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../web', file), 'utf8'), context, { filename: file });
   }
+  vm.runInContext("renderProjectPage = (markup) => { $('#content').innerHTML = markup; };",context);
+  if (!fullPage) vm.runInContext("var environmentInventory = [];",context);
   context.readRoute();
   return {
     context, element, times, timers, requests,
@@ -89,74 +85,6 @@ function harness({ fullPage = false, readOnly = false } = {}) {
     async fail() { failure = new Error('offline'); await context.refresh(); }
   };
 }
-
-test('the unified workspace list keeps colliding workspace IDs distinct by environment', () => {
-  const h = harness();
-  const workspace = snapshot().workspaces[0];
-  const workspaces = [
-    { ...workspace, environment_id: 'local', environment_name: 'Windows', connected: true },
-    { ...workspace, environment_id: 'wsl-ubuntu', environment_name: 'WSL Ubuntu', connected: false },
-  ];
-  vm.runInContext(`workspaceInventory = ${JSON.stringify({ workspaces, environments: [], loaded: true })}`, h.context);
-  const html = h.context.renderWorkspaces();
-  assert.match(html, /\?environment=local#\/workspaces\/workspace/);
-  assert.match(html, /\?environment=wsl-ubuntu#\/workspaces\/workspace/);
-  assert.match(html, /Windows/);
-  assert.match(html, /WSL Ubuntu/);
-  assert.match(html, /环境未连接/);
-});
-
-test('listing all workspaces does not connect the previously selected environment', async () => {
-  const h = harness();
-  vm.runInContext("state.selectedWorkspace = null; activeEnvironment = 'wsl-offline'", h.context);
-  await h.refresh(snapshot());
-  assert.deepEqual(h.requests.map(r => r.url), ['/api/workspace-inventory']);
-  assert.equal(h.requests[0].options.headers['X-Environment-ID'], 'local');
-  assert.match(h.element('#workspaceListContent').innerHTML, /打开工作区 Workspace/);
-});
-
-function prepareEnvironmentPicker(h) {
-  h.element('#workspaceDialog').open = true;
-  h.element('#workspaceForm').elements = { primary_project_id: h.element('#primaryProject'), slug: { value: 'demo' } };
-}
-
-test('workspace creation reads only the chosen environment and previews its root', async () => {
-  const h = harness();
-  prepareEnvironmentPicker(h);
-  const local = { ...snapshot(), root: 'D:\\workspaces' };
-  const remote = { root: '/home/user/workspaces', projects: [{ id: 'remote', name: 'Remote project', folder: 'remote', has_master: true, status_updated_at: 'now' }] };
-  const requests = [];
-  h.context.api = async (url, options) => { requests.push(options.environment); return options.environment === 'local' ? local : remote; };
-  h.element('#workspaceEnvironment').value = 'wsl-ubuntu';
-  await h.context.loadWorkspaceProjects();
-  assert.match(h.element('#projectPicker').innerHTML, /Remote project/);
-  assert.doesNotMatch(h.element('#projectPicker').innerHTML, /value="app"/);
-  assert.match(h.element('#workspacePreview').textContent, /选择参与项目/);
-  h.element('#workspaceEnvironment').value = 'local';
-  await h.context.loadWorkspaceProjects();
-  assert.match(h.element('#projectPicker').innerHTML, /value="app"/);
-  assert.doesNotMatch(h.element('#projectPicker').innerHTML, /Remote project/);
-  assert.match(h.element('#workspacePreview').textContent, /选择参与项目/);
-  assert.deepEqual(requests, ['wsl-ubuntu', 'local']);
-});
-
-test('late project responses cannot replace a newly chosen environment', async () => {
-  const h = harness();
-  prepareEnvironmentPicker(h);
-  const pending = [];
-  h.context.api = () => new Promise(resolve => pending.push(resolve));
-  h.element('#workspaceEnvironment').value = 'wsl-old';
-  const first = h.context.loadWorkspaceProjects();
-  h.element('#workspaceEnvironment').value = 'local';
-  const second = h.context.loadWorkspaceProjects();
-  pending[1](snapshot());
-  await second;
-  const html = h.element('#primaryProject').innerHTML;
-  pending[0]({ root: '/old', projects: [{ id: 'old', name: 'Old project' }] });
-  await first;
-  assert.equal(h.element('#primaryProject').innerHTML, html);
-  assert.equal(vm.runInContext('workspaceEnvironmentData.environment', h.context), 'local');
-});
 
 test('explicit environment calls survive navigation while old ambient calls are rejected', async () => {
   const h = harness();
@@ -215,7 +143,6 @@ test('real status changes are rendered, including errors and branch drift', asyn
     await h.refresh(snapshot());
     const next = snapshot('2026-10-22T05:23:24Z');
     Object.assign(next.projects[0].worktrees[0], patch);
-    Object.assign(next.workspaces[0].members[0].worktree, patch);
     await h.refresh(next);
     assert.equal(h.element('#content').writes, 2, JSON.stringify(patch));
   }
@@ -231,24 +158,6 @@ test('connection failures retain the last table and recover without rebuilding i
   assert.equal(h.element('#content').writes, 1);
   assert.equal(h.element('#offlineBanner').hidden, true);
 });
-
-for (const readOnly of [true, false]) {
-  test(`the page starts with its actual script order in ${readOnly ? 'read-only' : 'interactive'} mode`, async () => {
-    const h = harness({ fullPage: true, readOnly });
-    await h.start(snapshot());
-    assert.equal(vm.runInContext('state.loaded', h.context), true);
-    assert.equal(vm.runInContext('sessionReadOnly', h.context), readOnly);
-    assert.equal(h.element('#offlineBanner').hidden, true);
-    assert(markup(h.element('#content').innerHTML).querySelector('[data-action="workspace-terminal"]'));
-    assert.match(h.element('#content').innerHTML, /data-action="workspace-conversations"/);
-    assert.equal(vm.runInContext('typeof openSessionChat', h.context), readOnly ? 'undefined' : 'function');
-    // Navigation must still find both domain renderers after splitting the entry script.
-    const project = vm.runInContext("state.view = 'projects'; state.selectedProject = 'app'; projectDetailOpen = true; renderProjects()", h.context);
-    assert.match(project, /Git 操作 · 分支管理/);
-    vm.runInContext("state.view = 'workspaces'; state.selectedWorkspace = null; render()", h.context);
-    assert.match(h.element('#workspaceListContent').innerHTML, /打开工作区 Workspace/);
-  });
-}
 
 test('macOS settings show Terminal and hide WSL without discarding unsaved terminal inputs', async () => {
   const h = harness({ fullPage: true, readOnly: true });
@@ -269,33 +178,4 @@ test('macOS settings show Terminal and hide WSL without discarding unsaved termi
   assert.equal(h.element('#terminalKind').value, 'custom');
   assert.equal(h.element('#terminalStyle').value, 'command');
   assert.equal(h.element('#terminalPath').value, '/my unsaved terminal');
-});
-
-test('reused workspace directories report branch changes while remaining usable on their own branch and detached HEAD', async () => {
-  for (const patch of [{ branch: 'main' }, { branch: '', detached: true }]) {
-    const h = harness();
-    const data = snapshot();
-    data.projects[0].has_master = false;
-    Object.assign(data.workspaces[0].members[0], { mode: 'worktree', branch: 'existing' });
-    Object.assign(data.workspaces[0].members[0].worktree, patch);
-    await h.refresh(data);
-    const html = h.element('#content').innerHTML;
-    assert.doesNotMatch(html, /缺少 master|无本地 master/);
-    assert.match(html, /分支已变化/);
-    assert.equal(markup(html).querySelector('[data-action="git-workspace-adopt"]').disabled, !!patch.detached);
-    assert.equal(markup(h.element('#content').innerHTML).querySelector('[data-action="git-open"]').disabled, false);
-    assert.match(html, /已有 Worktree/);
-  }
-});
-
-test('new workspace directories use their individual expected branch and recorded source', async () => {
-  const h = harness();
-  const data = snapshot();
-  Object.assign(data.workspaces[0].members[0], { mode: 'new', branch: 'custom/workspace', base_ref: 'refs/heads/release' });
-  data.workspaces[0].members[0].worktree.branch = 'custom/workspace';
-  await h.refresh(data);
-  assert.doesNotMatch(h.element('#content').innerHTML, /分支已变化/);
-  const document = markup(h.element('#content').innerHTML);
-  assert.equal(markup(h.element('#content').innerHTML).querySelector('[data-action="git-open"]').disabled, false);
-  assert([...document.querySelectorAll('.directory-details code')].some(node => node.textContent === 'release'));
 });

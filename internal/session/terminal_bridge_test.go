@@ -41,48 +41,6 @@ func socketPair(t *testing.T) (*websocket.Conn, *websocket.Conn) {
 	t.Cleanup(func() { c.Close(); peer.Close() })
 	return c, peer
 }
-func TestManagedMultiProjectLaunchMovesAdditionalRootsToBridge(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("managed terminal relay requires Linux peer credentials")
-	}
-	a := testApp(t)
-	front := register(t, a, "Front", repo(t, "front", "master"))
-	back := register(t, a, "Back", repo(t, "back", "master"))
-	_, q, _ := create(t, a, front, []string{back}, "terminal-roots")
-	var plan model.LaunchPlan
-	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
-	endpoint := "/api/workspaces/" + q.ID + "/launch"
-	if code, raw := call(t, a, "GET", endpoint, nil); code != 200 || !strings.Contains(string(raw), "--add-dir") {
-		t.Fatalf("standalone command lost additional directories: %d %s", code, raw)
-	}
-	if code, raw := call(t, a, "POST", endpoint, nil); code != 200 {
-		t.Fatalf("launch: %d %s", code, raw)
-	}
-	if strings.Contains(plan.Command, "--add-dir") || !strings.Contains(plan.Command, "--remote") {
-		t.Fatalf("incompatible managed arguments: %s", plan.Command)
-	}
-	b := a.bridges[strings.TrimPrefix(plan.Args[len(plan.Args)-1], "unix://")]
-	if b == nil || len(plan.AdditionalDirectories) != 1 || !reflect.DeepEqual(b.additionalDirectories, plan.AdditionalDirectories) {
-		t.Fatalf("missing managed roots: %+v", plan)
-	}
-	if err := exec.Command("bash", "-n", plan.Script).Run(); err != nil {
-		t.Fatal(err)
-	}
-	if os.Getenv("WORKTREE_HUB_TEST_INSTALLED_CODEX") == "1" {
-		checkInstalledManagedArgs(t, plan)
-		b.Close()
-		id := "00000000-0000-4000-8000-000000000001"
-		s := codex.Session{ID: id, Cwd: plan.Cwd}
-		fakeSessions(a, map[string]codex.Session{id: s})
-		if err := a.SaveSession(q.ID, s, "workspace"); err != nil {
-			t.Fatal(err)
-		}
-		if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/"+id+"/resume", nil); code != 200 {
-			t.Fatalf("resume: %d %s", code, raw)
-		}
-		checkInstalledManagedArgs(t, plan)
-	}
-}
 
 // Exercise the installed CLI parser in a PTY, directing it to a nonexistent
 // socket so no real session, model turn, or user's terminal can be started.
@@ -111,9 +69,9 @@ func TestBridgeAddsWorkspaceRootsToTurnsAfterStartAndResume(t *testing.T) {
 			up, server := socketPair(t)
 			client, _ := socketPair(t)
 			_ = server.SetReadDeadline(time.Now().Add(2 * time.Second))
-			cwd := q.Members[0].Path
+			cwd := q.Path
 			extra := t.TempDir()
-			b := &terminalBridge{app: a.Service, workspace: q.ID, cwd: cwd, additionalDirectories: []string{extra, extra, cwd}, upstream: up, client: client, pending: map[string]bridgeCall{"1": {Method: method}}}
+			b := &terminalBridge{app: a.Service, cwd: cwd, additionalDirectories: []string{extra, extra, cwd}, upstream: up, client: client, pending: map[string]bridgeCall{"1": {Method: method}}}
 			response, _ := json.Marshal(map[string]any{"id": 1, "result": map[string]any{
 				"thread":  map[string]any{"id": "session", "cwd": cwd},
 				"sandbox": map[string]any{"type": "workspaceWrite", "writableRoots": []string{"/existing-root"}, "networkAccess": false, "excludeTmpdirEnvVar": true},
@@ -173,7 +131,7 @@ func TestBridgeDoesNotBroadenOtherSandboxModes(t *testing.T) {
 				b.sandbox = policy
 			}
 			raw, _ := json.Marshal(map[string]any{"id": 1, "method": "turn/start", "params": params})
-			got, err := b.withWorkspaceRoots(raw)
+			got, err := b.withWritableRoots(raw)
 			if err != nil || string(got) != string(raw) {
 				t.Fatalf("changed %s policy: %s %v", mode, got, err)
 			}
@@ -185,7 +143,7 @@ func TestBridgeGatesNextTurnButForwardsExistingApprovalWhileDraining(t *testing.
 	a, q, _, _ := chatFixture(t)
 	up, server := socketPair(t)
 	client, tui := socketPair(t)
-	b := &terminalBridge{app: a.Service, workspace: q.ID, session: "session", cwd: q.Members[0].Path, upstream: up, client: client, pending: map[string]bridgeCall{}}
+	b := &terminalBridge{app: a.Service, session: "session", cwd: q.Path, upstream: up, client: client, pending: map[string]bridgeCall{}}
 	raw := []byte(`{"id":1,"method":"turn/start","params":{"threadId":"session","input":[]}}`)
 	if err := b.forward(raw); err != nil {
 		t.Fatal(err)
@@ -230,7 +188,7 @@ func TestBridgeGatesNextTurnButForwardsExistingApprovalWhileDraining(t *testing.
 
 func TestUnconnectedTerminalLaunchExpiresWithoutBlockingRetry(t *testing.T) {
 	a, q, _, endpoint := chatFixture(t)
-	b, err := a.NewTerminalBridge(q.ID, q.Members[0].Path)
+	b, err := a.NewTerminalBridge(q.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +225,7 @@ func TestUnconnectedTerminalLaunchExpiresWithoutBlockingRetry(t *testing.T) {
 
 func TestLaunchWatchKeepsConnectedTerminal(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
-	b, err := a.NewTerminalBridge(q.ID, q.Members[0].Path)
+	b, err := a.NewTerminalBridge(q.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,10 +246,10 @@ func TestTerminalScriptFailureReleasesReservationAndAllowsRetry(t *testing.T) {
 	for _, mode := range []string{"login", "codex"} {
 		t.Run(mode, func(t *testing.T) {
 			a, q, _, _ := chatFixture(t)
-			fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Members[0].Path}})
+			fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Path}})
 			var plan model.LaunchPlan
 			a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
-			endpoint := "/api/workspaces/" + q.ID + "/sessions/session/resume"
+			endpoint := "/api/sessions/session/resume"
 			if code, raw := call(t, a, "POST", endpoint, nil); code != 200 {
 				t.Fatalf("launch: %d %s", code, raw)
 			}
@@ -355,14 +313,14 @@ func TestInstalledCodexNewSessionAndManagedTerminalHandoff(t *testing.T) {
 		}
 	})
 	p := register(t, a, "Managed", repo(t, "managed", "master"))
-	_, q, _ := create(t, a, p, nil, "managed-handoff")
-	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
-	code, raw := call(t, a, "POST", endpoint, map[string]string{"text": "这是连通性测试。只回复 NEW_SESSION_OK，不调用工具，不读取文件。", "request_id": "installed-new"})
+	q := newTestDirectory(t, a, p, "managed-handoff")
+	endpoint := "/api/sessions/new"
+	code, raw := call(t, a, "POST", endpoint, map[string]string{"text": "这是连通性测试。只回复 NEW_SESSION_OK，不调用工具，不读取文件。", "request_id": "installed-new", "project_id": p, "cwd": q.Path})
 	if code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	var result struct {
-		Session WorkspaceSession `json:"session"`
+		Session model.Session `json:"session"`
 	}
 	_ = json.Unmarshal(raw, &result)
 	ctx, end := context.WithTimeout(context.Background(), 90*time.Second)
@@ -387,8 +345,8 @@ func TestInstalledCodexNewSessionAndManagedTerminalHandoff(t *testing.T) {
 	}
 	var plan model.LaunchPlan
 	a.Execution.Launch = func(p model.LaunchPlan, _ func()) error { plan = p; return nil }
-	base := "/api/workspaces/" + q.ID + "/sessions/" + result.Session.ID
-	if code, raw := call(t, a, "POST", base+"/resume", nil); code != 200 {
+	base := "/api/sessions/" + result.Session.ID
+	if code, raw := call(t, a, "POST", base+"/resume", map[string]bool{"native_permissions": true}); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	log, err := os.CreateTemp(t.TempDir(), "tui-log")

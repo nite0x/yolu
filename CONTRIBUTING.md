@@ -1,6 +1,6 @@
 # Contributing to Yolu
 
-Use [Issues](https://github.com/nite0x/yolu/issues) to report problems, discuss needs or suggest documentation improvements. Yolu focuses on organizing personal development across projects through workspaces. Discuss larger changes before implementation, and read [AGENTS.md](AGENTS.md) for repository guidance.
+Use [Issues](https://github.com/nite0x/yolu/issues) to report problems, discuss needs or suggest documentation improvements. Yolu focuses on developing across projects through conversations. Discuss larger changes before implementation, and read [AGENTS.md](AGENTS.md) for repository guidance.
 
 ## Reporting a problem
 
@@ -19,7 +19,7 @@ npm run chat:check
 npm run web:build
 npm run chat:build
 node --test scripts/*.test.cjs
-npm run workspace:test
+npm run app:test
 npm run chat:test
 go test ./...
 go vet ./...
@@ -29,11 +29,11 @@ npm run desktop:check
 
 Choose checks appropriate to the change. CI runs the complete core suite and selected Go race checks; its exact commands are in [.github/workflows/checks.yml](.github/workflows/checks.yml). Desktop host changes also need `npm run desktop:test` and native lifecycle checks. Installer changes need verification on the target operating system; a cross-compilation is not an installation test.
 
-Use temporary data directories and repositories for lifecycle tests. Keep user repositories, workspace records, worktree locations, drafts and compatibility identifiers intact. Regenerate icons with `npm run brand:icons` after changing the approved SVG master; see the [brand reference](docs/brand/yolu/README.md).
+Use temporary data directories and repositories for lifecycle tests. Keep user repositories, session bindings, worktree locations, drafts and compatibility identifiers intact. Regenerate icons with `npm run brand:icons` after changing the approved SVG master; see the [brand reference](docs/brand/yolu/README.md).
 
 ## Pull requests
 
-Describe the concrete problem, resulting behavior and relevant validation. Include sanitized screenshots for UI changes. Keep changes focused and document any effect on saved workspaces, sessions or existing installations. Update the English documentation when changing behavior, commands or release contents.
+Describe the concrete problem, resulting behavior and relevant validation. Include sanitized screenshots for UI changes. Keep changes focused and document any effect on saved project directories, sessions or existing installations. Update the English documentation when changing behavior, commands or release contents.
 
 ## Contribution license
 

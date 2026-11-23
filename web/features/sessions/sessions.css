@@ -1,9 +1,5 @@
-.workspace-sessions { margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--border); }
 .session-description { font-size:14px; color: var(--muted-foreground, var(--yolu-muted-ink,#64748b)); line-height: 1.9; max-width: 640px; margin: 10px 0 16px; }
 .session-empty { padding: 22px 0; color: var(--muted-foreground, var(--yolu-muted-ink,#64748b)); font-size:15px; line-height: 1.9; }
-.workspace-sessions h2 { font-size: 18px; }
-.workspace-sessions td:first-child { min-width: 200px; max-width: 360px; overflow-wrap: anywhere; }
-.workspace-sessions td:nth-child(2) { min-width: 170px; }
 .session-search { display: flex; align-items: flex-end; gap: 12px; margin: 18px 0; }
 .session-search .field { flex: 1; margin-bottom: 0; min-width: 0; }
 .session-search button { flex-shrink: 0; }

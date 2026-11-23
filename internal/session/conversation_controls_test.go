@@ -332,3 +332,19 @@ func TestInstalledCodexConversationCatalog(t *testing.T) {
 	}
 	t.Logf("installed CLI supports %d models and %d modes", len(models), len(modes.Data))
 }
+
+func TestNewConversationDraftPersistsPendingProvider(t *testing.T) {
+	a := testApp(t)
+	path := "/api/conversation-drafts?key=new-provider"
+	draft := map[string]any{"text": "check the project", "provider": "agy", "updated": 123, "images": []string{}}
+	if code, raw := call(t, a, "POST", path, draft); code != 200 {
+		t.Fatalf("write provider draft: %d %s", code, raw)
+	}
+	if code, raw := call(t, a, "GET", path, nil); code != 200 || !strings.Contains(string(raw), `"provider":"agy"`) {
+		t.Fatalf("read provider draft: %d %s", code, raw)
+	}
+	draft["provider"] = "unavailable"
+	if code, _ := call(t, a, "POST", path, draft); code != 400 {
+		t.Fatalf("unsupported engine accepted: %d", code)
+	}
+}

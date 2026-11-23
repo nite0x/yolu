@@ -81,12 +81,14 @@ func Register(t *testing.T, a Server, name, path string) string {
 	return v["id"]
 }
 
-func Create(t *testing.T, a Server, primary string, others []string, slug string) (int, model.Workspace, []byte) {
+func CreateWorktree(t *testing.T, a Server, projectID, slug string) model.Worktree {
 	t.Helper()
-	code, raw := Call(t, a, "POST", "/api/workspaces", map[string]any{"name": "订单审批 '$(touch SHOULD_NOT_EXIST)'", "slug": slug, "description": "前后端联调", "primary_project_id": primary, "project_ids": others})
-	var q model.Workspace
-	_ = json.Unmarshal(raw, &q)
-	return code, q, raw
+	code, raw := Call(t, a, "POST", "/api/projects/"+projectID+"/worktrees", map[string]string{"slug": slug, "mode": "new"})
+	var tree model.Worktree
+	if code != http.StatusCreated || json.Unmarshal(raw, &tree) != nil || tree.Path == "" {
+		t.Fatalf("create worktree %d: %s", code, raw)
+	}
+	return tree
 }
 
 func RemoteClone(t *testing.T) (seed, remote, clone string) {

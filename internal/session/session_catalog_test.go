@@ -74,7 +74,7 @@ func TestCatalogCoalescesPaginationAndReturnsIndependentMaps(t *testing.T) {
 func TestWorktreeReservationRejectsLiveChatAndAllowsGitOnlyInstall(t *testing.T) {
 	a, q, _, endpoint := chatFixture(t)
 	startFakeChat(t, a, endpoint)
-	if release, err := a.ReserveWorktree(context.Background(), q.Members[0].Path); err == nil {
+	if release, err := a.ReserveWorktree(context.Background(), q.Path); err == nil {
 		release()
 		t.Fatal("active chat accepted")
 	}

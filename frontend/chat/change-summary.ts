@@ -1,5 +1,5 @@
 import {sourceFileReference} from "./links";
-import {directoryKey} from "../workspace/conversation-context";
+import {conversationPathKey as directoryKey} from "../app/conversation-runtime";
 
 export interface FileChangePaths {cwd?: string; projectRoots: readonly string[]; additionalDirectories?: readonly string[]}
 

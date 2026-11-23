@@ -19,16 +19,16 @@ function open(t, choice, languages) {
 test('explicit locale overrides system language and translates application labels and accessibility names', t => {
  const w=open(t,'en',['zh-CN']);
  assert.equal(w.document.documentElement.lang,'en');
- assert.equal(w.document.querySelector('[data-view="workspaces"]').getAttribute('aria-label'),'Workspaces');
- assert.equal(w.document.querySelector('#pageTitle').textContent,'Workspaces');
- assert.equal(w.YoluI18n.text('打开工作区详情：{0}','修复工作区'),'Open workspace details: 修复工作区');
+ assert.equal(w.document.querySelector('[data-view="sessions"]').getAttribute('aria-label'),'Conversations');
+ assert.equal(w.document.querySelector('#panelTitle').textContent,'Projects');
+ assert.equal(w.YoluI18n.text('查看 {0} 的目录详情','用户项目'),'View directory details for 用户项目');
 });
 
 test('system locale follows Chinese variants and otherwise falls back to English', t => {
  assert.equal(open(t,'system',['zh-TW']).YoluI18n.locale,'zh-CN');
  assert.equal(open(t,'system',['en-GB']).YoluI18n.locale,'en');
  assert.equal(open(t,'system',['fr-FR']).YoluI18n.locale,'en');
- assert.equal(open(t,'zh-CN',['en-US']).document.querySelector('#pageTitle').textContent,'工作区');
+ assert.equal(open(t,'zh-CN',['en-US']).document.querySelector('#panelTitle').textContent,'项目');
 });
 
 test('localization does not rewrite user text, draft values or terminal contents', t => {
@@ -50,7 +50,7 @@ test('catalog preserves every interpolation argument and provides English transl
 });
 
 
-test('English applies to production React forms while workspace names remain verbatim', async t => {
+test('English applies to production React forms while project names remain verbatim', async t => {
  const w=open(t,'en',['zh-CN']);
  const channels=[];
  t.after(()=>channels.forEach(c=>{c.port1.close();c.port2.close()}));
@@ -65,9 +65,9 @@ test('English applies to production React forms while workspace names remain ver
  assert.equal(w.document.querySelector('#languageTitle').textContent,'Interface language');
  assert.equal(w.document.querySelector('#saveLanguage').textContent,'Save and apply language');
  assert.equal(w.document.querySelector('#languageSelect option[value="zh-CN"]').textContent,'简体中文');
- const html=w.WorkHubUI.workspaces([{id:'user-workspace',name:'工作区',slug:'workspace',description:'项目',state:'ready',members:[],environment_id:'local',environment_name:'Local'}],null,'local');
+ const html=w.WorkHubUI.projects([{id:'project',name:'用户项目',path:'/project',worktrees:[]}],null);
  const container=w.document.createElement('div');container.innerHTML=html;
- assert.ok(container.textContent.includes('工作区'));
+ assert.ok(container.textContent.includes('用户项目'));
  assert.ok(!container.textContent.includes('创建于'));
  const report=w.WorkHubUI.codexDiagnostics([{id:'local',name:'Local',report:{platform:'linux',user:'test',cli_path:'/usr/bin/codex',codex_home:'/tmp/codex',candidates:[],checked_at:'2026-11-05T00:00:00Z',status:'ok',checks:[{id:'sessions',name:'对话接口',status:'ok',message:'已完成初始化并成功读取对话列表'}]}}]);
  const diagnostics=w.document.createElement('div');diagnostics.innerHTML=report;

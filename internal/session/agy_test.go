@@ -156,7 +156,7 @@ func (f *fakeACPClient) emitUpdate(upd acp.SessionUpdate) {
 
 func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
-	fakeACP := newFakeACPClient(q.Members[0].Path)
+	fakeACP := newFakeACPClient(q.Path)
 	a.openAgy = func(context.Context, ...string) (acp.Client, acp.InitializeResult, error) {
 		return fakeACP, acp.InitializeResult{AgentInfo: acp.AgentInfo{Name: "Antigravity ACP Server", Version: "1.5.12"}}, nil
 	}
@@ -176,11 +176,11 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 
 	// 2. Create AGY session
 	createInput := map[string]any{
-		"provider":     "agy",
-		"workspace_id": q.ID,
-		"project_id":   q.PrimaryProjectID,
-		"text":         "帮我检查测试并修复问题",
-		"request_id":   "agy-create-1",
+		"provider":   "agy",
+		"project_id": q.ProjectID,
+		"cwd":        q.Path,
+		"text":       "帮我检查测试并修复问题",
+		"request_id": "agy-create-1",
 	}
 	code, raw = call(t, a, "POST", "/api/sessions/new", createInput)
 	if code != 202 {
@@ -317,7 +317,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	a.openSessions = func(context.Context) (codex.SessionClient, error) {
 		return nil, fmt.Errorf("codex offline")
 	}
-	fakeACP.listSessions = []acp.SessionSummary{{SessionID: "agy-session-1", Cwd: q.Members[0].Path, Title: "AGY 对话", UpdatedAt: json.RawMessage(`1700000000`)}}
+	fakeACP.listSessions = []acp.SessionSummary{{SessionID: "agy-session-1", Cwd: q.Path, Title: "AGY 对话", UpdatedAt: json.RawMessage(`1700000000`)}}
 	code, raw = call(t, a, "GET", "/api/sessions", nil)
 	if code != 200 || !strings.Contains(string(raw), `"provider":"agy"`) {
 		t.Fatalf("sessions list failed when codex offline: %d %s", code, raw)
@@ -347,7 +347,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 		launched = p
 		return nil
 	}
-	code, raw = call(t, a, "POST", "/api/sessions/agy-session-1/resume", nil)
+	code, raw = call(t, a, "POST", "/api/sessions/agy-session-1/resume", map[string]bool{"native_permissions": true})
 	if code != 200 || launched.Tool != "agy" || !strings.Contains(launched.Command, "--conversation") {
 		t.Fatalf("agy resume failed: %d %s launched=%+v", code, raw, launched)
 	}

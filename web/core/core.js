@@ -8,13 +8,12 @@ const token = $('meta[name="csrf-token"]').content;
 let sessionReadOnly = $('meta[name="session-mode"]')?.content === 'read-only';
 let activeEnvironment = new URLSearchParams(location.search).get('environment') || 'local';
 let environmentRevision = 0;
-let workspaceInventory = { workspaces: [], environments: [], project_count: 0, loaded: false };
 function environmentName(id = activeEnvironment) {
   if (id === 'local') return uiText('本机');
   const entries = typeof environmentInventory !== 'undefined' ? environmentInventory : [];
-  return entries.find(e => e.id === id)?.name || workspaceInventory.environments.find(e => e.id === id)?.name || (id === 'local' ? uiText("本机") : id);
+  return entries.find(e => e.id === id)?.name || id;
 }
-const state = { view: 'workspaces', projects: [], workspaces: [], selectedProject: null, selectedWorkspace: null, root: '', terminal: {}, busy: false, refreshing: false, loaded: false };
+const state = { view: 'sessions', projects: [], selectedProject: null, root: '', terminal: {}, busy: false, refreshing: false, loaded: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const badge = (kind, text) => window.WorkHubUI.badge(kind, text);
 const branch = value => window.WorkHubUI.branch(value);
@@ -38,7 +37,7 @@ async function api(path, options = {}) {
   const revision = environmentRevision;
   const scoped = options.environment === undefined;
   const init = { ...requestOptions, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token, 'X-Environment-ID': environment, ...requestOptions.headers } };
-  const shared = window.parent !== window ? window.parent?.WorkHubWorkspace : null;
+  const shared = window.parent !== window ? window.parent?.WorkHubApp : null;
   const response = await (shared ? shared.read(path,init) : fetch(path,init));
   if (scoped && revision !== environmentRevision) throw new DOMException(uiText("执行环境已切换"), 'AbortError');
   let data;
@@ -53,21 +52,12 @@ async function api(path, options = {}) {
   return data;
 }
 
-function stat(label, value, caption, symbol) {
-  return window.WorkHubUI.stat(label, value, caption, symbol);
-}
-
 function empty(title, description, action, button) {
   return window.WorkHubUI.empty(title, description, action, button);
 }
 
 function treeState(t, pending = false) {
   return window.WorkHubUI.treeState(t, pending);
-}
-
-function workspaceDisplayPath(root, ...parts) {
-  const separator = root.includes('\\') ? '\\' : '/';
-  return root.replace(/[\\/]+$/, '') + separator + parts.join(separator);
 }
 
 const operations = window.WorkHubUI.createOperations();
@@ -84,7 +74,6 @@ function syncMutationControls() {
     if (operation.environment !== activeEnvironment) continue;
     const roots = operation.project ? [...document.querySelectorAll('[data-project-id]')].filter(node => node.dataset.projectId === operation.project) : [];
     const controls = roots.flatMap(root => [...root.querySelectorAll('button[data-action]:not([data-action="copy-path"]):not([data-action="changes-open"])')]);
-    if (operation.workspace) controls.push(...[...document.querySelectorAll('button[data-id]')].filter(button => button.dataset.id === operation.workspace && !['workspace-review','workspace-conversations','workspace-project-filter','copy-path'].includes(button.dataset.action)));
     for (const control of controls) {
       if (!control.dataset.operationDisabled) control.dataset.operationWasDisabled = String(control.disabled);
       control.dataset.operationDisabled = String(operation.id); control.disabled = true;
@@ -97,9 +86,8 @@ function blockingMutationDialog() { return document.querySelector('dialog[open][
 async function mutation(title, fn, errorElement, options = {}) {
   const scope = errorElement?.closest?.('dialog') || options.scope || null;
   const environment = options.environment || activeEnvironment;
-  const workspace = options.workspace || (!options.project && state.selectedWorkspace && scope?.id !== 'workspaceDialog' ? state.selectedWorkspace : undefined);
-  const key = options.key || (options.project ? 'project:' + options.project : workspace ? 'workspace:' + workspace : scope?.id || title);
-  const operation = operations.begin({key, environment, title, project: options.project, workspace});
+  const key = options.key || (options.project ? 'project:' + options.project : scope?.id || title);
+  const operation = operations.begin({key, environment, title, project: options.project});
   if (!operation) { toast(uiText("同一工作现场的操作仍在进行，请稍候")); return; }
   if (scope) {
     scope.dataset.mutation = String(operation.id);

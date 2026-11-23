@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 )
 
 // Async questions are agent messages, not outstanding JSON-RPC requests.
@@ -179,6 +181,20 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var plan model.LaunchPlan
+	if !current.Busy && input.Decision != "decline" {
+		plan, err = a.savedSessionPlan(execution.WithClient(r.Context(), a.Execution.Remote), record, false)
+		if err != nil {
+			httpx.WriteError(w, 409, err.Error())
+			return
+		}
+		release, conflicts := a.reserveDirectories("answer:"+record.ID, record.ID, plan)
+		if release == nil {
+			writeBindingConflict(w, conflicts)
+			return
+		}
+		defer release()
+	}
 	status = "pending"
 	if input.Decision == "decline" {
 		status = "skipped"
@@ -216,11 +232,11 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		ctx, cancel := context.WithCancel(context.Background())
-		run := &ChatRun{session: record.ID, cwd: record.Cwd, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), asyncRequest: requestID, started: make(chan struct{}), state: ChatState{ID: requestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
+		run := &ChatRun{session: record.ID, cwd: plan.Cwd, writeRoots: writableRoots(plan), directoryRoots: uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...)), managedBindings: plan.ManagedBindings, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), asyncRequest: requestID, started: make(chan struct{}), state: ChatState{ID: requestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
 		a.chatMu.Lock()
 		a.chats[record.ID] = run
 		a.chatMu.Unlock()
-		go a.DriveChat(ctx, run, savedSessionPlan(record), text)
+		go a.DriveChat(ctx, run, plan, text)
 		select {
 		case <-run.started:
 		case <-run.finished:

@@ -75,7 +75,7 @@ func pairBrowser(t *testing.T, a *App) *http.Cookie {
 	return cookie
 }
 
-func TestBrowserAccessAuthenticationAndSharedWorkspace(t *testing.T) {
+func TestBrowserAccessAuthenticationAndSharedApplication(t *testing.T) {
 	a := testApp(t)
 	if a.browser.config.Enabled || a.browser.server != nil {
 		t.Fatal("new profiles must default to local access")
@@ -84,7 +84,7 @@ func TestBrowserAccessAuthenticationAndSharedWorkspace(t *testing.T) {
 	if err := a.browser.configure(context.Background(), true, port, false); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", "/?workspace-page=test", "/chat/assistant.js", "/workspace.html"} {
+	for _, path := range []string{"/", "/?app-page=test", "/chat/assistant.js", "/app.html"} {
 		if response := browserRequest(t, a, "GET", path, "", nil, false); response.StatusCode != http.StatusSeeOther {
 			t.Fatalf("unpaired page %s: %d", path, response.StatusCode)
 		}
@@ -120,7 +120,7 @@ func TestBrowserAccessAuthenticationAndSharedWorkspace(t *testing.T) {
 		Root string `json:"root"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&state); err != nil || response.StatusCode != 200 || state.Root != a.Execution.Root {
-		t.Fatalf("browser did not use the host workspace: %d %v", response.StatusCode, err)
+		t.Fatalf("browser did not use the host execution environment: %d %v", response.StatusCode, err)
 	}
 	response = browserRequest(t, a, "GET", "/api/settings/browser-access", "", cookie, true)
 	var settings struct {
@@ -332,12 +332,11 @@ func TestBrowserAccessTerminalRequiresPairingAndStreamTicket(t *testing.T) {
 	}
 	a := testApp(t)
 	project := register(t, a, "Repo", repo(t, "repo", "master"))
-	_, workspace, _ := create(t, a, project, nil, "lan-terminal")
 	if err := a.browser.configure(context.Background(), true, freeBrowserPort(t), false); err != nil {
 		t.Fatal(err)
 	}
 	cookie := pairBrowser(t, a)
-	body, _ := json.Marshal(map[string]any{"workspace_id": workspace.ID, "project_id": project, "profile_id": "custom", "executable": "/bin/sh", "args": []string{"-i"}})
+	body, _ := json.Marshal(map[string]any{"project_id": project, "profile_id": "custom", "executable": "/bin/sh", "args": []string{"-i"}})
 	response := browserRequest(t, a, "POST", "/api/terminals", string(body), cookie, true)
 	var info terminal.Info
 	if err := json.NewDecoder(response.Body).Decode(&info); err != nil || response.StatusCode != 201 {

@@ -15,7 +15,7 @@ export type {ChatOptions, SessionTarget, Snapshot} from "./controller-types";
 // drafts are scoped to their creation target.
 export const conversationKey = (options: ChatOptions, session: string | null = options.session?.id || null) => JSON.stringify(session
   ? [options.environment, "session", session]
-  : [options.environment, "draft", options.workspace?.id || options.target?.workspace_id || "", options.target?.project_id || "", options.target?.cwd || ""]);
+  : [options.environment, "draft", "", options.target?.project_id || "", options.target?.cwd || ""]);
 export class ChatController {
   reading: DraftRecord['reading'] = {top: 0, bottom: true, anchor: "", offset: 0};
   opening = true;
@@ -43,7 +43,7 @@ export class ChatController {
   private generation = 0;
   private handoffID?: string;
   private submitted?: {id?: string; text: string; attachments: readonly Attachment[]};
-  private pending?: {text: string; images?: string[]; provider?: AgentProvider; project_id: string; workspace_id?: string; cwd?: string; additional_directories?: string[]; request_id: string; settings?: TurnSettings; turn_id?: string};
+  private pending?: SessionTarget & {text: string; images?: string[]; provider?: AgentProvider; request_id: string; settings?: TurnSettings; turn_id?: string};
   private openingApproval = false;
   private defaultsRefreshPending = false;
   private draftPersistence: ReturnType<typeof createDraftPersistence>;
@@ -74,7 +74,7 @@ export class ChatController {
   };
   constructor(public options: ChatOptions) {
     const initialProvider = normalizeProvider(options.session?.provider);
-    this.snapshot = {session: options.session, provider: initialProvider, capabilities: defaultCapabilities(initialProvider), entries: [], chat: idleChat(), project: options.target?.project_id || options.workspace?.primary_project_id || "", draft: "", error: "", historyError: "", loading: false, submitting: false, stopping: false, answering: null, cursor: null, draftRestore: 0, settings: {}, defaults: {}, models: [], modes: [], optionsLoading: false, draftNotice: "", search: "", searching:false, searchError:"", managing:false};
+    this.snapshot = {session: options.session, provider: initialProvider, capabilities: defaultCapabilities(initialProvider), entries: [], chat: idleChat(), project: options.target?.project_id || "", draft: "", error: "", historyError: "", loading: false, submitting: false, stopping: false, answering: null, cursor: null, draftRestore: 0, settings: {}, defaults: {}, models: [], modes: [], optionsLoading: false, draftNotice: "", search: "", searching:false, searchError:"", managing:false};
     this.historyLoader = createHistoryLoader({
       request: (path, init) => this.options.request(path, init),
       base: () => this.base(),
@@ -141,12 +141,22 @@ export class ChatController {
     if (echo) this.update({entries: this.snapshot.entries.filter(e => e.id !== echo.entry.id)});
   }
   private base() { return `/api/sessions/${encodeURIComponent(this.snapshot.session!.id)}`; }
-  canSend = () => !this.options.readOnly && !this.snapshot.session?.archived && (!!this.snapshot.session || !this.snapshot.optionsLoading && (this.options.workspace
-    ? this.options.workspace.state === "ready" : !!(this.options.target?.workspace_id || this.options.target?.project_id && this.options.target?.cwd)));
+  canSend = () => !this.options.readOnly && !this.snapshot.session?.archived && (!!this.snapshot.session || !this.snapshot.optionsLoading);
   resume = async () => {
     if (!this.snapshot.session) return;
-    try { await this.options.request(this.base() + "/resume", {method: "POST"}); }
-    catch (error) { this.update({error: (error as Error).message}); }
+    const flags: {native_permissions?:boolean; allow_shared?:boolean} = {};
+    for (;;) {
+      try {
+        await this.options.request(this.base() + "/resume", {method: "POST",body:JSON.stringify(flags)});
+        return;
+      } catch (error) {
+        const {code,message} = error as {code?:string;message:string};
+        const flag = code === "native_permissions_confirmation" ? "native_permissions" : code === "directory_conflict" ? "allow_shared" : undefined;
+        if (!flag || flags[flag] || typeof window === "undefined") { this.update({error:message}); return; }
+        if (!window.confirm(message)) return;
+        flags[flag] = true;
+      }
+    }
   };
   setDraft = (draft: string) => { if (draft !== this.snapshot.draft) { this.update({draft}); this.draftChanged(); } };
   setError = (error: string) => this.update({error});
@@ -295,7 +305,7 @@ export class ChatController {
     } catch (error) { if (!abort.signal.aborted && generation === this.generation) this.update({error: uiText("实时连接暂时断开，将自动重连，不会重复发送消息。")}); }
     finally { if (this.streamAbort === abort) this.streamRun = undefined; }
   }
-  send = async (text: string, images: string[] = [], restoreDraftOnError = true) => {
+  send = async (text: string, images: string[] = [], restoreDraftOnError = true, update: SessionTarget = {}) => {
     if (this.options.readOnly || this.snapshot.chat.external && (this.snapshot.chat.busy || this.snapshot.chat.status === "unknown")) return;
     text = text.trim();
     const messageText = [text, ...draftFiles(this.draftAttachments).map(f=>f.text)].filter(Boolean).join("\n\n");
@@ -305,12 +315,11 @@ export class ChatController {
     if (before.submitting || (steering && (!before.capabilities.steer || !before.chat.turn_id || !["running","waiting"].includes(before.chat.status))) || before.chat.blocked || !this.canSend()) throw new Error(uiText("当前暂不能发送，草稿已保留，请稍后重试"));
     try { validateImages(images); }
     catch (error) { this.update({error: (error as Error).message}); throw error; }
-    const target: SessionTarget & {project_id: string} = before.session ? {project_id: ""}
-      : {...this.options.target, ...(this.options.workspace ? {workspace_id: this.options.workspace.id} : {}), project_id: before.project};
+    const target: SessionTarget = before.session ? {allow_shared:update.allow_shared} : {...this.options.target, ...update};
     const createProvider: AgentProvider | undefined = !before.session && before.provider === "agy" ? "agy" : undefined;
-    const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.workspace_id === target.workspace_id && this.pending.cwd === target.cwd
-      && this.pending.provider === createProvider
-      && JSON.stringify(this.pending.additional_directories) === JSON.stringify(target.additional_directories)
+    const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.cwd === target.cwd
+      && this.pending.provider === createProvider && this.pending.access === target.access && this.pending.allow_shared === target.allow_shared
+      && JSON.stringify(this.pending.bindings) === JSON.stringify(target.bindings)
       && (this.pending.images || []).length === images.length
       && images.every((image, i) => image === this.pending?.images?.[i])
       && this.pending?.turn_id === (steering ? before.chat.turn_id : undefined) && (steering || JSON.stringify(this.pending?.settings || {}) === JSON.stringify(before.settings));
@@ -334,7 +343,7 @@ export class ChatController {
         const session = {...result.session, provider: createdProvider};
         this.update({session, provider: createdProvider, capabilities: defaultCapabilities(createdProvider)}); this.options.created(session); chat = result.chat;
       } else {
-        chat = await this.options.request<ChatState>(this.base() + "/chat", {method: "POST", body: JSON.stringify({text: messageText, ...(images.length ? {images} : {}), request_id: pending.request_id, ...(Object.keys(before.settings).length ? {settings:before.settings} : {})})});
+        chat = await this.options.request<ChatState>(this.base() + "/chat", {method: "POST", body: JSON.stringify({text: messageText, ...(images.length ? {images} : {}), request_id: pending.request_id, ...(target.allow_shared ? {allow_shared: true} : {}), ...(Object.keys(before.settings).length ? {settings:before.settings} : {})})});
       }
       this.settleAttachments(attachments);
       this.pending = undefined; if (!steering) this.submitted = {id: chat.id, text, attachments}; this.apply(chat); this.draftChanged();

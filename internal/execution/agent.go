@@ -108,7 +108,7 @@ func RunAgent(input io.Reader, output io.Writer, hooks AgentHooks) error {
 					err = hooks.TerminalConflict(request.Method, request.Path)
 				}
 			} else {
-				value, err = executeWorkspaceRequestWithSessions(requestCtx, request, sessions.Open, &installer)
+				value, err = executeRequestWithSessions(requestCtx, request, sessions.Open, &installer)
 			}
 			response := Response{ID: request.ID}
 			if err != nil {
@@ -133,13 +133,13 @@ func RunAgent(input io.Reader, output io.Writer, hooks AgentHooks) error {
 	return scan.Err()
 }
 
-func executeWorkspaceRequest(ctx context.Context, r Request) (any, error) {
+func executeRequest(ctx context.Context, r Request) (any, error) {
 	var installer codex.Installer
 	defer installer.Close()
-	return executeWorkspaceRequestWithSessions(ctx, r, codex.OpenSessionClient, &installer)
+	return executeRequestWithSessions(ctx, r, codex.OpenSessionClient, &installer)
 }
 
-func executeWorkspaceRequestWithSessions(ctx context.Context, r Request, openSessions func(context.Context) (codex.SessionClient, error), installer *codex.Installer) (any, error) {
+func executeRequestWithSessions(ctx context.Context, r Request, openSessions func(context.Context) (codex.SessionClient, error), installer *codex.Installer) (any, error) {
 	switch r.Op {
 	case "codex-diagnostics":
 		return installer.Diagnose(ctx, openSessions), nil
@@ -162,11 +162,6 @@ func executeWorkspaceRequestWithSessions(ctx context.Context, r Request, openSes
 		return ScanRepositories(ctx, r.Path)
 	case "git-preview":
 		return RunGitPreview(ctx, r.Path, r.Args...)
-	case "write-generated":
-		if len(r.Args) == 0 {
-			return nil, fmt.Errorf("缺少自动文件标记")
-		}
-		return nil, WriteGenerated(ctx, r.Path, r.Data, r.Args...)
 	case "store-attachment":
 		if len(r.Args) != 1 {
 			return nil, fmt.Errorf("缺少附件文件名")
@@ -184,6 +179,12 @@ func executeWorkspaceRequestWithSessions(ctx context.Context, r Request, openSes
 		return store.ExportMetadata(ctx, r.Path)
 	case "validate-terminal":
 		return CustomTerminalPath(r.Path)
+	case "codex-executable":
+		cmd := codex.Command(ctx, "app-server", "daemon", "version")
+		if cmd.Err != nil {
+			return "", cmd.Err
+		}
+		return filepath.EvalSymlinks(cmd.Path)
 	case "identity":
 		home, err := os.UserHomeDir()
 		return Identity{Protocol: Protocol, Home: home, User: os.Getenv("USER"), Distro: os.Getenv("WSL_DISTRO_NAME"), CredentialHelper: CredentialHelperCommand()}, err
@@ -245,6 +246,6 @@ func executeWorkspaceRequestWithSessions(ctx context.Context, r Request, openSes
 		err = c.Call(r.Method, r.Params, &result)
 		return result, err
 	default:
-		return nil, fmt.Errorf("不支持的工作区操作：%s", r.Op)
+		return nil, fmt.Errorf("不支持的执行环境操作：%s", r.Op)
 	}
 }

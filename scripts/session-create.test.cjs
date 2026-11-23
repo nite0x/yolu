@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 require('tsx/cjs');
-const { workspaceUI } = require('../frontend/workspace/renderers.tsx');
+const { workspaceUI } = require('../frontend/app/renderers.tsx');
 
 function harness() {
   const elements = new Map();
@@ -19,8 +19,8 @@ function harness() {
     crypto: { randomUUID: () => 'request-' + ++sequence },
     document: { addEventListener() {}, querySelector() { return null; }, hidden: false },
     window: { WorkHubUI: workspaceUI, addEventListener() {} }, setInterval() { timers++; return timers; }, clearInterval() {},
-    state: { view: 'workspaces', selectedWorkspace: 'req', workspaces: [{ id: 'req', name: '开发工作区', state: 'ready', primary_project_id: 'main', members: [{ project_id: 'main', project_name: 'Main', path: '/work/main' }, { project_id: 'other', project_name: 'Other', path: '/work/other' }] }] },
-    workspaceSessions: new Map(), updateWorkspaceSessionsView() {}, markSessionRead() {}, updateSessionChatActivity() {}, esc: s => String(s ?? ''),
+    state: {projects:[]}, activeEnvironment:'local',
+    updateSessionChatActivity() {}, esc: s => String(s ?? ''),
     api(url, options) {
       if (url.endsWith('/sessions/new')) return new Promise((resolve, reject) => creates.push({ url, body: JSON.parse(options.body), resolve, reject }));
       if (url.endsWith('/history')) return Promise.resolve({ session: { id: 'created', name: 'Created', cwd: '/work/main' }, entries: [] });
@@ -34,27 +34,22 @@ const created = () => ({ session: { id: 'created', name: 'Created', cwd: '/work/
 
 test('new sidebar opens without creating or polling, and retains draft and project after closing', () => {
   const h = harness();
-  h.context.openSessionHistory('req');
+  h.context.openSessionHistoryPanel(null, {target:{project_id:'main',cwd:'/work/main'}});
   assert.equal(h.creates.length, 0);
   assert.equal(h.timers, 0);
   assert.equal(h.$('#sessionHistoryPanel').hidden, false);
   assert.equal(h.$('#refreshSessionHistory').hidden, true);
   assert.equal(h.$('#resumeHistorySession').hidden, true);
-  assert.equal(h.$('#newSessionProject').value, 'main');
-  h.$('#newSessionProject').value = 'other';
-  h.$('#newSessionProject').handlers.change();
   h.$('#sessionChatInput').value = 'draft';
   h.context.closeSessionHistory(false);
-  h.context.openSessionHistory('req');
+  h.context.openSessionHistoryPanel(null, {target:{project_id:'main',cwd:'/work/main'}});
   assert.equal(h.$('#sessionChatInput').value, 'draft');
-  assert.equal(h.$('#newSessionProject').value, 'other');
-  assert.equal(h.$('#sessionHistoryMeta').textContent, '/work/other');
+  assert.equal(h.$('#sessionHistoryMeta').textContent, '/work/main');
 });
-test('first send creates once and transitions into the linked conversation; failed retry keeps request ID', async () => {
-  const h = harness(); h.context.openSessionHistory('req');
+test('first send creates once and opens the created conversation; failed retry keeps request ID', async () => {
+  const h = harness(); h.context.openSessionHistoryPanel(null, {target:{project_id:'main',cwd:'/work/main'}});
   h.$('#sessionChatInput').value = 'first message';
   const first = h.context.sendNewSession(h.current());
-  assert.equal(h.$('#newSessionProject').disabled, true);
   assert.equal(h.$('#sessionChatInput').disabled, true);
   assert.equal(h.creates[0].body.project_id, 'main');
   h.creates[0].reject(new Error('connection failed'));
@@ -65,21 +60,18 @@ test('first send creates once and transitions into the linked conversation; fail
   assert.equal(h.creates[1].body.request_id, h.creates[0].body.request_id);
   h.creates[1].resolve(created()); await retry;
   assert.equal(h.current().session, 'created');
-  assert.equal(h.$('#newSessionProjectField').hidden, true);
   assert.equal(h.$('#sessionChatInput').disabled, false);
-  assert.equal(h.context.workspaceSessions.get('req').sessions[0].id, 'created');
 });
 test('reopening while a creation is pending reuses it; closing prevents late result from opening a panel', async () => {
-  const h = harness(); h.context.openSessionHistory('req');
+  const h = harness(); h.context.openSessionHistoryPanel(null, {target:{project_id:'main',cwd:'/work/main'}});
   h.$('#sessionChatInput').value = 'one request';
   const sending = h.context.sendNewSession(h.current());
   h.context.closeSessionHistory(false);
-  h.context.openSessionHistory('req');
+  h.context.openSessionHistoryPanel(null, {target:{project_id:'main',cwd:'/work/main'}});
   assert.equal(h.current().submitting, true);
   assert.equal(h.creates.length, 1);
   h.context.closeSessionHistory(false);
   h.creates[0].resolve(created()); await sending;
   assert.equal(h.current(), null);
   assert.equal(h.$('#sessionHistoryPanel').hidden, true);
-  assert.equal(h.context.workspaceSessions.get('req').sessions.length, 1);
 });

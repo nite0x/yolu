@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 require('tsx/cjs');
-const { workspaceUI } = require('../frontend/workspace/renderers.tsx');
+const { workspaceUI } = require('../frontend/app/renderers.tsx');
 
 function harness() {
   const elements = new Map();
@@ -18,8 +18,8 @@ function harness() {
   let timerID = 0;
   const context = vm.createContext({
     $, AbortController, URLSearchParams, CSS: { escape: s => s },
-    state: { workspaces: [{ id: 'req', state: 'ready' }] },
-    workspaceSessions: new Map(), markSessionRead() {},
+    state: {projects:[]}, activeEnvironment: 'local',
+
     document: { hidden: false, addEventListener(event, handler) { listeners.set(event, handler); }, querySelector() { return null; } },
     window: { WorkHubUI: workspaceUI, addEventListener() {} },
     setInterval(callback, delay) { timers.set(++timerID, { callback, delay }); return timerID; },
@@ -47,7 +47,7 @@ function enablePush(h) {
 
 test('terminal confirmations display safely without controls, and clear after the terminal handles them', async () => {
   const h = harness(); enablePush(h);
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [])); await flush();
   const current = vm.runInContext('sessionHistoryState', h.context);
   const confirmation = { id: 'pending', title: '需要回答 <svg>', details: '理由 <script>alert(1)</script>', questions: [{ header: '方案', question: '采用哪个方案？', options: [{ label: '方案 A', description: '兼容旧数据' }] }] };
@@ -69,7 +69,7 @@ test('terminal confirmations display safely without controls, and clear after th
 
 test('existing waiting status has a fallback notice; disconnect marks pending state stale and session switches clear it', async () => {
   const h = harness(); enablePush(h);
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [])); await flush();
   const current = vm.runInContext('sessionHistoryState', h.context);
   const attention = h.element('#sessionHistoryAttention');
@@ -81,7 +81,7 @@ test('existing waiting status has a fallback notice; disconnect marks pending st
   h.context.applyHistoryPush(current, { connected: true, sync: 0, entries: [], confirmations: [], waiting: false });
   assert.equal(attention.hidden, true);
   h.context.applyHistoryPush(current, { connected: true, entries: [], waiting: true });
-  h.context.openSessionHistory('req', 'other');
+  h.context.openSessionHistoryPanel('other');
   assert.equal(attention.hidden, true);
   h.context.applyHistoryPush(current, { connected: true, entries: [], waiting: true });
   assert.equal(attention.hidden, true);
@@ -91,9 +91,9 @@ test('read-only sessions expose saved history without starting chat or creating 
   const h = harness();
   h.context.sessionReadOnly = true;
   h.context.openSessionChat = () => { throw new Error('interactive chat must stay disabled'); };
-  h.context.openSessionHistory('req');
+  h.context.openSessionHistoryPanel();
   assert.equal(h.requests.length, 0);
-  h.context.openSessionHistory('req', 'saved-session');
+  h.context.openSessionHistoryPanel('saved-session');
   assert.equal(h.element('#sessionChatForm').hidden, true);
   assert.equal(h.requests.length, 1);
   assert.match(h.requests[0].url, /\/history$/);
@@ -101,8 +101,8 @@ test('read-only sessions expose saved history without starting chat or creating 
 
 test('switching and closing the panel prevents stale history from appearing', async () => {
   const h = harness();
-  h.context.openSessionHistory('req', 'first');
-  h.context.openSessionHistory('req', 'second');
+  h.context.openSessionHistoryPanel('first');
+  h.context.openSessionHistoryPanel('second');
   assert.equal(h.requests[0].options.signal.aborted, true);
   h.requests[1].resolve(page('second', [message('second')]));
   await flush();
@@ -121,7 +121,7 @@ test('switching and closing the panel prevents stale history from appearing', as
 
 test('older pages prepend without duplicate records and failed reads can be retried', async () => {
   const h = harness();
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [message('new')], 'opaque cursor'));
   await flush();
   h.context.loadSessionHistory(true);
@@ -152,7 +152,7 @@ test('commands collapse to a summary and output is rendered as inert text only i
   assert.match(html, /aria-haspopup="dialog"/);
   assert.doesNotMatch(html, /<script>|<img|\x1b|bad\(\)<\/script>|&lt;script&gt;/);
   assert.doesNotMatch(h.context.renderHistoryEntry({ ...command, status: 'failed' }), /<details[^>]*\sopen/);
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   vm.runInContext('sessionHistoryState.entries = ' + JSON.stringify([command]), h.context);
   h.context.openCommandOutput(JSON.stringify(['turn', 'command']));
   assert.equal(h.element('#sessionCommandOutputDialog').open, true);
@@ -164,7 +164,7 @@ test('commands collapse to a summary and output is rendered as inert text only i
 test('read-only history polls every second, pauses while hidden and catches up on return', async () => {
   const h = harness();
   h.context.sessionReadOnly = true;
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   assert.equal([...h.timers.values()][0].delay, 1000);
   h.requests[0].resolve(page('session', [message('first')]));
   await flush();
@@ -189,7 +189,7 @@ test('read-only history polls every second, pauses while hidden and catches up o
 
 test('automatic refresh retains older pages and the reading position, and follows the bottom', async () => {
   const h = harness();
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [message('recent')], 'older'));
   await flush();
   h.context.loadSessionHistory(true);
@@ -216,7 +216,7 @@ test('automatic refresh retains older pages and the reading position, and follow
 
 test('a busy terminal is caught up through intervening pages without gaps or duplicates', async () => {
   const h = harness();
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [message('old')], 'oldest'));
   await flush();
   h.tick();
@@ -234,7 +234,7 @@ test('a busy terminal is caught up through intervening pages without gaps or dup
 
 test('failed automatic reads preserve records and recover on the next tick; switching cancels the old timer', async () => {
   const h = harness();
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [message('saved')]));
   await flush();
   h.tick();
@@ -248,7 +248,7 @@ test('failed automatic reads preserve records and recover on the next tick; swit
   assert.equal(h.element('#sessionHistoryError').hidden, true);
   assert.match(h.element('#sessionHistoryEntries').innerHTML, /recovered/);
   h.tick();
-  h.context.openSessionHistory('req', 'other');
+  h.context.openSessionHistoryPanel('other');
   assert.equal(h.timers.size, 1);
   assert.equal(h.requests[3].options.signal.aborted, true);
   h.requests[3].resolve(page('session', [message('STALE_CONTENT')]));
@@ -258,7 +258,7 @@ test('failed automatic reads preserve records and recover on the next tick; swit
 
 test('refresh preserves command details and updates the open output dialog by record identity', async () => {
   const h = harness();
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   const command = { id: 'command', turn_id: 'turn', kind: 'command', status: 'inProgress', output: 'first' };
   h.requests[0].resolve(page('session', [command]));
   await flush();
@@ -280,13 +280,13 @@ test('refresh preserves command details and updates the open output dialog by re
   assert.equal(output.textContent, 'finished');
   assert.equal(output.scrollTop, 200);
   assert.match(h.element('#sessionCommandOutputMeta').textContent, /已完成/);
-  h.context.openSessionHistory('req', 'other');
+  h.context.openSessionHistoryPanel('other');
   assert.equal(h.element('#sessionCommandOutputDialog').open, false);
 });
 
 test('output dialog distinguishes missing, empty and pending output and closes with its conversation', () => {
   const h = harness();
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   const current = vm.runInContext('sessionHistoryState', h.context);
   const command = { id: 'c', turn_id: 't', kind: 'command', status: 'inProgress', output: null };
   current.entries = [command];
@@ -308,7 +308,7 @@ test('output dialog distinguishes missing, empty and pending output and closes w
 test('push updates reply and open output immediately while retaining reading position and avoiding history polling', async () => {
   const h = harness();
   const streams = enablePush(h);
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [message('saved')]));
   await flush();
   assert.equal(streams.length, 1);
@@ -335,7 +335,7 @@ test('push updates reply and open output immediately while retaining reading pos
 
 test('stale saved snapshots never roll back live text and command output', async () => {
   const h = harness(); enablePush(h);
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [message('saved')])); await flush();
   const current = vm.runInContext('sessionHistoryState', h.context);
   const reply = { ...message('live', 'first'), status: 'inProgress' };
@@ -352,7 +352,7 @@ test('stale saved snapshots never roll back live text and command output', async
 
 test('fragmented UTF-8 SSE is decoded once; disconnect falls back and reconnect snapshots do not duplicate text', async () => {
   const h = harness(); const streams = enablePush(h);
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [])); await flush();
   const text = '实时回复';
   const bytes = new TextEncoder().encode('data: ' + JSON.stringify({ connected: true, sync: 0, entries: [{ ...message('live', text), status: 'inProgress' }] }) + '\n\n');
@@ -377,7 +377,7 @@ test('fragmented UTF-8 SSE is decoded once; disconnect falls back and reconnect 
 
 test('closing or switching environments suppresses late SSE chunks and pauses subscriptions while hidden', async () => {
   const h = harness(); const streams = enablePush(h);
-  h.context.openSessionHistory('req', 'session');
+  h.context.openSessionHistoryPanel('session');
   h.requests[0].resolve(page('session', [])); await flush();
   let stream;
   streams[0].resolve(new Response(new ReadableStream({ start(controller) { stream = controller; } }), { headers: { 'Content-Type': 'text/event-stream' } }));

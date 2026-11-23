@@ -1,5 +1,5 @@
 // Package session indexes Codex threads and owns history, chat runs and terminal
-// handoff. Workspace/project scopes are adapters, never session owners.
+// handoff and their working directory associations.
 package session
 
 import (
@@ -16,45 +16,38 @@ import (
 	"worktree-hub/internal/platform"
 )
 
-type LaunchPlanner interface {
-	MakeLaunchPlan(context.Context, string) (model.LaunchPlan, error)
-}
-
-func savedSessionPlan(s model.Session) model.LaunchPlan {
-	return model.LaunchPlan{Cwd: s.Cwd, AdditionalDirectories: append([]string{}, s.AdditionalDirectories...)}
-}
-
 type Service struct {
 	chatRuntime
-	Execution        *execution.Service
-	plans            LaunchPlanner
-	openSessions     func(context.Context) (codex.SessionClient, error)
-	sessionPool      *codex.SessionPool
-	codexInstaller   codex.Installer
-	openLive         func(context.Context) (codex.LiveClient, error)
-	openTitleLive    func(context.Context) (codex.LiveClient, error)
-	openAgy          func(context.Context, ...string) (acp.Client, acp.InitializeResult, error)
-	diagnoseAgy      func(context.Context) agy.Diagnostics
-	agyCatalogMu     sync.Mutex
-	agyCatalog       *agy.OptionCatalog
-	watchHistory     func(context.Context, string, func(HistoryPush) error) error
-	terminalConflict func(string, string) error
-	openExternal     func(string) error
-	bridgeMu         sync.Mutex
-	controlMu        sync.RWMutex
-	controlLocksMu   sync.Mutex
-	controlLocks     map[string]*sessionControlLock
-	catalogMu        sync.Mutex
-	catalogs         map[string]*catalogEntry
-	rateLimitsMu     sync.Mutex
-	rateLimits       *RateLimitsResponse
-	bridges          map[string]*terminalBridge
-	mediaOnce        sync.Once
-	mediaKey         [32]byte
+	Execution             *execution.Service
+	openSessions          func(context.Context) (codex.SessionClient, error)
+	sessionPool           *codex.SessionPool
+	codexInstaller        codex.Installer
+	openLive              func(context.Context) (codex.LiveClient, error)
+	openTitleLive         func(context.Context) (codex.LiveClient, error)
+	openAgy               func(context.Context, ...string) (acp.Client, acp.InitializeResult, error)
+	diagnoseAgy           func(context.Context) agy.Diagnostics
+	agyCatalogMu          sync.Mutex
+	agyCatalog            *agy.OptionCatalog
+	watchHistory          func(context.Context, string, func(HistoryPush) error) error
+	terminalConflict      func(string, string) error
+	openExternal          func(string) error
+	bridgeMu              sync.Mutex
+	controlMu             sync.RWMutex
+	controlLocksMu        sync.Mutex
+	controlLocks          map[string]*sessionControlLock
+	catalogMu             sync.Mutex
+	catalogs              map[string]*catalogEntry
+	rateLimitsMu          sync.Mutex
+	rateLimits            *RateLimitsResponse
+	bridges               map[string]*terminalBridge
+	directoryStarts       sync.Mutex
+	directoryReservations map[string]directoryReservation
+	mediaOnce             sync.Once
+	mediaKey              [32]byte
 }
 
-func New(environment *execution.Service, plans LaunchPlanner) *Service {
-	s := &Service{Execution: environment, plans: plans, openSessions: codex.OpenSessionClient, openLive: codex.OpenLive, openAgy: agy.OpenACP, watchHistory: WatchCodexHistory, terminalConflict: terminalSessionConflict, openExternal: platform.OpenExternal, chatRuntime: chatRuntime{chats: map[string]*ChatRun{}}, bridges: map[string]*terminalBridge{}}
+func New(environment *execution.Service) *Service {
+	s := &Service{Execution: environment, openSessions: codex.OpenSessionClient, openLive: codex.OpenLive, openAgy: agy.OpenACP, watchHistory: WatchCodexHistory, terminalConflict: terminalSessionConflict, openExternal: platform.OpenExternal, chatRuntime: chatRuntime{chats: map[string]*ChatRun{}}, bridges: map[string]*terminalBridge{}}
 	s.diagnoseAgy = func(ctx context.Context) agy.Diagnostics { return agy.Diagnose(ctx, s.openAgy) }
 	if environment.Remote != nil {
 		s.openLive = environment.Remote.OpenCodex

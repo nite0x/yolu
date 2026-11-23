@@ -9,13 +9,11 @@ import (
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/overview"
 	"worktree-hub/internal/testutil"
-	"worktree-hub/internal/workspace"
 )
 
 type App struct {
 	*Service
-	Workspaces *workspace.Service
-	token      string
+	token string
 }
 
 func openApp(dataDir, root string) (*App, error) {
@@ -23,8 +21,7 @@ func openApp(dataDir, root string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	workspaces := workspace.New(env)
-	return &App{Service: New(env), Workspaces: workspaces, token: model.NewID()}, nil
+	return &App{Service: New(env), token: model.NewID()}, nil
 }
 
 func testApp(t *testing.T) *App {
@@ -40,17 +37,17 @@ func testApp(t *testing.T) *App {
 }
 
 func (a *App) handler() http.Handler {
-	return testutil.Handler(a.Execution, a.token, a.Service, a.RegisterRoutes, func(mux *http.ServeMux) { a.Workspaces.RegisterRoutes(mux, a.Service.InvalidateStateAfter) })
+	return testutil.Handler(a.Execution, a.token, a.Service, a.RegisterRoutes)
 }
 
 var (
-	testGit       = testutil.Git
-	repo          = testutil.Repo
-	call          = testutil.Call
-	register      = testutil.Register
-	create        = testutil.Create
-	remoteClone   = testutil.RemoteClone
-	advanceRemote = testutil.AdvanceRemote
+	testGit        = testutil.Git
+	repo           = testutil.Repo
+	call           = testutil.Call
+	register       = testutil.Register
+	createWorktree = testutil.CreateWorktree
+	remoteClone    = testutil.RemoteClone
+	advanceRemote  = testutil.AdvanceRemote
 )
 
 func (a *App) TestHandler() http.Handler { return a.handler() }

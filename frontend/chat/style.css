@@ -1,8 +1,9 @@
 @import "../styles.css";
-@import "../workspace/conversation-surface.css";
+@import "../app/conversation-surface.css";
 @import "@assistant-ui/react-markdown/styles/dot.css";
 @import "tw-animate-css";
 @import "tw-shimmer";
+@import "./session-directories.css";
 
 #assistantChatRoot { display: none; min-height: 0; height: 100%; }
 .session-history-panel[data-assistant-ui] > :not(#assistantChatRoot) { display: none !important; }

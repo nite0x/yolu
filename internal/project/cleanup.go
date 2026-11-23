@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 
 	"worktree-hub/internal/execution"
@@ -23,52 +22,30 @@ type CleanupCandidate struct {
 	Path        string   `json:"path"`
 	Branch      string   `json:"branch"`
 	Head        string   `json:"head"`
-	Current     bool     `json:"current"`
 	Dirty       int      `json:"dirty"`
 	Unpushed    int      `json:"unpushed"`
 	Ignored     bool     `json:"ignored"`
-	Shared      []string `json:"shared"`
 	Reasons     []string `json:"reasons"`
 	Cleanable   bool     `json:"cleanable"`
 	Fingerprint string   `json:"fingerprint"`
 }
 
-func cleanupCurrent(q model.Workspace, project, path string) bool {
-	for _, m := range q.Members {
-		if m.ProjectID == project && platform.SameWorkspacePath(m.Path, path) {
-			return true
-		}
-	}
-	return false
-}
-
-func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.Workspace, qs []model.Workspace, path string) CleanupCandidate {
-	v := CleanupCandidate{ProjectID: p.ID, ProjectName: p.Name, Path: path, Current: cleanupCurrent(q, p.ID, path), Shared: []string{}, Reasons: []string{}}
-	if !platform.AbsoluteWorkspacePath(q.Path) || !platform.Within(q.Path, path) || platform.SameWorkspacePath(path, p.Path) {
-		v.Reasons = append(v.Reasons, "项目原目录或工作区外的目录，仅检查，不提供清理")
-	}
-	if v.Current && q.State != "archived" {
-		v.Reasons = append(v.Reasons, "当前仍关联工作区，请先归档工作区")
-	}
-	for _, other := range qs {
-		if other.ID == q.ID {
-			continue
-		}
-		for _, m := range other.Members {
-			if m.ProjectID == p.ID && platform.SameWorkspacePath(m.Path, path) {
-				v.Shared = append(v.Shared, other.Name)
-				break
-			}
-		}
-	}
-	sort.Strings(v.Shared)
-	if len(v.Shared) > 0 {
-		v.Reasons = append(v.Reasons, "其他工作区仍引用此目录："+strings.Join(v.Shared, "、"))
+func (a *Service) inspectCleanup(ctx context.Context, p model.Project, path string) CleanupCandidate {
+	v := CleanupCandidate{ProjectID: p.ID, ProjectName: p.Name, Path: path, Reasons: []string{}}
+	if path == "" || platform.SameWorkspacePath(path, p.Path) {
+		v.Reasons = append(v.Reasons, "请选择附属 Worktree。")
 	}
 	t, err := selectedWorktree(ctx, p, path)
 	if err != nil {
 		v.Reasons = append(v.Reasons, err.Error())
 	} else {
+		v.Path = t.Path
+		bindings, err := a.Execution.Store.BindingsWithinDirectory(t.Path)
+		if err != nil {
+			v.Reasons = append(v.Reasons, "无法核实目录的对话关联")
+		} else if len(bindings) > 0 {
+			v.Reasons = append(v.Reasons, "仍有对话关联此目录，请先解除关联")
+		}
 		v.Branch, v.Head, v.Dirty, v.Unpushed = t.Branch, t.Head, t.Dirty, t.SyncAhead
 		if t.Locked {
 			v.Reasons = append(v.Reasons, "Worktree 已锁定")
@@ -82,13 +59,13 @@ func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.W
 		if t.Operation != "" {
 			v.Reasons = append(v.Reasons, "有未完成的 Git 操作："+t.Operation)
 		}
-		if st, e := execution.Stat(ctx, platform.JoinWorkspacePath(path, ".git"), false); e != nil || st.IsDir() {
+		if st, e := execution.Stat(ctx, platform.JoinWorkspacePath(t.Path, ".git"), false); e != nil || !st.Mode().IsRegular() {
 			v.Reasons = append(v.Reasons, "不是可清理的附属 Worktree")
 		}
-		if resolved, e := execution.Eval(ctx, path); e != nil || !platform.SameWorkspacePath(path, resolved) {
+		if resolved, e := execution.Eval(ctx, t.Path); e != nil || !platform.SameWorkspacePath(t.Path, resolved) {
 			v.Reasons = append(v.Reasons, "目录真实路径已变化")
 		}
-		ignored, e := execution.Git(ctx, path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
+		ignored, e := execution.Git(ctx, t.Path, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
 		v.Ignored = ignored != ""
 		if e != nil {
 			v.Reasons = append(v.Reasons, "无法检查忽略文件")
@@ -105,12 +82,12 @@ func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.W
 		} else {
 			// With no upstream, allow only commits reachable from another retained
 			// baseline or a remote reference. The branch itself is always retained.
-			published, e := execution.Git(ctx, path, "for-each-ref", "--format=%(refname)", "--contains", t.Head, "refs/remotes")
+			published, e := execution.Git(ctx, t.Path, "for-each-ref", "--format=%(refname)", "--contains", t.Head, "refs/remotes")
 			if e != nil {
 				v.Reasons = append(v.Reasons, "无法检查提交保留状态")
 			} else if strings.TrimSpace(published) == "" {
-				base := execution.DefaultBranchSource(ctx, path)
-				_, e := execution.Git(ctx, path, "merge-base", "--is-ancestor", t.Head, base)
+				base := execution.DefaultBranchSource(ctx, t.Path)
+				_, e := execution.Git(ctx, t.Path, "merge-base", "--is-ancestor", t.Head, base)
 				if base == "HEAD" || base == "refs/heads/"+t.Branch || e != nil {
 					v.Reasons = append(v.Reasons, "没有上游，且提交尚未包含在其他保留基线中")
 				}
@@ -118,73 +95,29 @@ func (a *Service) inspectCleanup(ctx context.Context, p model.Project, q model.W
 		}
 	}
 	if a.CheckWorktreeIdle != nil {
-		if err := a.CheckWorktreeIdle(path); err != nil {
+		if err := a.CheckWorktreeIdle(v.Path); err != nil {
 			v.Reasons = append(v.Reasons, err.Error())
 		}
 	}
 	v.Cleanable = len(v.Reasons) == 0
-	raw, _ := json.Marshal([]any{q.ID, q.Path, q.State, p.CommonDir, v})
+	raw, _ := json.Marshal([]any{p.CommonDir, v})
 	v.Fingerprint = fmt.Sprintf("%x", sha256.Sum256(raw))
 	return v
 }
 
-func (a *Service) WorkspaceReviewHandler(w http.ResponseWriter, r *http.Request) {
-	q, err := a.Execution.Store.Workspace(r.PathValue("id"))
+func (a *Service) WorktreeReviewHandler(w http.ResponseWriter, r *http.Request) {
+	p, err := a.RegisteredProject(r.Context(), r.PathValue("id"))
 	if errors.Is(err, sql.ErrNoRows) {
-		httpx.WriteError(w, 404, "工作区不存在")
+		httpx.WriteError(w, 404, "项目不存在")
 		return
 	}
 	if err != nil {
-		httpx.DbError(w, err)
+		httpx.WriteError(w, 422, err.Error())
 		return
 	}
-	qs, err := a.Execution.Store.Workspaces()
-	if err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	ps, err := a.Execution.Store.Projects()
-	if err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	items := []CleanupCandidate{}
-	for _, p := range ps {
-		paths := map[string]bool{}
-		for _, m := range q.Members {
-			if m.ProjectID == p.ID {
-				paths[m.Path] = true
-			}
-		}
-		raw, e := execution.Git(r.Context(), p.Path, "worktree", "list", "--porcelain", "-z")
-		if e == nil {
-			for _, t := range ParseWorktrees(raw) {
-				if platform.Within(q.Path, t.Path) {
-					paths[t.Path] = true
-				}
-			}
-		}
-		if len(paths) == 0 {
-			continue
-		}
-		unlock := a.lockGit(p.CommonDir)
-		valid, lookupErr := a.RegisteredProject(r.Context(), p.ID)
-		for path := range paths {
-			if lookupErr != nil {
-				items = append(items, CleanupCandidate{ProjectID: p.ID, ProjectName: p.Name, Path: path, Current: cleanupCurrent(q, p.ID, path), Reasons: []string{lookupErr.Error()}})
-			} else {
-				items = append(items, a.inspectCleanup(r.Context(), valid, q, qs, path))
-			}
-		}
-		unlock()
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].ProjectName != items[j].ProjectName {
-			return items[i].ProjectName < items[j].ProjectName
-		}
-		return items[i].Path < items[j].Path
-	})
-	httpx.WriteJSON(w, 200, map[string]any{"workspace": q, "items": items})
+	unlock := a.lockGit(p.CommonDir)
+	defer unlock()
+	httpx.WriteJSON(w, 200, a.inspectCleanup(r.Context(), p, r.URL.Query().Get("path")))
 }
 
 func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request) {
@@ -205,13 +138,19 @@ func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request)
 		httpx.WriteError(w, 503, "后台正在退出")
 		return
 	}
-	p, err := a.RegisteredProject(r.Context(), r.PathValue("project"))
+	p, err := a.RegisteredProject(r.Context(), r.PathValue("id"))
 	if err != nil {
 		httpx.WriteError(w, 409, err.Error())
 		return
 	}
 	unlock := a.lockGit(p.CommonDir)
 	defer unlock()
+	selected, err := selectedWorktree(r.Context(), p, in.Path)
+	if err != nil {
+		httpx.WriteError(w, 409, err.Error())
+		return
+	}
+	in.Path = selected.Path
 	if a.ReserveWorktree != nil {
 		release, err := a.ReserveWorktree(r.Context(), in.Path)
 		if err != nil {
@@ -222,17 +161,7 @@ func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request)
 	}
 	a.Execution.Mu.Lock()
 	defer a.Execution.Mu.Unlock()
-	q, err := a.Execution.Store.Workspace(r.PathValue("id"))
-	if err != nil {
-		httpx.WriteError(w, 404, "工作区不存在")
-		return
-	}
-	qs, err := a.Execution.Store.Workspaces()
-	if err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	v := a.inspectCleanup(r.Context(), p, q, qs, in.Path)
+	v := a.inspectCleanup(r.Context(), p, in.Path)
 	if !v.Cleanable {
 		httpx.WriteJSON(w, 409, map[string]any{"error": "目录当前不能清理", "details": v.Reasons})
 		return
@@ -246,19 +175,5 @@ func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request)
 		httpx.WriteError(w, 409, "清理未完成，现场已保留："+RedactGitOutput(err.Error()))
 		return
 	}
-	_, err = a.Execution.Store.DB.Exec(`UPDATE members SET state='removed',branch=?,error='目录已清理；取消归档后可重试恢复，或更换工作目录' WHERE workspace_id=? AND project_id=? AND path=?`, v.Branch, q.ID, p.ID, in.Path)
-	if err != nil {
-		httpx.WriteError(w, 500, "目录已清理，但工作区记录更新失败，请刷新核对："+err.Error())
-		return
-	}
-	message := "已清理 Worktree 目录，分支和对话记录保留"
-	warning := ""
-	if a.WorkspaceContextUpdated != nil {
-		if current, err := a.Execution.Store.Workspace(q.ID); err == nil {
-			if err := a.WorkspaceContextUpdated(r.Context(), current); err != nil {
-				warning = "工作区上下文更新失败：" + err.Error()
-			}
-		}
-	}
-	httpx.WriteJSON(w, 200, map[string]string{"message": message, "context_warning": warning})
+	httpx.WriteJSON(w, 200, map[string]string{"message": "已清理 Worktree 目录，分支和对话记录保留"})
 }

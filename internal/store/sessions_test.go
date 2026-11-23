@@ -123,54 +123,6 @@ INSERT INTO sessions(id,name,cwd,created_at,updated_at,source) VALUES('legacy','
 	}
 }
 
-func TestSessionMigrationSeparatesDiscoveryFromManualPins(t *testing.T) {
-	dir := t.TempDir()
-	s, err := Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = s.DB.Exec(`INSERT INTO projects VALUES('p','Repo','/repo','/repo/.git','repo','now');
-INSERT INTO workspaces(id,name,slug,description,branch,path,primary_project_id,state,created_at) VALUES('a','A','a','','','/workspaces/a','p','ready','now'),('b','B','b','','','/workspaces/b','p','ready','now');
-INSERT INTO workspace_sessions VALUES('a','shared','Older','/repo',1,10,'workspace'),('b','shared','Newest','/repo',1,20,'workspace'),('a','outside','Manual','/outside',2,30,'manual');
-INSERT INTO session_create_requests VALUES('a','uncertain',''),('b','finished','shared');
-DELETE FROM schema_migrations WHERE version='sessions_index_v1';`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.DB.Close()
-	s, err = Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.DB.Close()
-	all, err := s.Sessions()
-	if err != nil || len(all) != 2 {
-		t.Fatalf("index: %+v %v", all, err)
-	}
-	shared, err := s.Session("shared")
-	if err != nil || shared.Name != "Newest" {
-		t.Fatalf("latest metadata: %+v %v", shared, err)
-	}
-	pins, err := s.PinnedSessionIDs("a")
-	if err != nil || len(pins) != 1 || !pins["outside"] {
-		t.Fatalf("pins: %+v %v", pins, err)
-	}
-	var pending string
-	if err := s.DB.QueryRow(`SELECT session_id FROM conversation_create_requests WHERE request_id='workspace:a:uncertain'`).Scan(&pending); err != nil || pending != "" {
-		t.Fatalf("pending reservation lost: %q %v", pending, err)
-	}
-	if _, err := s.DB.Exec(`UPDATE sessions SET name='Refreshed' WHERE id='shared'`); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.migrateSessions(); err != nil {
-		t.Fatal(err)
-	}
-	shared, _ = s.Session("shared")
-	if shared.Name != "Refreshed" {
-		t.Fatal("migration replayed stale legacy metadata")
-	}
-}
-
 func TestStandaloneSessionsSurviveMetadataTransferAndRemainEnvironmentLocal(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)

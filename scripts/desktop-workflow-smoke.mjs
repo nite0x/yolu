@@ -5,28 +5,44 @@ import { mkdtemp, mkdir, readFile, writeFile, realpath, rm } from 'node:fs/promi
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:http';
+import { WebSocketServer } from 'ws';
+import codexFixture from './fixtures/desktop-codex.cjs';
 
 const execute = promisify(execFile);
 const binary = path.resolve(process.argv[2]);
 const keep = process.argv.includes('--keep');
-const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'yolu-workflow-')));
+const directory = await realpath(await mkdtemp(path.join('/tmp', 'yolu-workflow-')));
 const data = path.join(directory, "数据 ' & spaces");
-const workspaceRoot = path.join(directory, "工作区 ' & spaces");
+const worktreeRoot = path.join(directory, "Worktrees ' & spaces");
 const bin = path.join(directory, 'tools');
+const fixtureHome = path.join(directory, 'home');
 const fixtureFile = path.join(directory, 'codex-fixture.json');
 const log = path.join(directory, 'codex-calls.jsonl');
 const shellQuote = s => "'" + s.replaceAll("'", "'\"'\"'") + "'";
 await mkdir(bin);
+await mkdir(fixtureHome);
 const fixtureScript = fileURLToPath(new URL('fixtures/desktop-codex.cjs', import.meta.url));
 await writeFile(path.join(bin, 'codex'), '#!/bin/sh\nexec ' + [process.execPath, fixtureScript, fixtureFile].map(shellQuote).join(' ') + ' "$@"\n', { mode: 0o700 });
-const env = { ...process.env, PATH: bin + path.delimiter + '/usr/bin:/bin', CODEX_HOME: path.join(directory, 'codex-home'), GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_SYSTEM: os.devNull, GIT_CONFIG_NOSYSTEM: '1' };
-await writeFile(fixtureFile, JSON.stringify({ sessions: [], items: [], log }));
+const env = { ...process.env, HOME: fixtureHome, PATH: bin + path.delimiter + '/usr/bin:/bin', CODEX_HOME: path.join(directory, 'codex-home'), GIT_CONFIG_GLOBAL: os.devNull, GIT_CONFIG_SYSTEM: os.devNull, GIT_CONFIG_NOSYSTEM: '1' };
+const socket = path.join(directory, 's');
+await writeFile(fixtureFile, JSON.stringify({ sessions: [], items: [], log, socket }));
+const server = createServer();
+const daemon = new WebSocketServer({ server });
+const handle = codexFixture.protocol(fixtureFile);
+daemon.on('connection', client => client.on('message', raw => {
+  handle(JSON.parse(raw.toString()), response => {
+    if (client.readyState === 1) client.send(JSON.stringify(response));
+  });
+}));
+await new Promise((resolve, reject) => server.once('error', reject).listen(socket, resolve));
 const run = (file, args, extra = {}) => execute(file, args, { env, timeout: 30000, maxBuffer: 2 * 1024 * 1024, ...extra });
 const git = async (cwd, ...args) => (await run('/usr/bin/git', ['-C', cwd, ...args])).stdout.trim();
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-let running = false, retained = false;
+let running = false;
 try {
-  const host = JSON.parse((await run(binary, ['--desktop-start', '--data', data, '--root', workspaceRoot])).stdout);
+  const startBackend = async () => JSON.parse((await run(binary, ['--desktop-start', '--data', data, '--root', worktreeRoot])).stdout);
+  let host = await startBackend();
   running = true;
   const descriptor = JSON.parse(await readFile(path.join(data, 'service.json'), 'utf8'));
   assert.equal(descriptor.read_only_sessions, false);
@@ -41,7 +57,7 @@ try {
   assert.match(page, /name="session-mode" content="interactive"/);
   assert.match(page, /id="workspacePages"/);
   assert.match(page, /src="\/core\/page-host.js"/);
-  const workPage = await (await fetch(host.url + '/?workspace-page=workflow-verification')).text();
+  const workPage = await (await fetch(host.url + '/?app-page=workflow-verification')).text();
   assert.match(workPage, /name="session-mode" content="interactive"/);
   assert.match(workPage, /src="\/features\/sessions\/session-create.js"/);
   const headers = { 'X-CSRF-Token': descriptor.token, 'Content-Type': 'application/json' };
@@ -70,13 +86,15 @@ try {
     const project = await request('/api/projects', 'POST', { name, path: repository }, 201);
     projects.push({ id: project.id, name, repository, seed, remote });
   }
-  const workspace = await request('/api/workspaces', 'POST', { name: 'macOS 完整流程验收', slug: 'macos-verification', description: '隔离的双项目开发工作区', primary_project_id: projects[0].id, project_ids: [projects[1].id] }, 201);
-  assert.equal(workspace.state, 'ready'); assert.equal(workspace.members.length, 2);
-  for (const member of workspace.members) {
-    assert(member.path.startsWith(workspaceRoot + path.sep));
-    assert.equal(await git(member.path, 'branch', '--show-current'), workspace.branch);
+  const projectEndpoint = id => '/api/projects/' + id;
+  const prepare = (id, slug, mode = 'new', branch = undefined) =>
+    request(projectEndpoint(id) + '/worktrees', 'POST', { slug, mode, branch, source: 'refs/heads/master' }, 201);
+  const projectsTrees = await Promise.all(projects.map(project => prepare(project.id, 'parallel')));
+  for (const tree of projectsTrees) {
+    assert(tree.path.startsWith(worktreeRoot + path.sep));
+    assert.equal(await git(tree.path, 'branch', '--show-current'), tree.branch);
   }
-  const primary = workspace.members.find(m => m.project_id === projects[0].id).path;
+  const primary = projectsTrees[0].path;
   const baseline = await git(primary, 'rev-parse', 'HEAD');
   const project = projects[0];
   await writeFile(path.join(project.seed, 'remote-update.txt'), 'fast forward\n');
@@ -86,14 +104,14 @@ try {
   await action({ action: 'fetch', remote: 'origin' });
   await action({ action: 'pull', path: project.repository });
   assert.equal(await git(project.repository, 'rev-parse', 'HEAD'), await git(project.seed, 'rev-parse', 'HEAD'));
-  assert.equal(await git(primary, 'rev-parse', 'HEAD'), baseline); // workspace snapshot is preserved.
+  assert.equal(await git(primary, 'rev-parse', 'HEAD'), baseline);
   await action({ action: 'create_branch', name: 'codex/git-verification', source: 'refs/heads/master' });
   await action({ action: 'switch', source: 'refs/heads/codex/git-verification', path: project.repository });
   await writeFile(path.join(project.repository, 'uncommitted.txt'), 'keep me\n');
   await action({ action: 'switch', source: 'refs/heads/master', path: project.repository }, 409);
   await rm(path.join(project.repository, 'uncommitted.txt'));
   await action({ action: 'switch', source: 'refs/heads/master', path: project.repository });
-  await writeFile(path.join(primary, '本地修改.txt'), 'visible in the workspace\n');
+  await writeFile(path.join(primary, '本地修改.txt'), 'visible in the worktree\n');
   await request('/api/state?refresh=1');
   let state;
   for (let attempt = 0; attempt < 50; attempt++) {
@@ -110,70 +128,128 @@ try {
     assert(!state.terminal.supported_kinds.includes('powershell'));
     await request('/api/settings/terminal', 'PUT', { kind: 'macos-terminal' });
   }
-  const session = { id: 'macos-verification-session', name: 'macOS 会话查看验收', preview: '', cwd: primary, createdAt: 1700000000, updatedAt: 1700000001 };
-  const items = [
-    { id: 'user', type: 'userMessage', content: [{ type: 'text', text: '检查当前项目的 Git 状态。' }] },
-    { id: 'command', type: 'commandExecution', command: 'git status --short --branch', cwd: primary, status: 'completed', aggregatedOutput: '## ' + workspace.branch + '\n?? 本地修改.txt', exitCode: 0, durationMs: 12 },
-    { id: 'reply', type: 'agentMessage', text: '已读取本地状态，修改仍保留。<script>这段文字不会执行</script>' },
-  ];
-  await writeFile(fixtureFile, JSON.stringify({ sessions: [session], items, log }));
-  const sessions = await request(`/api/workspaces/${workspace.id}/sessions`);
-  assert(sessions.sessions.some(s => s.id === session.id && s.source === 'workspace'));
-  const history = await request(`/api/workspaces/${workspace.id}/sessions/${session.id}/history`);
-  assert.deepEqual(history.entries.map(e => e.kind), ['user', 'command', 'assistant']);
-  assert.equal(history.entries[1].exit_code, 0);
-  assert(history.entries[1].output.includes('本地修改.txt'));
-  const chat = await request(`/api/workspaces/${workspace.id}/sessions/${session.id}/chat`);
-  assert.equal(chat.status, 'idle');
-  assert.equal(chat.blocked || '', '');
-  // Validation reaches the creation handler; no actual turn is started.
-  await request(`/api/workspaces/${workspace.id}/sessions/new`, 'POST', {}, 400);
+  const secondary = projectsTrees[1];
+  const binding = { project_id: projects[1].id, directory: secondary.path, access: 'write' };
+  const native = { provider: 'codex', project_id: projects[0].id, cwd: primary };
+  const first = await request('/api/sessions/new', 'POST', {
+    ...native, request_id: 'first', text: 'Review the changes in the selected repository.',
+  }, 202);
+  const session = first.session;
+  const base = '/api/sessions/' + session.id;
+  const waitFor = async (read, complete) => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const value = await read();
+      if (complete(value)) return value;
+      await pause(75);
+    }
+    assert.fail('Timed out waiting for the development conversation');
+  };
+  const settledChat = endpoint => waitFor(() => request(endpoint + '/chat'), chat => !chat.busy);
+  assert.equal((await settledChat(base)).status, 'completed');
+  assert.equal((await request(base + '/bindings')).bindings[0].directory, primary);
+  const related = await request('/api/sessions?project_id=' + project.id);
+  assert(related.sessions.some(s => s.id === session.id));
+  const history = await request(base + '/history');
+  assert(history.entries.some(entry => entry.kind === 'assistant' && entry.text.includes('selected directory')));
+
+  const inspected = await request('/api/session-bindings/inspect', 'POST', { session_id: session.id, ...binding });
+  assert.equal(inspected.branch, secondary.branch);
+  const attached = await request(base + '/bindings', 'POST', binding);
+  const attachment = attached.bindings.find(row => row.directory === secondary.path);
+  assert.equal(attachment?.access, 'write');
+  assert.notEqual(attachment?.role, 'primary');
+
+  const notes = path.join(directory, 'design-notes');
+  await mkdir(notes);
+  await writeFile(path.join(notes, 'adr.md'), '# Local design notes\n');
+  const projectless = await request('/api/sessions/new', 'POST', {
+    provider: 'codex', request_id: 'projectless', text: 'Review this task without a checkout.',
+  }, 202);
+  const plain = '/api/sessions/' + projectless.session.id;
+  assert.equal((await settledChat(plain)).status, 'completed');
+  assert.deepEqual((await request(plain + '/bindings')).bindings, []);
+  await request(plain + '/bindings', 'POST', { directory: notes, access: 'read', role: 'primary' });
+  assert.equal((await request(plain + '/bindings')).bindings[0].directory, notes);
+  assert.equal((await request(base + '/bindings')).bindings.length, 2);
+
+  await request(base + '/chat', 'POST', { request_id: 'follow-up', text: '[hold] Check both directories.' }, 202);
+  await waitFor(() => request(base + '/bindings'), context => context.bindings.some(row => row.directory === secondary.path && row.status === 'ready'));
+  const conflict = await request('/api/sessions/new', 'POST', {
+    provider: 'codex', project_id: projects[1].id, cwd: secondary.path, request_id: 'overlap', text: 'Review this directory.',
+  }, 409);
+  assert(conflict.conflicts.length > 0);
+  const isolated = await prepare(projects[1].id, 'isolated');
+  const parallel = await request('/api/sessions/new', 'POST', {
+    provider: 'codex', project_id: projects[1].id, cwd: isolated.path, request_id: 'parallel', text: 'Review the isolated checkout.',
+  }, 202);
+  assert.equal((await settledChat('/api/sessions/' + parallel.session.id)).status, 'completed');
+  await writeFile(fixtureFile + '.release', '');
+  assert.equal((await settledChat(base)).status, 'completed');
   const calls = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
-  assert(calls.every(call => !['thread/start', 'turn/start', 'thread/resume'].includes(call.rpc)));
-  await request(`/api/workspaces/${workspace.id}/archive`, 'POST', { archived: true });
-  for (const member of workspace.members) assert.equal(await git(member.path, 'branch', '--show-current'), workspace.branch);
-  await request(`/api/workspaces/${workspace.id}/archive`, 'POST', { archived: false });
-  // Exercise workspace edits, read-only changes, review/removal and branch recovery
-  // against the real embedded application, using only this temporary workspace.
-  const finish = await request('/api/workspaces', 'POST', {name:'工作区收尾验收', slug:'finish-verification', project_ids:projects.map(p=>p.id)}, 201);
-  const finishMember = finish.members[0];
-  const changedFile = path.join(finishMember.path, '改动预览.txt');
+  const resumed = calls.find(call => call.rpc === 'thread/resume' && call.params.threadId === session.id && call.params.permissions);
+  assert(resumed && JSON.stringify(resumed.params.config).includes(secondary.path), 'Codex received the additional directory in its filesystem profile');
+  const fixtureData = JSON.parse(await readFile(fixtureFile, 'utf8'));
+  await writeFile(fixtureFile, JSON.stringify({ ...fixtureData, requestDirectory: notes }));
+  await request(base + '/chat', 'POST', { request_id: 'native-approval', text: '[request-directory] Read the design notes.' }, 202);
+  const waiting = await waitFor(() => request(base + '/chat'), chat => chat.approvals.some(approval => approval.kind === 'project_access'));
+  const approval = waiting.approvals.find(approval => approval.kind === 'project_access');
+  assert.equal(approval.project_access.directory, notes);
+  assert.equal(approval.project_access.access, 'read');
+  await request(base + '/chat/approval', 'POST', { run_id: waiting.id, approval_id: approval.id, decision: 'accept' });
+  assert.equal((await settledChat(base)).status, 'completed');
+  assert((await readFile(log, 'utf8')).includes(JSON.stringify({ permissionReply: { permissions: { fileSystem: { read: [notes] } }, scope: 'turn' } })));
+  assert((await request(base + '/bindings')).bindings.some(row => row.directory === notes && row.access === 'read'));
+
+  const finish = await prepare(project.id, 'cleanup-check');
+  const changedFile = path.join(finish.path, '改动预览.txt');
   await writeFile(changedFile, 'staged content\n');
-  await git(finishMember.path, 'add', '改动预览.txt');
+  await git(finish.path, 'add', '改动预览.txt');
   await writeFile(changedFile, 'working content\n');
-  const changeQuery = new URLSearchParams({path:finishMember.path, file:'改动预览.txt'});
-  const workingPreview = await request(`/api/projects/${finishMember.project_id}/changes?${changeQuery}&mode=working`);
-  assert(workingPreview.text.includes('+working content'));
-  const indexPreview = await request(`/api/projects/${finishMember.project_id}/changes?${changeQuery}&mode=index`);
-  assert(indexPreview.text.includes('+staged content'));
-  await git(finishMember.path, 'reset', '--', '改动预览.txt');
+  const changeQuery = new URLSearchParams({ path: finish.path, file: '改动预览.txt' });
+  const changeEndpoint = projectEndpoint(project.id) + '/changes?' + changeQuery;
+  assert((await request(changeEndpoint + '&mode=working')).text.includes('+working content'));
+  assert((await request(changeEndpoint + '&mode=index')).text.includes('+staged content'));
+  await git(finish.path, 'reset', '--', '改动预览.txt');
   await rm(changedFile);
-  const notesPath = path.join(finish.path,'BRIEF.md');
-  await writeFile(notesPath,'User notes survive workspace edits\n');
-  await request(`/api/workspaces/${finish.id}`, 'PATCH', {name:'工作区收尾与恢复验收', description:'检查修改、清理与恢复的完整流程'});
-  assert((await readFile(path.join(finish.path,'WORK_HUB_CONTEXT.md'),'utf8')).includes('检查修改、清理与恢复的完整流程'));
-  assert.equal(await readFile(notesPath,'utf8'),'User notes survive workspace edits\n');
-  const activeReview = await request(`/api/workspaces/${finish.id}/review`);
-  assert(activeReview.items.every(item=>!item.cleanable));
-  await request(`/api/workspaces/${finish.id}/archive`, 'POST', {archived:true});
-  const finishReview = await request(`/api/workspaces/${finish.id}/review`);
-  const candidate = finishReview.items.find(item=>item.path===finishMember.path);
-  assert(candidate?.cleanable, JSON.stringify(finishReview));
-  await request(`/api/workspaces/${finish.id}/cleanup/${finishMember.project_id}`, 'POST', {path:candidate.path,fingerprint:candidate.fingerprint});
-  await assert.rejects(readFile(path.join(finishMember.path,'.git')));
-  await git(projects.find(p=>p.id===finishMember.project_id).repository,'show-ref','--verify','refs/heads/'+finishMember.branch);
-  await request(`/api/workspaces/${finish.id}/archive`, 'POST', {archived:false});
-  const restored = await request(`/api/workspaces/${finish.id}/retry`, 'POST', {project_id:finishMember.project_id});
-  assert.equal(restored.state,'ready');
-  assert.equal(await git(finishMember.path,'branch','--show-current'),finishMember.branch);
-  console.log('Workspace review passed: staged/working diff, current context, preserved notes, explicit archive, checked cleanup and branch recovery.');
-  const saved = { directory, data, workspaceRoot, projects, workspace, session, primary, url: host.url, pid: host.pid, log };
+  const cleanup = projectEndpoint(project.id) + '/worktree';
+  const review = await request(cleanup + '?' + new URLSearchParams({ path: finish.path }));
+  assert(review.cleanable, JSON.stringify(review));
+  await request(cleanup, 'DELETE', { path: review.path, fingerprint: review.fingerprint });
+  await assert.rejects(readFile(path.join(finish.path, '.git')));
+  const reused = await prepare(project.id, 'cleanup-check', 'existing', finish.branch);
+  assert.equal(reused.path, finish.path);
+  const blocked = await request(projectEndpoint(projects[1].id) + '/worktree?' + new URLSearchParams({ path: secondary.path }));
+  assert.equal(blocked.cleanable, false);
+  await request(base + '/bindings/' + attachment.id, 'DELETE');
+  assert.equal((await request(base + '/bindings')).bindings.length, 2);
+  await request(base + '/bindings', 'POST', binding);
+  assert.equal((await request(base + '/bindings')).bindings.length, 3);
+  assert.equal((await fetch(host.url + '/api/workspaces', { headers })).status, 404);
+  await run(binary, ['--stop', '--data', data]);
+  host = await startBackend();
+  headers['X-CSRF-Token'] = JSON.parse(await readFile(path.join(data, 'service.json'), 'utf8')).token;
+  const restored = await request(base + '/bindings');
+  assert.deepEqual(new Set(restored.bindings.map(row => row.directory)), new Set([primary, secondary.path, notes]));
+  assert.equal(restored.bindings.find(row => row.role === 'primary').branch, projectsTrees[0].branch);
+  assert((await request(base + '/history')).entries.find(entry => entry.kind === 'assistant' && entry.text.includes('selected directory')));
+
+  const saved = { directory, data, worktreeRoot, projects, session, primary, url: host.url, pid: host.pid, log };
   await writeFile(path.join(directory, 'test-state.json'), JSON.stringify(saved, null, 2));
-  console.log('Workflow passed: two projects, multi-project workspace, fetch, fast-forward pull, branch switch, dirty guard, worktree status, saved session history, archive/restore.');
-  if (keep) { retained = true; console.log('Native UI verification state: ' + path.join(directory, 'test-state.json')); }
+  console.log('Workflow passed: project and projectless conversations, directory profiles and native approvals, history and restoration, write conflicts, isolated checkouts, Git previews and protected Worktree removal.');
+  if (keep) {
+    console.log('Native UI verification state: ' + path.join(directory, 'test-state.json'));
+    await new Promise(resolve => {
+      process.once('SIGINT', resolve);
+      process.once('SIGTERM', resolve);
+    });
+  }
 } finally {
-  if (!retained) {
+  for (const client of daemon.clients) client.terminate();
+  daemon.close();
+  await new Promise(resolve => server.close(resolve));
+  try {
     if (running) await run(binary, ['--stop', '--data', data]);
+  } finally {
     await rm(directory, { recursive: true, force: true });
   }
 }

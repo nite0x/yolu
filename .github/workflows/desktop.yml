@@ -20,7 +20,7 @@ on:
 permissions:
   contents: read
 
-# The workspace JSDOM suite exceeds Node's default 2 GiB heap on macOS.
+# The application JSDOM suite exceeds Node's default 2 GiB heap on macOS.
 env:
   NODE_OPTIONS: --max-old-space-size=4096
 

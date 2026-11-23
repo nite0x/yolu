@@ -47,7 +47,7 @@ func (a *Service) startSessionTitle(run *ChatRun, text string) {
 }
 
 func (a *Service) generateSessionTitle(ctx context.Context, run *ChatRun, record model.Session, text string) {
-	// The background workspace has its own lifetime: completing or interrupting the
+	// The background worker has its own lifetime: completing or interrupting the
 	// main turn must not cancel naming based only on the accepted first input.
 	c, err := a.openTitleLive(ctx)
 	if err != nil {

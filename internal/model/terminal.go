@@ -1,15 +1,18 @@
 package model
 
 type LaunchPlan struct {
-	Tool                  string   `json:"tool,omitempty"`
-	Title                 string   `json:"title"`
-	Cwd                   string   `json:"cwd"`
-	Args                  []string `json:"args"`
-	Command               string   `json:"command"`
-	AdditionalDirectories []string `json:"additional_directories"`
-	Script                string   `json:"-"`
-	Workspace             string   `json:"-"`
-	Session               string   `json:"-"`
+	Tool                  string                  `json:"tool,omitempty"`
+	Title                 string                  `json:"title"`
+	Cwd                   string                  `json:"cwd"`
+	Args                  []string                `json:"args"`
+	Command               string                  `json:"command"`
+	AdditionalDirectories []string                `json:"additional_directories"`
+	Script                string                  `json:"-"`
+	Bindings              []SessionProjectBinding `json:"-"`
+	ManagedBindings       bool                    `json:"-"`
+	AllowShared           bool                    `json:"-"`
+	SharedDirectories     []string                `json:"-"`
+	Session               string                  `json:"-"`
 }
 type TerminalAvailability struct {
 	Platform  string           `json:"platform"`

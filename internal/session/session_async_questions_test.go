@@ -157,7 +157,7 @@ func TestAsyncQuestionAfterCompletionStartsNextTurnAndSkipPersists(t *testing.T)
 				awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
 			}
 			// A new service has no in-memory runs. Receipts survive independently.
-			reopened := New(a.Execution, a.Workspaces)
+			reopened := New(a.Execution)
 			entries := []HistoryEntry{{ID: "async-question", TurnID: "turn", Delivery: "async", Questions: []ChatQuestion{{ID: "0"}}}}
 			if err := reopened.decorateAsyncQuestions("session", entries); err != nil {
 				t.Fatal(err)
@@ -169,7 +169,7 @@ func TestAsyncQuestionAfterCompletionStartsNextTurnAndSkipPersists(t *testing.T)
 			if entries[0].QuestionStatus != wantStatus {
 				t.Fatal(entries)
 			}
-			fresh := &App{Service: reopened, Projects: a.Projects, Workspaces: a.Workspaces, token: a.token}
+			fresh := &App{Service: reopened, Projects: a.Projects, token: a.token}
 			asyncHistory(fresh, c.cwd, false)
 			code, raw := call(t, fresh, "GET", "/api/sessions/session/history", nil)
 			var history SessionHistory

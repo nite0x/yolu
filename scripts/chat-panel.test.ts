@@ -12,7 +12,8 @@ before(async () => {
   bundle = output.outputFiles.find(file=>file.path.endsWith(".js"))!.text + "\nwindow.ChatTest = ChatTest;";
 });
 
-const workspace = {id:"workspace",name:"测试工作区",state:"ready",primary_project_id:"p",members:[{project_id:"p",project_name:"项目",path:"/workspace/project"}]};
+const project = {id:"p",name:"项目",path:"/repo/project",worktrees:[{path:"/workspace/project",branch:"feature/current"}]};
+const overview = {projects:[project]};
 const session = {id:"session",name:"测试会话",cwd:"/workspace/project"};
 const tick = () => new Promise(resolve=>setTimeout(resolve,20));
 async function until(check:()=>unknown) { const deadline=Date.now()+5000; while(Date.now()<deadline){if(check()) return; await tick();} assert.ok(check(),"chat did not reach expected state"); }
@@ -33,6 +34,8 @@ function mount(existing = false, entries: Entry[] = [], extra: Partial<ChatOptio
     this.scrollTop = typeof options === "number" ? y || 0 : options.top || 0;
   };
   w.HTMLElement.prototype.scrollIntoView = function() {};
+  w.HTMLDialogElement.prototype.showModal = function() { this.open = true; };
+  w.HTMLDialogElement.prototype.close = function() { this.open = false; };
   w.URL.createObjectURL = () => "blob:http://localhost/test-image";
   w.URL.revokeObjectURL = () => {};
   w.eval(readFileSync("web/core/chat-input.js", "utf8"));
@@ -40,10 +43,12 @@ function mount(existing = false, entries: Entry[] = [], extra: Partial<ChatOptio
   const calls: {path:string;body:any}[] = [];
   let sendFailures = 0;
   let chat: ChatState = idleChat();
-  const options = {workspace,session:existing?session:null,environment:"local",created(){},close(){bridge.close();},stream:async()=>{throw new Error("fixture offline");},request:async(path:string,init?:RequestInit)=>{
+  const options = {overview,session:existing?session:null,environment:"local",created(){},close(){bridge.close();},stream:async()=>{throw new Error("fixture offline");},request:async(path:string,init?:RequestInit)=>{
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({path,body});
     if (body && (path.endsWith("/sessions/new") || path.endsWith("/chat")) && sendFailures-- > 0) throw new Error("发送失败，请重试");
+    if(path === "/api/session-bindings/inspect") return {directory:body?.directory || project.path,access:body?.access, status:"pending"};
+    if(path.endsWith("/bindings")) return {bindings:[]};
     if(path.includes("/history")) return {session,entries};
     if(path.endsWith("/sessions/new")) return {session,chat:{...idleChat(),id:body.request_id,status:"completed",turn_id:"turn",entries:[{id:"u",turn_id:"turn",kind:"user",text:body.text}]}};
     if(path.endsWith("/chat/stop")) {chat={...chat,busy:false,status:"interrupted"}; return chat;}
@@ -197,7 +202,7 @@ test("new chat inherits native settings and sends only explicitly selected model
   }});
   try{
     await until(()=>h.w.document.querySelector('[aria-label="上下文与设置"]')?.textContent?.includes('Other'));
-    assert.match(h.w.document.querySelector('[aria-label="上下文与设置"]')?.getAttribute('aria-description') || '', /权限 · 默认/);
+    assert.match(h.w.document.querySelector('[aria-label="上下文与设置"]')?.getAttribute('aria-description') || '', /权限 · 按目录授权/);
     h.w.document.querySelector<HTMLButtonElement>('[aria-label="上下文与设置"]')!.click();
     await chooseMenuSetting(h, await openSettingMenu(h, "模型"), "other");
     const modelMenu = await openSettingMenu(h, "模型");
@@ -214,7 +219,7 @@ test("new chat inherits native settings and sends only explicitly selected model
   }finally{h.dispose();}
 });
 
-test("new conversations display saved defaults and permit a permission override", async () => {
+test("managed Codex conversations keep model defaults and show scoped directory access", async () => {
   const h=mount(false,[],{request:async(path,init)=>{
     if(path.endsWith('/chat-options'))return {defaults:{model:'available',permission:'full'},models:[{id:'available',model:'available',displayName:'Available model',defaultReasoningEffort:'low',supportedReasoningEfforts:[{reasoningEffort:'low'}]}],modes:[]} as any;
     if(path.endsWith('/sessions/new')){h.calls.push({path,body:JSON.parse(String(init?.body))});return {session,chat:idleChat()} as any;}
@@ -223,15 +228,13 @@ test("new conversations display saved defaults and permit a permission override"
   try {
     await until(()=>h.w.document.querySelector('[aria-label="上下文与设置"]')?.textContent?.includes('Available model'));
     const trigger=h.w.document.querySelector<HTMLButtonElement>('[aria-label="上下文与设置"]')!;
-    assert(trigger.title.includes("完全访问权限"));
-    assert(trigger.querySelector(".chat-settings-state-icons [data-danger]"));
+    assert(trigger.title.includes("按目录授权"));
     trigger.click();
-    await chooseMenuSetting(h, await openSettingMenu(h, "权限"), "ask");
-    await until(() => trigger.title.includes("请求批准"));
+    await until(() => h.w.document.body.textContent?.includes("在对话顶部查看或更改目录访问权限。"));
     assert.equal(trigger.querySelector(".chat-settings-state-icons [data-danger]"), null);
     h.type('Use the saved model with manual approvals');await tick();h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
     await until(()=>h.calls.some(c=>c.path.endsWith('/sessions/new')));
-    assert.deepEqual(h.calls.find(c=>c.path.endsWith('/sessions/new'))!.body.settings,{permission:'ask'});
+    assert.deepEqual(h.calls.find(c=>c.path.endsWith('/sessions/new'))!.body.settings,{});
   } finally {h.dispose();}
 });
 
@@ -295,7 +298,7 @@ test("read-only sessions use official Markdown and tools without a composer or c
     assert.equal(h.input(), null);
     assert.equal(h.w.document.querySelector(".aui-composer-add-attachment"), null);
     assert(h.w.document.querySelector('[data-session-action="global-resume"]'));
-    assert(h.calls.every(call => call.path.includes("/history") && !call.body));
+    assert(h.calls.every(call => (call.path.includes("/history") || call.path.endsWith("/bindings")) && !call.body));
     assert.deepEqual(h.errors, []);
   } finally { h.dispose(); }
 });
@@ -537,26 +540,18 @@ test("official Markdown and tool components render existing history and expose c
   } finally {h.dispose();}
 });
 
-test("minimal left project summary keeps workspace navigation in the right working details", async () => {
-  const opened: [string, string][] = [];
-  const h = mount(true, [], {overview: {workspaces: [workspace, {...workspace, id:"other", name:"另一工作区"}], projects: []}, openWorkspace: (kind, id) => {opened.push([kind, id]);}});
+test("the project summary navigates directly and working details remain separate", async () => {
+  const opened: [string, string | undefined][] = [];
+  const h = mount(true, [], {openProject: (id, path) => {opened.push([id, path]);}});
   try {
     await until(() => h.input());
     const context = h.w.document.querySelector<HTMLDetailsElement>(".chat-workspace-context")!;
-    assert.equal(context.open, false);
     const heading = h.w.document.querySelector(".chat-panel-heading")!;
-    assert.match(heading.textContent || "", /项目/);
-    assert.doesNotMatch(heading.textContent || "", /测试工作区|另一工作区/);
     assert(context.closest(".chat-panel-actions"));
     assert(!heading.contains(context));
     heading.querySelector<HTMLButtonElement>('[aria-label="打开项目详情：项目"]')!.click();
     assert.equal(context.open, false);
-    assert(!h.w.document.querySelector(".chat-panel-heading .chat-workspace-links"));
-    context.open = true;
-    const workspaces = context.querySelectorAll<HTMLButtonElement>('.chat-workspace-links button');
-    assert.equal(workspaces.length, 2);
-    workspaces.forEach(button => button.click());
-    assert.deepEqual(opened, [["project","p"],["workspace","workspace"],["workspace","other"]]);
+    assert.deepEqual(opened, [["p","/workspace/project"]]);
     assert.deepEqual(h.errors, []);
   } finally { h.dispose(); }
 });
@@ -587,8 +582,8 @@ test("working details dismiss with Escape, outside click and close without repla
   } finally {h.dispose();}
 });
 
-test("external directories show no workspace navigation targets", async () => {
-  const h = mount(true, [], {workspace: undefined, overview: {workspaces: [], projects: []}, openWorkspace() {assert.fail("external directory has no details");}});
+test("external directories show no project navigation targets", async () => {
+  const h = mount(true, [], {overview: {projects: []}, openProject() {assert.fail("external directory has no details");}});
   try {
     await until(() => h.input());
     assert.equal(h.w.document.querySelector(".chat-workspace-link"), null);
@@ -596,13 +591,13 @@ test("external directories show no workspace navigation targets", async () => {
   } finally { h.dispose(); }
 });
 
-test("chat chrome identifies workspace and project with expandable working directory details", async () => {
+test("chat chrome identifies the project with expandable working directory details", async () => {
   const h = mount(true, [{id:"a",turn_id:"turn",kind:"assistant",text:"当前检查已完成。"}]);
   try {
     await until(() => h.input());
     assert.equal(h.w.document.querySelector("footer"), null);
     assert.doesNotMatch(h.w.document.body.textContent || "", /可以在这里继续对话|可粘贴或拖入图片|Ctrl\+Enter 发送/);
-    assert.match(h.w.document.querySelector(".chat-context-facts")?.textContent || "", /关联工作区测试工作区/);
+    assert.match(h.w.document.querySelector(".chat-context-facts")?.textContent || "", /项目项目/);
     assert.doesNotMatch(h.w.document.querySelector(".chat-workspace-context > summary")?.textContent || "", /测试工作区/);
     const context = h.w.document.querySelector<HTMLElement>(".chat-workspace-context")!;
     assert.match(context.textContent || "", /执行环境本机/);
@@ -703,7 +698,7 @@ test("without unread messages, switching and reopening restores the reading posi
     h.bridge.open(second); await until(() => h.input()?.value === "");
     await until(() => h.w.document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')?.scrollTop === 2400);
     h.type("第二个会话的草稿"); await tick();
-    h.bridge.open({...h.options, workspace: {...workspace, id: "other-workspace"}});
+    h.bridge.open({...h.options, target: {project_id:"other",cwd:"/other"}});
     await until(() => h.input()?.value === "第一个会话的草稿");
     await until(() => h.w.document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')?.scrollTop === 360);
     const restoredViewport = h.w.document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
@@ -1012,8 +1007,8 @@ test("URL flow opens the system browser through the scoped API and awaits a sepa
 
 test("the shared panel opens a project directory without any workspace object", async () => {
  const h = mount(false,[],{
-  workspace:undefined,target:{project_id:"p",cwd:"/workspace/project"},
-  overview:{workspaces:[],projects:[{id:"p",name:"项目",path:"/repo/project",worktrees:[{path:"/workspace/project",branch:"feature/current"}]}]},
+  target:{project_id:"p",cwd:"/workspace/project"},
+  overview:{projects:[{id:"p",name:"项目",path:"/repo/project",worktrees:[{path:"/workspace/project",branch:"feature/current"}]}]},
  });
  const setupMount = h.w.document.createElement("div");
  const setup = h.w.document.createElement("div");
@@ -1032,8 +1027,8 @@ test("the shared panel opens a project directory without any workspace object", 
   assert(footer?.classList.contains("sticky"));
   h.type("从项目页开始"); await tick();
   h.w.document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
-  await until(()=>h.calls.some(call=>call.body));
-  const sent = h.calls.find(call=>call.body)!;
+  await until(()=>h.calls.some(call=>call.path.endsWith("/sessions/new")));
+  const sent = h.calls.find(call=>call.path.endsWith("/sessions/new"))!;
   assert.equal(sent.path,"/api/sessions/new");
   assert.equal(sent.body.workspace_id,undefined);
   assert.equal(sent.body.cwd,"/workspace/project");
@@ -1603,8 +1598,8 @@ test('short history automatically fills the viewport across empty pages', async 
 });
 
 
-test("typing and identical workspace refreshes leave the chat panel mounted without rendering it again", async () => {
- const overview={workspaces:[workspace],projects:[]};
+test("typing and identical project refreshes leave the chat panel mounted without rendering it again", async () => {
+ const overview={projects:[project]};
  const h=mount(true,[],{overview});
  try {
   await until(()=>h.input() && !h.w.document.querySelector('[aria-label="刷新历史"]')?.hasAttribute('disabled'));
@@ -1616,8 +1611,8 @@ test("typing and identical workspace refreshes leave the chat panel mounted with
   for(let i=0;i<10;i++) h.bridge.updateOverview(JSON.parse(JSON.stringify(overview)));
   await tick();
   assert.equal((h.w as any).__panelRenders,before,'identical metadata must not rerender the panel');
-  h.bridge.updateOverview({workspaces:[{...workspace,name:'更新后的工作区'}],projects:[]});
-  await until(()=>h.w.document.body.textContent?.includes('更新后的工作区'));
+  h.bridge.updateOverview({projects:[{...project,name:"更新后的项目"}]});
+  await until(()=>h.w.document.body.textContent?.includes('更新后的项目'));
   assert((h.w as any).__panelRenders>before);
   assert.equal(h.input().value,'独立输入');
  } finally {h.dispose();}
@@ -1703,5 +1698,138 @@ test("voice dictation appends to the native draft, stops when hidden and preserv
     assert.equal(h.input().value, legacyDraft);
     event({type: "session.closed"});
     assert.equal(h.errors.length, 0);
+  } finally {h.dispose();}
+});
+
+test("project mentions ask before attaching and show configured directories as pending until access is effective", async () => {
+  const backend = {id:"backend",name:"yolu-web",path:"/repos/backend",worktrees:[{path:"/repos/backend",branch:"main"}]};
+  const calls: {path:string; method?:string; body?:any}[] = [];
+  const attached = {id:"secondary",project_id:backend.id,project_name:backend.name,directory:backend.path,branch:"main",status:"pending",role:"additional",access:"read"};
+  let bindings: unknown[] = [];
+  const h = mount(true, [], {
+    overview:{projects:[project,backend]},
+    async request(path, init) {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      calls.push({path,method:init?.method,body});
+      if (path === "/api/session-bindings/inspect") return attached as any;
+      if (path.endsWith("/bindings")) {
+        if (init?.method === "POST") bindings = [attached];
+        return {bindings} as any;
+      }
+      if (path.endsWith("/history")) return {session,entries:[]} as any;
+      return idleChat() as any;
+    },
+  });
+  const {document} = h.w;
+  try {
+    await until(h.input);
+    h.type("Check @yolu");
+    const choice = () => [...document.querySelectorAll<HTMLButtonElement>(".session-context-suggestion button")].find(button => button.textContent === "@yolu-web");
+    await until(choice);
+    assert.equal(calls.some(call => call.method === "POST"),false);
+    choice()!.click();
+    await until(() => document.querySelector(".session-binding-dialog form"));
+    const form = document.querySelector<HTMLFormElement>(".session-binding-dialog form")!;
+    const submit = () => form.dispatchEvent(new h.w.Event("submit",{bubbles:true,cancelable:true}));
+    submit();
+    await until(() => document.querySelector(".session-binding-preview"));
+    assert.match(document.querySelector(".session-binding-preview")!.textContent || "", /\/repos\/backend/);
+    assert.equal(calls.some(call => call.path.endsWith("/bindings") && call.method === "POST"),false);
+    submit();
+    await until(() => document.querySelector(".session-context-chip[data-status=pending]"));
+    const binding = document.querySelector(".session-context-chip[data-status=pending]")!;
+    assert.match(binding.textContent || "", /yolu-web.*main.*待配置/);
+    assert.match(h.input().value, /@yolu-web/);
+    assert.deepEqual(calls.find(call => call.path.endsWith("/bindings") && call.method === "POST")?.body, {project_id:"backend",directory:"/repos/backend",access:"read",role:"additional",allow_shared:false});
+    assert.equal(calls.some(call => call.path.endsWith("/chat") && call.method === "POST"),false);
+  } finally {h.dispose();}
+});
+
+test("a natural-language match waits for an explicit decision before sending", async () => {
+  const backend = {id:"backend",name:"yolu-web",path:"/repos/backend",worktrees:[]};
+  let sends = 0;
+  const h = mount(false, [], {
+    overview:{projects:[backend]},
+    async request(path, init) {
+      if (path === "/api/sessions/new" && init?.method === "POST") {
+        sends++;
+        return {session,chat:idleChat()} as any;
+      }
+      return {models:[],modes:[],entries:[],session} as any;
+    },
+  });
+  try {
+    await until(h.input);
+    const text = "Review changes in yolu-web";
+    h.type(text); await tick();
+    h.w.document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
+    await until(() => h.w.document.querySelector(".session-binding-dialog"));
+    const dialog = h.w.document.querySelector<HTMLDialogElement>(".session-binding-dialog")!;
+    assert.equal(sends,0);
+    dialog.querySelector<HTMLButtonElement>("footer button[type=button]")!.click();
+    await until(() => h.input().value === text);
+    assert.equal(sends,0);
+    h.w.document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
+    await until(() => sends === 1);
+  } finally {h.dispose();}
+});
+
+test("a conflicting binding can create an independent worktree and confirm its access separately", async () => {
+  const backend = {id:"backend",name:"yolu-web",path:"/repos/backend",worktrees:[]};
+  const worktree = "/repos/worktrees/session";
+  const inspections: string[] = [];
+  const writes: {directory:string; allow_shared:boolean}[] = [];
+  const h = mount(true, [], {
+    overview:{projects:[backend]},
+    async request(path, init) {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      if (path === "/api/session-bindings/inspect") {
+        inspections.push(body.directory);
+        const conflicts = body.directory === backend.path ? [{id:"active",name:"Active",cwd:backend.path}] : [];
+        return {directory:body.directory,access:body.access,status:"pending",conflicts} as any;
+      }
+      if (path === "/api/projects/backend/git") return {branches:[{kind:"local",ref:"refs/heads/main",name:"main"}]} as any;
+      if (path === "/api/projects/backend/worktrees") return {path:worktree} as any;
+      if (path.endsWith("/bindings")) {
+        if (init?.method === "POST") writes.push(body);
+        return {bindings:[]} as any;
+      }
+      if (path.endsWith("/history")) return {session,entries:[]} as any;
+      return idleChat() as any;
+    },
+  });
+  const {document} = h.w;
+  try {
+    await until(h.input);
+    h.type("Check @yolu");
+    const choice = () => [...document.querySelectorAll<HTMLButtonElement>(".session-context-suggestion button")].find(button => button.textContent === "@yolu-web");
+    await until(choice);
+    choice()!.click();
+    await until(() => document.querySelector<HTMLDialogElement>(".session-binding-dialog"));
+    const dialog = document.querySelector<HTMLDialogElement>(".session-binding-dialog")!;
+    const access = [...dialog.querySelectorAll("select")].find(select => select.options.item(0)?.textContent?.includes("只读"))!;
+    access.value = "write";
+    access.dispatchEvent(new h.w.Event("change",{bubbles:true}));
+    const confirm = dialog.querySelector<HTMLButtonElement>("footer button[type=submit]")!;
+    confirm.click();
+    const setup = () => dialog.querySelector<HTMLButtonElement>(".session-worktree-setup button");
+    await until(setup);
+    assert.equal(confirm.disabled, true);
+    setup()!.click();
+    const create = () => dialog.querySelector<HTMLButtonElement>(".session-worktree-setup button[type=submit]:enabled");
+    await until(create);
+    assert.equal(dialog.querySelector("form form"), null);
+    create()!.click();
+    await until(() => !setup() && !confirm.disabled);
+    assert.deepEqual(inspections, [backend.path]);
+    assert.deepEqual(writes, []);
+    confirm.click();
+    await until(() => dialog.querySelector(".session-binding-preview")?.textContent?.includes(worktree) && !confirm.disabled);
+    assert.equal(inspections.length, 2);
+    assert.equal(inspections[1], worktree);
+    confirm.click();
+    await until(() => writes.length === 1);
+    assert.equal(writes[0].directory, worktree);
+    assert.equal(writes[0].allow_shared, false);
   } finally {h.dispose();}
 });

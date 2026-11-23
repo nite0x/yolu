@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
-	"sort"
 	"strings"
 
 	"worktree-hub/internal/execution"
@@ -159,52 +158,3 @@ func writeOperationError(w http.ResponseWriter, err error) {
 	}
 	httpx.DbError(w, err)
 }
-
-// LockRepositories shares Git serialization with ordinary project operations.
-// Callers acquire this before the environment metadata mutex, matching the
-// repository -> metadata order used by branch switching.
-func (a *Service) LockRepositories(ctx context.Context, ids []string) (func(), error) {
-	a.Execution.GitActivity.RLock()
-	if a.Execution.Closing.Load() {
-		a.Execution.GitActivity.RUnlock()
-		return nil, &OperationError{Status: 503, Message: "后台正在退出"}
-	}
-	projects, err := a.Execution.Store.ProjectMap()
-	if err != nil {
-		a.Execution.GitActivity.RUnlock()
-		return nil, err
-	}
-	common := make(map[string]bool)
-	for _, id := range ids {
-		if p, ok := projects[id]; ok {
-			common[p.CommonDir] = true
-		}
-	}
-	keys := make([]string, 0, len(common))
-	for key := range common {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	unlocks := make([]func(), 0, len(keys))
-	release := func() {
-		for i := len(unlocks) - 1; i >= 0; i-- {
-			unlocks[i]()
-		}
-		a.Execution.GitActivity.RUnlock()
-	}
-	for _, key := range keys {
-		if err := ctx.Err(); err != nil {
-			release()
-			return nil, err
-		}
-		unlocks = append(unlocks, a.lockGit(key))
-	}
-	if err := ctx.Err(); err != nil {
-		release()
-		return nil, err
-	}
-	return release, nil
-}
-
-// InvalidateState refreshes ordinary UI readers after non-HTTP domain callers.
-func (a *Service) InvalidateState() { a.cache.invalidate() }

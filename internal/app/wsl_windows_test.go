@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,13 +10,11 @@ import (
 	"time"
 
 	"worktree-hub/internal/execution"
-	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
 // Opt in: only temporary repositories are created. No Codex turn is started.
-func TestInstalledWSLWorkspaceCore(t *testing.T) {
+func TestInstalledWSLProjectWorktrees(t *testing.T) {
 	distro := os.Getenv("WORKTREE_HUB_TEST_WSL")
 	if distro == "" {
 		t.Skip("set WORKTREE_HUB_TEST_WSL to an installed distro")
@@ -76,24 +73,17 @@ func TestInstalledWSLWorkspaceCore(t *testing.T) {
 		}
 		ids = append(ids, register(t, a, name, dir))
 	}
-	code, body := call(t, a, "POST", "/api/workspaces", workspace.CreateWorkspaceInput{Name: "Windows to WSL", Slug: "wsl-workspace", PrimaryProjectID: ids[0], ProjectIDs: ids[1:]})
-	if code != 201 {
-		t.Fatalf("create: %d %s", code, body)
-	}
-	var q model.Workspace
-	_ = json.Unmarshal(body, &q)
-	if q.State != "ready" || len(q.Members) != 2 || q.Path != root+"/workspaces/wsl-workspace" {
-		t.Fatalf("workspace: %+v", q)
-	}
-	for _, m := range q.Members {
-		if !strings.HasPrefix(m.Path, q.Path+"/") || strings.Contains(m.Path, `\`) {
-			t.Fatal("Linux path was interpreted by Windows", m.Path)
+	tree := createWorktree(t, a, ids[0], "wsl-first")
+	second := createWorktree(t, a, ids[1], "wsl-second")
+	for _, p := range []string{tree.Path, second.Path} {
+		if !strings.HasPrefix(p, root+"/workspaces/") || strings.Contains(p, `\`) {
+			t.Fatal("Linux path was interpreted by Windows", p)
 		}
 	}
-	if err := execution.Write(remoteCtx, q.Members[0].Path+"/changed.txt", []byte("dirty"), os.O_CREATE|os.O_WRONLY, 0644); err != nil {
+	if err := execution.Write(remoteCtx, tree.Path+"/changed.txt", []byte("dirty"), os.O_CREATE|os.O_WRONLY, 0644); err != nil {
 		t.Fatal(err)
 	}
-	code, body = call(t, a, "GET", "/api/projects/"+q.Members[0].ProjectID+"/git", nil)
+	code, body := call(t, a, "GET", "/api/projects/"+ids[0]+"/git", nil)
 	if code != 200 || !strings.Contains(string(body), `"dirty":1`) {
 		t.Fatalf("status: %d %s", code, body)
 	}

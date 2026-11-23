@@ -9,7 +9,7 @@ import (
 
 func TestResourceIconsRetainLegacyAppearanceAndMergeDetailEdits(t *testing.T) {
 	a := testApp(t)
-	legacy := `{"workspaces":["work"],"directories":["/repo/app"],"icons":{"workspace:work":{"icon":"rocket","color":"rose"},"directory:/repo/app":{"icon":"code","color":"blue"}}}`
+	legacy := `{"workspaces":["work"],"directories":["/repo/app"],"icons":{"project:legacy":{"icon":"code","color":"blue"},"workspace:work":{"icon":"rocket","color":"rose"},"directory:/repo/app":{"icon":"code","color":"blue"}}}`
 	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES(?,?)`, "shortcut_pins:local", legacy); err != nil {
 		t.Fatal(err)
 	}
@@ -22,15 +22,15 @@ func TestResourceIconsRetainLegacyAppearanceAndMergeDetailEdits(t *testing.T) {
 		}
 		return result
 	}
-	if got := read(a, "local"); got.Icons["workspace:work"].Icon != "rocket" || got.Icons["directory:/repo/app"].Color != "blue" {
+	if got := read(a, "local"); got.Icons["project:legacy"].Color != "blue" || len(got.Icons) != 1 {
 		t.Fatalf("legacy icons lost: %+v", got)
 	}
-	for _, id := range []string{"project:app", "workspace:other"} {
+	for _, id := range []string{"project:app", "project:other"} {
 		if code, raw := call(t, a, "PUT", "/api/resource-icons", map[string]any{"id": id, "appearance": resourceIcon{Icon: "bug", Color: "teal"}}); code != 200 {
 			t.Fatalf("save: %d %s", code, raw)
 		}
 	}
-	if len(read(a, "local").Icons) != 4 {
+	if len(read(a, "local").Icons) != 3 {
 		t.Fatal("editing one resource overwrote another")
 	}
 	dataDir, root := a.Execution.DataDir, a.Execution.Root
@@ -42,7 +42,7 @@ func TestResourceIconsRetainLegacyAppearanceAndMergeDetailEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { restarted.Close() })
-	if len(read(restarted, "local").Icons) != 4 || len(read(restarted, "remote").Icons) != 0 {
+	if len(read(restarted, "local").Icons) != 3 || len(read(restarted, "remote").Icons) != 0 {
 		t.Fatal("icons did not persist or leaked across environments")
 	}
 	for _, body := range []any{
@@ -54,7 +54,7 @@ func TestResourceIconsRetainLegacyAppearanceAndMergeDetailEdits(t *testing.T) {
 			t.Fatalf("invalid appearance accepted: %d %s", code, raw)
 		}
 	}
-	if len(read(restarted, "local").Icons) != 4 {
+	if len(read(restarted, "local").Icons) != 3 {
 		t.Fatal("rejected write changed saved icons")
 	}
 }

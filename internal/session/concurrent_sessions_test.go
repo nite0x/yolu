@@ -36,7 +36,7 @@ func TestIndependentConversationsRunInSameDirectory(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			a, q, _, firstEndpoint := chatFixture(t)
 			startFakeChat(t, a, firstEndpoint)
-			cwd := q.Members[0].Path
+			cwd := q.Path
 			// A third conversation owns a managed terminal in this directory.
 			a.bridgeMu.Lock()
 			a.bridges["other-terminal"] = &terminalBridge{session: "terminal-session", cwd: cwd, connected: true}
@@ -45,9 +45,12 @@ func TestIndependentConversationsRunInSameDirectory(t *testing.T) {
 			a.openLive = func(context.Context) (codex.LiveClient, error) { return second, nil }
 			endpoint := "/api/sessions/second/chat"
 			if createNew {
-				code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{
-					"text": "parallel work", "project_id": q.PrimaryProjectID, "request_id": "second-create",
-				})
+				input := map[string]any{"text": "parallel work", "project_id": q.ProjectID, "cwd": cwd, "request_id": "second-create"}
+				if code, raw := call(t, a, "POST", "/api/sessions/new", input); code != 409 || !strings.Contains(string(raw), "directory_conflict") {
+					t.Fatalf("shared directory not reported: %d %s", code, raw)
+				}
+				input["allow_shared"] = true
+				code, raw := call(t, a, "POST", "/api/sessions/new", input)
 				if code != 202 {
 					t.Fatalf("new conversation blocked: %d %s", code, raw)
 				}
@@ -59,10 +62,15 @@ func TestIndependentConversationsRunInSameDirectory(t *testing.T) {
 				}
 			} else {
 				// Refreshing stale metadata must also allow the actual shared cwd.
-				if err := a.SaveSession("", codex.Session{ID: "second", Cwd: q.Path}, "workspace"); err != nil {
+				if err := a.SaveSession(codex.Session{ID: "second", Cwd: cwd}, "codex"); err != nil {
 					t.Fatal(err)
 				}
-				if code, raw := call(t, a, "POST", endpoint, map[string]string{"text": "parallel work", "request_id": "second-start"}); code != 202 {
+				input := map[string]any{"text": "parallel work", "request_id": "second-start"}
+				if code, raw := call(t, a, "POST", endpoint, input); code != 409 || !strings.Contains(string(raw), "directory_conflict") {
+					t.Fatalf("shared directory not reported: %d %s", code, raw)
+				}
+				input["allow_shared"] = true
+				if code, raw := call(t, a, "POST", endpoint, input); code != 202 {
 					t.Fatalf("existing conversation blocked: %d %s", code, raw)
 				}
 			}
@@ -89,7 +97,7 @@ func TestIndependentConversationsRunInSameDirectory(t *testing.T) {
 
 func TestTerminalOwnershipIsScopedToConversation(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
-	cwd := q.Members[0].Path
+	cwd := q.Path
 	a.bridges["terminal"] = &terminalBridge{session: "session", cwd: cwd, connected: true}
 	for _, id := range []string{"", "other"} {
 		if err := a.AppTerminalConflict(id, cwd); err != nil {
@@ -110,7 +118,7 @@ func TestBridgeOnlyBlocksTheConversationRunningInSidebar(t *testing.T) {
 			client, terminal := socketPair(t)
 			server.SetReadDeadline(time.Now().Add(2 * time.Second))
 			terminal.SetReadDeadline(time.Now().Add(2 * time.Second))
-			bridge := &terminalBridge{app: a.Service, session: id, cwd: q.Members[0].Path, upstream: upstream, client: client, pending: map[string]bridgeCall{}}
+			bridge := &terminalBridge{app: a.Service, session: id, cwd: q.Path, upstream: upstream, client: client, pending: map[string]bridgeCall{}}
 			raw := []byte(`{"id":1,"method":"turn/start","params":{"threadId":"` + id + `"}}`)
 			if err := bridge.forward(raw); err != nil {
 				t.Fatal(err)

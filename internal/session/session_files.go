@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 )
 
@@ -48,7 +50,7 @@ func (a *Service) SessionFileHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
-	file, err := execution.ReadFilePreview(ctx, r.URL.Query().Get("path"), append([]string{record.Cwd}, record.AdditionalDirectories...))
+	file, err := execution.ReadFilePreview(ctx, r.URL.Query().Get("path"), a.fileRoots(ctx, record))
 	if err != nil {
 		httpx.WriteError(w, 400, err.Error())
 		return
@@ -74,7 +76,7 @@ func (a *Service) SessionFilesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if file := r.URL.Query().Get("file"); platform.AbsoluteWorkspacePath(file) {
 		ctx := execution.WithClient(r.Context(), a.Execution.Remote)
-		result, err := execution.ReadFilePreview(ctx, file, append([]string{record.Cwd}, record.AdditionalDirectories...))
+		result, err := execution.ReadFilePreview(ctx, file, a.fileRoots(ctx, record))
 		if err != nil {
 			httpx.WriteError(w, 422, err.Error())
 			return
@@ -82,12 +84,14 @@ func (a *Service) SessionFilesHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, 200, result)
 		return
 	}
+	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
+	roots := a.fileRoots(ctx, record)
 	root := r.URL.Query().Get("path")
-	if root == "" {
-		root = record.Cwd
+	if root == "" && len(roots) > 0 {
+		root = roots[0]
 	}
 	allowed := false
-	for _, candidate := range append([]string{record.Cwd}, record.AdditionalDirectories...) {
+	for _, candidate := range roots {
 		if platform.SameWorkspacePath(root, candidate) {
 			root = candidate
 			allowed = true
@@ -102,11 +106,31 @@ func (a *Service) SessionFilesHandler(w http.ResponseWriter, r *http.Request) {
 	if file {
 		relative = r.URL.Query().Get("file")
 	}
-	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
 	result, err := execution.BrowseWorkspace(ctx, root, relative, file)
 	if err != nil {
 		httpx.WriteError(w, 422, err.Error())
 		return
 	}
 	httpx.WriteJSON(w, 200, result)
+}
+
+func (a *Service) fileRoots(ctx context.Context, record model.Session) []string {
+	managed, err := a.Execution.Store.SessionBindingsManaged(record.ID)
+	if err != nil {
+		return nil
+	}
+	if !managed {
+		return append([]string{record.Cwd}, record.AdditionalDirectories...)
+	}
+	dirs := []string{}
+	bindings, err := a.Execution.Store.SessionBindings(record.ID)
+	if err != nil {
+		return dirs
+	}
+	for _, binding := range bindings {
+		if current, err := a.validateStoredBinding(ctx, binding, false); err == nil {
+			dirs = append(dirs, current.Directory)
+		}
+	}
+	return dirs
 }

@@ -126,8 +126,8 @@ func TestInstalledCodexGeneratedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer environment.Close()
-	a := New(environment, nil)
-	if err := a.SaveSession("", s, "codex"); err != nil {
+	a := New(environment)
+	if err := a.SaveSession(s, "codex"); err != nil {
 		t.Fatal(err)
 	}
 	a.prepareHistoryMedia(id, history.Entries)

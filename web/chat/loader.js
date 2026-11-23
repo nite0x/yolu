@@ -1,5 +1,5 @@
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
-// Load the React chat island only when the user opens a workspace conversation.
+// Load the React chat island only when the user opens a conversation.
 (() => {
   let loading, mounted, currentOverview, version = 0;
   window.WorkHubAssistant = {
@@ -25,7 +25,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     },
     close() { version++; mounted?.close(); },
     async flushDraft() { const saved = await Promise.all([mounted?.flushDraft() ?? true?.flushGlobalAssistantDraft() ?? true]); return saved.every(Boolean); },
-    updateWorkspace(workspace) { mounted?.updateWorkspace(workspace); },
     updateOverview(overview) { currentOverview = overview; mounted?.updateOverview(overview); },
     updateSession(session) { mounted?.updateSession(session); }
   };

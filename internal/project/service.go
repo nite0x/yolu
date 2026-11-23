@@ -11,15 +11,14 @@ import (
 )
 
 type Service struct {
-	Execution               *execution.Service
-	cache                   *stateCache
-	CredentialHelper        string
-	gitLocks                sync.Map // common Git directory -> *sync.Mutex
-	OpenEditor              func(tool, path, distro string) error
-	OpenExternal            func(string) error
-	ReserveWorktree         func(context.Context, string) (func(), error)
-	CheckWorktreeIdle       func(string) error
-	WorkspaceContextUpdated func(context.Context, model.Workspace) error
+	Execution         *execution.Service
+	cache             *stateCache
+	CredentialHelper  string
+	gitLocks          sync.Map // common Git directory -> *sync.Mutex
+	OpenEditor        func(tool, path, distro string) error
+	OpenExternal      func(string) error
+	ReserveWorktree   func(context.Context, string) (func(), error)
+	CheckWorktreeIdle func(string) error
 }
 
 func New(environment *execution.Service) *Service {

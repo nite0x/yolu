@@ -7,12 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/platform"
+	"worktree-hub/internal/project"
 	"worktree-hub/internal/terminal"
 )
 
@@ -82,7 +82,7 @@ func (a *App) checkTerminalWorktree(path string) error {
 		return fmt.Errorf("无法确认终端目录占用：%w", err)
 	}
 	for _, info := range a.Terminals.List() {
-		// A workspace-root terminal can use its project subdirectories, too.
+		// A terminal may also operate in its working directory’s subdirectories.
 		if info.State == "running" && (platform.SameWorkspacePath(resolved, info.Cwd) || platform.Within(resolved, info.Cwd) || platform.Within(info.Cwd, resolved)) {
 			return fmt.Errorf("该目录仍有运行中的终端：%s，请先结束终端", info.Name)
 		}
@@ -90,7 +90,7 @@ func (a *App) checkTerminalWorktree(path string) error {
 	return nil
 }
 
-// Take this before the workspace metadata lock, matching terminal starts.
+// Take this before the environment metadata lock, matching terminal starts.
 // Keep it until removal completes so no terminal can start after the check.
 func (a *App) reserveWorktree(ctx context.Context, path string) (func(), error) {
 	a.terminalWorktreeMu.Lock()
@@ -180,39 +180,23 @@ func (a *App) localTerminals(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// Resolve the workspace/member server-side. A client-supplied cwd is never used.
-func (a *App) terminalDirectory(workspaceID, projectID string) (string, error) {
-	q, err := a.Execution.Store.Workspace(workspaceID)
-	if err != nil {
-		return "", fmt.Errorf("请先选择有效的工作区")
-	}
-	if q.State == "archived" {
-		return "", fmt.Errorf("工作区已归档，请先恢复工作区")
-	}
-	path := q.Path
-	if projectID != "" {
-		path = ""
-		for _, m := range q.Members {
-			if m.ProjectID == projectID && m.State == "ready" {
-				path = m.Path
-				break
-			}
+// Resolve a saved binding or a worktree registered with the selected project.
+func (a *App) terminalDirectory(ctx context.Context, input terminal.Start) (string, error) {
+	if input.SessionID != "" && input.BindingID != "" && input.ProjectID == "" {
+		if input.Cwd != "" {
+			return "", fmt.Errorf("使用对话目录时无需指定其他路径")
 		}
-	} else if !q.HasDirectory {
-		path = ""
+		return a.Sessions.BindingDirectory(ctx, input.SessionID, input.BindingID)
 	}
-	if path == "" {
-		return "", fmt.Errorf("所选工作区工作目录不可用")
+	if input.ProjectID == "" || input.SessionID != "" || input.BindingID != "" {
+		return "", fmt.Errorf("请选择一个项目 Worktree 或对话目录")
 	}
-	path, err = filepath.EvalSymlinks(path)
+	p, err := a.Projects.RegisteredProject(ctx, input.ProjectID)
 	if err != nil {
-		return "", fmt.Errorf("工作目录不存在：%w", err)
+		return "", err
 	}
-	info, err := os.Stat(path)
-	if err != nil || !info.IsDir() {
-		return "", fmt.Errorf("工作目录不可用")
-	}
-	return path, nil
+	tree, err := project.SelectWorktree(ctx, p, input.Cwd)
+	return tree.Path, err
 }
 
 func (a *App) createTerminalHandler(w http.ResponseWriter, r *http.Request) {
@@ -227,7 +211,7 @@ func (a *App) createTerminalHandler(w http.ResponseWriter, r *http.Request) {
 	defer a.terminalWorktreeMu.RUnlock()
 	a.Execution.Mu.Lock()
 	defer a.Execution.Mu.Unlock()
-	path, err := a.terminalDirectory(input.WorkspaceID, input.ProjectID)
+	path, err := a.terminalDirectory(r.Context(), input)
 	if err != nil {
 		httpx.WriteError(w, 409, err.Error())
 		return

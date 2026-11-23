@@ -449,7 +449,7 @@ const ThreadScrollToBottom: FC = () => {
 const ThreadWelcome: FC = () => {
   return (
     <div className="aui-thread-welcome-root mb-6 flex flex-col">
-      <p className="conversation-welcome-title aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both duration-200">{uiText("想在这个工作目录中完成什么？")}</p>
+      <p className="conversation-welcome-title aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both duration-200">{uiText("想完成什么？")}</p>
     </div>
   );
 };

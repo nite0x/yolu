@@ -5,8 +5,8 @@ const path = require('node:path');
 const {JSDOM} = require('jsdom');
 const root = path.join(__dirname, '../web');
 
-function harness(t, hash = '#/workspaces', {desktop = false, listWidth} = {}) {
-  const dom = new JSDOM(fs.readFileSync(path.join(root,'workspace.html'),'utf8'), {url:'http://localhost:4317/' + hash, runScripts:'outside-only'});
+function harness(t, hash = '#/projects', {desktop = false, listWidth} = {}) {
+  const dom = new JSDOM(fs.readFileSync(path.join(root,'app.html'),'utf8'), {url:'http://localhost:4317/' + hash, runScripts:'outside-only'});
   t.after(() => dom.window.close());
   const {window:w} = dom;
   Object.defineProperty(w,'innerWidth',{value:1800,configurable:true});
@@ -28,7 +28,7 @@ function harness(t, hash = '#/workspaces', {desktop = false, listWidth} = {}) {
   };
   const requests = [];
   w.fetch = async (...args) => {requests.push(args); return new Response('{}');};
-  for (const file of ['core/workspace-list-width.js','core/page-host.js']) w.eval(fs.readFileSync(path.join(root,file),'utf8'));
+  for (const file of ['core/conversation-list-width.js','core/page-host.js']) w.eval(fs.readFileSync(path.join(root,file),'utf8'));
   const frames = () => [...w.document.querySelectorAll('iframe.workspace-page')];
   const send = (frame,type,extra = {},origin = w.location.origin) => w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin,data:{type,...extra}}));
   const messages = new Map();
@@ -85,9 +85,9 @@ test('global search opens from the visible workspace page or a focused conversat
 });
 
 test('one shared navigator is mounted on the initial page without a rail inset', t => {
-  const h = harness(t, '#/workspaces', {desktop:true});
+  const h = harness(t, '#/projects', {desktop:true});
   const nav = h.nav(), source = nav.src;
-  assert.equal(new URL(source).searchParams.has('workspace-sidebar-width'),false);
+  assert.equal(new URL(source).searchParams.has('app-sidebar-width'),false);
   assert.equal(nav.parentElement.hidden,false);
   assert(h.w.document.body.hasAttribute('data-workspace-navigation-visible'));
   open(h, {route:'/issues',environment:'local'});
@@ -95,24 +95,23 @@ test('one shared navigator is mounted on the initial page without a rail inset',
   assert.equal(h.nav(),nav);
   assert.equal(nav.src,source);
   assert.equal(nav.parentElement.hidden,false);
-  assert.equal(h.messages.get(nav).findLast(message=>message.type==='workhub:workspace-route').route,'/settings');
+  assert.equal(h.messages.get(nav).findLast(message=>message.type==='workhub:navigation-route').route,'/settings');
 });
 
-test('desktop native home menu preserves the active environment when leaving projects and conversations', t => {
-  const h = harness(t, '#/workspaces', {desktop:true});
+test('desktop home opens conversations in the current environment', t => {
+  const h = harness(t, '#/projects', {desktop:true});
   open(h,{route:'/projects/app',environment:'remote'});
   h.w.dispatchEvent(new h.w.Event('workhub:desktop-home'));
-  assert.equal(h.w.location.hash, '#/workspaces');
+  assert.equal(h.w.location.hash, '#/sessions');
   assert.equal(h.w.location.search, '?environment=remote');
   open(h,{...conversation('one'),environment:'remote'});
   h.w.dispatchEvent(new h.w.Event('workhub:desktop-home'));
-  assert.deepEqual(visible(h), [h.workspace]);
-  assert.equal(h.w.location.hash, '#/workspaces');
+  assert.equal(h.w.location.hash.split('?')[0], '#/sessions');
   assert.equal(h.w.location.search, '?environment=remote');
 });
 
 test('desktop conversation list leaves space for detail on resize and restores the saved width', t => {
-  const h = harness(t, '#/workspaces', {desktop:true, listWidth:520});
+  const h = harness(t, '#/projects', {desktop:true, listWidth:520});
   open(h, conversation('one'));
   const current = () => h.w.document.body.style.getPropertyValue('--workspace-conversation-list-width');
   assert.equal(current(), '520px');
@@ -215,7 +214,7 @@ test('a retained creation form can finish restoring while its alternate is visib
 
 test('independent pages reuse one document and preserve project routes and directory parameters', t => {
   const h = harness(t);
-  for (const route of ['/projects','/projects/app','/projects/app/git?path=%2Frepo%2Fapp&workspace=workspace','/projects/app/worktrees','/workspaces/workspace','/settings']) {
+  for (const route of ['/projects','/projects/app','/projects/app/git?path=%2Frepo%2Fapp','/projects/app/worktrees','/projects/app','/settings']) {
     open(h,{route,environment:'remote'});
     assert.equal(h.frames().length,1);
     assert.equal(visible(h)[0],h.workspace);
@@ -326,15 +325,15 @@ test('late updates from the hidden workspace cannot replace a parallel Agent', t
   const reader = visible(h)[1], messages = h.messages.get(reader), before = messages.length;
   h.send(h.workspace,'workhub:page-state',{snapshot:conversation('stale')});
   assert.equal(messages.length,before);
-  assert.equal(h.w.location.hash,'#/sessions');
+  assert.equal(h.w.location.hash.split('?')[0],'#/sessions');
 });
 
 test('page navigation from a single reader preserves its conversation and opens the workspace document', t => {
   const h = harness(t);
   open(h,conversation('one')); const reader = visible(h)[0]; h.ready(reader); h.ready(h.nav());
-  h.send(reader,'workhub:page-state',{snapshot:{route:'/workspaces/workspace',environment:'local'}});
+  h.send(reader,'workhub:page-state',{snapshot:{route:'/projects/app',environment:'local'}});
   assert.deepEqual(visible(h),[h.workspace]);
-  assert.equal(h.w.location.hash,'#/workspaces/workspace');
+  assert.equal(h.w.location.hash,'#/projects/app');
   const restored = h.messages.get(reader).findLast(message => message.type === 'workhub:page-restore');
   assert.equal(restored.snapshot.conversation.selected,'one');
   assert.equal(restored.active,false);
@@ -363,29 +362,37 @@ test('narrow navigation uses the retained navigator and dismisses on chat select
 test('removed global assistant cannot open a panel through links, messages or its former shortcut', t => {
   const h = harness(t, '#/assistant', {desktop:true});
   assert.equal(h.w.document.getElementById('workspaceAssistant'), null);
-  assert.equal(new URL(h.workspace.src).hash, '#/workspaces');
+  assert.equal(new URL(h.workspace.src).hash, '#/projects');
   h.send(h.nav(), 'workhub:assistant-toggle');
   h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {code:'KeyY', altKey:true, shiftKey:true, bubbles:true}));
   assert.equal(h.w.document.getElementById('workspaceAssistant'), null);
 });
 
-for (const desktop of [false,true]) test(`top header owns search, Issues and refresh across page changes (desktop=${desktop})`, async t => {
-  const h = harness(t,'#/workspaces',{desktop});
+for (const desktop of [false,true]) test(`header destinations, search and refresh work across page changes (desktop=${desktop})`, async t => {
+  const h = harness(t,'#/projects',{desktop});
   assert.equal(h.w.document.querySelectorAll('.workhub-window-drag').length,1);
   assert.equal(h.chrome.at(-1).container,h.w.document.getElementById('workhubWindowControls'));
+  assert.equal(h.chrome.at(-1).props.activeView,'projects');
   const trigger = h.w.document.createElement('button');
   h.chrome.at(-1).props.search(trigger);
   assert.equal(h.search.openers.at(-1),trigger);
   open(h,{route:'/projects/app',environment:'remote'});
+  assert.equal(h.chrome.at(-1).props.activeView,'projects');
   const refreshed = [];
-  h.workspace.contentWindow.WorkHubPage.refresh = async () => refreshed.push('workspace');
-  h.nav().contentWindow.WorkHubPage.refresh = async () => refreshed.push('navigation');
-  await h.chrome.at(-1).props.refresh();
+  h.workspace.contentWindow.WorkHubPage.refresh = async () => {refreshed.push('workspace'); return 'updated';};
+  h.nav().contentWindow.WorkHubPage.refresh = async () => {refreshed.push('navigation'); return 'updated';};
+  assert.equal(await h.chrome.at(-1).props.refresh(),'updated');
   assert.deepEqual(refreshed.sort(),['navigation','workspace']);
-  h.chrome.at(-1).props.issues();
-  assert.equal(h.w.location.hash,'#/issues');
-  assert.equal(h.w.location.search,'?environment=remote');
-  assert.equal(h.chrome.at(-1).props.issuesActive,true);
+  h.nav().contentWindow.WorkHubPage.refresh = async () => 'pending';
+  assert.equal(await h.chrome.at(-1).props.refresh(),'pending');
+  h.nav().contentWindow.WorkHubPage.refresh = async () => 'failed';
+  assert.equal(await h.chrome.at(-1).props.refresh(),'failed');
+  for (const view of ['issues','settings','projects']) {
+    h.chrome.at(-1).props.navigate(view);
+    assert.equal(h.w.location.hash,'#/' + view);
+    assert.equal(h.w.location.search,'?environment=remote');
+    assert.equal(h.chrome.at(-1).props.activeView,view);
+  }
 });
 
 const traverse = (h, action) => new Promise((resolve, reject) => {
@@ -394,7 +401,7 @@ const traverse = (h, action) => new Promise((resolve, reject) => {
   action();
 });
 for (const desktop of [false,true]) test(`back and forward restore the exact retained conversation and project directory (desktop=${desktop})`, async t => {
-  const h = harness(t, '#/workspaces', {desktop});
+  const h = harness(t, '#/projects', {desktop});
   assert.equal(h.chrome.at(-1).props.canGoBack, false);
   assert.equal(h.chrome.at(-1).props.canGoForward, false);
   const snapshot = {...conversation('remote-thread'), environment:'remote'};
@@ -420,7 +427,7 @@ for (const desktop of [false,true]) test(`back and forward restore the exact ret
   assert.equal(h.chrome.at(-1).props.canGoForward, false);
 });
 
-test('browser history distinguishes conversations with the same URL and ignores metadata updates', async t => {
+test('browser history distinguishes conversation URLs and ignores metadata updates', async t => {
   const h = harness(t);
   open(h,conversation('one'));
   const reader = visible(h)[0];
@@ -471,7 +478,7 @@ test('history respects resource close guards and recovers its URL and controls',
   assert.deepEqual(visible(h),[h.workspace]);
   h.workspace.contentWindow.WorkHubPage.canClose = () => true;
   await traverse(h, () => h.chrome.at(-1).props.back());
-  assert.equal(h.w.location.hash,'#/sessions');
+  assert.equal(h.w.location.hash.split('?')[0],'#/sessions');
 });
 
 test('an initially empty conversation destination resolves in place instead of trapping Back', async t => {
@@ -481,7 +488,7 @@ test('an initially empty conversation destination resolves in place instead of t
   assert.equal(h.chrome.at(-1).props.canGoBack,false);
   open(h,{route:'/projects',environment:'local'});
   await traverse(h, () => h.w.history.back());
-  assert.equal(h.w.location.hash,'#/sessions');
+  assert.equal(h.w.location.hash.split('?')[0],'#/sessions');
   assert.equal(h.chrome.at(-1).props.canGoBack,false);
 });
 
@@ -495,5 +502,5 @@ test('macOS history shortcuts preserve Option-arrow text editing inside a compos
   const back = new h.w.KeyboardEvent('keydown',{key:'[',metaKey:true,cancelable:true});
   await traverse(h, () => h.w.document.dispatchEvent(back));
   assert.equal(back.defaultPrevented,true);
-  assert.equal(h.w.location.hash,'#/workspaces');
+  assert.equal(h.w.location.hash,'#/projects');
 });

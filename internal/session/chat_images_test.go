@@ -15,9 +15,9 @@ func TestChatImagesReachCodexOnNewAndExistingSessions(t *testing.T) {
 			name = "new"
 		}
 		t.Run(name, func(t *testing.T) {
-			a, q, c, endpoint := chatFixture(t)
+			a, _, c, endpoint := chatFixture(t)
 			if fresh {
-				endpoint = "/api/workspaces/" + q.ID + "/sessions/new"
+				endpoint = "/api/sessions/new"
 			}
 			// Exercise the chat-specific body limit with a screenshot over 1 MiB.
 			data, _ := base64.StdEncoding.DecodeString(strings.SplitN(testChatPNG, ",", 2)[1])
@@ -53,8 +53,8 @@ func TestInvalidChatImagesNeverStartCodex(t *testing.T) {
 		{testChatPNG, testChatPNG, testChatPNG, testChatPNG, testChatPNG},
 		{oversized},
 	} {
-		a, q, c, endpoint := chatFixture(t)
-		for _, path := range []string{endpoint, "/api/workspaces/" + q.ID + "/sessions/new"} {
+		a, _, c, endpoint := chatFixture(t)
+		for _, path := range []string{endpoint, "/api/sessions/new"} {
 			if code, _ := call(t, a, "POST", path, map[string]any{"text": "检查截图", "images": images, "request_id": "invalid"}); code != 400 {
 				t.Fatalf("invalid image accepted: %d", code)
 			}

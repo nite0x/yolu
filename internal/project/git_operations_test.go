@@ -176,10 +176,7 @@ func TestFetchNarrowCloneAndPrepareMasterWithoutChangingCheckout(t *testing.T) {
 	if b, err := os.ReadFile(filepath.Join(clone, "user-unsaved.txt")); err != nil || string(b) != "preserve" {
 		t.Fatal("fetch or branch creation changed local files")
 	}
-	code, q, raw := create(t, a, id, nil, "after-prepare")
-	if code != 201 || q.State != "ready" {
-		t.Fatalf("workspace still blocked %d %s", code, raw)
-	}
+	createWorktree(t, a, id, "after-prepare")
 }
 
 func TestGitSwitchProtectsDirtyAndOccupiedWorktrees(t *testing.T) {

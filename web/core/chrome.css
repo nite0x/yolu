@@ -37,11 +37,14 @@ html[data-workhub-desktop][data-color-scheme="dark"] {
   --yolu-rail-active: #f4f4f4;
 }
 
-/* Match the title bar, navigation and gaps around the content panes. */
+/* Use the frame canvas for navigation and the gaps around the content panes. */
 html[data-workhub-desktop], html[data-workhub-desktop] body,
-html[data-workhub-desktop] .workhub-window-drag,
 html[data-workhub-desktop] .sidebar,
 html[data-workhub-desktop] .workspace-shared-navigation { background: var(--yolu-rail-canvas); }
+html[data-workhub-desktop] .workhub-window-drag {
+  background: color-mix(in srgb, var(--yolu-rail-canvas) 95%, var(--yolu-foreground));
+  box-shadow: inset 0 -1px var(--yolu-border);
+}
 .workspace-shared-navigation { background: var(--yolu-canvas, #eef2ef); }
 html[data-workhub-desktop] .workspace-shared-navigation[data-modal] { background: transparent; }
 
@@ -185,7 +188,7 @@ input[type="search"][data-slot="input"]:focus-visible { background-image: none; 
 .stat, .content-panel { border-color: transparent; border-radius: var(--yolu-pane-radius); box-shadow: var(--yolu-elevation-sm); }
 
 /* Floating layers share one elevation and radius. */
-.workspace-tab-menu, .window-brand-menu, .session-action-menu, .session-filter-menu, .codex-quota-popover { border-color: transparent; border-radius: 12px; box-shadow: var(--yolu-elevation-float); }
+.workspace-tab-menu, .session-action-menu, .session-filter-menu, .codex-quota-popover { border-color: transparent; border-radius: 12px; box-shadow: var(--yolu-elevation-float); }
 dialog, .conversation-picker, .shortcut-icon-dialog { border-color: transparent; border-radius: 16px; box-shadow: var(--yolu-elevation-float); }
 .toast { border-radius: 12px; }
 
@@ -200,12 +203,18 @@ html[data-workspace-navigation] .sidebar {
   display: flex; flex-direction: column; gap: 4px; overflow: hidden;
   border-inline-end: 1px solid var(--yolu-border);
 }
-html[data-workhub-desktop][data-workspace-navigation] .sidebar .brand { display: none; }
-html[data-workspace-navigation] .sidebar :is(.brand,.nav-label,.sidebar-toggle,[data-view="projects"],[data-view="sessions"]) { display: none; }
-html[data-workspace-navigation] .sidebar :is(.brand,nav,#refreshControl) { display: none; }
+html[data-workspace-navigation] .sidebar :is(.brand,nav,.sidebar-footer) { display: none; }
 html[data-workspace-navigation] .sidebar #sessionsPage { flex: 1; min-height: 0; }
 html[data-workspace-navigation] .sidebar :is(.session-browser,.session-browser-list) { background: transparent; }
 html[data-workspace-navigation] .sidebar .session-browser-list-tools { gap: 0; padding: 2px 4px 10px; border-bottom: 0; }
+.session-sidebar-modes:not([hidden]) {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px;
+  margin-block: 6px 2px; padding: 2px; border-radius: var(--yolu-chip-radius); background: var(--yolu-hover);
+}
+.session-sidebar-modes button { min-width: 0; height: 28px; padding-inline: 4px; color: var(--yolu-muted-ink); font-size: var(--yolu-font-size-label); }
+.session-sidebar-modes button[aria-pressed="true"] { background: var(--yolu-surface); color: var(--yolu-foreground); box-shadow: var(--yolu-elevation-sm); }
+.session-sidebar-modes button:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: -2px; }
+@media (pointer: coarse) { .session-sidebar-modes button { min-height: 44px; } }
 html[data-workspace-navigation] .sidebar #sessionBrowserList { padding: 0 2px 12px; scrollbar-width: thin; scrollbar-color: var(--yolu-border-strong) transparent; }
 html[data-workspace-navigation] .sidebar .session-browser-group + .session-browser-group { margin-top: 10px; }
 html[data-workspace-navigation] .sidebar .session-workspace-heading { min-height: 34px; padding-block: 2px; }
@@ -214,21 +223,13 @@ html[data-workspace-navigation] .sidebar .session-collection-link .shortcut-badg
 html[data-workspace-navigation] .sidebar .session-collection-link:hover { background: var(--yolu-hover); }
 html[data-workspace-navigation] .sidebar .session-workspace-name { font-size: var(--yolu-font-size-compact); font-weight: 600; }
 html[data-workspace-navigation] .sidebar .session-browser-items { padding-left: 23px; }
+html[data-workspace-navigation] .sidebar .session-browser-items.session-browser-items-flat { padding-left: 0; }
+.session-collection-section-heading { margin: 0; padding: 5px 8px 2px; color: var(--yolu-muted-ink); font-size: var(--yolu-font-size-label); font-weight: 600; line-height: 1.5; }
+.session-collection-section-heading[data-divided] { margin-inline: 3px; padding: 8px 5px 2px; border-top: 1px solid var(--yolu-border); }
 html[data-workspace-navigation] .sidebar .session-browser-item { padding: 7px 8px; border-radius: 7px; }
 html[data-workspace-navigation] .sidebar .session-browser-item-title { font-size: var(--yolu-font-size-compact); font-weight: 450; }
 html[data-workspace-navigation] .sidebar .session-browser-item-time { font-size: 10px; opacity: .8; }
 html[data-workspace-navigation] .sidebar .session-workspace-more { width: calc(100% - 31px); margin-left: 31px; padding-block: 7px; font-size: 11px; }
-html[data-workspace-navigation] .sidebar .sidebar-footer { padding: 7px 4px; border-top: 1px solid var(--yolu-border); justify-content: flex-start; flex-shrink: 0; }
-html[data-workspace-navigation] .sidebar .sidebar-footer-actions { flex-direction: row; }
-html[data-workspace-navigation] .sidebar .sidebar-settings { gap: 7px; width: auto; padding: 0 7px; font-size: var(--yolu-font-size-label); white-space: nowrap; }
-html[data-workspace-navigation] .sidebar .sidebar-settings::after { content: attr(aria-label); position: static; transform: none; padding: 0; background: transparent; color: inherit; }
-html[data-workspace-navigation] .sidebar .sidebar-settings svg { width: 15px; height: 15px; }
-html[data-workspace-navigation] .sidebar .sidebar-footer [data-view] { display: inline-flex !important; align-items: center; justify-content: center; gap: 6px; width: auto; height: 32px; min-width: 0; padding: 0 7px; border-radius: 7px; font-size: var(--yolu-font-size-label); }
-html[data-workspace-navigation] .sidebar .sidebar-footer .nav-text { display: inline; }
-html[data-workspace-navigation] .sidebar .sidebar-footer .nav-icon svg { width: 15px; height: 15px; }
-html[data-workspace-navigation] .sidebar .sidebar-footer-actions { width: 100%; justify-content: space-between; gap: 4px; }
-html[data-workspace-navigation] .sidebar .sidebar-footer [data-view]:hover { background: var(--yolu-hover); }
-html[data-workspace-navigation] .sidebar .sidebar-footer [aria-current=page] { background: var(--yolu-selected); color: var(--yolu-primary-ink); }
 .issues-page { max-width: 920px; padding: 24px; }
 .issues-page p { color: var(--yolu-muted-ink); }
 @media (max-width: 760px) {

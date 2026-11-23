@@ -4,7 +4,7 @@ Start with the [project README](../README.md) for an overview and installation e
 
 ## Using Yolu
 
-- [User guide](guide.md): workspaces, projects, conversations, terminals, environments, backups and installation.
+- [User guide](guide.md): projects, conversations, terminals, environments, backups and installation.
 - [Work Hub migration](brand/yolu/migration.md): upgrades and intentionally retained compatibility identifiers.
 - [Security reporting](../SECURITY.md): how to report vulnerabilities without exposing private development data.
 

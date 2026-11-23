@@ -1,7 +1,6 @@
 # Add a project
 
-Projects supply repositories to workspaces. Open **Projects → Add project**, or
-add a project while selecting the participating projects for a workspace.
+Projects register repositories for conversations and Git operations. Open **Projects → Add project**.
 
 ## Register a local repository
 
@@ -25,9 +24,8 @@ select-all checkbox or individual checkboxes, edit project names if needed, then
 choose **Register selected repositories**. Name suggestions distinguish
 repositories with identical directory names.
 
-Registration reuses the existing project and worktree discovery workflow. When
-opened from a workspace's project picker, all successfully registered projects
-are selected in that picker. Each repository has an independent result. A
+Registration reuses the existing project and worktree discovery workflow. Each
+repository has an independent result. A
 failed item retains its name and selection for retry, and successful items stay
 registered. Retrying a batch recognizes repositories that were already added.
 
@@ -57,8 +55,7 @@ login. Configure authentication in that environment's terminal first if needed.
 The existing Git network timeout also applies to cloning.
 
 After cloning, Yolu registers the repository, scans its worktrees and selects
-the new project, or returns it to the workspace project picker that opened the
-dialog. Network activity does not hold the environment's metadata mutation lock.
+the new project. Network activity does not hold the environment's metadata mutation lock.
 
 An existing target directory, even an empty one, is rejected. Clone failures do
 not create project registrations. Empty reservations are removed when possible;

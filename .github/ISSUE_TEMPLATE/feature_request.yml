@@ -1,11 +1,11 @@
 name: Feature request
-description: Suggest an improvement to Yolu's workspace-centered workflow
+description: Suggest an improvement to Yolu's conversation-centered workflow
 body:
   - type: textarea
     id: problem
     attributes:
       label: Problem
-      description: Where does your current workspace, repository or worktree workflow break down?
+      description: Where does your current conversation, repository or worktree workflow break down?
     validations:
       required: true
   - type: textarea

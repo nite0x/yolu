@@ -15,7 +15,7 @@ import (
 type Store struct{ DB *sql.DB }
 
 // OpenReadOnly reads saved environment metadata without running migrations or
-// marking in-progress work interrupted. Listing workspaces must not start an environment.
+// starting its execution environment.
 func OpenReadOnly(dataDir string) (*Store, error) {
 	dbPath := filepath.ToSlash(filepath.Join(dataDir, "worktree-hub.db"))
 	if !strings.HasPrefix(dbPath, "/") {
@@ -34,7 +34,7 @@ func OpenReadOnly(dataDir string) (*Store, error) {
 	return &Store{DB: db}, nil
 }
 
-// Open initializes the schema and marks work interrupted by a previous process.
+// Open initializes the local metadata database.
 func Open(dataDir string) (*Store, error) {
 	dbPath := filepath.ToSlash(filepath.Join(dataDir, "worktree-hub.db"))
 	if !strings.HasPrefix(dbPath, "/") {
@@ -55,20 +55,16 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	// A crash can interrupt filesystem work. Preserve the records and require explicit retry.
-	_, err = db.Exec(`UPDATE workspaces SET state='partial' WHERE state='creating'; UPDATE members SET state='failed', error='上次创建被中断，请检查后重试' WHERE state IN ('creating','pending')`)
-	if err != nil {
-		db.Close()
-		return nil, err
-	}
 	return s, nil
 }
 
 func (s *Store) migrate() error {
-	if err := s.renameWorkspaceSchema(); err != nil {
+	tx, err := s.DB.Begin()
+	if err != nil {
 		return err
 	}
-	_, err := s.DB.Exec(`
+	defer tx.Rollback()
+	_, err = tx.Exec(`
 CREATE TABLE IF NOT EXISTS projects (
  id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
  path TEXT NOT NULL UNIQUE, common_dir TEXT NOT NULL UNIQUE,
@@ -77,60 +73,17 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS conversation_async_answers (
  session_id TEXT NOT NULL, item_id TEXT NOT NULL, turn_id TEXT NOT NULL,
  fingerprint TEXT NOT NULL, status TEXT NOT NULL, request_id TEXT NOT NULL,
- PRIMARY KEY(session_id,item_id,turn_id));
-CREATE TABLE IF NOT EXISTS workspaces (
- id TEXT PRIMARY KEY, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE COLLATE NOCASE,
- description TEXT NOT NULL, branch TEXT NOT NULL, path TEXT NOT NULL UNIQUE,
- primary_project_id TEXT REFERENCES projects(id), state TEXT NOT NULL,
- created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS members (
- workspace_id TEXT NOT NULL REFERENCES workspaces(id), project_id TEXT NOT NULL REFERENCES projects(id),
- path TEXT NOT NULL, base_commit TEXT NOT NULL, state TEXT NOT NULL,
- mode TEXT NOT NULL DEFAULT 'new', base_ref TEXT NOT NULL DEFAULT 'refs/heads/master', branch TEXT NOT NULL DEFAULT '',
- error TEXT NOT NULL DEFAULT '', PRIMARY KEY(workspace_id,project_id));
-CREATE TABLE IF NOT EXISTS workspace_sessions (
- workspace_id TEXT NOT NULL REFERENCES workspaces(id), session_id TEXT NOT NULL,
- name TEXT NOT NULL, cwd TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
- source TEXT NOT NULL, PRIMARY KEY(workspace_id,session_id));
-CREATE TABLE IF NOT EXISTS session_create_requests (
- workspace_id TEXT NOT NULL REFERENCES workspaces(id), request_id TEXT NOT NULL,
- session_id TEXT NOT NULL DEFAULT '', PRIMARY KEY(workspace_id,request_id));
-`)
+ PRIMARY KEY(session_id,item_id,turn_id));`)
 	if err != nil {
 		return err
 	}
-	workspaceColumns, err := tableColumns(s.DB, "workspaces")
-	if err != nil {
+	if err := migrateSessions(tx); err != nil {
 		return err
 	}
-	if !workspaceColumns["has_directory"] {
-		if _, err := s.DB.Exec(`ALTER TABLE workspaces ADD COLUMN has_directory INTEGER NOT NULL DEFAULT 1`); err != nil {
-			return err
-		}
-	}
-	columns, err := tableColumns(s.DB, "members")
-	if err != nil {
+	if err := migrateSessionBindings(tx); err != nil {
 		return err
 	}
-	if columns["mode"] {
-		return s.finishWorkspaceMigration()
-	}
-	// Existing directories may participate in multiple workspaces. Retain every old
-	// member while removing the old exclusive-path constraint.
-	_, err = s.DB.Exec(`BEGIN;
-CREATE TABLE members_v2 (
- workspace_id TEXT NOT NULL REFERENCES workspaces(id), project_id TEXT NOT NULL REFERENCES projects(id),
- path TEXT NOT NULL, base_commit TEXT NOT NULL, state TEXT NOT NULL, error TEXT NOT NULL DEFAULT '',
- mode TEXT NOT NULL DEFAULT 'new', base_ref TEXT NOT NULL DEFAULT 'refs/heads/master', branch TEXT NOT NULL DEFAULT '',
- PRIMARY KEY(workspace_id,project_id));
-INSERT INTO members_v2(workspace_id,project_id,path,base_commit,state,error) SELECT workspace_id,project_id,path,base_commit,state,error FROM members;
-DROP TABLE members;
-ALTER TABLE members_v2 RENAME TO members;
-COMMIT;`)
-	if err != nil {
-		return err
-	}
-	return s.finishWorkspaceMigration()
+	return tx.Commit()
 }
 
 func tableColumns(db interface {
@@ -171,110 +124,6 @@ func (s *Store) Projects() ([]model.Project, error) {
 	return out, rows.Err()
 }
 
-// Workspaces reads workspace records and members in one read transaction.
-func (s *Store) Workspaces() ([]model.Workspace, error) { return s.workspaces("") }
-func (s *Store) WorkspaceBySlug(slug string) (model.Workspace, error) {
-	var id string
-	if err := s.DB.QueryRow(`SELECT id FROM workspaces WHERE slug=? COLLATE NOCASE`, slug).Scan(&id); err != nil {
-		return model.Workspace{}, err
-	}
-	return s.Workspace(id)
-}
-
-func (s *Store) Workspace(id string) (model.Workspace, error) {
-	if id == "" {
-		return model.Workspace{}, sql.ErrNoRows
-	}
-	workspaces, err := s.workspaces(id)
-	if err != nil {
-		return model.Workspace{}, err
-	}
-	if len(workspaces) == 0 {
-		return model.Workspace{}, sql.ErrNoRows
-	}
-	return workspaces[0], nil
-}
-func (s *Store) workspaces(id string) ([]model.Workspace, error) {
-	columns, err := tableColumns(s.DB, "members")
-	if err != nil {
-		return nil, err
-	}
-	memberScope := "m.mode,m.base_ref,m.branch"
-	if !columns["mode"] {
-		memberScope = "'new','refs/heads/master',''"
-	}
-	workspaceColumns, err := tableColumns(s.DB, "workspaces")
-	if err != nil {
-		return nil, err
-	}
-	workspaceColumn := "1"
-	if workspaceColumns["has_directory"] {
-		workspaceColumn = "has_directory"
-	}
-	tx, err := s.DB.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	query := `SELECT id,name,slug,description,branch,path,COALESCE(primary_project_id,''),state,created_at,` + workspaceColumn + ` FROM workspaces`
-	args := []any{}
-	if id != "" {
-		query += ` WHERE id=?`
-		args = append(args, id)
-	}
-	rows, err := tx.Query(query+` ORDER BY created_at DESC,id`, args...)
-	if err != nil {
-		return nil, err
-	}
-	out := []model.Workspace{}
-	index := map[string]int{}
-	for rows.Next() {
-		var v model.Workspace
-		if err := rows.Scan(&v.ID, &v.Name, &v.Slug, &v.Description, &v.Branch, &v.Path, &v.PrimaryProjectID, &v.State, &v.CreatedAt, &v.HasDirectory); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		v.Members = []model.Member{}
-		index[v.ID] = len(out)
-		out = append(out, v)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	if len(out) == 0 {
-		return out, tx.Commit()
-	}
-	query = `SELECT m.workspace_id,m.project_id,p.name,m.path,m.base_commit,m.state,m.error,` + memberScope + ` FROM members m JOIN projects p ON p.id=m.project_id`
-	if id != "" {
-		query += ` WHERE m.workspace_id=?`
-	}
-	rows, err = tx.Query(query+` ORDER BY m.workspace_id,p.name`, args...)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var workspaceID string
-		var m model.Member
-		if err := rows.Scan(&workspaceID, &m.ProjectID, &m.ProjectName, &m.Path, &m.BaseCommit, &m.State, &m.Error, &m.Mode, &m.BaseRef, &m.Branch); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		if i, ok := index[workspaceID]; ok {
-			if m.Mode == "new" && m.Branch == "" {
-				m.Branch = out[i].Branch
-			}
-			out[i].Members = append(out[i].Members, m)
-		}
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	return out, tx.Commit()
-}
 func MustAffected(result sql.Result, err error) error {
 	if err != nil {
 		return err

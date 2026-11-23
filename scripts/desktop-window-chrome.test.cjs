@@ -90,15 +90,15 @@ test('Windows mounts right-side controls and a native menu on startup pages', as
     assert(doc.documentElement.hasAttribute('data-workhub-window-overlay'));
     const actions = [...doc.querySelectorAll('.workhub-window-actions button')];
     assert.deepEqual(actions.map(button => button.dataset.windowAction), ['minimize','maximize','close']);
-    const brand = doc.querySelector('.window-brand-trigger');
-    mouse(brand);
+    const menu = doc.querySelector('.window-app-menu');
+    mouse(menu);
     assert.deepEqual(calls, ['plugin:window|is_maximized']);
-    brand.click();
+    menu.click();
     assert.equal(requests.at(-1).command, 'show_app_menu');
     assert.equal(requests.at(-1).args.ready, false);
     dom.window.WorkHubDesktopWindow.showMenu(true);
     assert.equal(requests.at(-1).args.ready, true);
-    brand.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}));
+    menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}));
     assert.equal(calls.at(-1), 'show_app_menu');
     actions[0].click();
     assert.equal(calls.at(-1), 'plugin:window|minimize');
@@ -119,22 +119,35 @@ test('the production React header replaces the Windows fallback and opens the na
     dom.window.eval(readFileSync('web/ui/page-layout.js', 'utf8') + '\nwindow.WorkHubLayout = WorkHubLayout;');
     const controls = doc.getElementById('workhubWindowControls');
     const actions = doc.querySelector('.workhub-window-actions');
+    const navigated = [];
     const render = ready => dom.window.WorkHubLayout.renderChrome(controls, {
-      ready, home() {}, appMenu:() => dom.window.WorkHubDesktopWindow.showMenu(ready),
+      ready, activeView:'projects', navigate:view => navigated.push(view),
+      appMenu:trigger => dom.window.WorkHubDesktopWindow.showMenu(ready, trigger),
     });
     render(false);
-    doc.querySelector('.window-brand-trigger').click();
+    doc.querySelector('.window-app-menu').click();
     assert.equal(requests.at(-1).args.ready, false);
     render(true);
-    const trigger = doc.querySelector('.window-brand-trigger');
+    const trigger = doc.querySelector('.window-utilities .window-app-menu');
+    trigger.getBoundingClientRect = () => ({left:720,bottom:30});
     trigger.click();
-    assert.equal(requests.at(-1).args.ready, true);
+    assert.deepEqual({...requests.at(-1).args}, {ready:true,x:720,y:30});
     assert.equal(trigger.getAttribute('aria-haspopup'), 'menu');
     const before = requests.length;
     trigger.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}));
     assert.equal(requests.length, before + 1);
     assert.equal(requests.at(-1).command, 'show_app_menu');
-    assert.equal(doc.querySelectorAll('.window-brand-trigger').length, 1);
+    assert.equal(doc.querySelectorAll('.window-app-menu').length, 1);
+    assert.equal(controls.querySelector('img[src="/yolu.svg"]'), null);
+    assert.equal(controls.querySelector('button').dataset.view, 'sessions');
+    const navigation = controls.querySelector('.window-header-leading').firstElementChild;
+    const destinations = [...navigation.querySelectorAll('button')];
+    assert.equal(navigation.nextElementSibling, doc.querySelector('.window-history'));
+    assert.deepEqual(destinations.map(button => button.dataset.view), ['sessions','projects','issues','settings']);
+    assert(destinations.every(button => button.querySelector('svg') && button.getAttribute('aria-label') && !button.textContent));
+    assert.equal(navigation.querySelector('[aria-current="page"]').dataset.view, 'projects');
+    destinations[2].click();
+    assert.deepEqual(navigated, ['issues']);
     assert.equal(doc.querySelector('.workhub-window-actions'), actions);
     assert.equal(actions.children.length, 3);
   } finally {dom.window.close();}
@@ -189,7 +202,7 @@ for (const platform of ['macos','windows']) test(`native chrome reuses the share
     assert.equal(dom.window.document.querySelectorAll('.workhub-window-drag').length,1);
     assert.equal(dom.window.document.querySelectorAll('#workhubWindowControls').length,1);
     assert(dom.window.document.getElementById('sharedSearch'));
-    assert.equal(dom.window.document.querySelectorAll('.window-brand-trigger').length,0);
+    assert.equal(dom.window.document.querySelectorAll('.window-app-menu').length,0);
     assert.equal(dom.window.document.querySelectorAll('.workhub-window-action').length,platform === 'windows' ? 3 : 0);
   } finally {dom.window.close();}
 });

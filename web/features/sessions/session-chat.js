@@ -6,7 +6,7 @@ const chatLabels = { idle: uiText("可以在这里继续对话"), starting: uiTe
 chatLabels.handoff = uiText("正在交接：等待终端本轮工作结束…");
 
 function chatPath(current) { return `/api/sessions/${encodeURIComponent(current.session)}/chat`; }
-function chatDraftKey(current) { return JSON.stringify([current.environment || (typeof activeEnvironment === 'undefined' ? 'local' : activeEnvironment), current.session ? 'session' : current.target || current.workspace, current.session || 'new']); }
+function chatDraftKey(current) { return JSON.stringify([current.environment || (typeof activeEnvironment === 'undefined' ? 'local' : activeEnvironment), current.session ? 'session' : current.target || {}, current.session || 'new']); }
 function renderChatTimeline(current) {
   const live = current.chat?.entries || [];
   const liveIDs = new Set(live.map(e => e.turn_id + ':' + e.id));
@@ -30,12 +30,11 @@ function renderChatTimeline(current) {
 }
 function renderChatControls(current) {
   const chat = current.chat;
-  const ready = !!current.session || !!current.target || state.workspaces.find(q => q.id === current.workspace)?.state === 'ready';
+  const ready = !!current.session || !!current.target;
   const isNew = !current.session;
   $('#sendSessionChat').disabled = !ready || current.submitting || !chat || chat.busy || !!chat.blocked || !$('#sessionChatInput').value.trim();
   $('#stopSessionChat').disabled = !chat?.busy || current.stopping || chat.status === 'stopping';
   $('#stopSessionChat').hidden = isNew;
-  $('#newSessionProject').disabled = isNew && current.submitting;
   $('#sessionChatInput').disabled = isNew && current.submitting;
   $('#stopSessionChat').textContent = chat?.status === 'handoff' || current.cancelingHandoff ? uiText("取消交接") : uiText("停止");
   $('#handoffSessionChat').hidden = !chat?.can_handoff || chat.busy;
@@ -85,7 +84,7 @@ function applyChatState(current, chat) {
   const scroll = $('#sessionHistoryScroll');
   const follow = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 100;
   current.chat = chat;
-  updateSessionChatActivity(current.workspace, current.session, chat, current.environment);
+  updateSessionChatActivity(current.session, chat, current.environment);
   renderChatControls(current);
   renderChatApprovals(current);
   if (JSON.stringify(previous?.entries) !== JSON.stringify(chat.entries)) {

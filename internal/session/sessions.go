@@ -15,11 +15,8 @@ import (
 	"worktree-hub/internal/platform"
 )
 
-// WorkspaceSession remains an alias for compatibility with workspace-page clients.
-type WorkspaceSession = model.Session
-
 // Runtime activity is deliberately not persisted with session associations.
-func (a *Service) decorateSessionActivity(s *WorkspaceSession) {
+func (a *Service) decorateSessionActivity(s *model.Session) {
 	if run := a.ChatFor(s.ID); run != nil {
 		run.mu.Lock()
 		if run.state.Busy {
@@ -72,57 +69,9 @@ func readSession(c codex.SessionClient, id string) (codex.Session, error) {
 	return response.Thread, err
 }
 
-// SaveSession indexes the thread independently. Only explicit manual links are pins.
-func (a *Service) SaveSession(workspace string, s codex.Session, source string, observedAt ...int64) error {
-	if err := a.Execution.Store.SaveSession(model.Session{ID: s.ID, Name: sessionName(s), Cwd: s.Cwd, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Source: source}, observedAt...); err != nil {
-		return err
-	}
-	if workspace != "" && source == "manual" {
-		_, err := a.Execution.Store.DB.Exec(`INSERT OR IGNORE INTO workspace_session_pins(workspace_id,session_id) VALUES(?,?)`, workspace, s.ID)
-		return err
-	}
-	return nil
-}
-
-func (a *Service) StoredSessions(workspace string) ([]WorkspaceSession, error) {
-	scope, err := a.workspaceScope(workspace)
-	if err != nil {
-		return nil, err
-	}
-	return a.cachedScope(scope)
-}
-
-func workspaceSessionPaths(q model.Workspace) []string {
-	paths := []string{}
-	if q.HasDirectory {
-		paths = append(paths, q.Path)
-	}
-	for _, m := range q.Members {
-		paths = append(paths, m.Path)
-	}
-	return paths
-}
-
-func sessionInWorkspace(q model.Workspace, s codex.Session) bool {
-	for _, p := range workspaceSessionPaths(q) {
-		if platform.SameWorkspacePath(s.Cwd, p) {
-			return true
-		}
-	}
-	return false
-}
-
-func (a *Service) SessionWorkspace(w http.ResponseWriter, r *http.Request) (model.Workspace, bool) {
-	q, err := a.Execution.Store.Workspace(r.PathValue("id"))
-	if errors.Is(err, sql.ErrNoRows) {
-		httpx.WriteError(w, 404, "工作区不存在")
-		return q, false
-	}
-	if err != nil {
-		httpx.DbError(w, err)
-		return q, false
-	}
-	return q, true
+// SaveSession indexes provider metadata independently of directory associations.
+func (a *Service) SaveSession(s codex.Session, source string, observedAt ...int64) error {
+	return a.Execution.Store.SaveSession(model.Session{ID: s.ID, Name: sessionName(s), Cwd: s.Cwd, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Source: source}, observedAt...)
 }
 
 func (a *Service) CodexSessionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -153,10 +102,6 @@ func (a *Service) CodexSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, 200, page)
 }
 
-func (a *Service) WorkspaceSessionsHandler(w http.ResponseWriter, r *http.Request) {
-	a.SessionsHandler(w, r)
-}
-
 func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 	scope, err := a.queryScope(r)
 	if err != nil {
@@ -174,19 +119,8 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
-	respond := func(sessions []WorkspaceSession, cause error) {
-		links, err := a.Execution.Store.SessionWorkspaceLinks()
-		if err != nil {
-			httpx.DbError(w, err)
-			return
-		}
-		memberships := map[string][]string{}
-		for _, session := range sessions {
-			if workspaces := links[session.ID]; len(workspaces) > 0 {
-				memberships[session.ID] = workspaces
-			}
-		}
-		result := map[string]any{"sessions": sessions, "workspace_sessions": memberships}
+	respond := func(sessions []model.Session, cause error) {
+		result := map[string]any{"sessions": sessions}
 		if cause != nil {
 			result["error"] = cause.Error()
 		}
@@ -206,14 +140,12 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 	found := map[string]codex.Session{}
 	agyFound := map[string]model.Session{}
 	var codexErr error
-	if !scope.linkedOnly {
-		found, codexErr = a.sessionCatalog(r.Context(), scope, archived, r.URL.Query().Get("refresh") == "1")
-		var agyErr error
-		agyFound, agyErr = a.scanAgyCatalog(r.Context(), scope, archived)
-		if codexErr != nil && len(agyFound) == 0 && (agyErr != nil || !hasProviderSessions(cached, model.ProviderAgy)) {
-			failure(codexErr)
-			return
-		}
+	found, codexErr = a.sessionCatalog(r.Context(), scope, archived, r.URL.Query().Get("refresh") == "1")
+	var agyErr error
+	agyFound, agyErr = a.scanAgyCatalog(r.Context(), scope, archived)
+	if codexErr != nil && len(agyFound) == 0 && (agyErr != nil || !hasProviderSessions(cached, model.ProviderAgy)) {
+		failure(codexErr)
+		return
 	}
 	var c codex.SessionClient
 	defer func() {
@@ -221,7 +153,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 			c.Close()
 		}
 	}()
-	// Cached/missing records and external manual pins are revalidated by ID.
+	// Cached/missing records and explicit project associations are revalidated by ID.
 	for _, s := range cached {
 		if s.Archived != archived {
 			continue
@@ -249,7 +181,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		current, readErr := readSession(c, s.ID)
 		if readErr == nil {
 			found[s.ID] = current
-			if err := a.SaveSession("", current, s.Source, titleObservedAt); err != nil {
+			if err := a.SaveSession(current, s.Source, titleObservedAt); err != nil {
 				httpx.DbError(w, err)
 				return
 			}
@@ -262,7 +194,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	filtered := sessions[:0]
 	for _, s := range sessions {
-		if s.Archived == archived && (!scope.linkedOnly || r.URL.Query().Get("cwd") == "" || platform.SameWorkspacePath(s.Cwd, r.URL.Query().Get("cwd"))) {
+		if s.Archived == archived {
 			filtered = append(filtered, s)
 		}
 	}
@@ -270,7 +202,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 	for i := range sessions {
 		if model.NormalizeProvider(sessions[i].Provider) == model.ProviderAgy {
 			_, listed := agyFound[sessions[i].ID]
-			sessions[i].Available = listed || scope.linkedOnly || archived || a.ChatFor(sessions[i].ID) != nil || sessions[i].Source == "workbench"
+			sessions[i].Available = listed || archived || a.ChatFor(sessions[i].ID) != nil || sessions[i].Source == "workbench"
 			if !sessions[i].Available {
 				sessions[i].Error = "对话暂不可读取，请刷新重试"
 			}
@@ -292,65 +224,13 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 	respond(sessions, nil)
 }
 
-func hasProviderSessions(sessions []WorkspaceSession, provider string) bool {
+func hasProviderSessions(sessions []model.Session, provider string) bool {
 	for _, s := range sessions {
 		if model.NormalizeProvider(s.Provider) == provider {
 			return true
 		}
 	}
 	return false
-}
-
-func (a *Service) UnlinkSessionHandler(w http.ResponseWriter, r *http.Request) {
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
-	if _, ok := a.SessionWorkspace(w, r); !ok {
-		return
-	}
-	if _, err := a.Execution.Store.DB.Exec(`DELETE FROM workspace_session_pins WHERE workspace_id=? AND session_id=?`, r.PathValue("id"), r.PathValue("session")); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	httpx.WriteJSON(w, 200, map[string]string{"message": "已取消关联，对话仍可从对话页访问"})
-}
-
-func (a *Service) LinkSessionHandler(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		SessionID string `json:"session_id"`
-	}
-	if !httpx.Decode(w, r, &input) {
-		return
-	}
-	input.SessionID = strings.TrimSpace(input.SessionID)
-	if input.SessionID == "" || len(input.SessionID) > 200 {
-		httpx.WriteError(w, 400, "请输入有效的对话 ID")
-		return
-	}
-	a.Execution.Mu.Lock()
-	_, ok := a.SessionWorkspace(w, r)
-	a.Execution.Mu.Unlock()
-	if !ok {
-		return
-	}
-	c, err := a.openSessions(r.Context())
-	if err != nil {
-		httpx.WriteError(w, 503, err.Error())
-		return
-	}
-	defer c.Close()
-	titleObservedAt := time.Now().UnixNano()
-	s, err := readSession(c, input.SessionID)
-	if err != nil {
-		httpx.WriteError(w, 422, "无法关联该对话："+err.Error())
-		return
-	}
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
-	if err := a.SaveSession(r.PathValue("id"), s, "manual", titleObservedAt); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	httpx.WriteJSON(w, 200, map[string]string{"message": "对话已关联到当前工作区"})
 }
 
 func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
@@ -367,17 +247,54 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := record.ID
-	p := savedSessionPlan(record)
-	// Only the deprecated workspace resume URL supplies an adapter-specific launch plan.
-	if legacy, ok := r.Context().Value(legacyResumePlanKey{}).(model.LaunchPlan); ok {
-		p = legacy
+	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
+	p, err := a.savedSessionPlan(ctx, record, false)
+	if err != nil {
+		httpx.WriteError(w, 409, err.Error())
+		return
 	}
+	var input struct {
+		NativePermissions bool `json:"native_permissions"`
+		AllowShared       bool `json:"allow_shared"`
+	}
+	if r.Body != nil && r.ContentLength != 0 && !httpx.Decode(w, r, &input) {
+		return
+	}
+	if p.ManagedBindings && !input.NativePermissions {
+		httpx.WriteJSON(w, 409, map[string]any{
+			"error": "原生终端会使用 Agent 自身的权限设置。请确认后打开，或在应用内按已关联权限继续。",
+			"code":  "native_permissions_confirmation",
+		})
+		return
+	}
+	if p.ManagedBindings {
+		for _, binding := range p.Bindings {
+			if binding.Access == model.SessionBindingRead {
+				dirs := p.AdditionalDirectories[:0]
+				for _, dir := range p.AdditionalDirectories {
+					if !platform.SameWorkspacePath(dir, binding.Directory) {
+						dirs = append(dirs, dir)
+					}
+				}
+				p.AdditionalDirectories = dirs
+			}
+		}
+	}
+	p.AllowShared = input.AllowShared
+	launchScope := p
+	launchScope.ManagedBindings = false
+	releaseDirectories, conflicts := a.reserveDirectories("terminal:"+id, id, launchScope)
+	if releaseDirectories == nil {
+		writeBindingConflict(w, conflicts)
+		return
+	}
+	defer releaseDirectories()
 	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
 		if !platform.AbsoluteWorkspacePath(record.Cwd) {
 			httpx.WriteError(w, 409, "对话工作目录不是绝对路径")
 			return
 		}
-		if info, err := execution.Stat(r.Context(), record.Cwd, true); err != nil || !info.IsDir() {
+		if info, err := execution.Stat(ctx, record.Cwd, true); err != nil || !info.IsDir() {
 			httpx.WriteError(w, 409, "对话原工作目录不可用，请恢复目录后重试")
 			return
 		}
@@ -417,19 +334,18 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 409, "对话工作目录不是绝对路径")
 		return
 	}
-	if info, err := execution.Stat(r.Context(), s.Cwd, true); err != nil || !info.IsDir() {
+	if info, err := execution.Stat(ctx, s.Cwd, true); err != nil || !info.IsDir() {
 		httpx.WriteError(w, 409, "对话原工作目录不可用，请恢复目录后重试")
 		return
 	}
 	dirs := append([]string{}, p.AdditionalDirectories...)
-	if _, legacy := r.Context().Value(legacyResumePlanKey{}).(model.LaunchPlan); legacy {
-		dirs = append([]string{p.Cwd}, dirs...)
-	}
-	if err := a.SaveSession("", s, "codex"); err != nil {
+	if err := a.SaveSession(s, "codex"); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
-	p.Cwd = s.Cwd
+	if !platform.SameWorkspacePath(p.Cwd, s.Cwd) && !p.ManagedBindings {
+		p.Cwd = s.Cwd
+	}
 	p.Session = id
 	if err := a.LaunchConflict(id, p.Cwd); err != nil {
 		httpx.WriteError(w, 409, err.Error())

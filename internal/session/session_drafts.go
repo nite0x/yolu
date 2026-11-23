@@ -42,7 +42,6 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 			Settings *model.AssistantSettings `json:"settings,omitempty"`
 			Context  *struct {
 				EnvironmentID string `json:"environment_id"`
-				WorkspaceID   string `json:"workspace_id,omitempty"`
 				ProjectID     string `json:"project_id,omitempty"`
 			} `json:"context,omitempty"`
 		} `json:"assistant_request,omitempty"`
@@ -59,6 +58,7 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 			Type string `json:"contentType"`
 			Text string `json:"text"`
 		} `json:"files,omitempty"`
+		Provider string       `json:"provider,omitempty"`
 		Settings TurnSettings `json:"settings"`
 		Reading  struct {
 			Top    float64 `json:"top"`
@@ -75,6 +75,10 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 		} `json:"questions,omitempty"`
 	}
 	if !httpx.DecodeLimit(w, r, &draft, chatRequestLimit) {
+		return
+	}
+	if !model.SupportedProvider(draft.Provider) {
+		httpx.WriteError(w, 400, "草稿中的对话引擎不受支持")
 		return
 	}
 	if len(draft.Text) > 128000 || len(draft.Project) > 200 || len(draft.Reading.Anchor) > 1000 || len(draft.Reading.Latest) > 2000 || draft.Updated <= 0 {
@@ -99,7 +103,7 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if pending := draft.AssistantRequest; pending != nil && pending.Context != nil {
 		context := pending.Context
-		if len(context.EnvironmentID) > 200 || len(context.WorkspaceID) > 200 || len(context.ProjectID) > 200 {
+		if len(context.EnvironmentID) > 200 || len(context.ProjectID) > 200 {
 			httpx.WriteError(w, 400, "草稿内容无效")
 			return
 		}

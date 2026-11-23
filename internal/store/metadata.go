@@ -12,9 +12,11 @@ import (
 	"worktree-hub/internal/platform"
 )
 
+type metadataTable struct{ Name, Columns string }
+
 // Explicit columns make import independent of platform and future additive
 // schema migrations. No SQL identifiers supplied by a client are executed.
-var metadataTables = []struct{ Name, Columns string }{
+var metadataTables = []metadataTable{
 	{"assistant_conversations", "id,title,created_at,updated_at"},
 	{"assistant_runs", "id,conversation_id,input,status,error_code"},
 	{"assistant_messages", "id,conversation_id,run_id,role,text"},
@@ -24,12 +26,9 @@ var metadataTables = []struct{ Name, Columns string }{
 	{"assistant_run_contexts", "conversation_id,run_id,context"},
 	{"projects", "id,name,path,common_dir,folder,created_at"},
 	{"settings", "key,value"},
-	{"workspaces", "id,name,slug,description,branch,path,primary_project_id,state,created_at,has_directory"},
-	{"members", "workspace_id,project_id,path,base_commit,state,error,mode,base_ref,branch"},
-	{"workspace_sessions", "workspace_id,session_id,name,cwd,created_at,updated_at,source"},
-	{"session_create_requests", "workspace_id,request_id,session_id"},
-	{"sessions", "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,title_source,title_changed_at,provider"},
-	{"workspace_session_pins", "workspace_id,session_id"},
+	{"sessions", "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,title_source,title_changed_at,provider,bindings_managed"},
+	{"session_project_bindings", "id,session_id,project_id,directory,directory_key,branch,role,access,created_at,updated_at"},
+	{"migration_recovery", "id,kind,record_key,reason,payload"},
 	{"session_organization", "session_id,pinned,archived,updated_at"},
 	{"conversation_input_requests", "session_id,request_id,fingerprint,status"},
 	{"conversation_async_answers", "session_id,item_id,turn_id,fingerprint,status,request_id"},
@@ -67,135 +66,111 @@ func ExportMetadata(ctx context.Context, file string) (MetadataSnapshot, error) 
 	}
 	defer tx.Rollback()
 	for _, table := range metadataTables {
-		var exists int
-		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table.Name).Scan(&exists); err != nil {
+		columns, err := tableColumns(tx, table.Name)
+		if err != nil {
 			return snapshot, err
 		}
-		if exists == 0 {
+		if len(columns) == 0 {
 			continue
 		}
-		selectColumns := table.Columns
-		if table.Name == "workspaces" {
-			var columns int
-			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('workspaces') WHERE name='has_directory'`).Scan(&columns); err != nil {
-				return snapshot, err
-			}
-			if columns == 0 {
-				selectColumns = "id,name,slug,description,branch,path,primary_project_id,state,created_at,1"
-			}
-		}
+		selects := strings.Split(table.Columns, ",")
 		if table.Name == "sessions" {
-			var titleColumns, providerColumns int
-			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('sessions') WHERE name='title_source'`).Scan(&titleColumns); err != nil {
-				return snapshot, err
-			}
-			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('sessions') WHERE name='provider'`).Scan(&providerColumns); err != nil {
-				return snapshot, err
-			}
-			titleExpr := "title_source,title_changed_at"
-			if titleColumns == 0 {
-				titleExpr = "CASE WHEN name='' THEN '' ELSE 'legacy' END,0"
-			}
-			providerExpr := "provider"
-			if providerColumns == 0 {
-				providerExpr = "'codex'"
-			}
-			selectColumns = "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories," + titleExpr + "," + providerExpr
+			selects = selectMetadataColumns(selects, columns, map[string]string{
+				"last_synced_at": "0", "additional_directories": "'[]'",
+				"title_source":     "CASE WHEN name='' THEN '' ELSE 'legacy' END",
+				"title_changed_at": "0", "provider": "'codex'", "bindings_managed": "0",
+			})
 		}
-		if table.Name == "members" {
-			// Export legacy databases without modifying the source environment.
-			rows, err := tx.QueryContext(ctx, "SELECT * FROM members LIMIT 0")
-			if err != nil {
-				return snapshot, err
-			}
-			columns, err := rows.Columns()
-			rows.Close()
-			if err != nil {
-				return snapshot, err
-			}
-			if len(columns) == 6 {
-				selectColumns = "workspace_id,project_id,path,base_commit,state,error,'new','refs/heads/master',''"
-			}
-		}
-		rows, err := tx.QueryContext(ctx, "SELECT "+selectColumns+" FROM "+table.Name)
+		rows, err := readMetadataRows(tx, table.Name, selects)
 		if err != nil {
 			return snapshot, err
 		}
-		count := len(strings.Split(table.Columns, ","))
-		for rows.Next() {
-			values := make([]any, count)
-			dest := make([]any, count)
-			for i := range values {
-				dest[i] = &values[i]
-			}
-			if err := rows.Scan(dest...); err != nil {
-				rows.Close()
-				return snapshot, err
-			}
-			for i, v := range values {
-				if b, ok := v.([]byte); ok {
-					values[i] = string(b)
-				}
-			}
-			snapshot.Tables[table.Name] = append(snapshot.Tables[table.Name], values)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return snapshot, err
-		}
+		snapshot.Tables[table.Name] = rows
+	}
+	legacy, err := readLegacyMetadata(tx)
+	if err != nil {
+		return snapshot, err
+	}
+	for name, rows := range legacy {
+		snapshot.Tables[name] = rows
 	}
 	return snapshot, tx.Commit()
 }
+
+func selectMetadataColumns(wanted []string, available map[string]bool, substitutes map[string]string) []string {
+	selects := make([]string, 0, len(wanted))
+	for _, column := range wanted {
+		if substitute := substitutes[column]; !available[column] && substitute != "" {
+			column = substitute
+		}
+		selects = append(selects, column)
+	}
+	return selects
+}
+
+func readMetadataRows(tx *sql.Tx, table string, columns []string) ([][]any, error) {
+	rows, err := tx.Query("SELECT " + strings.Join(columns, ",") + " FROM " + table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := [][]any{}
+	for rows.Next() {
+		values := make([]any, len(columns))
+		dest := make([]any, len(columns))
+		for i := range dest {
+			dest[i] = &values[i]
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return nil, err
+		}
+		for i, v := range values {
+			if b, ok := v.([]byte); ok {
+				values[i] = string(b)
+			}
+		}
+		out = append(out, values)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	for _, name := range []string{"projects", "workspaces", "sessions", "assistant_conversations"} {
+	for _, name := range []string{"projects", "sessions", "assistant_conversations", "migration_recovery"} {
 		var count int
 		if err := tx.QueryRow("SELECT count(*) FROM " + name).Scan(&count); err != nil {
 			return err
 		}
 		if count > 0 {
-			return fmt.Errorf("目标环境已有项目、工作区或对话索引，不能覆盖导入")
+			return fmt.Errorf("目标环境已有项目或对话数据，不能覆盖导入")
 		}
 	}
 	for _, table := range metadataTables {
 		count := len(strings.Split(table.Columns, ","))
 		placeholders := strings.TrimSuffix(strings.Repeat("?,", count), ",")
 		for _, row := range snapshot.Tables[table.Name] {
-			if table.Name == "workspaces" && len(row) == 9 {
-				row = append(append([]any{}, row...), int64(1))
-			}
-			if table.Name == "sessions" && len(row) == 8 {
-				source := "legacy"
-				if row[1] == "" {
-					source = ""
-				}
-				row = append(append([]any{}, row...), source, int64(0), "codex")
-			}
-			if table.Name == "sessions" && len(row) == 10 {
-				row = append(append([]any{}, row...), "codex")
-			}
-			if table.Name == "members" && len(row) == 6 {
-				row = append(append([]any{}, row...), "new", "refs/heads/master", "")
+			if table.Name == "sessions" {
+				row = normalizeSessionMetadata(row)
 			}
 			if len(row) != count {
 				return fmt.Errorf("导入数据结构不匹配：%s", table.Name)
 			}
-			if table.Name == "workspaces" && row[6] == "" {
+			if table.Name == "session_project_bindings" {
+				directory := stringValue(row[3])
+				if !platform.AbsoluteWorkspacePath(directory) {
+					return fmt.Errorf("绑定目录必须是绝对路径：%s", directory)
+				}
 				row = append([]any{}, row...)
-				row[6] = nil
+				row[4] = bindingDirectoryKey(directory)
 			}
 			if _, err := tx.Exec("INSERT INTO "+table.Name+"("+table.Columns+") VALUES("+placeholders+")", row...); err != nil {
 				return fmt.Errorf("导入 %s 失败：%w", table.Name, err)
 			}
 		}
-	}
-	if _, err := tx.Exec(`UPDATE workspaces SET state='partial' WHERE state='creating'; UPDATE members SET state='failed',error='导入时操作尚未完成，请检查后重试' WHERE state IN ('creating','pending')`); err != nil {
-		return err
 	}
 	if _, err := tx.Exec(`UPDATE assistant_runs SET status='interrupted',error_code='interrupted' WHERE status='running'`); err != nil {
 		return err
@@ -203,14 +178,29 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 	if err := interruptAssistantPlans(tx); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(repairWorkspacePrimary); err != nil {
-		return err
-	}
-	if err := backfillSessions(tx); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`UPDATE sessions SET title_source='legacy' WHERE name<>'' AND title_source=''`); err != nil {
-		return err
+	// Older exports contain the session index but no directory bindings.
+	// New exports contain the bindings table even when it is empty.
+	if _, current := snapshot.Tables["session_project_bindings"]; !current {
+		if err := convertLegacyBindings(tx, snapshot.Tables); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
+}
+
+func normalizeSessionMetadata(row []any) []any {
+	switch len(row) {
+	case 8:
+		source := "legacy"
+		if row[1] == "" {
+			source = ""
+		}
+		return append(append([]any{}, row...), source, int64(0), "codex", int64(0))
+	case 10:
+		return append(append([]any{}, row...), "codex", int64(0))
+	case 11:
+		return append(append([]any{}, row...), int64(0))
+	default:
+		return row
+	}
 }

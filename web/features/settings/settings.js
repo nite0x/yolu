@@ -5,6 +5,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 let settingsEnvironment = null;
 let browserAccessState = null;
 let browserAccessLoading = false;
+let mcpSettingsChecked = false;
+let mcpSettingsBusy = false;
+let mcpAgentSettings = null;
 let titleSettingsEnvironment = null;
 let titleSettingsLoading = false;
 let titleSettingsRevision = 0;
@@ -295,6 +298,7 @@ $('#conversationDefaultsForm').addEventListener('submit', event => {
 
 function renderSettings() {
   if (state.view === 'settings' && !browserAccessState && !browserAccessLoading) void loadBrowserAccess();
+  if (state.view === 'settings' && !mcpSettingsChecked) void loadMCPSettings();
   renderCodexDiagnostics();
   renderAgyDiagnostics();
   if (state.view === 'settings' && !codexDiagnosticsBatch && !codexDiagnostics.has(activeEnvironment)) void checkCodexEnvironment(activeEnvironment);
@@ -353,6 +357,79 @@ $('#appearanceForm').addEventListener('submit', async event => {
     $('#appearanceStatus').textContent = error.message || uiText('保存配色失败，请重试。');
   } finally {
     button.disabled = false;
+  }
+});
+
+const mcpStatusText = {
+  available: '可安装',
+  installed: '已安装',
+  conflict: '已存在同名配置，请在 Agent 中检查 yolu。',
+  missing_cli: '未找到 Agent CLI，请先安装后刷新。',
+  unavailable: '无法读取 MCP 配置，请检查 Agent 后刷新。',
+};
+
+function renderMCPSettings() {
+  const canManage = mcpAgentSettings?.can_manage !== false;
+  $('#mcpAgentRows').hidden = !canManage;
+  $('#mcpSettingsReload').hidden = !canManage;
+  $('#mcpSettingsReload').disabled = mcpSettingsBusy;
+  for (const row of $('#mcpAgentRows').querySelectorAll('[data-mcp-agent]')) {
+    const id = row.dataset.mcpAgent;
+    const status = mcpAgentSettings?.agents.find(item => item.agent === id)?.status;
+    row.querySelector('[data-mcp-install]').disabled = mcpSettingsBusy || status !== 'available';
+    row.querySelector('[data-mcp-status]').textContent = uiText(mcpStatusText[status] || '无法读取 MCP 配置，请检查 Agent 后刷新。');
+  }
+}
+
+function showMCPSettingsError(message = '') {
+  const feedback = $('#mcpSettingsError');
+  feedback.textContent = message;
+  feedback.hidden = !message;
+}
+
+async function loadMCPSettings() {
+  if (mcpSettingsBusy) return;
+  mcpSettingsChecked = true;
+  mcpSettingsBusy = true;
+  $('#mcpSettingsReload').disabled = true;
+  for (const button of $('#mcpAgentRows').querySelectorAll('[data-mcp-install]')) button.disabled = true;
+  $('#mcpSettingsStatus').textContent = uiText('正在检测 Agent…');
+  showMCPSettingsError();
+  try {
+    const result = await api('/api/settings/mcp', {environment:'local'});
+    if (!Array.isArray(result.agents)) throw new Error(uiText('无法读取 MCP 安装状态，请刷新后重试。'));
+    mcpAgentSettings = result;
+    $('#mcpSettingsStatus').textContent = result.can_manage ? '' : uiText('请在主机上的 Yolu 中安装 MCP');
+  } catch (error) {
+    $('#mcpSettingsStatus').textContent = '';
+    showMCPSettingsError(error.message || uiText('无法读取 MCP 安装状态，请刷新后重试。'));
+  } finally {
+    mcpSettingsBusy = false;
+    renderMCPSettings();
+  }
+}
+
+$('#mcpSettingsReload').addEventListener('click', () => { void loadMCPSettings(); });
+$('#mcpAgentRows').addEventListener('click', async event => {
+  const button = event.target.closest('[data-mcp-install]');
+  if (!button || button.disabled || mcpSettingsBusy) return;
+  const agent = button.closest('[data-mcp-agent]').dataset.mcpAgent;
+  mcpSettingsBusy = true;
+  renderMCPSettings();
+  $('#mcpSettingsStatus').textContent = uiText('正在安装 MCP…');
+  showMCPSettingsError();
+  try {
+    const result = await api('/api/settings/mcp', {method:'POST', environment:'local', body:JSON.stringify({agent})});
+    if (result.agent !== agent || !Object.hasOwn(mcpStatusText, result.status)) throw new Error(uiText('无法读取 MCP 安装状态，请刷新后重试。'));
+    const item = mcpAgentSettings.agents.find(item => item.agent === agent);
+    item.status = result.status;
+    $('#mcpSettingsStatus').textContent = uiText(result.status === 'installed' ? '已安装 MCP，重新打开 Agent 会话后即可使用。' : mcpStatusText[result.status] || '无法读取 MCP 安装状态，请刷新后重试。');
+  } catch (error) {
+    $('#mcpSettingsStatus').textContent = '';
+    showMCPSettingsError(error.message || uiText('未能保存 MCP 配置，请检查 Agent 设置与文件权限后重试。'));
+  } finally {
+    mcpSettingsBusy = false;
+    renderMCPSettings();
   }
 });
 

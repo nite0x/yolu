@@ -2,40 +2,10 @@
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
 
 
-let refreshTimer;
-// The inventory is global across environments. Keep one list context while
-// workspace details retain their own per-workspace memory.
-const workspaceListMemory = { search: '', archived: false, status: 'all', scrollTop: 0, focus: null };
-let workspaceListMounted = false;
+let refreshTimer, refreshRequest;
 const projectListMemory = new Map();
 let projectListEnvironment = null;
-let lastWorkspaceSelection = null;
-function syncWorkspacePageLayout(workspaces, detail) {
-  const heading = $('.page-heading');
-  const pane = $('#workspaceDetailPane');
-  const move = (node, parent) => { if (node.parentElement !== parent) parent.append(node); };
-  $('#workspaceBrowser').hidden = !workspaces || detail;
-  pane.hidden = workspaces && !detail;
-  pane.classList.toggle('workspace-pane', workspaces);
-  if (workspaces) {
-    move($('#newWorkspaceButton'), $('#workspaceCreateSlot'));
-    move($('#panelToolbar'), $('#workspaceToolbarSlot'));
-    move(heading, $('#workspaceHeadingSlot'));
-  } else {
-    move($('#newWorkspaceButton'), heading);
-    if (heading.parentElement !== $('main')) $('main').insertBefore(heading, $('#offlineFeedback'));
-    if (state.view !== 'projects' && $('#panelToolbar').parentElement !== $('#workContent')) $('#workContent').insertBefore($('#panelToolbar'), pane);
-  }
-}
-function saveWorkspaceListView(target) {
-  if (!workspaceListMounted) return;
-  workspaceListMemory.search = $('#search').value;
-  workspaceListMemory.archived = $('#archiveFilter').checked;
-  workspaceListMemory.status = $('#workspaceStatusFilter').value;
-  workspaceListMemory.scrollTop = $('#workspaceListContent').scrollTop;
-  const row = target || document.activeElement?.closest?.('#workspaceListContent [data-action="open-workspace"]');
-  if (row) workspaceListMemory.focus = { id: row.dataset.id, environment: row.dataset.environment };
-}
+
 function saveProjectListView(target) {
   if (projectListEnvironment === null) return;
   const row = target || document.activeElement?.closest?.('#projectListPane [data-action="select-project"]');
@@ -45,120 +15,83 @@ function saveProjectListView(target) {
     scrollTop: $('.project-list-scroll')?.scrollTop || 0, focus: row?.dataset.id || previous?.focus,
   });
 }
-function restoreWorkspaceListControls() {
-  $('#search').value = workspaceListMemory.search;
-  $('#archiveFilter').checked = workspaceListMemory.archived;
-  $('#workspaceStatusFilter').value = workspaceListMemory.status;
-}
-function restoreWorkspaceListPosition(focus) {
-  $('#workspaceListContent').scrollTop = workspaceListMemory.scrollTop;
-  const saved = workspaceListMemory.focus;
-  if (!focus || !saved) return;
-  const row = [...document.querySelectorAll('#workspaceListContent [data-action="open-workspace"]')].find(row => row.dataset.id === saved.id && row.dataset.environment === saved.environment);
-  (row || $('#workspaceListTitle')).focus({preventScroll:true});
-}
 function restoreProjectListPosition(focus) {
   const saved = projectListMemory.get(activeEnvironment);
-  if (!saved) return;
-  $('.project-list-scroll').scrollTop = saved.scrollTop;
+  const list = $('.project-list-scroll');
+  if (!saved || !list) return;
+  list.scrollTop = saved.scrollTop;
   if (!focus || !saved.focus) return;
   const row = [...document.querySelectorAll('#projectListPane [data-action="select-project"]')].find(row => row.dataset.id === saved.focus);
   (row || $('#panelTitle')).focus({preventScroll:true});
 }
 function changeListFilters() {
-  if (workspaceListMounted) {
-    workspaceListMemory.focus = null;
-    $('#workspaceListContent').scrollTop = 0;
-  }
   if (projectListEnvironment !== null) {
     const saved = projectListMemory.get(projectListEnvironment);
     if (saved) saved.focus = null;
-    $('.project-list-scroll').scrollTop = 0;
+    const list = $('.project-list-scroll');
+    if (list) list.scrollTop = 0;
   }
   render();
 }
-window.addEventListener('pagehide', () => { saveWorkspaceListView(); saveProjectListView(); });
+window.addEventListener('pagehide', () => saveProjectListView());
 
-async function refresh(force = false) {
-  if (state.refreshing) return;
+function refresh(force = false) {
+  const revision = environmentRevision;
+  if (state.refreshing) {
+    if (!force) return refreshRequest;
+    return refreshRequest.then(() => revision === environmentRevision ? refresh(true) : 'cancelled');
+  }
+  refreshRequest = refreshProjectState(force, revision);
+  return refreshRequest;
+}
+
+async function refreshProjectState(force, revision) {
   clearTimeout(refreshTimer);
   let nextRefresh = 10000;
+  let result = 'cancelled';
   state.refreshing = true;
-  const revision = environmentRevision;
-  const needsScopedState = state.view !== 'workspaces' || !!state.selectedWorkspace;
   $('#refreshButton').disabled = true;
   try {
-    const suffix = force ? '?refresh=1' : '';
-    let renderPending = false, pickerChanged = false;
-    const renderPartial = () => {
-      if (renderPending) return;
-      renderPending = true;
-      // Coalesce results that settle together, while a slow source never holds
-      // back a ready one. Background status timestamps still avoid full renders.
-      void Promise.resolve().then(() => {
-        renderPending = false;
-        if (revision !== environmentRevision) return;
-        render();
-        if (pickerChanged) {pickerChanged = false; refreshWorkspaceProjectPicker();}
-      });
-    };
-    const apply = (kind,data) => {
-      if (revision !== environmentRevision || !data) return;
-      if (kind === 'inventory') {
-        const changed = !workspaceInventory.loaded || renderStateKey(workspaceInventory) !== renderStateKey(data);
-        workspaceInventory = {...data,loaded:true};
-        if (changed) renderPartial();
-      } else {
-        const changed = !state.loaded || renderStateKey(state) !== renderStateKey(data);
-        Object.assign(state,data,{loaded:true});
-        if (typeof data.read_only_sessions === 'boolean') sessionReadOnly = data.read_only_sessions;
-        if (changed) {pickerChanged = true; renderPartial();}
-      }
-    };
-    const [scoped, inventory] = await Promise.allSettled([
-      needsScopedState ? api('/api/state' + suffix).then(data => {apply('state',data); return data;}) : Promise.resolve(null),
-      api('/api/workspace-inventory' + suffix, { environment: 'local' }).then(data => {apply('inventory',data); return data;}),
-    ]);
-    if (revision !== environmentRevision) return;
-    const failures = [];
-    if (inventory.status === 'rejected') failures.push(uiText("全部工作区刷新失败：") + inventory.reason.message);
-    if (scoped.status === 'rejected') failures.push(uiText("当前环境连接失败：") + scoped.reason.message);
-    for (const e of workspaceInventory.environments) if (e.error) failures.push(e.name + '：' + e.error);
+    const data = await api('/api/state' + (force ? '?refresh=1' : ''));
+    if (revision !== environmentRevision) return 'cancelled';
+    const changed = !state.loaded || renderStateKey(state) !== renderStateKey(data);
+    Object.assign(state, data, {loaded:true});
+    if (typeof data.read_only_sessions === 'boolean') sessionReadOnly = data.read_only_sessions;
+    const failures = environmentInventory.filter(e => e.error).map(e => e.name + '：' + e.error);
     $('#offlineBanner').textContent = failures.join('\n');
     $('#offlineBanner').hidden = !failures.length;
-    const pending = scoped.status === 'fulfilled' && scoped.value?.status_refreshing || inventory.status === 'fulfilled' && inventory.value.status_refreshing;
+    const pending = !!data.status_refreshing;
     nextRefresh = pending ? 1000 : 10000;
     $('#syncText').textContent = failures.length ? uiText("部分环境异常") : pending ? uiText("更新中…") : uiText("已更新");
-    $('#syncText').title = failures.length ? failures.join('\n') : pending ? uiText("正在更新状态，当前显示最近结果") : uiText("工作台状态已更新");
+    $('#syncText').title = failures.length ? failures.join('\n') : pending ? uiText("正在更新状态，当前显示最近结果") : uiText("状态已更新");
     $('#syncDot').classList.toggle('offline', !!failures.length);
-    $('#syncDot').classList.toggle('updating', !!pending && !failures.length);
-    if (!state.loaded) { render(); refreshWorkspaceProjectPicker(); }
-    else {
-      updateCheckTimes();
-      if (typeof refreshSessionWorkspace === 'function') refreshSessionWorkspace(false);
-    }
+    $('#syncDot').classList.toggle('updating', pending && !failures.length);
+    if (changed) render();
+    else updateCheckTimes();
+    if (typeof refreshConversations === 'function') void refreshConversations(false);
+    result = failures.length ? 'failed' : pending ? 'pending' : 'updated';
   } catch (error) {
-    if (revision !== environmentRevision || error.name === 'AbortError') return;
+    if (revision !== environmentRevision || error.name === 'AbortError') return 'cancelled';
     $('#offlineBanner').textContent = uiText("状态刷新失败：") + error.message;
     $('#offlineBanner').hidden = false;
     $('#syncText').textContent = uiText("连接中断");
     $('#syncText').title = error.message;
     $('#syncDot').classList.remove('updating');
-    $('#syncDot').classList.toggle('offline', true);
-    if (!state.loaded && state.view !== 'projects') $('#content').innerHTML = window.WorkHubUI.offline();
+    $('#syncDot').classList.add('offline');
+    result = 'failed';
   } finally {
-    if (revision !== environmentRevision) return;
-    state.refreshing = false; $('#refreshButton').disabled = false;
-    if (!needsScopedState && (state.view !== 'workspaces' || state.selectedWorkspace)) nextRefresh = 0;
-    refreshTimer = setTimeout(() => { if (!document.hidden && window.WorkHubPage?.active !== false) refresh(); }, nextRefresh);
-    window.dispatchEvent(new CustomEvent('workhub:workspace-refreshed'));
+    if (revision === environmentRevision) {
+      state.refreshing = false;
+      $('#refreshButton').disabled = false;
+      refreshTimer = setTimeout(() => { if (!document.hidden && window.WorkHubPage?.active !== false) void refresh(); }, nextRefresh);
+      window.dispatchEvent(new CustomEvent('workhub:app-refreshed', {detail:result}));
+    }
   }
+  return result;
 }
 
 function renderStateKey(data) {
-  // Once a result exists, polling metadata must not rebuild the workspace.
-  // The first completed check still changes the key and enables its actions.
-  return JSON.stringify([data.projects, data.workspaces, data.terminal, data.root, data.environments, data.project_count, data.read_only_sessions], function (key, value) {
+  return JSON.stringify([data.projects, data.terminal, data.root, data.read_only_sessions], function (key, value) {
     if (key === 'refreshing' && this.status_updated_at) return undefined;
     if (key === 'status_updated_at') return Boolean(value);
     return value;
@@ -177,19 +110,15 @@ function updateCheckTimes() {
 }
 
 function readRoute() {
-  saveWorkspaceListView();
   saveProjectListView();
-  workspaceListMounted = false;
   projectListEnvironment = null;
   const rawRoute = location.hash.slice(1);
   const route = rawRoute.split('?')[0];
   const project = route.match(/^\/projects\/([a-zA-Z0-9_-]+)(?:\/(git|worktrees))?$/);
-  if (project) state.selectedProject = project[1];
+  state.selectedProject = project ? project[1] : null;
   projectDetailOpen = !!project;
-  state.view = route === '/settings' ? 'settings' : route === '/issues' ? 'issues' : route === '/projects' || project ? 'projects' : route === '/sessions' ? 'sessions' : 'workspaces';
-  $('#workspaceListFilters').open = false;
-  const match = route.match(/^\/workspaces\/([a-zA-Z0-9_-]+)$/);
-  state.selectedWorkspace = match ? match[1] : null;
+  state.view = route === '/settings' ? 'settings' : route === '/issues' ? 'issues' : route === '/projects' || project ? 'projects' : 'sessions';
+  $('#projectFilters').open = false;
   readResourceLocation(rawRoute);
   window.dispatchEvent(new CustomEvent('workhub:route-read'));
 }
@@ -213,106 +142,56 @@ window.addEventListener('hashchange', () => {
   readRoute();
   render();
   focusResourcePage();
-  if (previousView !== 'projects' || state.view !== 'projects' || !state.loaded) refresh();
+  if (previousView !== 'projects' || state.view !== 'projects' || !state.loaded) void refresh();
 });
 function render() {
-  saveWorkspaceListView();
   saveProjectListView();
-  if (typeof saveWorkspaceDetail === 'function') saveWorkspaceDetail();
-  const settingsView = state.view === 'settings';
-  const issuesView = state.view === 'issues';
-  const sessionsView = state.view === 'sessions';
-  const workspacesView = state.view === 'workspaces';
-  const detailView = workspacesView && !!state.selectedWorkspace;
-  const workspaceListView = workspacesView && !detailView;
   const projectsView = state.view === 'projects';
+  const sessionsView = state.view === 'sessions';
   const projectListView = projectsView && !projectDetailOpen;
-  const returningToList = workspaceListView && !workspaceListMounted;
   const returningToProjects = projectListView && projectListEnvironment !== activeEnvironment;
-  if (returningToList) restoreWorkspaceListControls();
   if (returningToProjects) {
     const saved = projectListMemory.get(activeEnvironment);
     $('#search').value = saved?.search || '';
     projectFilter = saved?.filter || 'all';
   }
-  workspaceListMounted = workspaceListView;
   projectListEnvironment = projectListView ? activeEnvironment : null;
-  syncWorkspacePageLayout(workspacesView, detailView);
-  document.body.classList.toggle('workspaces-page', workspacesView);
-  document.body.classList.toggle('workspace-selection-open', detailView);
-  const workspace = detailView ? state.workspaces.find(q => q.id === state.selectedWorkspace) : null;
-  document.body.classList.toggle('workspace-detail-page', !!workspace);
   document.body.classList.toggle('projects-page', projectsView);
-  if (workspace) lastWorkspaceSelection = { id: workspace.id, environment: activeEnvironment };
-  rememberResourceVisit(workspace);
-  $('#workspacePageActions').hidden = !workspace;
-  if (workspace) {
-    $('#workspaceTitleIcon').innerHTML = window.WorkHubUI.resourceIcon({kind:'workspace',id:workspace.id,name:workspace.name,environment:activeEnvironment,editable:true});
-    $('#workspacePageActions').innerHTML = window.WorkHubUI.workspaceActions(workspace, environmentName());
-  }
-  document.title = sessionsView ? uiText("对话 · Yolu") : issuesView ? "Issues · Yolu" : settingsView ? uiText("设置 · Yolu") : workspace ? workspace.name + ' · Yolu' : projectsView ? (projectDetailOpen ? state.projects.find(p => p.id === state.selectedProject)?.name || uiText("项目") : uiText("项目")) + ' · Yolu' : workspaceListView ? uiText("工作区") + ' · Yolu' : 'Yolu';
-  $('#backToWorkspaces').hidden = !detailView;
-  $('#workspaceBreadcrumbSeparator').hidden = !detailView;
-  $('#workspaceSwitcherTrigger').hidden = !workspace;
-  $('#workspaceTitleIcon').hidden = !workspace;
-  $('.page-heading').hidden = issuesView || projectsView || workspaceListView;
-  $('#stats').hidden = true;
-  $('#panelToolbar').hidden = false;
-  $('#newButton').hidden = !workspaceListView;
-  $('#settingsPage').hidden = !settingsView;
-  $('#issuesPage').hidden = !issuesView;
-  $('#workContent').hidden = settingsView || issuesView || sessionsView;
-  $('#sessionsPage').hidden = !sessionsView;
   document.body.classList.toggle('sessions-page-open', sessionsView);
-  $('#workspaceCount').textContent = workspaceInventory.loaded ? workspaceInventory.workspaces.filter(q => q.state !== 'archived').length : '…';
-  $('#projectCount').textContent = workspaceInventory.loaded ? workspaceInventory.project_count : '…';
+  rememberResourceVisit();
+  let title = uiText("对话");
+  if (projectsView) title = state.projects.find(p => projectDetailOpen && p.id === state.selectedProject)?.name || uiText("项目");
+  else if (state.view === 'settings') title = uiText("设置");
+  else if (state.view === 'issues') title = uiText("任务");
+  document.title = title + ' · Yolu';
+  $('#settingsPage').hidden = state.view !== 'settings';
+  $('#issuesPage').hidden = state.view !== 'issues';
+  $('#workContent').hidden = !projectsView;
+  $('#sessionsPage').hidden = !sessionsView;
+  $('#projectCount').textContent = state.loaded ? state.projects.length : '…';
   document.querySelectorAll('[data-view]').forEach(button => {
     const active = button.dataset.view === (document.documentElement.dataset.workspaceMainView || state.view);
     button.classList.toggle('active', active);
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
-  $('#eyebrow').textContent = sessionsView ? 'SESSIONS' : settingsView ? 'SETTINGS' : detailView ? 'WORKSPACE' : workspacesView ? 'WORKSPACES' : 'PROJECTS';
-  $('#pageTitle').textContent = sessionsView ? uiText("对话") : settingsView ? uiText("设置") : detailView ? workspace?.name || (!state.loaded ? uiText("正在加载工作区…") : uiText("工作区不存在")) : workspacesView ? uiText("选择工作区") : uiText("项目");
-  $('#pageSubtitle').textContent = settingsView ? uiText("配置执行环境、对话默认设置与终端工具。") : detailView ? uiText("查看关联项目和 Codex 对话，继续当前工作区中的开发。") : workspacesView ? uiText("围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。") : uiText("登记项目，掌握它的全部工作目录、分支与工作区归属。");
-  $('#pageSubtitle').hidden = workspacesView || sessionsView;
-  $('#panelTitle').textContent = workspacesView ? uiText("全部工作区") : uiText("项目");
-  $('#search').placeholder = workspacesView ? uiText("搜索工作区名称、说明…") : uiText("搜索项目名称、目录…");
-  const listFilter = $('#workspaceListFilters');
-  const projectListFilter = projectListView;
-  listFilter.hidden = !workspacesView && !projectListFilter;
-  const workspaceFilterCount = Number($('#archiveFilter').checked) + Number($('#workspaceStatusFilter').value !== 'all');
-  const filterCount = projectListFilter ? Number(projectFilter !== 'all') + Number(activeEnvironment !== 'local') : workspaceFilterCount;
+  const listFilter = $('#projectFilters');
+  listFilter.hidden = !projectListView;
+  const filterCount = Number(projectFilter !== 'all') + Number(activeEnvironment !== 'local');
   const filterLabel = uiText("筛选") + (filterCount ? ' · ' + filterCount : '');
   listFilter.toggleAttribute('data-active', !!filterCount);
   const summary = listFilter.querySelector('summary');
   summary.title = filterLabel;
-  summary.setAttribute('aria-label',filterLabel);
+  summary.setAttribute('aria-label', filterLabel);
   $('#clearListSearch').hidden = !$('#search').value;
-  $('#archiveFilterWrap').hidden = !workspacesView;
-  $('#workspaceStatusFilterWrap').hidden = !workspacesView;
-  $('#projectListFilters').hidden = !projectListFilter;
-  $('#projectEnvironmentWrap').hidden = workspacesView;
-  $('#projectAddButton').hidden = state.view !== 'projects';
   syncProjectPage();
   renderSettings();
-  if (typeof syncSessionWorkspace === 'function') syncSessionWorkspace();
-  if (settingsView || issuesView || sessionsView) { if (typeof syncWorkspaceDetail === 'function') syncWorkspaceDetail(null); return; }
-  $('#stats').innerHTML = '';
-  const focusedRow = workspaceListView && document.activeElement?.closest?.('#workspaceListContent [data-action="open-workspace"]');
+  if (typeof syncConversations === 'function') syncConversations();
+  if (!projectsView) return;
   const focusedDirectory = document.activeElement?.matches('[data-directory-path]') && document.activeElement.dataset.directoryPath === resourceLocation.directory;
   const focusedProject = projectListView && document.activeElement?.closest?.('#projectListPane [data-action="select-project"]');
-  if (workspaceListView) $('#workspaceListContent').innerHTML = renderWorkspaces();
-  const content = detailView
-    ? workspace ? workspaceDetail(workspace) : !state.loaded ? empty(uiText("暂时无法读取工作区"), uiText("请检查工作区所属环境的连接，可在设置中重新连接。")) : empty(uiText("这个工作区不存在"), uiText("可返回工作区列表，重新选择一个工作区。"))
-    : projectsView ? renderProjects() : '';
-  if (projectsView) renderProjectPage(content);
-  else $('#content').innerHTML = content;
-  if (typeof refreshSessionWorkspace === 'function') refreshSessionWorkspace(false);
-  if (typeof syncWorkspaceDetail === 'function') syncWorkspaceDetail(workspace);
-  syncWorkspaceDescription();
+  renderProjectPage(renderProjects());
   syncMutationControls();
-  if (workspaceListView) restoreWorkspaceListPosition(returningToList || !!focusedRow);
   if (projectListView) restoreProjectListPosition(returningToProjects || !!focusedProject);
   if (focusedDirectory && !document.body.classList.contains('project-tool-page')) resourceLocation.locate = true;
   locateResourceDirectory();
@@ -322,35 +201,14 @@ function render() {
 async function handleAction(action, target) {
   if (state.busy) return;
   const id = target.dataset.id;
-  if (action === 'workspace-project-filter') {
-    workspaceProjectFilters.set(JSON.stringify([activeEnvironment,id]), target.dataset.filter);
-    render();
-    document.querySelector(`.workspace-signal-filters [data-filter="${target.dataset.filter}"]`)?.focus({preventScroll:true});
-    return;
-  }
-  if (action === 'open-workspace') {
-    saveWorkspaceListView(target);
-    await selectEnvironment(target.dataset.environment, '/workspaces/' + id);
-    if (state.selectedWorkspace === id && activeEnvironment === target.dataset.environment) $('#pageTitle').focus({preventScroll:true});
-    return;
-  }
-  if (action === 'clear-workspace-filters') {
-    $('#search').value = ''; $('#archiveFilter').checked = false; $('#workspaceStatusFilter').value = 'all';
-    changeListFilters(); $('#search').focus(); return;
-  }
   if (action === 'new-project') return openProject();
   if (action === 'new-worktree') return openWorktree(id);
-  if (action === 'new-workspace') return openWorkspace();
-  if (action === 'edit-workspace') return openWorkspaceEdit(id);
-  if (action === 'change-workspace-directory') return openWorkspaceDirectory(id, target.dataset.project);
-  if (action === 'remove-workspace-project') return removeWorkspaceProject(id, target.dataset.project);
-  if (action === 'add-workspace-projects') return openWorkspaceProjects(id);
   if (action === 'select-project') { saveProjectListView(target); navigate('/projects/' + id); return; }
   if (action === 'jump-project') { navigate(target.hash.slice(1)); return; }
   if (action === 'project-list') { navigate('/projects'); return; }
   if (action === 'project-filter') {
     projectFilter = target.dataset.filter;
-    const picker = $('#workspaceListFilters');
+    const picker = $('#projectFilters');
     const wasOpen = picker.open;
     changeListFilters();
     picker.open = false;
@@ -365,40 +223,31 @@ async function handleAction(action, target) {
   }
   if (action === 'project-refresh') return refresh(true);
   if (action === 'clear-project-search') { $('#search').value = ''; changeListFilters(); $('#search').focus(); return; }
-  if (action === 'jump-workspace') {
-    const directory = target.hasAttribute('data-return-directory') ? resourceLocation.directory : target.dataset.path;
-    navigate(resourceDirectoryRoute('/workspaces/' + id, directory));
-    return;
-  }
-  if (action === 'workspace-terminal') return mutation(uiText("正在打开项目终端"), async () => {
+  if (action === 'project-terminal') return mutation(uiText("正在打开项目终端"), async () => {
     const result = await api(`/api/projects/${id}/git`, { method: 'POST', body: JSON.stringify({ action: 'terminal', path: target.dataset.path }) });
     toast(result.message);
   }, undefined, {project:id});
+  if (action === 'changes-open') {
+    const path = target.dataset.path;
+    $('#changesTitle').textContent = uiText("文件与改动");
+    window.WorkHubUI.mountFileBrowser($('#changesBrowser'), {project:id,path,environment:activeEnvironment,request:api});
+    $('#changesDialog').showModal();
+    return;
+  }
   if (action === 'copy-path') return copy(target.dataset.path);
-  if (action === 'command') {
-    try { const plan = await api(`/api/workspaces/${id}/launch`); showCommand(plan.command); } catch (e) { toast(e.message, true); } return;
-  }
-  if (action === 'launch') return mutation(uiText("正在打开 Codex 终端"), async () => { const r = await api(`/api/workspaces/${id}/launch`, { method: 'POST', body: '{}' }); toast(r.message); });
-  if (action === 'retry') return mutation(uiText("正在重试失败项目"), async () => { const q = await api(`/api/workspaces/${id}/retry`, { method: 'POST', body: JSON.stringify({project_id: target.dataset.project || ''}) }); toast(q.state === 'ready' ? uiText("全部项目已就绪") : uiText("仍有项目未就绪，请查看失败原因"), q.state !== 'ready'); }, undefined, {workspace:id});
-  if (action === 'archive') {
-    const q = state.workspaces.find(q => q.id === id);
-    return mutation(uiText("正在更新工作区状态"), async () => { const r = await api(`/api/workspaces/${id}/archive`, { method: 'POST', body: JSON.stringify({ archived: q.state !== 'archived' }) }); toast(r.message); }, undefined, {workspace:id});
-  }
-  if (action === 'remove-project' || action === 'remove-workspace') return openRemoval(action === 'remove-project' ? 'project' : 'workspace', id);
+  if (action === 'remove-project') return openRemoval(id);
+  if (action === 'remove-worktree') return openWorktreeRemoval(id, target.dataset.path);
 }
 document.addEventListener('click', event => {
   const action = event.target.closest('[data-action]');
-  const breadcrumb = event.target.closest('#backToWorkspaces');
-  if (breadcrumb || action?.tagName === 'A') {
+  if (action?.tagName === 'A') {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    if (breadcrumb) { navigate('/workspaces'); return; }
   }
   if (action) handleAction(action.dataset.action, action);
   const nav = event.target.closest('[data-view]'); if (nav) navigate('/' + nav.dataset.view);
   if (event.target.closest('.close-dialog') && !event.target.closest('dialog')?.hasAttribute('data-block-close')) event.target.closest('dialog').close();
 });
-$('#newButton').addEventListener('click', () => openWorkspace());
 $('#refreshButton').addEventListener('click', () => refresh(true));
 $('#search').addEventListener('input', changeListFilters);
 $('#clearListSearch').addEventListener('click', () => {
@@ -406,10 +255,10 @@ $('#clearListSearch').addEventListener('click', () => {
   changeListFilters();
   $('#search').focus();
 });
-const listFilterPicker = $('#workspaceListFilters');
-const syncWorkspaceListFilter = () => window.WorkHubUI.syncListFilter(listFilterPicker, !listFilterPicker.hidden && window.WorkHubPage?.active !== false);
-listFilterPicker.addEventListener('toggle',syncWorkspaceListFilter);
-window.addEventListener('resize',syncWorkspaceListFilter);
+const listFilterPicker = $('#projectFilters');
+const syncProjectListFilter = () => window.WorkHubUI.syncListFilter(listFilterPicker, !listFilterPicker.hidden && window.WorkHubPage?.active !== false);
+listFilterPicker.addEventListener('toggle',syncProjectListFilter);
+window.addEventListener('resize',syncProjectListFilter);
 window.addEventListener('workhub:page-visibility',event => { if (!event.detail.visible) listFilterPicker.open = false; });
 document.addEventListener('click',event => { if (!listFilterPicker.contains(event.target)) listFilterPicker.open = false; });
 document.addEventListener('keydown',event => {
@@ -418,74 +267,94 @@ document.addEventListener('keydown',event => {
   listFilterPicker.open = false;
   listFilterPicker.querySelector('summary').focus({preventScroll:true});
 });
-$('#archiveFilter').addEventListener('change', changeListFilters);
-$('#workspaceStatusFilter')?.addEventListener('change', changeListFilters);
 document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('cancel', event => { if (dialog.hasAttribute('data-block-close')) event.preventDefault(); }));
 
+$('#changesDialog').addEventListener('close', () => window.WorkHubUI.mountFileBrowser($('#changesBrowser')));
 $('#copyCommand').addEventListener('click', () => copy($('#commandText').value));
 window.addEventListener('DOMContentLoaded', async () => {
   readRoute();
   render();
   // Hosted pages restore their scope/selection before starting any data work.
   // The shell handshake must not wait for repository or environment scans.
-  window.dispatchEvent(new CustomEvent('workhub:workspace-ready'));
+  window.dispatchEvent(new CustomEvent('workhub:app-ready'));
   if (!window.WorkHubPage) await refresh();
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && window.WorkHubPage?.active !== false) refresh(); });
 
-// Keep the impact and any failure visible until the user closes the dialog.
 let removalContext;
-async function openRemoval(kind, id) {
-  const item = (kind === 'project' ? state.projects : state.workspaces).find(item => item.id === id);
-  if (!item) return;
-  const context = removalContext = {kind, id, environment: activeEnvironment, workspaces: []};
+function showRemoval(title, label, context) {
   const dialog = $('#removalDialog');
-  $('#removalTitle').textContent = kind === 'project' ? uiText("移除项目登记") : uiText("删除工作区记录");
-  $('#removalDescription').textContent = kind === 'project' ? uiText("正在检查项目“{0}”的工作区关联…", item.name) : uiText("删除工作区“{0}”的管理记录及项目、对话关联？此操作不能撤销。", item.name);
+  removalContext = context;
+  $('#removalTitle').textContent = title;
+  $('#removalDescription').textContent = uiText("正在检查关联和状态…");
   $('#removalReferences').replaceChildren();
+  $('#removalPreserved').hidden = !!context.path;
   $('#removalError').hidden = true;
   $('#removalConfirm').disabled = true;
-  $('#removalConfirm').textContent = kind === 'project' ? uiText("移除登记") : uiText("删除工作区记录");
+  $('#removalConfirm').textContent = label;
   if (!dialog.open) dialog.showModal();
-  if (kind === 'workspace') { $('#removalConfirm').disabled = item.state === 'creating'; return; }
+}
+function removalCurrent(context) {
+  return removalContext === context && context.environment === activeEnvironment && $('#removalDialog').open;
+}
+function removalError(error) {
+  $('#removalError').textContent = error.message;
+  $('#removalError').hidden = false;
+}
+async function openRemoval(id) {
+  const environment = activeEnvironment;
+  const context = {id, environment};
+  showRemoval(uiText("移除项目登记"), uiText("移除登记"), context);
   try {
-    const plan = await api(`/api/projects/${encodeURIComponent(id)}/removal`, {environment:context.environment});
-    if (removalContext !== context || !dialog.open) return;
-    context.workspaces = plan.workspaces.map(workspace => workspace.id);
-    $('#removalDescription').textContent = plan.workspaces.length ? uiText("以下工作区将解除与“{0}”的关联，工作区本身和其他项目不受影响。", plan.name) : uiText("移除“{0}”的项目登记？", plan.name);
+    const plan = await api(`/api/projects/${encodeURIComponent(id)}/removal`, {environment});
+    if (!removalCurrent(context)) return;
+    $('#removalDescription').textContent = uiText("移除“{0}”的项目登记？", plan.name);
+    if (plan.sessions?.length) {
+      const heading = document.createElement('p');
+      heading.textContent = uiText("以下对话会保留其目录关联。");
+      const list = document.createElement('ul');
+      for (const session of plan.sessions) {
+        const row = document.createElement('li');
+        row.textContent = session.name || session.id;
+        list.append(row);
+      }
+      $('#removalReferences').append(heading, list);
+    }
+    $('#removalConfirm').disabled = false;
+  } catch (error) { if (removalCurrent(context)) removalError(error); }
+}
+async function openWorktreeRemoval(id, path) {
+  const environment = activeEnvironment;
+  const context = {id, environment, path};
+  showRemoval(uiText("移除 Worktree"), uiText("移除 Worktree"), context);
+  try {
+    const plan = await api(`/api/projects/${encodeURIComponent(id)}/worktree?` + new URLSearchParams({path}), {environment});
+    if (!removalCurrent(context)) return;
+    $('#removalDescription').textContent = uiText("工作目录 {0} · 分支 {1}", plan.path, plan.branch || 'HEAD');
     const list = document.createElement('ul');
-    for (const workspace of plan.workspaces) {
-      const row = document.createElement('li'), link = document.createElement('a');
-      link.textContent = workspace.name + (workspace.state === 'archived' ? uiText("（已归档）") : '');
-      link.href = `?environment=${encodeURIComponent(context.environment)}#/workspaces/${encodeURIComponent(workspace.id)}`;
-      link.addEventListener('click', () => dialog.close());
-      row.append(link); list.append(row);
+    for (const reason of plan.reasons || []) {
+      const row = document.createElement('li');
+      row.textContent = uiText(reason);
+      list.append(row);
     }
     $('#removalReferences').append(list);
-    $('#removalConfirm').textContent = plan.workspaces.length ? uiText("解除关联并移除登记") : uiText("移除登记");
-    $('#removalConfirm').disabled = plan.workspaces.some(workspace => workspace.state === 'creating');
-    if ($('#removalConfirm').disabled) { $('#removalError').textContent = uiText("关联工作区正在准备中，请完成后再移除项目"); $('#removalError').hidden = false; }
-  } catch (error) {
-    if (removalContext !== context || !dialog.open) return;
-    $('#removalError').textContent = error.message; $('#removalError').hidden = false;
-  }
+    context.fingerprint = plan.fingerprint;
+    $('#removalConfirm').disabled = !plan.cleanable;
+  } catch (error) { if (removalCurrent(context)) removalError(error); }
 }
 $('#removalDialog').addEventListener('close', () => { removalContext = null; });
 $('#removalForm').addEventListener('submit', async event => {
   event.preventDefault();
   const context = removalContext;
-  if (!context || $('#removalConfirm').disabled) return;
-  if (context.environment !== activeEnvironment) {
-    $('#removalError').textContent = uiText("执行环境已切换，请关闭弹窗后重新操作。"); $('#removalError').hidden = false; return;
-  }
-  const current = () => removalContext === context && context.environment === activeEnvironment && $('#removalDialog').open;
-  await mutation(context.kind === 'project' ? uiText("正在移除登记") : uiText("正在删除工作区记录"), async () => {
-    const path = context.kind === 'project' ? `/api/projects/${encodeURIComponent(context.id)}?detach=1` : `/api/workspaces/${encodeURIComponent(context.id)}`;
-    const result = await api(path, {method:'DELETE', environment:context.environment, ...(context.kind === 'project' ? {body:JSON.stringify({workspaces:context.workspaces})} : {})});
-    if (current()) {
-      $('#removalDialog').close();
-      if (context.kind === 'workspace') location.hash = '/workspaces';
-      toast(result.message + (result.context_warning ? '\n' + uiText("工作区说明更新失败：") + result.context_warning : ''), !!result.context_warning);
-    }
-  }, $('#removalError'), {key:context.kind + ':' + context.id, environment:context.environment, isCurrent:current});
+  if (!context || !removalCurrent(context) || $('#removalConfirm').disabled) return;
+  const {id, environment, path, fingerprint} = context;
+  await mutation(path ? uiText("正在移除 Worktree") : uiText("正在移除登记"), async () => {
+    const result = await api(`/api/projects/${encodeURIComponent(id)}` + (path ? '/worktree' : ''), {
+      method:'DELETE', environment, ...(path ? {body:JSON.stringify({path,fingerprint})} : {}),
+    });
+    if (!removalCurrent(context)) return;
+    $('#removalDialog').close();
+    if (!path) navigate('/projects');
+    toast(result.message);
+  }, $('#removalError'), {project:id, environment, isCurrent:() => removalCurrent(context)});
 });

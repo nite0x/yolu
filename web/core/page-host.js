@@ -18,13 +18,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const reads = new Map();
   // Same-origin pages share startup metadata, with independent response bodies.
   // Explicit refreshes, abortable reads and writes retain their own lifecycle.
-  window.WorkHubWorkspace = {read(path,options) {
+  window.WorkHubApp = {read(path,options) {
     if (options.method && options.method !== 'GET') {
       reads.clear();
       return fetch(path,options).finally(() => reads.clear());
     }
     if (/[?&]refresh=1(?:&|$)/.test(path)) {reads.clear(); return fetch(path,options);}
-    const cacheable = /^\/api\/(state|workspace-inventory|environments|resource-icons)(\?|$)/.test(path) || /^\/api\/sessions\?(archived=true)?$/.test(path) || path === '/api/sessions/search';
+    const cacheable = /^\/api\/(state|environments|resource-icons)(\?|$)/.test(path) || /^\/api\/sessions\?(archived=true)?$/.test(path) || path === '/api/sessions/search';
     if (options.signal || !cacheable) return fetch(path,options);
     const key = JSON.stringify([path,options.headers]), cached = reads.get(key);
     if (cached && (!cached.updated || Date.now() - cached.updated < 1000)) return cached.promise.then(response => response.clone());
@@ -62,7 +62,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const searchToken = document.querySelector('meta[name="csrf-token"]').content;
   const search = window.WorkHubLayout.createGlobalSearch(document.getElementById('globalSearch'), {
     async read(path, environment) {
-      const response = await window.WorkHubWorkspace.read(path, {headers: {'Content-Type':'application/json', 'X-CSRF-Token':searchToken, 'X-Environment-ID':environment}});
+      const response = await window.WorkHubApp.read(path, {headers: {'Content-Type':'application/json', 'X-CSRF-Token':searchToken, 'X-Environment-ID':environment}});
       if (!response.ok) throw new Error(String(response.status));
       return response.json();
     },
@@ -90,8 +90,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   };
   function normalize(value) {
     const snapshot = value && typeof value === 'object' ? value : {};
-    const route = typeof snapshot.route === 'string' && /^\/(workspaces(?:\/[\w-]+)?|projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|issues)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/workspaces';
-    return {...snapshot, route, environment:typeof snapshot.environment === 'string' ? snapshot.environment : 'local', title:typeof snapshot.title === 'string' ? snapshot.title.slice(0,200) : uiText("工作区"), kind:route.split('/')[1].split('?')[0]};
+    const route = typeof snapshot.route === 'string' && /^\/(projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|issues)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/sessions';
+    return {...snapshot, route, environment:typeof snapshot.environment === 'string' ? snapshot.environment : 'local', title:typeof snapshot.title === 'string' ? snapshot.title.slice(0,200) : uiText("对话"), kind:route.split('/')[1].split('?')[0]};
   }
   function send(page,type,detail = {}) {
     if (page?.ready) page.frame.contentWindow.postMessage({type,...detail},location.origin);
@@ -114,7 +114,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (!page) return;
     const url = new URL(location.href), snapshot = page.snapshot;
     if (snapshot.environment === 'local') url.searchParams.delete('environment'); else url.searchParams.set('environment',snapshot.environment);
-    url.hash = conversationsVisible ? '/sessions' : snapshot.route;
+    url.hash = conversationsVisible ? isConversation(snapshot) ? '/sessions?' + new URLSearchParams({session:snapshot.conversation.selected}) : '/sessions' : snapshot.route;
     if (!restoringVisit) {
       const snapshotCopy = JSON.parse(JSON.stringify(snapshot));
       const key = visitKey(snapshot,page.id), previous = visits[visitIndex];
@@ -137,18 +137,21 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const controls = document.getElementById('workhubWindowControls');
     if (controls) window.WorkHubLayout.renderChrome(controls,{
       ready:!!page?.ready,
+      activeView:page?.snapshot.kind,
       canGoBack:visitIndex > 0,
       canGoForward:visitIndex < visits.length - 1,
       back:() => travel(-1), forward:() => travel(1),
-      home:() => openPage({route:'/workspaces',environment:page?.snapshot.environment}),
+      navigate:view => openPage({route:'/' + view,environment:page?.snapshot.environment}),
       search:trigger => search.open(trigger),
-      issues:() => openPage({route:'/issues',environment:page?.snapshot.environment}),
-      issuesActive:!conversationsPresented && page?.snapshot.route === '/issues',
       refresh:async () => {
         const targets = [navigation,page].filter(target => target?.ready && target.visible);
-        await Promise.allSettled(targets.map(target => target.frame.contentWindow.WorkHubPage?.refresh?.()));
+        const results = await Promise.allSettled(targets.map(async target => target.frame.contentWindow.WorkHubPage?.refresh?.()));
+        if (results.some(result => result.status === 'rejected' || result.value === 'failed')) return 'failed';
+        const statuses = results.map(result => result.value);
+        if (statuses.includes('pending')) return 'pending';
+        return statuses.includes('updated') ? 'updated' : 'cancelled';
       },
-      appMenu:window.WorkHubDesktopWindow ? () => window.WorkHubDesktopWindow.showMenu(!!page?.ready) : undefined,
+      appMenu:window.WorkHubDesktopWindow ? trigger => window.WorkHubDesktopWindow.showMenu(!!page?.ready, trigger) : undefined,
     });
   }
   function renderPaneChrome() {
@@ -243,7 +246,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (page.visible !== active) {page.visible = active; send(page,'workhub:page-active',{active});}
       send(page,'workhub:parallel-layout',{split,focused:page.id === group.focused,zoomed:!!group.zoomed,canZoom:wide(group),canSplit:canSplit(group)});
     }
-    send(navigation,'workhub:workspace-route',{route:conversationsVisible ? '/sessions' : workspace.snapshot.route});
+    send(navigation,'workhub:navigation-route',{route:conversationsVisible ? '/sessions' : workspace.snapshot.route});
     send(navigation,'workhub:conversation-group',{
       targetTitle:group.pages.find(page => page.id === group.focused)?.snapshot.title,
       target:conversationsVisible ? group.pages.find(page => page.id === group.focused)?.snapshot : undefined,
@@ -267,10 +270,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     snapshot = normalize(snapshot);
     const frame = document.createElement('iframe');
     frame.className = 'workspace-page'; frame.id = 'page-' + id; frame.title = snapshot.title; frame.hidden = true;
-    const url = new URL('/',location.href); url.searchParams.set('workspace-page',id);
-    if (id === 'shared-navigation') url.searchParams.set('workspace-navigation','1');
+    const url = new URL('/',location.href); url.searchParams.set('app-page',id);
+    if (id === 'shared-navigation') url.searchParams.set('app-navigation','1');
     if (snapshot.environment !== 'local') url.searchParams.set('environment',snapshot.environment);
-    if (isTerminal(snapshot)) url.searchParams.set('workspace-terminal','1');
+    if (isTerminal(snapshot)) url.searchParams.set('app-terminal','1');
     url.hash = snapshot.route;
     const page = {id,snapshot,frame,url,ready:false,mounted:false};
     return page;
@@ -278,12 +281,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   function mountPage(page, container = pages) {
     if (page.mounted) return;
     page.mounted = true;
-    if (page.id !== 'workspace' && page.id !== 'shared-navigation') page.url.searchParams.set('workspace-conversation','1');
-    if (grouped(group) && group.pages.includes(page)) page.url.searchParams.set('workspace-pane','1');
-    page.url.searchParams.set('workspace-list-width',String(renderedConversationListWidth()));
+    if (page.id !== 'workspace' && page.id !== 'shared-navigation') page.url.searchParams.set('app-conversation','1');
+    if (grouped(group) && group.pages.includes(page)) page.url.searchParams.set('app-pane','1');
+    page.url.searchParams.set('app-list-width',String(renderedConversationListWidth()));
     if (desktop) {
-      page.url.searchParams.set('workspace-desktop','1');
-      page.url.searchParams.set('workspace-sidebar-inset','0');
+      page.url.searchParams.set('app-desktop','1');
+      page.url.searchParams.set('app-sidebar-inset','0');
     }
     page.frame.src = page.url.href;
     // Set the initial URL before insertion. Navigating an already attached
@@ -354,14 +357,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     pages.style.gridTemplateColumns = owner.widths.map(value => value + 'fr').join(' 8px ');
   }
   function pageScope(snapshot) {
-    if (isTerminal(snapshot) && snapshot.terminal?.workspaceID) return {kind:'workspace',id:snapshot.terminal.workspaceID,environment:snapshot.environment};
+    if (isTerminal(snapshot) && snapshot.terminal?.projectID) return {kind:'project',id:snapshot.terminal.projectID,environment:snapshot.environment};
     if (snapshot.conversation?.scope) return snapshot.conversation.scope;
-    return snapshot.terminal?.workspaceID ? {kind:'workspace',id:snapshot.terminal.workspaceID,environment:snapshot.environment} : {kind:'all'};
+    return snapshot.terminal?.projectID ? {kind:'project',id:snapshot.terminal.projectID,environment:snapshot.environment} : {kind:'all'};
   }
   function preferredCreation(snapshot) {
-    const scope = pageScope(snapshot), workspaceID = snapshot.terminal?.workspaceID || (scope.kind === 'workspace' ? scope.id : undefined);
-    if (snapshot.environment !== 'local' || !workspaceID || window.WorkHubLayout.conversationDefaults.get('kind') !== 'terminal') return snapshot;
-    return {...snapshot,route:'/terminals',title:uiText("新建终端"),terminal:{...snapshot.terminal,workspaceID}};
+    const scope = pageScope(snapshot), projectID = snapshot.terminal?.projectID || (scope.kind === 'project' ? scope.id : undefined);
+    if (snapshot.environment !== 'local' || !projectID || window.WorkHubLayout.conversationDefaults.get('kind') !== 'terminal') return snapshot;
+    return {...snapshot,route:'/terminals',title:uiText("新建终端"),terminal:{...snapshot.terminal,projectID}};
   }
   function dispatchOpen(message,owner = group,pageID = owner?.focused) {
     const snapshot = message.create && isTerminal(message.snapshot) ? {...message.snapshot,route:'/sessions',title:uiText("新建对话"),conversation:{scope:pageScope(message.snapshot),selected:null,creating:true,pane:'detail'}} : message.snapshot;
@@ -376,14 +379,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (terminal ? page.snapshot.terminal?.id || kind !== 'ui' : !page.snapshot.conversation?.creating || kind !== 'terminal') return;
     if (kind === 'terminal' && source.environment !== 'local' || !canClose(page)) return;
     window.WorkHubLayout.conversationDefaults.set('kind',kind);
-    const scope = pageScope(source), environment = source.environment;
+    const scope = pageScope(source);
     const next = kind === 'terminal'
-      ? {...source,route:'/terminals',title:uiText("新建终端"),terminal:{workspaceID:source.terminal?.workspaceID || (scope.kind === 'workspace' ? scope.id : undefined),projectID:source.terminal?.projectID}}
-      : {...source,route:'/sessions',title:uiText("新建对话"),conversation:{...source.conversation,scope:source.terminal?.workspaceID ? {kind:'workspace',id:source.terminal.workspaceID,environment} : scope,selected:null,creating:true,pane:'detail'}};
+      ? {...source,route:'/terminals',title:uiText("新建终端"),terminal:{...source.terminal,projectID:source.terminal?.projectID || (scope.kind === 'project' ? scope.id : undefined)}}
+      : {...source,route:'/sessions',title:uiText("新建对话"),conversation:{...source.conversation,scope,selected:null,creating:true,pane:'detail'}};
     // Keep each unfinished form mounted so changing form does not discard a
     // typed message, attachments or custom terminal options.
     const replacement = page.alternate || createPage(next);
-    const contextKey = snapshot => JSON.stringify([snapshot.environment,snapshot.terminal?.workspaceID || (pageScope(snapshot).kind === 'workspace' ? pageScope(snapshot).id : ''),snapshot.terminal?.projectID || '',snapshot.conversation?.creationDirectory || snapshot.conversation?.directory || '']);
+    const contextKey = snapshot => JSON.stringify([snapshot.environment,snapshot.terminal?.projectID || '', snapshot.terminal?.cwd || '',snapshot.conversation?.creationDirectory || snapshot.conversation?.directory || '']);
     if (page.alternate && contextKey(replacement.snapshot) !== contextKey(next)) {
       replacement.snapshot = normalize(next);
       send(replacement,'workhub:page-restore',{snapshot:replacement.snapshot,active:false});
@@ -507,7 +510,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('workhub:desktop-chrome',renderLayout);
   window.addEventListener('workhub:desktop-home', () => {
     const page = currentPage();
-    if (page?.ready) openPage({route:'/workspaces',environment:page.snapshot.environment});
+    if (page?.ready) openPage({route:'/sessions',environment:page.snapshot.environment});
   });
   function followURL() {
     const destination = history.state?.yoluNavigation;
@@ -540,13 +543,19 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     historyPending = false;
     if (appliedURL === location.href) return;
     appliedURL = location.href;
-    const route = location.hash.slice(1), environment = new URLSearchParams(location.search).get('environment') || 'local';
-    openPage({route,environment});
+    openPage(locationSnapshot());
   }
   window.addEventListener('hashchange',followURL);
   window.addEventListener('popstate',followURL);
-  const initial = {route:location.hash.slice(1),environment:new URLSearchParams(location.search).get('environment') || 'local'};
-  const workspace = createPage({...initial,route:initial.route === '/sessions' ? '/workspaces' : initial.route},'workspace');
+  function locationSnapshot() {
+    const [route, query] = location.hash.slice(1).split('?');
+    const environment = new URLSearchParams(location.search).get('environment') || 'local';
+    const session = route === '/sessions' && new URLSearchParams(query).get('session');
+    if (session) return {route, environment, conversation:{scope:{kind:'all'},selected:session,pane:'detail'}};
+    return {route:location.hash.slice(1) || '/sessions',environment};
+  }
+  const initial = normalize(locationSnapshot());
+  const workspace = createPage({...initial,route:initial.route === '/sessions' ? '/projects' : initial.route},'workspace');
   sharedListWidth?.subscribe(paintConversationListWidth);
   mountPage(workspace);
   openPage(initial);

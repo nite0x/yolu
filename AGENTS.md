@@ -1,34 +1,27 @@
 # Product direction and scope
 
-This project is a personal development workspace with workspaces as its primary entry point. A project is a codebase maintained over time. A workspace is where one complete requirement is developed: it organizes the participating projects and their working directories, branches and sessions, and stays in use until the requirement is done. A requirement can be a feature, fix, refactoring or technical experiment, and may involve several branches and iterations. The core goal is to open a workspace, see all its associated projects and their directories, branches and change states in one place, and enter the appropriate working environment to continue.
+Yolu is a multi-agent development conversation tool. Projects register repositories, conversations organize the work, and Git worktrees provide independent development directories.
 
 ## Current core scope
 
-- Workspaces are the main entry point; project management supplies repositories for workspaces.
-- A workspace can include multiple projects, with their worktrees grouped under one workspace directory.
-- Inspect each project's working-directory state from the workspace and open a terminal or Git operation directly.
-- Issues: a separate page aggregates issues assigned to me (Linear first, GitHub later). From an issue I can create a workspace, change its status, and post a reply. All other issue management stays in the source platform.
-- Prefer reusing existing capabilities to reduce searching and switching between pages.
-
-The workspace root defaults to `~/workspaces` in the execution environment. Use `--root` to explicitly select another location; do not automatically switch to a Windows-mounted directory merely because one exists. Existing workspaces keep their saved paths and are not moved automatically.
-
-Use workspace consistently in the interface, documentation, domain models, routes and storage. A workspace can have its own directory or reuse existing project directories.
-
-Complete this minimal workflow first, then add capabilities incrementally to address concrete problems encountered in use. Previously discussed directions such as session management, service operation, notifications and complex state transitions are candidates, not established development commitments.
+- Start or resume conversations from the shared navigator or a project.
+- Associate each conversation with a primary project and additional projects or local directories in the same execution environment.
+- Show the actual directory, Git branch, file changes, and effective agent access for each binding. Reuse the existing file, diff, Git and terminal components.
+- Support registered directories, existing worktrees and new independent worktrees. Keep worktree lifetime independent of conversation lifetime.
+- Keep the Issues page linked to the external tracker. If issue integration is added, retain external tracker ownership.
+- Worktrees created by Yolu default to `~/workspaces` in the execution environment. Use `--root` to choose another location. Preserve saved paths and existing directories.
 
 ## Before adding a feature
 
-1. Which concrete user problem in the core workflow does it solve?
-2. Does it fit the direction of organizing cross-project work through workspaces?
-3. Can existing capabilities or a smaller change solve it?
-
-Before implementation, briefly explain how the feature fits the direction. If that cannot be answered clearly, defer it; do not add a feature solely because similar tools offer it. If a feature expands the product direction, explain the departure and let the user decide whether to change scope.
+1. Identify the developer problem in the conversation, project or worktree workflow.
+2. Explain how the proposed change supports this direction.
+3. Reuse an existing capability or choose the smallest change that solves the problem.
 
 ## Shared desktop and browser UI
 
 Desktop and browser access are entry points to the same application. Use shared frontend components, layouts, design tokens and interaction logic for all product pages. Apply UI improvements and fixes to both entry points by default.
 
-Scope host-specific rendering to desktop integrations such as native title bars, window controls, application menus, operating-system dialogs and desktop capabilities. Detect the corresponding host capability when rendering these controls. Keep workspace, project, conversation and settings UI shared across entry points. Adapt layouts to viewport size consistently in both environments.
+Scope host-specific rendering to desktop integrations such as native title bars, window controls, application menus, operating-system dialogs and desktop capabilities. Detect the corresponding host capability when rendering these controls. Keep project, conversation and settings UI shared across entry points. Adapt layouts to viewport size consistently in both environments.
 
 When changing shared UI, verify the affected pages through browser and desktop entry points at comparable viewport sizes. Include normal navigation and pane transitions in the checks. Build frontend assets before embedding them in the backend or generating installation packages.
 

@@ -37,13 +37,6 @@ export const bridge = {
     root.render(<ChatPanel key={++mountSequence} controller={controller} />);
   },
   close() { unsubscribePreview?.(); unsubscribePreview = undefined; active?.disconnect(); active = undefined; root?.render(null); },
-  updateWorkspace(workspace: ChatOptions['workspace']) {
-    if (!active || !workspace || active.options.workspace?.id !== workspace.id) return;
-    const next = reuseValue(active.options.workspace, workspace);
-    if (next === active.options.workspace) return;
-    active.options.workspace = next;
-    root?.render(<ChatPanel key={mountSequence} controller={active} />);
-  },
   updateOverview(overview: ChatOptions['overview']) {
     if (!active) return;
     const next = reuseValue(active.options.overview, overview);

@@ -15,16 +15,15 @@
   <meta name="color-scheme" content="light">
   <title>Yolu</title>
   <meta name="theme-color" content="#203f42">
-  <script src="/core/workspace-bootstrap.js"></script>
-  <script src="/core/workspace-list-width.js" defer></script>
+  <script src="/core/app-bootstrap.js"></script>
+  <script src="/core/conversation-list-width.js" defer></script>
   <link rel="icon" href="/yolu.ico" sizes="16x16 32x32 48x48 256x256">
   <link rel="icon" href="/yolu.svg" type="image/svg+xml" sizes="any">
   <link rel="stylesheet" href="/core/style.css">
   <link rel="stylesheet" href="/features/projects/git.css">
   <link rel="stylesheet" href="/features/projects/projects.css">
-  <link rel="stylesheet" href="/features/workspaces/workspace.css">
   <link rel="stylesheet" href="/features/sessions/sessions.css">
-  <link rel="stylesheet" href="/features/sessions/session-workspace.css">
+  <link rel="stylesheet" href="/features/sessions/conversations.css">
   <link rel="stylesheet" href="/core/list-search.css">
   <link rel="stylesheet" href="/features/settings/settings.css">
   <link rel="stylesheet" href="/ui/ui.css">
@@ -34,10 +33,8 @@
   <script src="/chat/loader.js" defer></script>
   <script src="/core/core.js" defer></script>
   <script src="/features/projects/projects.js" defer></script>
-  <script src="/features/workspaces/workspaces.js" defer></script>
   <script src="/core/app.js" defer></script>
   <script src="/features/settings/environments.js" defer></script>
-  <script src="/features/workspaces/workspace-projects.js" defer></script>
   <script src="/features/projects/git.js" defer></script>
   <script src="/features/projects/worktrees.js" defer></script>
   <script src="/features/settings/terminal.js" defer></script>
@@ -47,9 +44,7 @@
   <script src="/features/sessions/session-history-live.js" defer></script>
   <script src="/features/sessions/session-chat.js" defer></script>
   <script src="/features/sessions/session-create.js" defer></script>
-  <script src="/features/workspaces/workspace-layout.js" defer></script>
-  <script src="/features/workspaces/workspace-review.js" defer></script>
-  <script src="/features/sessions/session-workspace.js" defer></script>
+  <script src="/features/sessions/conversations.js" defer></script>
   <script src="/core/resource-navigation.js" defer></script>
   <script src="/core/page-bridge.js" defer></script>
   <link rel="stylesheet" href="/core/shortcut-icons.css">
@@ -64,10 +59,9 @@
     <div class="nav-label" data-i18n="工作台">工作台</div>
     <nav aria-label="主导航" data-i18n-aria-label="主导航">
       <button type="button" id="openGlobalSearch" class="nav-item" aria-label="全局搜索" title="全局搜索" data-i18n-aria-label="全局搜索" data-i18n-title="全局搜索" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span><span class="nav-text" data-i18n="全局搜索">全局搜索</span></button>
-      <button class="nav-item active" data-view="workspaces" aria-label="工作区" title="工作区" data-i18n-title="工作区" data-i18n-aria-label="工作区"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-text" data-i18n="工作区">工作区</span><span class="nav-count" id="workspaceCount">0</span></button>
-      <button type="button" id="navigationIssues" class="nav-item unified-issues" aria-label="Issues" title="Issues" data-view="issues" hidden><span class="nav-icon" aria-hidden="true"></span><span class="utility-label">Issues</span></button>
       <button class="nav-item" data-view="projects" aria-label="项目" title="项目" data-i18n-title="项目" data-i18n-aria-label="项目"><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-text" data-i18n="项目">项目</span><span class="nav-count" id="projectCount">0</span></button>
-      <button class="nav-item" data-view="sessions" aria-label="对话" title="对话" data-i18n-title="对话" data-i18n-aria-label="对话"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="对话">对话</span><span id="sessionNavigationStatus" class="session-navigation-status" role="status"></span></button>
+      <button class="nav-item active" data-view="sessions" aria-label="对话" title="对话" data-i18n-title="对话" data-i18n-aria-label="对话"><span class="nav-icon" aria-hidden="true">◌</span><span class="nav-text" data-i18n="对话">对话</span><span id="sessionNavigationStatus" class="session-navigation-status" role="status"></span></button>
+      <button class="nav-item" type="button" data-view="issues" aria-label="任务" title="任务" data-i18n-aria-label="任务" data-i18n-title="任务"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text" data-i18n="任务">任务</span></button>
     </nav>
     <footer class="sync workspace-status sidebar-footer" aria-label="工作台状态" data-i18n-aria-label="工作台状态">
       <div class="sidebar-status-copy">
@@ -82,25 +76,16 @@
   </aside>
   <div class="shell">
     <main>
-      <div class="page-heading"><div><div class="eyebrow" id="eyebrow">WORKSPACES</div><div class="resource-detail-title"><a href="#/workspaces" id="backToWorkspaces" class="resource-breadcrumb-link" aria-label="返回工作区列表" data-i18n-aria-label="返回工作区列表" data-i18n="工作区" hidden>工作区</a><span id="workspaceBreadcrumbSeparator" class="resource-breadcrumb-divider" aria-hidden="true" hidden>/</span><span id="workspaceTitleIcon" hidden></span><h1 id="pageTitle" tabindex="-1" data-i18n="工作区">工作区</h1><span id="workspaceSwitcherTrigger" class="shadcn-scope" hidden></span></div><p id="pageSubtitle" data-i18n="围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。">围绕一项开发目标，集中管理相关项目的工作目录、分支和对话。</p></div><span id="newWorkspaceButton" class="shadcn-scope"></span><div id="workspacePageActions" hidden></div></div>
       <div id="offlineFeedback" class="shadcn-scope"></div>
-      <section id="stats" class="stats" aria-label="工作台统计" data-i18n-aria-label="工作台统计"></section>
       <section id="issuesPage" class="issues-page shadcn-scope" aria-labelledby="issuesHeading" hidden>
-        <h1 id="issuesHeading" tabindex="-1" data-i18n="Issues">Issues</h1>
+        <h1 id="issuesHeading" tabindex="-1" data-i18n="任务">任务</h1>
         <p data-i18n="在 Linear 查看分配给你的任务。">在 Linear 查看分配给你的任务。</p>
         <a class="resource-breadcrumb-link" id="openLinear" href="https://linear.app/" target="_blank" rel="noopener noreferrer" data-i18n="打开 Linear">打开 Linear</a>
       </section>
       <section id="settingsPage" class="settings-page shadcn-scope" aria-label="设置" hidden data-i18n-aria-label="设置"></section>
       <section class="content-panel" id="workContent">
-        <section id="workspaceBrowser" class="workspace-browser resource-list-page workspace-pane shadcn-scope" aria-label="工作区列表" hidden data-i18n-aria-label="工作区列表">
-          <div class="workspace-browser-header">
-            <div class="workspace-browser-heading"><h1 id="workspaceListTitle" tabindex="-1" data-i18n="工作区">工作区</h1></div>
-            <div id="workspaceToolbarSlot"></div><span id="workspaceCreateSlot"></span>
-          </div>
-          <div id="workspaceListContent" class="workspace-list-scroll resource-list-scroll" aria-label="全部工作区" data-i18n-aria-label="全部工作区"></div>
-        </section>
-        <div class="panel-toolbar" id="panelToolbar"><div class="panel-title" id="panelTitle" role="heading" aria-level="1" tabindex="-1" data-i18n="全部工作区">全部工作区</div><div class="toolbar-actions"><div class="shadcn-scope" id="projectEnvironmentWrap" hidden></div><div id="searchField" class="shadcn-scope"></div><span id="projectAddButton" class="shadcn-scope" hidden></span></div></div>
-        <section id="workspaceDetailPane" class="workspace-detail-pane workspace-pane"><div id="workspaceHeadingSlot"></div><section id="workspaceProjectsView" class="workspace-projects-view" aria-label="项目工作区" data-i18n-aria-label="项目工作区"><div id="content" aria-live="polite"><div class="loading" data-i18n="正在读取本地状态…">正在读取本地状态…</div></div></section></section>
+        <div class="panel-toolbar" id="panelToolbar"><div class="panel-title" id="panelTitle" role="heading" aria-level="1" tabindex="-1" data-i18n="项目">项目</div><div class="toolbar-actions"><div class="shadcn-scope" id="projectEnvironmentWrap" hidden></div><div id="searchField" class="shadcn-scope"></div><span id="projectAddButton" class="shadcn-scope" hidden></span></div></div>
+        <section id="content" aria-live="polite"></section>
       </section>
       <section id="sessionsPage" class="sessions-page" aria-label="对话" hidden data-i18n-aria-label="对话"><div id="sessionPageMount"></div></section>
     </main>
@@ -118,18 +103,12 @@
   </dialog>
   <dialog id="environmentDialog" class="shadcn-scope" aria-labelledby="environmentTitle"></dialog>
   <dialog id="projectDialog" class="shadcn-scope" aria-labelledby="projectDialogTitle"></dialog>
-  <dialog id="workspaceDialog" class="wide-dialog shadcn-scope" aria-labelledby="workspaceDialogTitle"></dialog>
-  <dialog id="workspaceProjectsDialog" class="wide-dialog shadcn-scope" aria-labelledby="workspaceProjectsTitle"></dialog>
-  <dialog id="workspaceReviewDialog" class="wide-dialog shadcn-scope" aria-labelledby="workspaceReviewTitle"></dialog>
   <dialog id="changesDialog" class="changes-dialog shadcn-scope" aria-labelledby="changesTitle"></dialog>
-  <dialog id="workspaceEditDialog" aria-labelledby="workspaceEditTitle" class="shadcn-scope"></dialog>
-  <dialog id="workspaceDirectoryDialog" aria-labelledby="workspaceDirectoryTitle" class="shadcn-scope"></dialog>
   <dialog id="worktreeDialog" class="wide-dialog shadcn-scope" aria-labelledby="worktreeTitle"></dialog>
   <dialog id="gitDialog" class="git-dialog shadcn-scope" aria-labelledby="gitTitle"></dialog>
   <dialog id="commandDialog" class="wide-dialog shadcn-scope" aria-labelledby="commandTitle" aria-describedby="commandDescription"></dialog>
-  <div class="busy-panel" id="busyPanel" role="status" hidden><span class="spinner"></span><div><strong id="busyTitle" data-i18n="正在创建工作区">正在创建工作区</strong><small data-i18n="请稍候，正在操作本地仓库…">请稍候，正在操作本地仓库…</small></div></div>
+  <div class="busy-panel" id="busyPanel" role="status" hidden><span class="spinner"></span><div><strong id="busyTitle" data-i18n="处理中…">处理中…</strong><small data-i18n="请稍候，正在操作本地仓库…">请稍候，正在操作本地仓库…</small></div></div>
   <div id="toast" class="toast shadcn-scope" role="status" hidden></div>
-  <dialog id="sessionDialog" class="wide-dialog shadcn-scope" aria-labelledby="sessionDialogTitle"></dialog>
   <dialog id="sessionCommandOutputDialog" class="session-command-output-dialog shadcn-scope" aria-labelledby="sessionCommandOutputTitle"></dialog>
 </body>
 </html>

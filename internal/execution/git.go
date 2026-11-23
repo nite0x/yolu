@@ -28,7 +28,9 @@ func RunGit(ctx context.Context, dir string, timeout time.Duration, includeMessa
 		err := c.Call(ctx, Request{Op: "git", Path: dir, Args: args, Messages: includeMessages}, &output)
 		return output, err
 	}
-	argv := append([]string{"-c", "core.quotePath=false", "-C", dir}, args...)
+	// Status inspection can run before a directory is added to a conversation.
+	// Do not execute a repository-configured filesystem monitor in the host.
+	argv := append([]string{"-c", "core.quotePath=false", "-c", "core.fsmonitor=false", "-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", argv...)
 	platform.HideCommand(cmd)
 	for _, v := range os.Environ() {

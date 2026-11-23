@@ -24,8 +24,12 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 	if !httpx.Decode(w, r, &in) {
 		return
 	}
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
+	a.Execution.GitActivity.RLock()
+	defer a.Execution.GitActivity.RUnlock()
+	if a.Execution.Closing.Load() {
+		httpx.WriteError(w, 503, "后台正在退出")
+		return
+	}
 	p, err := a.RegisteredProject(r.Context(), r.PathValue("id"))
 	if errors.Is(err, sql.ErrNoRows) {
 		httpx.WriteError(w, 404, "项目不存在")
@@ -33,6 +37,15 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	if err != nil {
 		httpx.WriteError(w, 422, err.Error())
+		return
+	}
+	unlock := a.lockGit(p.CommonDir)
+	defer unlock()
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
+	p, err = a.RegisteredProject(r.Context(), p.ID)
+	if err != nil {
+		httpx.WriteError(w, 409, "项目登记已变化，请刷新后重试")
 		return
 	}
 	in.Slug, in.Branch = strings.TrimSpace(in.Slug), strings.TrimSpace(in.Branch)
@@ -98,17 +111,8 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 	directory := platform.JoinWorkspacePath(a.Execution.Root, in.Slug)
 	target := platform.JoinWorkspacePath(directory, p.Folder)
 	resolved, err := execution.Eval(r.Context(), a.Execution.Root)
-	if err != nil || resolved != a.Execution.Root || !platform.Within(a.Execution.Root, directory) || !platform.Within(directory, target) {
-		httpx.WriteError(w, 422, "工作区根目录已变化或路径无效，请检查服务配置")
-		return
-	}
-	var reserved int
-	if err := a.Execution.Store.DB.QueryRow(`SELECT count(*) FROM workspaces WHERE slug=? COLLATE NOCASE OR path=?`, in.Slug, directory).Scan(&reserved); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	if reserved > 0 {
-		httpx.WriteError(w, 409, "该目录属于已登记工作区，请在对应工作区页面管理；独立 Worktree 请换一个工作标识")
+	if err != nil || !platform.SameWorkspacePath(resolved, a.Execution.Root) || !platform.Within(a.Execution.Root, directory) || !platform.Within(directory, target) {
+		httpx.WriteError(w, 422, "Worktree 根目录已变化或路径无效，请检查服务配置")
 		return
 	}
 	if info, err := execution.Stat(r.Context(), directory, false); err == nil {
@@ -134,7 +138,7 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 		httpx.WriteError(w, 409, "无法创建工作目录："+err.Error())
 		return
 	}
-	// Recheck after mkdir; a pre-existing workspace may be shared by projects.
+	// Recheck after mkdir; a pre-existing parent may contain other directories.
 	if resolved, err := execution.Eval(r.Context(), directory); err != nil || !platform.SameWorkspacePath(resolved, directory) {
 		httpx.WriteError(w, 409, "工作目录已变化，停止创建")
 		return
@@ -152,5 +156,5 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 		httpx.WriteJSON(w, 409, map[string]any{"error": "Worktree 创建未完成，请刷新列表并检查现场；已有文件和分支均保留", "details": []string{RedactGitOutput(err.Error()), "目标目录：" + target, "分支：" + in.Branch}})
 		return
 	}
-	httpx.WriteJSON(w, 201, map[string]string{"message": "Worktree 已创建，已加入项目列表（未关联工作区）", "path": target, "branch": in.Branch, "source": source, "base_commit": commit})
+	httpx.WriteJSON(w, 201, map[string]string{"message": "Worktree 已创建，已加入项目列表", "path": target, "branch": in.Branch, "source": source, "base_commit": commit})
 }

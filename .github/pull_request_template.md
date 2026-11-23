@@ -8,4 +8,4 @@ List relevant checks and, for UI changes, include a sanitized screenshot.
 
 ## Compatibility
 
-Describe any effect on saved workspaces, worktrees, sessions or existing installations.
+Describe any effect on saved worktrees, session bindings or existing installations.

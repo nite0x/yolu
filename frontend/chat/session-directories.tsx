@@ -1,0 +1,436 @@
+import { useEffect, useId, useRef, useState, type FormEvent } from "react"
+import { CircleAlert, FolderOpen, GitBranch, Plus, Terminal, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { NativeSelect, NativeSelectOption as Option } from "@/components/ui/native-select"
+import { uiText } from "../i18n"
+import { conversationPathKey } from "../app/conversation-runtime"
+import type { ChangedFile } from "../app/changes"
+import type { GitOverview } from "../app/types"
+import type { ChatController } from "./controller"
+import {useChatState} from "./use-chat-state"
+import type { BindingInput, SessionTarget } from "./controller-types"
+import type { Entry, Session } from "./model"
+
+type ProjectOption = NonNullable<ChatController["options"]["overview"]>["projects"][number]
+type Binding = BindingInput & {
+  id: string; directory: string; project_name?: string; branch?: string; worktree_id?: string;
+  status: "pending" | "configuring" | "ready" | "error" | "unsupported";
+  error?: string; warning?: string; conflicts?: {id: string; name: string; cwd: string}[];
+  git?: {files?: ChangedFile[]}; observed?: string[]; attributed?: string[]; activities?: Entry[];
+}
+type BindingSet = {
+  cwd?: string; native_resume_requires_confirmation?: boolean; bindings: Binding[]; capabilities?: {
+    multiple_directories?: boolean; dynamic_directory_access?: boolean;
+    native_permission_requests?: boolean; enforce_read_only_directories?: boolean;
+  };
+}
+type Prompt = {
+  initial?: BindingInput;
+  binding?: Binding;
+  conflict?: string;
+  mention?: string;
+  purpose: string;
+  resolve?: (confirm: boolean) => void;
+}
+
+const recentKey = "workhub:recent-session-projects:v1"
+function recentProjects(environment: string): string[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(recentKey + ":" + environment) || "[]")
+    return Array.isArray(value) ? value.filter(item => typeof item === "string") : []
+  } catch { return [] }
+}
+function rememberProject(environment: string, project?: string) {
+  if (!project) return
+  try { localStorage.setItem(recentKey + ":" + environment, JSON.stringify([project, ...recentProjects(environment).filter(id => id !== project)].slice(0, 8))) }
+  catch { /* Recency is optional when storage is unavailable. */ }
+}
+
+export function projectMention(draft: string) {
+  return draft.match(/(?:^|\s)@([^\s@]*)$/u)?.[1]
+}
+
+export function namedProject(text: string, projects: ProjectOption[], excluded: Set<string>) {
+  const matches = projects.filter(project => !excluded.has(project.id) && new RegExp(
+    `(?:^|[^\\p{L}\\p{N}_.-])${project.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}_.-])`, "iu",
+  ).test(text))
+  return matches.length === 1 ? matches[0] : undefined
+}
+
+const json = (method: string, body: unknown): RequestInit => ({method, body:JSON.stringify(body)})
+const failure = (error: unknown) => error instanceof Error ? error.message : String(error)
+const labelFor = (binding: BindingInput, projects: ProjectOption[]) => projects.find(project => project.id === binding.project_id)?.name || binding.directory?.split(/[\\/]/).filter(Boolean).at(-1) || uiText("本地目录")
+const emptyBindings: Binding[] = []
+function observedPath(directory: string, file: string) {
+  const root = conversationPathKey(directory)
+  return conversationPathKey(file).startsWith(root + "/") ? file.slice(root.length + 1) : file
+}
+
+export function useSessionDirectories(controller: ChatController, session: Session | null, provider: string, busy: boolean) {
+  const [data, setData] = useState<BindingSet>()
+  const [error, setError] = useState("")
+  const [prompt, setPrompt] = useState<Prompt>()
+  const [detail, setDetail] = useState("")
+  const [planned, setPlanned] = useState<BindingInput[]>([])
+  const [primary, setPrimary] = useState<SessionTarget>({})
+  const [dismissed, setDismissed] = useState("")
+  const plannedRef = useRef<BindingInput[]>([])
+  const approvalRef = useRef<Prompt | undefined>(undefined)
+  const revision = useRef(0)
+  const base = session ? `/api/sessions/${encodeURIComponent(session.id)}/bindings` : ""
+  const { request, environment, overview, readOnly } = controller.options
+  const projects = overview?.projects || []
+  const bindings = data?.bindings || emptyBindings
+  const target = {...controller.options.target, ...primary}
+  const bindingVersion = JSON.stringify(bindings.map(binding => [binding.id,binding.directory,binding.project_id,!!binding.git,binding.role]))
+  useEffect(() => {
+    if (!session) return
+    const directories = (JSON.parse(bindingVersion) as [string,string,string | null,boolean,string][]).map(([id,path,project,git,role]) => ({id,path,project,git,primary:role === "primary"}))
+    window.dispatchEvent(new CustomEvent("workhub:session-bindings-changed", {detail:{session:session.id, environment, directories}}))
+  }, [bindingVersion,environment,session?.id])
+  const excluded = new Set([target.project_id || "", ...bindings.map(binding => binding.project_id || ""), ...planned.map(binding => binding.project_id || "")])
+
+  useEffect(() => {
+    approvalRef.current = prompt
+    return () => { if (approvalRef.current === prompt) approvalRef.current = undefined }
+  }, [prompt])
+  useEffect(() => () => approvalRef.current?.resolve?.(false), [controller])
+  useEffect(() => {
+    if (!base) return
+    const abort = new AbortController()
+    let loading = false
+    async function refresh() {
+      if (loading || abort.signal.aborted || document.hidden || document.documentElement.hasAttribute("data-workspace-inactive")) return
+      loading = true
+      const version = revision.current
+      try {
+        const result = await request<BindingSet>(base, {signal:abort.signal})
+        if (!abort.signal.aborted && version === revision.current) {setData(result); setError("")}
+      } catch (error) {
+        if (!abort.signal.aborted && version === revision.current) setError(failure(error))
+      } finally { loading = false }
+    }
+    void refresh()
+    const timer = setInterval(refresh, busy ? 1800 : 5000)
+    const refreshWhenShown = () => { void refresh() }
+    document.addEventListener("visibilitychange", refreshWhenShown)
+    window.addEventListener("workhub:page-visibility", refreshWhenShown)
+    return () => {
+      abort.abort()
+      clearInterval(timer)
+      document.removeEventListener("visibilitychange", refreshWhenShown)
+      window.removeEventListener("workhub:page-visibility", refreshWhenShown)
+    }
+  }, [base, busy, request])
+
+  function closePrompt(confirm = false) {
+    const pending = approvalRef.current || prompt
+    setPrompt(undefined)
+    approvalRef.current = undefined
+    pending?.resolve?.(confirm)
+    if (!confirm) setDismissed(controller.getSnapshot().draft)
+  }
+  function ask(input: Omit<Prompt, "resolve">) {
+    return new Promise<boolean>(resolve => {
+      const next = {...input,resolve}
+      approvalRef.current = next
+      setPrompt(next)
+    })
+  }
+  async function save(input: BindingInput) {
+    if (!prompt) return
+    if (base) {
+      const bound = prompt.binding
+      revision.current++
+      const result = await request<BindingSet>(bound ? base + "/" + encodeURIComponent(bound.id) : base, json(bound ? "PUT" : "POST", input))
+      revision.current++
+      setData(result)
+      if (bound) setDetail(bound.id)
+    } else {
+      const key = conversationPathKey(input.directory || "")
+      const next = [...plannedRef.current.filter(binding => conversationPathKey(binding.directory || "") !== key), input]
+      plannedRef.current = next
+      setPlanned(next)
+    }
+    if (prompt.mention) {
+      const draft = controller.getSnapshot().draft
+      if (projectMention(draft) !== undefined) controller.setDraft(draft.replace(/@[^\s@]*$/u, () => "@" + prompt.mention + " "))
+    }
+    rememberProject(environment, input.project_id)
+    closePrompt(true)
+  }
+  async function remove(binding: Binding) {
+    if (!base) return
+    try {
+      revision.current++
+      const result = await request<BindingSet>(base + "/" + encodeURIComponent(binding.id), json("DELETE", {}))
+      revision.current++
+      setData(result)
+      setDetail("")
+    } catch (error) { setError(failure(error)) }
+  }
+  function showFiles(binding: Binding, path?: string) {
+    const file = binding.git?.files?.find(file => file.path === path)
+    const mode = file ? !file.working.trim() && !file.untracked ? "index" : "working" : undefined
+    window.dispatchEvent(new CustomEvent("workhub:binding-files", {detail:{session:session?.id, environment, id:binding.id, path:binding.directory, project:binding.project_id, git:!!binding.git, file:path,mode}}))
+  }
+  async function send(text: string, images: string[]) {
+    const match = text !== dismissed ? namedProject(text, projects, excluded) : undefined
+    if (match) {
+      const approved = await ask({initial:{project_id:match.id,access:"read"},purpose:uiText("消息提到了此项目。确认将目录提供给 Agent。")})
+      if (!approved) { setDismissed(text); throw new Error(uiText("消息已保留。再次发送可继续当前对话。")) }
+    }
+    let payload: SessionTarget = session ? {} : {...primary, bindings:plannedRef.current}
+    if (!session && (target.cwd || target.project_id) && (target.access || "write") === "write") {
+      const binding = await request<Binding>("/api/session-bindings/inspect", json("POST", {
+        project_id:target.project_id, directory:target.cwd, role:"primary", access:"write", provider,
+      }))
+      if (binding.conflicts?.length) {
+        const approved = await ask({purpose:uiText("已有可写对话正在使用此目录。可另建 Worktree，或确认共享此目录。"),conflict:binding.directory})
+        if (!approved) throw new Error(uiText("消息已保留。可选择独立 Worktree 后再次发送。"))
+        payload = {...payload,allow_shared:true}
+      }
+    }
+    try { await controller.send(text, images, false, payload) }
+    catch (error) {
+      if ((error as {code?:string}).code !== "directory_conflict" || !session) throw error
+      const approved = await ask({purpose:failure(error),conflict:data?.cwd || session.cwd})
+      if (!approved) throw error
+      await controller.send(text, images, false, {allow_shared:true})
+    }
+  }
+
+  const bar = <div className="session-context-strip" aria-label={uiText("对话项目与目录")}>
+    <div className="session-context-chips">
+      {session ? bindings.map(binding => <Button key={binding.id} type="button" size="xs" variant="outline"
+        className="session-context-chip" data-role={binding.role} data-status={binding.status}
+        aria-expanded={detail === binding.id} aria-label={uiText("查看 {0} 的目录详情", binding.project_name || labelFor(binding, projects))}
+        onClick={() => setDetail(detail === binding.id ? "" : binding.id)}>
+        {binding.status === "error" || binding.status === "unsupported" ? <CircleAlert aria-hidden="true" /> : <GitBranch aria-hidden="true" />}
+        <span>{binding.project_name || labelFor(binding, projects)}</span>
+        {binding.branch && <small>{binding.branch}</small>}
+        <small>{binding.status === "ready" ? binding.access === "read" ? uiText("只读") : uiText("可修改") : binding.status === "error" ? uiText("异常") : binding.status === "unsupported" ? uiText("未授权") : uiText("待配置")}</small>
+      </Button>) : planned.map(binding => <span className="session-context-chip session-context-draft" key={binding.directory}>
+        {labelFor(binding, projects)}<small>{uiText("待配置")}</small>
+        <Button type="button" size="icon-xs" variant="ghost" aria-label={uiText("移除 {0}", labelFor(binding, projects))} onClick={() => {
+          plannedRef.current = plannedRef.current.filter(item => item !== binding); setPlanned(plannedRef.current);
+        }}><X aria-hidden="true" /></Button>
+      </span>)}
+      {session && !bindings.length && <span className="session-context-empty">{uiText(data ? "未绑定项目目录" : "正在读取目录…")}</span>}
+    </div>
+    {!readOnly && !session?.archived && <Button type="button" size="sm" variant="ghost" aria-label={uiText("添加项目或目录")} onClick={() => setPrompt({purpose:uiText("为此对话添加参考或开发目录。")})}><Plus aria-hidden="true" />{uiText("添加项目")}</Button>}
+  </div>
+  const selected = bindings.find(binding => binding.id === detail)
+  return {
+    send, target, bar,
+    details: <>
+      {error && <p className="session-context-error" role="alert">{error}</p>}
+      {selected && <BindingDetails binding={selected} close={() => setDetail("")}
+        edit={readOnly || session?.archived ? undefined : () => setPrompt({binding:selected,initial:selected,purpose:uiText("更新此目录的访问范围或工作目录。")})}
+        remove={readOnly || session?.archived ? undefined : () => void remove(selected)}
+        showFiles={path => showFiles(selected,path)}
+        openProject={selected.project_id && controller.options.openProject ? () => controller.options.openProject?.(selected.project_id!,selected.directory) : undefined}
+        openTerminal={environment === "local" && controller.options.openTerminal ? () => controller.options.openTerminal?.(selected) : undefined} />}
+      {prompt && <BindingDialog prompt={prompt} request={request} environment={environment} provider={provider} session={session?.id}
+        projects={projects} hasPrimary={!!target.project_id || !!target.cwd || [...bindings,...planned].some(binding => binding.role === "primary")} save={save} cancel={() => closePrompt()} confirm={() => closePrompt(true)} />}
+    </>,
+    cwd: data?.cwd,
+    managed: !session || !!data?.native_resume_requires_confirmation || !data && session.source === "workbench",
+    composer: !readOnly && !session?.archived && <DraftProjectSuggestions controller={controller} projects={projects}
+      excluded={excluded} dismissed={dismissed} dismiss={setDismissed} configure={setPrompt} />,
+    creation: !session && target.project_id && !readOnly && <WorktreeSetup
+      project={target.project_id} request={request} disabled={busy}
+      key={target.project_id}
+      directory={primary.cwd}
+      onCreated={path => setPrimary({project_id:target.project_id,cwd:path})}
+      onReset={() => setPrimary({})} />,
+  }
+}
+
+function DraftProjectSuggestions({controller, projects, excluded, dismissed, dismiss, configure}: {
+  controller: ChatController; projects:ProjectOption[]; excluded:Set<string>; dismissed:string;
+  dismiss:(draft:string) => void; configure:(prompt:Prompt) => void;
+}) {
+  const draft = useChatState(controller, snapshot => snapshot.draft)
+  if (draft === dismissed) return null
+  const mention = projectMention(draft)
+  if (mention !== undefined) return <div className="session-context-suggestion" aria-label={uiText("选择要引用的项目")}>
+    {projects.filter(project => !excluded.has(project.id) && project.name.toLowerCase().includes(mention.toLowerCase())).slice(0, 6).map(project =>
+      <Button key={project.id} type="button" size="sm" variant="outline" onClick={() => configure({mention:project.name,initial:{project_id:project.id,access:"read"},purpose:uiText("确认此项目引用和访问权限。")})}>@{project.name}</Button>)}
+    <Button type="button" size="sm" variant="ghost" onClick={() => configure({initial:{access:"read"},purpose:uiText("选择消息所引用的本地目录。")})}><FolderOpen aria-hidden="true" />{uiText("选择本地目录…")}</Button>
+    <Button type="button" size="icon-sm" variant="ghost" aria-label={uiText("关闭项目选择器")} onClick={() => dismiss(draft)}><X aria-hidden="true" /></Button>
+  </div>
+  const suggestion = namedProject(draft,projects,excluded)
+  return suggestion ? <div className="session-context-suggestion">
+    <Button type="button" size="sm" variant="outline" onClick={() => configure({initial:{project_id:suggestion.id,access:"read"},purpose:uiText("消息提到了此项目。确认将目录提供给 Agent。")})}>{uiText("关联 {0}…", suggestion.name)}</Button>
+    <Button type="button" size="icon-sm" variant="ghost" aria-label={uiText("忽略项目建议")} onClick={() => dismiss(draft)}><X aria-hidden="true" /></Button>
+  </div> : null
+}
+
+function BindingDetails({binding, close, edit, remove, showFiles, openProject, openTerminal}: {
+  binding: Binding; close: () => void; edit?: () => void; remove?: () => void;
+  showFiles: (path?:string) => void; openProject?: () => void; openTerminal?: () => void;
+}) {
+  const files = binding.git?.files || []
+  const observed = binding.observed || []
+  const attributed = binding.attributed || []
+  const additions = files.filter(file => !file.untracked && (file.index === "A" || file.working === "A")).length
+  const deletions = files.filter(file => file.index === "D" || file.working === "D").length
+  const untracked = files.filter(file => file.untracked).length
+  const staged = files.filter(file => !file.untracked && file.index.trim()).length
+  const unstaged = files.filter(file => file.untracked || file.working.trim()).length
+  return <section className="session-binding-details" aria-label={uiText("目录详情")}>
+    <div className="session-binding-title"><strong>{binding.project_name || binding.directory}</strong><Button type="button" size="icon-sm" variant="ghost" onClick={close} aria-label={uiText("关闭目录详情")}><X aria-hidden="true" /></Button></div>
+    <dl>
+      <dt>{uiText("实际目录")}</dt><dd><code>{binding.directory}</code></dd>
+      {binding.branch && <><dt>{uiText("当前分支")}</dt><dd>{binding.branch}</dd></>}
+      {binding.worktree_id && <><dt>Worktree</dt><dd><code>{binding.worktree_id}</code></dd></>}
+      <dt>{uiText("访问范围")}</dt><dd>{binding.status === "ready" ? "" : uiText("请求权限 · ")}{binding.access === "read" ? uiText("只读") : uiText("可修改")}{binding.role === "primary" ? " · " + uiText("主项目") : ""}</dd>
+    </dl>
+    {(binding.warning || binding.error || !!binding.conflicts?.length) && <p role="status" className="session-context-error">{[binding.warning,binding.error,binding.conflicts?.length && uiText("共享写入目录 · {0}",binding.conflicts.map(conflict => conflict.name || conflict.id).join("、"))].filter(Boolean).join(" · ")}</p>}
+    {binding.git ? <div className="session-binding-changes">
+      <strong>{uiText("目录 Git 改动 · {0}", files.length)}</strong>
+      <span>{uiText("已暂存 {0} · 未暂存 {1}", staged, unstaged)}</span>
+      <span>{uiText("新增 {0} · 删除 {1} · 未跟踪 {2}",additions,deletions,untracked)}</span>
+      <ul>{files.slice(0, 12).map(file => <li key={file.path}><code>{file.untracked ? "??" : file.index + file.working}</code><Button type="button" variant="link" size="xs" onClick={() => showFiles(file.path)}>{file.path}</Button></li>)}</ul>
+    </div> : <p className="session-context-empty">{uiText("此目录没有 Git 状态，文件浏览和运行记录仍可用。")}</p>}
+    {!!observed.length && <details><summary>{uiText("运行期间观察到 {0} 个文件变化", observed.length)}</summary><ul className="session-binding-observations">
+      {observed.slice(0, 24).map(file => <li key={file}><code>{observedPath(binding.directory,file)}</code></li>)}</ul></details>}
+    {!!attributed.length && <details><summary>{uiText("工具记录明确关联 {0} 个文件", attributed.length)}</summary><ul className="session-binding-observations">
+      {attributed.slice(0, 24).map(file => <li key={file}><code>{observedPath(binding.directory,file)}</code></li>)}</ul></details>}
+    {!!binding.activities?.length && <ul className="session-binding-activity">{binding.activities.slice(-4).map(entry => <li key={entry.id}><code>{entry.command || entry.tool || entry.kind}</code><small>{entry.status}</small></li>)}</ul>}
+    <div className="session-binding-actions">
+      <Button type="button" size="sm" variant="outline" onClick={() => showFiles()}>{uiText("文件与改动")}</Button>
+      {openTerminal && <Button type="button" size="sm" variant="outline" onClick={openTerminal}><Terminal aria-hidden="true" />{uiText("终端")}</Button>}
+      {openProject && <Button type="button" size="sm" variant="ghost" onClick={openProject}>{uiText("打开项目")}</Button>}
+      {edit && <Button type="button" size="sm" variant="ghost" onClick={edit}>{uiText("更改目录与权限")}</Button>}
+      {remove && <Button type="button" size="sm" variant="ghost" onClick={remove}>{uiText("取消关联")}</Button>}
+    </div>
+  </section>
+}
+
+function BindingDialog({prompt, request, environment, provider, session, projects, hasPrimary, save, cancel, confirm}: {
+  prompt: Prompt; request: ChatController["options"]["request"]; environment: string; provider: string; session?: string;
+  projects: ProjectOption[]; hasPrimary: boolean; save: (input:BindingInput) => Promise<void>; cancel: () => void; confirm: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const formID = useId()
+  useEffect(() => { dialog.current?.showModal() }, [])
+  const [project, setProject] = useState(prompt.initial?.project_id || "")
+  const [directory, setDirectory] = useState(prompt.initial?.directory || "")
+  const [access, setAccess] = useState<BindingInput["access"]>(prompt.initial?.access || "read")
+  const [role, setRole] = useState<BindingInput["role"]>(prompt.binding?.role || "additional")
+  const [query, setQuery] = useState("")
+  const [preview, setPreview] = useState<Binding>()
+  const [shared, setShared] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const recent = recentProjects(environment)
+  const selected = projects.find(item => item.id === project)
+  const directories = selected ? [...new Set([selected.path,...selected.worktrees.filter(tree => !tree.missing).map(tree => tree.path),...(directory ? [directory] : [])])] : []
+  const matching = projects.filter(item => item.id === project || [item.name,item.path].some(value => value.toLowerCase().includes(query.toLowerCase())))
+  matching.sort((a,b) => (recent.indexOf(a.id) + 1 || 100) - (recent.indexOf(b.id) + 1 || 100) || a.name.localeCompare(b.name))
+  function invalidate() { setPreview(undefined); setShared(false); setError("") }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (prompt.conflict) { confirm(); return }
+    if (busy) return
+    setBusy(true); setError("")
+    try {
+      const input: BindingInput = {project_id:project || undefined, directory:directory.trim() || selected?.path, access, role, allow_shared:shared}
+      if (preview) await save({...input,directory:preview.directory})
+      else setPreview(await request<Binding>("/api/session-bindings/inspect", json("POST", {...input,session_id:session,provider})))
+    } catch (error) { setError(failure(error)) }
+    finally { setBusy(false) }
+  }
+  async function browse() {
+    setBusy(true); setError("")
+    try {
+      const result = await request<{path?:string}>("/api/dialogs/directory",json("POST",{}))
+      if (result.path) { setDirectory(result.path); invalidate() }
+    } catch (error) { setError(failure(error)) }
+    finally { setBusy(false) }
+  }
+  return <dialog ref={dialog} className="session-binding-dialog shadcn-scope" aria-labelledby={formID + "-title"}
+      onCancel={event => {event.preventDefault(); if (!busy) cancel()}}>
+    <form id={formID} onSubmit={event => void submit(event)}>
+      <header className="session-binding-title"><h2 id={formID + "-title"}>{prompt.conflict ? uiText("共享工作目录") : prompt.binding ? uiText("更改目录与权限") : uiText("添加项目或目录")}</h2>
+        <Button type="button" variant="ghost" size="icon-sm" onClick={cancel} disabled={busy} aria-label={uiText("关闭")}><X aria-hidden="true" /></Button></header>
+      <p>{prompt.purpose}</p>
+      {prompt.conflict ? <code>{prompt.conflict}</code> : <>
+        <fieldset disabled={busy}>
+          <label>{uiText("搜索项目名称或路径")}<Input type="search" value={query} onChange={event => setQuery(event.target.value)} /></label>
+          <label>{uiText("项目")}<NativeSelect value={project} onChange={event => {setProject(event.target.value); setDirectory(""); invalidate()}}>
+            <Option value="">{uiText("本地目录")}</Option>{matching.map(item => <Option key={item.id} value={item.id}>{item.name}{recent.includes(item.id) ? " · " + uiText("最近使用") : ""}</Option>)}
+          </NativeSelect></label>
+          {selected ? <label>{uiText("实际目录")}<NativeSelect value={directory || selected.path} onChange={event => {setDirectory(event.target.value); invalidate()}}>
+            {directories.map(path => <Option key={path} value={path}>{path}{path === selected.path ? " · " + uiText("项目目录") : ""}</Option>)}
+          </NativeSelect></label> : <label>{uiText("实际目录")}<div className="session-binding-field-row"><Input value={directory} onChange={event => {setDirectory(event.target.value); invalidate()}} placeholder={uiText("填写绝对目录路径")} required />
+            {environment === "local" && <Button type="button" variant="outline" onClick={() => void browse()}>{uiText("选择文件夹…")}</Button>}</div></label>}
+          {(!hasPrimary || prompt.binding?.role === "primary") && <label>{uiText("对话中的角色")}<NativeSelect value={role} onChange={event => {setRole(event.target.value === "primary" ? "primary" : "additional"); invalidate()}}>
+            <Option value="additional">{uiText("附加目录")}</Option><Option value="primary">{uiText("主项目")}</Option>
+          </NativeSelect></label>}
+          <label>{uiText("Agent 访问用途")}<NativeSelect value={access} onChange={event => {setAccess(event.target.value === "write" ? "write" : "read"); invalidate()}}>
+            <Option value="read">{uiText("仅作为参考（只读）")}</Option><Option value="write">{uiText("允许修改")}</Option>
+          </NativeSelect></label>
+        </fieldset>
+        {preview && <div className="session-binding-preview" aria-live="polite">
+          <strong>{preview.project_name || labelFor(preview, projects)}</strong>
+          <code>{preview.directory}</code>
+          <span>{preview.branch ? uiText("当前分支 · {0}", preview.branch) : uiText("未读取到 Git 分支")}{preview.worktree_id ? " · Worktree" : ""}</span>
+          {(preview.warning || preview.error) && <p className="session-context-error">{preview.warning || preview.error}</p>}
+          {!!preview.conflicts?.length && <label className="session-binding-shared"><input type="checkbox" checked={shared} onChange={event => setShared(event.target.checked)} />{uiText("与 {0} 共享写入目录。独立开发可先创建 Worktree。",preview.conflicts.map(conflict => conflict.name || conflict.id).join("、"))}</label>}
+        </div>}
+      </>}
+      {error && <p role="alert" className="session-context-error">{error}</p>}
+    </form>
+    {selected && !!preview?.conflicts?.length && <WorktreeSetup key={selected.id} project={selected.id} request={request} disabled={busy} onCreated={path => {setDirectory(path); invalidate()}} onReset={() => {}} />}
+    <footer><Button type="button" variant="outline" onClick={cancel} disabled={busy}>{uiText("取消")}</Button>
+      <Button type="submit" form={formID} disabled={busy || preview?.status === "error" || !!preview?.conflicts?.length && !shared}>{busy ? uiText("处理中…") : prompt.conflict ? uiText("确认共享目录") : preview ? uiText("确认关联") : uiText("检查目录")}</Button></footer>
+  </dialog>
+}
+
+function WorktreeSetup({project, request, disabled, directory, onCreated, onReset}: {
+  project: string; request: ChatController["options"]["request"]; disabled: boolean; directory?: string; onCreated: (path: string) => void; onReset: () => void;
+}) {
+  const [open, setOpen] = useState(false)
+  const [branches, setBranches] = useState<GitOverview["branches"]>([])
+  const [source, setSource] = useState("")
+  const [slug, setSlug] = useState("")
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState("")
+  const route = `/api/projects/${encodeURIComponent(project)}`
+  async function prepare() {
+    setOpen(true); setPending(true); setError("")
+    try {
+      const overview = await request<GitOverview>(route + "/git")
+      setBranches(overview.branches)
+      setSource(overview.branches.find(branch => branch.ref === overview.master_source)?.ref || overview.branches.find(branch => branch.kind === "local")?.ref || "HEAD")
+      setSlug("session-" + crypto.randomUUID().slice(0, 8))
+    } catch (error) { setError(failure(error)) }
+    finally { setPending(false) }
+  }
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setPending(true); setError("")
+    try {
+      const result = await request<{path:string}>(route + "/worktrees",json("POST",{mode:"new",slug,branch:"codex/" + slug,source}))
+      if (!result.path) throw new Error(uiText("Worktree 已创建，但未返回执行目录。请从项目页选择它。"))
+      onCreated(result.path); setOpen(false)
+    } catch (error) { setError(failure(error)) }
+    finally { setPending(false) }
+  }
+  if (directory) return <div className="session-worktree-setup"><span>{uiText("独立 Worktree")}</span><code>{directory}</code><Button type="button" size="sm" variant="outline" disabled={disabled} onClick={onReset}>{uiText("改用所选目录")}</Button></div>
+  return <div className="session-worktree-setup">
+    {!open ? <Button type="button" variant="outline" size="sm" onClick={() => void prepare()} disabled={disabled}><GitBranch aria-hidden="true" />{uiText("创建独立 Worktree")}</Button> :
+      <form onSubmit={event => void create(event)}>
+        <label>{uiText("新分支标识")}<Input value={slug} required maxLength={64} pattern="[a-zA-Z0-9][a-zA-Z0-9_\\-]{0,63}" onChange={event => setSlug(event.target.value)} disabled={pending} /></label>
+        <label>{uiText("来源分支")}<NativeSelect value={source} onChange={event => setSource(event.target.value)} disabled={pending}>
+          <Option value="HEAD">HEAD</Option>{branches.map(branch => <Option key={branch.ref} value={branch.ref}>{branch.name}</Option>)}
+        </NativeSelect></label>
+        <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setOpen(false)}>{uiText("取消")}</Button>
+        <Button type="submit" size="sm" disabled={pending || disabled || !source}>{pending ? uiText("处理中…") : uiText("创建 Worktree")}</Button>
+      </form>}
+    {error && <p role="alert" className="session-context-error">{error}</p>}
+  </div>
+}

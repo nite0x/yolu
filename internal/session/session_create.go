@@ -7,28 +7,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
 )
 
 type newSessionInput struct {
-	Text                  string       `json:"text"`
-	Project               string       `json:"project_id"`
-	WorkspaceID           string       `json:"workspace_id"`
-	Cwd                   string       `json:"cwd"`
-	RequestID             string       `json:"request_id"`
-	Purpose               string       `json:"purpose"`
-	MergeHead             string       `json:"merge_head"`
-	Provider              string       `json:"provider"`
-	Images                []string     `json:"images"`
-	Settings              TurnSettings `json:"settings"`
-	AdditionalDirectories *[]string    `json:"additional_directories"`
+	Text        string         `json:"text"`
+	Project     string         `json:"project_id"`
+	Cwd         string         `json:"cwd"`
+	RequestID   string         `json:"request_id"`
+	Purpose     string         `json:"purpose"`
+	MergeHead   string         `json:"merge_head"`
+	Provider    string         `json:"provider"`
+	Images      []string       `json:"images"`
+	Settings    TurnSettings   `json:"settings"`
+	Bindings    []bindingInput `json:"bindings,omitempty"`
+	Access      string         `json:"access,omitempty"`
+	AllowShared bool           `json:"allow_shared,omitempty"`
 }
 
 var (
@@ -86,13 +87,7 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Persist the idempotency key before making any remote mutation. An uncertain
 	// creation is never retried implicitly, including after a service restart.
-	workspaceID := input.WorkspaceID
 	key := input.RequestID
-	if id := r.PathValue("id"); id != "" {
-		workspaceID = id
-		key = "workspace:" + id + ":" + key
-	}
-	input.WorkspaceID = workspaceID
 	releaseControl := a.lockControl("create:" + key)
 	defer releaseControl()
 	fingerprint := input.fingerprint()
@@ -115,15 +110,17 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Settings = newConversationSettings(input.Settings, defaults)
-	var execution executionContext
-	if input.Purpose == "merge_conflict" {
-		if workspaceID == "" {
-			httpx.WriteError(w, 400, "合并处理需要工作区上下文")
-			return
+	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
+	target, err := a.resolveCreation(ctx, SessionTarget{
+		ProjectID: input.Project, Cwd: input.Cwd, Bindings: input.Bindings, Access: input.Access,
+		AllowShared: input.AllowShared, Provider: provider,
+	}, key)
+	if err == nil && input.Purpose == "merge_conflict" {
+		if input.Project == "" {
+			err = invalidSessionTarget("合并处理需要明确的项目和 Worktree")
+		} else {
+			input.Text, err = mergeConflictPrompt(ctx, target.plan.Cwd, input.MergeHead)
 		}
-		execution.plan, input.Text, err = a.mergeConflictPlan(r.Context(), workspaceID, input.Project, input.MergeHead)
-	} else {
-		execution, err = a.resolveCreation(r.Context(), SessionTarget{WorkspaceID: workspaceID, ProjectID: input.Project, Cwd: input.Cwd, AdditionalDirectories: input.AdditionalDirectories})
 	}
 	if err != nil {
 		status := 409
@@ -137,11 +134,22 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, status, err.Error())
 		return
 	}
-	if provider == model.ProviderAgy {
-		a.createAgySession(w, r, key, fingerprint, workspaceID, input, execution)
+	if err := validateProviderBindings(provider, target.plan); err != nil {
+		httpx.WriteError(w, 409, err.Error())
 		return
 	}
-	run, status, err := a.startCodexSession(context.WithoutCancel(r.Context()), key, fingerprint, input, execution, false)
+	releaseDirectories, conflicts := a.reserveDirectories("create:"+key, "", target.plan)
+	if releaseDirectories == nil {
+		writeBindingConflict(w, conflicts)
+		return
+	}
+	defer releaseDirectories()
+	if provider == model.ProviderAgy {
+		a.createAgySession(w, r, key, fingerprint, input, target)
+		return
+	}
+	run, status, err := a.startCodexSession(context.WithoutCancel(ctx), key, fingerprint, input, target)
+
 	if err != nil {
 		if status == 500 {
 			httpx.DbError(w, err)
@@ -153,7 +161,7 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	a.WriteCreatedSession(w, run.session, status)
 }
 
-func (a *Service) startCodexSession(startup context.Context, key, fingerprint string, input newSessionInput, execution executionContext, recordFirstTurn bool) (*ChatRun, int, error) {
+func (a *Service) startCodexSession(startup context.Context, key, fingerprint string, input newSessionInput, execution executionContext) (*ChatRun, int, error) {
 	plan := execution.plan
 	ctx, cancel := context.WithCancel(context.WithoutCancel(startup))
 	stopStartupCancellation := context.AfterFunc(startup, cancel)
@@ -181,9 +189,6 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 			return nil, 400, errors.New("所选模型不可用，请更换模型或在设置中沿用 Codex 默认模型")
 		}
 	}
-	if _, err := a.Execution.Store.DB.ExecContext(requestCtx, `INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
-		return nil, 500, err
-	}
 	var result struct {
 		ChatContext
 		Thread codex.Session `json:"thread"`
@@ -195,15 +200,23 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 	if input.Settings.Effort != "" {
 		params["config"].(map[string]any)["model_reasoning_effort"] = input.Settings.Effort
 	}
-	setThreadPermissions(params, input.Settings.Permission)
+	if err := a.configureCodexThread(startup, c, params, plan); err != nil {
+		return nil, 409, err
+	}
 	if execution.instructions != "" {
-		params["developerInstructions"] = execution.instructions + "\n" + chatQuestionInstructions
+		params["developerInstructions"] = codexDirectoryInstructions(execution.instructions) + "\n" + chatQuestionInstructions
+	}
+	if _, err := a.Execution.Store.DB.ExecContext(requestCtx, `INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
+		return nil, 500, err
 	}
 	if err := requestCtx.Err(); err != nil {
 		return nil, 503, err
 	}
 	if err := c.Call(requestCtx, "thread/start", params, &result); err != nil || result.Thread.ID == "" {
-		return nil, 503, errors.New("Codex 创建结果未确认，请刷新对话列表检查后再操作")
+		return nil, 503, errors.New("Codex 创建失败或结果未确认，未发送消息：" + fmt.Sprint(err))
+	}
+	if err := verifyCodexProfile(params, result.ActivePermissionProfile); err != nil {
+		return nil, 409, err
 	}
 	s := result.Thread
 	// Publish a complete record before other controls can target this new ID.
@@ -233,12 +246,13 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 		s.CreatedAt = time.Now().Unix()
 	}
 	s.UpdatedAt = s.CreatedAt
-	a.Execution.Mu.Lock()
-	err = a.SaveSession("", s, "workbench")
-	if err == nil && input.WorkspaceID != "" {
-		_, err = a.Execution.Store.DB.Exec(`INSERT OR IGNORE INTO workspace_session_pins(workspace_id,session_id) VALUES(?,?)`, input.WorkspaceID, s.ID)
+	err = a.Execution.Store.SaveSessionWithBindings(model.Session{
+		ID: s.ID, Name: s.Name, Cwd: s.Cwd, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Source: "workbench",
+	}, execution.bindings)
+	if err != nil {
+		return nil, 500, err
 	}
-	a.Execution.Mu.Unlock()
+	plan.Bindings, err = a.Execution.Store.SessionBindings(s.ID)
 	if err != nil {
 		return nil, 500, err
 	}
@@ -247,24 +261,15 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 			return nil, 500, err
 		}
 	}
-	if err := a.Execution.Store.SaveSessionDirectories(s.ID, plan.AdditionalDirectories); err != nil {
-		return nil, 500, err
-	}
 	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, s.ID, key); err != nil {
 		return nil, 500, err
 	}
 	run := &ChatRun{session: s.ID, cwd: s.Cwd, created: &s, client: c, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}, Notice: titleNotice}}
 	run.settings = input.Settings
 	run.createdContext = &result.ChatContext
-	if recordFirstTurn {
-		run.started = make(chan struct{})
-		run.recordFirstTurn = func() {
-			if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_input_requests(session_id,request_id,fingerprint,status) VALUES(?,?,?,'accepted')`, s.ID, input.RequestID, fingerprint); err != nil {
-				log.Printf("Codex first turn receipt: %v", err)
-			}
-			close(run.started)
-		}
-	}
+	run.writeRoots = writableRoots(plan)
+	run.directoryRoots = uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
+	run.managedBindings = plan.ManagedBindings
 	a.chatMu.Lock()
 	a.chats[s.ID] = run
 	a.chatMu.Unlock()

@@ -21,22 +21,26 @@ func SupportedProvider(provider string) bool {
 }
 
 type ProviderCapabilities struct {
-	Steer      bool `json:"steer"`
-	Fork       bool `json:"fork"`
-	Handoff    bool `json:"handoff"`
-	RateLimits bool `json:"rate_limits"`
-	Voice      bool `json:"voice"`
+	Steer                      bool `json:"steer"`
+	Fork                       bool `json:"fork"`
+	Handoff                    bool `json:"handoff"`
+	RateLimits                 bool `json:"rate_limits"`
+	Voice                      bool `json:"voice"`
+	MultipleDirectories        bool `json:"multiple_directories"`
+	DynamicDirectoryAccess     bool `json:"dynamic_directory_access"`
+	NativePermissionRequests   bool `json:"native_permission_requests"`
+	ActivityEvents             bool `json:"activity_events"`
+	EnforceReadOnlyDirectories bool `json:"enforce_read_only_directories"`
 }
 
 func CapabilitiesForProvider(provider string) ProviderCapabilities {
 	if NormalizeProvider(provider) == ProviderAgy {
-		return ProviderCapabilities{}
+		return ProviderCapabilities{ActivityEvents: true}
 	}
-	return ProviderCapabilities{Steer: true, Fork: true, Handoff: true, RateLimits: true, Voice: true}
+	return ProviderCapabilities{Steer: true, Fork: true, Handoff: true, RateLimits: true, Voice: true, MultipleDirectories: true, DynamicDirectoryAccess: true, NativePermissionRequests: true, ActivityEvents: true, EnforceReadOnlyDirectories: true}
 }
 
-// Session is an environment-local index of a coding agent thread/session. It has
-// no workspace or project owner; directory scopes determine where it is displayed.
+// Session is an environment-local index of a coding agent conversation.
 // Each runtime environment already has its own Store, so IDs and paths never
 // cross environments.
 type Session struct {

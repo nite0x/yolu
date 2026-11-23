@@ -142,7 +142,7 @@ func (a *Service) scanSessionCatalog(ctx context.Context, scope sessionScope, ar
 				continue
 			}
 			found[s.ID] = s
-			if err := a.SaveSession("", s, "workspace", observed); err != nil {
+			if err := a.SaveSession(s, "codex", observed); err != nil {
 				return nil, err
 			}
 			if err := a.Execution.Store.ObserveSessionArchive(s.ID, archived, started); err != nil {

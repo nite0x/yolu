@@ -22,7 +22,7 @@ func managedFixture(t *testing.T) (*App, *fakeLiveClient, *terminalBridge, strin
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = child.Process.Kill(); _ = child.Wait() })
-	b := &terminalBridge{app: a.Service, workspace: q.ID, session: "session", cwd: q.Members[0].Path, connected: true, bound: true, active: true, peer: child.Process, pending: map[string]bridgeCall{}}
+	b := &terminalBridge{app: a.Service, session: "session", cwd: q.Path, connected: true, bound: true, active: true, peer: child.Process, pending: map[string]bridgeCall{}}
 	a.bridges["fixture"] = b
 	return a, c, b, endpoint
 }

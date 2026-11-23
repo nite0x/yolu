@@ -34,7 +34,7 @@ try {
   assert.equal((await fetch(info.url + '/')).status, 200);
   const reused = await Promise.all(Array.from({ length: 4 }, () => start()));
   assert(reused.every(candidate => candidate.pid === info.pid && candidate.url === info.url));
-  await assert.rejects(start(['--root', path.join(temporary, 'different-root')]), /工作区/);
+  await assert.rejects(start(['--root', path.join(temporary, 'different-root')]), /Worktree/);
   assert.equal((await health()).pid, info.pid);
 
   await run(host || binary, ['--stop', '--data', data]);

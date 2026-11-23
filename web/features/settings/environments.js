@@ -3,11 +3,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 
 let environmentInventory = [];
 function environmentOptions() {
-  const entries = environmentInventory.length ? environmentInventory : workspaceInventory.environments.length ? workspaceInventory.environments : [{ id: 'local', name: uiText("本机") }];
+  const entries = environmentInventory.length ? environmentInventory : [{ id: 'local', name: uiText("本机") }];
   return entries.map(e => `<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('');
 }
 async function loadEnvironments() {
   const data = await api('/api/environments', { environment: 'local' });
+  const previous = environmentInventory.map(environment => environment.id).join(",");
   environmentInventory = data.environments.map(environment => environment.id === 'local' ? {...environment, name:uiText('本机')} : environment);
   codexUnregisteredDistros = data.distributions.filter(name => !data.environments.some(environment => environment.distro === name));
   for (const id of ['environmentSelect', 'projectEnvironment']) {
@@ -27,25 +28,29 @@ async function loadEnvironments() {
   $('#connectEnvironment').disabled = !data.distributions.length;
   $('#environmentStatus').textContent = environmentInventory.find(e => e.id === activeEnvironment)?.name || uiText("执行环境未登记");
   renderSettings();
+  if (previous !== environmentInventory.map(environment => environment.id).join(",")) {
+    const view = window.WorkHubConversations?.current;
+    if (view && !window.WorkHubPage?.restoring) {
+      window.WorkHubConversations.invalidate(view);
+      void refreshConversations(true);
+    }
+  }
 }
-async function selectEnvironment(id, route = '/workspaces', updateHistory = true, { refreshState = true } = {}) {
+async function selectEnvironment(id, route = '/sessions', updateHistory = true, { refreshState = true } = {}) {
   if (state.busy || blockingMutationDialog()) { $('#environmentSelect').value = activeEnvironment; $('#projectEnvironment').value = activeEnvironment; toast(uiText("请等待当前操作完成后切换环境")); return; }
   route = route.replace(/^#/, '');
   const changed = activeEnvironment !== id;
-  if (changed && typeof suspendSessionWorkspace === 'function') suspendSessionWorkspace();
-  if (typeof suspendWorkspaceDetail === 'function') suspendWorkspaceDetail();
+  if (changed && typeof suspendConversations === 'function') suspendConversations();
   if (changed) closeSessionHistory(false);
   document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-  if (changed) workspaceSessions.clear();
   if (changed) environmentRevision++;
   activeEnvironment = id;
   const url = new URL(location.href);
   if (id === 'local') url.searchParams.delete('environment'); else url.searchParams.set('environment', id);
   url.hash = route;
   if (updateHistory && url.href !== location.href) history[updateHistory === 'replace' ? 'replaceState' : 'pushState'](null, '', url);
-  if (changed) Object.assign(state, { projects: [], workspaces: [], selectedProject: null, selectedWorkspace: null, view: 'workspaces', root: '', terminal: {}, loaded: false, refreshing: false });
+  if (changed) Object.assign(state, { projects: [], selectedProject: null, view: 'sessions', root: '', terminal: {}, loaded: false, refreshing: false });
   readRoute();
-  if (changed && !$('#content').contains($('#panelToolbar'))) $('#content').textContent = uiText("正在连接工作区所属环境…");
   $('#reconnectEnvironment').hidden = id === 'local';
   $('#environmentSelect').value = id;
   $('#projectEnvironment').value = id;
@@ -65,7 +70,7 @@ window.addEventListener('popstate', () => {
     toast(uiText("请等待当前操作完成后切换环境"));
     return;
   }
-  selectEnvironment(id, location.hash || '#/workspaces', false);
+  selectEnvironment(id, location.hash || '#/sessions', false);
 });
 $('#addEnvironment').addEventListener('click', async () => {
   if (state.busy) return;

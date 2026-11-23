@@ -46,7 +46,6 @@ type GitAction struct {
 	Source         string `json:"source"`
 	Path           string `json:"path"`
 	Track          bool   `json:"track"`
-	WorkspaceID    string `json:"workspace_id"`
 	ExpectedBranch string `json:"expected_branch"`
 	ExpectedHead   string `json:"expected_head"`
 	SourceCommit   string `json:"source_commit"`
@@ -132,7 +131,7 @@ func InspectGit(ctx context.Context, p model.Project) (GitOverview, error) {
 		u, _ := execution.Git(ctx, p.Path, "remote", "get-url", name)
 		v.Remotes = append(v.Remotes, GitRemote{Name: name, URL: RedactRemote(strings.TrimSpace(u))})
 	}
-	v.MasterHint = "创建新分支时可选择任意本地或远端来源；工作区也可以直接使用已有工作目录。"
+	v.MasterHint = "创建新分支时可选择任意本地或远端来源。"
 	return v, nil
 }
 
@@ -163,20 +162,6 @@ func (a *Service) GitOverviewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Credentials = a.CredentialSupport()
-	qs, err := a.Execution.Store.Workspaces()
-	if err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	for i := range v.Project.Worktrees {
-		for _, q := range qs {
-			for _, m := range q.Members {
-				if m.ProjectID == p.ID && m.Path == v.Project.Worktrees[i].Path {
-					v.Project.Worktrees[i].Workspaces = append(v.Project.Worktrees[i].Workspaces, model.WorkspaceLink{ID: q.ID, Name: q.Name})
-				}
-			}
-		}
-	}
 	httpx.WriteJSON(w, 200, v)
 }
 func findBranch(v GitOverview, ref string, kind string) (GitBranch, error) {
@@ -187,6 +172,12 @@ func findBranch(v GitOverview, ref string, kind string) (GitBranch, error) {
 	}
 	return GitBranch{}, fmt.Errorf("分支已不存在，请刷新后重新选择")
 }
+
+// SelectWorktree validates a directory selected by another application service.
+func SelectWorktree(ctx context.Context, p model.Project, path string) (model.Worktree, error) {
+	return selectedWorktree(ctx, p, path)
+}
+
 func selectedWorktree(ctx context.Context, p model.Project, path string) (model.Worktree, error) {
 	if path == "" {
 		path = p.Path

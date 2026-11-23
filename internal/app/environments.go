@@ -110,7 +110,7 @@ func (h *environmentHub) connectLocked(e Environment) (*App, error) {
 		e.Root = platform.JoinWorkspacePath(c.Identity.Home, "workspaces")
 	}
 	// Metadata is partitioned by environment, but all databases live on the
-	// Windows host. The helper never stores project/workspace records.
+	// Windows host. The helper never stores project and conversation records.
 	a, err := openAppForExecution(filepath.Join(h.local.Execution.DataDir, "environments", e.ID), e.Root, c)
 	if err != nil {
 		c.Close()

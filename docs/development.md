@@ -23,7 +23,7 @@ npm run desktop:dev
 Use isolated paths for development against unfamiliar changes:
 
 ```bash
-npm run desktop:dev -- --data /path/to/test-data --root /path/to/test-workspaces
+npm run desktop:dev -- --data /path/to/test-data --root /path/to/test-worktrees
 ```
 
 The desktop command prepares the frontend and Go sidecar, then launches Tauri. It does not use a separate Vite development server for the application UI: Go serves embedded assets. After changing Go or embedded web files, quit and stop the backend, rebuild and reopen. A content-derived backend identity prevents silently reusing a mismatched desktop backend.
@@ -34,7 +34,7 @@ On Linux or macOS:
 
 ```bash
 bash scripts/run.sh --headless --listen 127.0.0.1:4317 \
-  --data /path/to/test-data --root /path/to/test-workspaces
+  --data /path/to/test-data --root /path/to/test-worktrees
 ```
 
 Open `http://127.0.0.1:4317`. The script builds both frontend bundles before building and running `bin/yolu`. An installed or separately built Go binary can use the same flags. The primary `--listen` address accepts loopback addresses. Enable the separate LAN listener through **Settings → Browser access**. It defaults to port `4318` and serves the same embedded UI, API and terminal streams after pairing.
@@ -47,7 +47,7 @@ HTTP LAN pages load `core/browser-compat.js` before their application bundles. I
 
 Browser and desktop entry points enable the same application layout in the HTML before styles and controllers load. The retained `data-workhub-desktop` attribute selects the shared navigation and pane layout. Native integration is initialized separately by Tauri through `data-workhub-platform` and its bridge. Browser pages reserve no native title-bar space.
 
-Shared UI changes apply to both entry points by default, including workspace, project, conversation and settings pages. Reuse the same components, styles, design tokens and interaction logic. Scope host-specific rendering to native integrations such as title bars, window controls, application menus and operating-system dialogs, using the corresponding host capability. Apply responsive behavior consistently across both entry points and verify affected pages and navigation at comparable viewport sizes. See [the repository instructions](../AGENTS.md#shared-desktop-and-browser-ui).
+Shared UI changes apply to both entry points by default, including project, conversation and settings pages. Reuse the same components, styles, design tokens and interaction logic. Scope host-specific rendering to native integrations such as title bars, window controls, application menus and operating-system dialogs, using the corresponding host capability. Apply responsive behavior consistently across both entry points and verify affected pages and navigation at comparable viewport sizes. See [the repository instructions](../AGENTS.md#shared-desktop-and-browser-ui).
 
 Interactive Codex conversations are enabled by default. `--read-only-sessions` selects history-only mode for the Go entry point; `--interactive-sessions` is a retained compatibility flag. These Go flags are not desktop-host flags: the Tauri host accepts `--data`, `--root`, `--stop` and `--backend-info`.
 
@@ -59,34 +59,33 @@ The browser-mode process runs in the foreground. Stop the test process and use i
 | Location | Responsibility |
 | --- | --- |
 | `main.go`, `internal/app/` | Entry point, service composition, routing, environments and process lifecycle |
-| `internal/workspace/` | Workspace preparation, members, context, archive and recovery |
 | `internal/project/` | Repository registration, Git operations, worktree status and cleanup |
 | `internal/session/` | Codex sessions, history, chat, approvals, questions, drafts and titles |
 | `internal/terminal/` | Managed embedded terminal processes |
 | `internal/execution/` | Environment execution, files, Git transport, locks and WSL helper |
 | `internal/store/`, `internal/model/` | SQLite migrations, metadata import/export and shared models |
 | `internal/codex/` | Codex protocol clients, event dispatch and relay |
-| `internal/overview/` | Read-only composition of workspace state |
+| `internal/overview/` | Read-only composition of project and terminal status |
 | `internal/platform/`, `internal/httpx/` | Platform integration and shared HTTP/security helpers |
-| `frontend/workspace/` | React-rendered workspace markup, forms, lists and conversation pane layout |
+| `frontend/app/` | React-rendered application markup, forms, lists and conversation pane layout |
 | `frontend/chat/`, `frontend/components/assistant-ui/` | Interactive chat adapter and registry-derived message/composer components |
 | `web/` | Embedded HTML, controllers, styles and generated UI/chat bundles |
 | `desktop/`, `src-tauri/` | Startup page, Rust host and native bundle configuration |
 | `scripts/`, `.github/workflows/` | Build, packaging, verification and CI entry points |
 
-The application composes workspace, project, session and execution services. Lower-level packages do not depend on `app`. Each execution environment owns its workspace storage, root and write locks. The workspace domain uses the `Workspace` model, the `workspaces` table and the `/api/workspaces` route family. Sessions have an independent index and use explicit workspace associations.
+The application composes project, session, terminal and execution services. Each execution environment has its own SQLite store, path resolution and lock coordination. Sessions bind to actual directories through `session_project_bindings`. Git remains the worktree inventory.
 
-Most workspace components render static HTML through `renderToStaticMarkup` and `window.WorkHubUI`; existing controllers retain event handling, polling, forms and dialog lifecycles. The interactive chat UI mounts through its own React bridge. Avoid a global CSS reset that changes legacy pages. The page host keeps one workspace document for route-based navigation and independent same-origin conversation readers for up to three parallel Agents. Project details, Worktree creation and Git operations have addressable routes. Conversation pane groups live for the current window session. Conversation history and drafts use their own storage.
+Most product components render through `renderToStaticMarkup` and `window.WorkHubUI`. Page controllers manage navigation, data, polling and dialogs. The interactive chat UI mounts through its React bridge. The page host retains one shared application document and up to three independent same-origin conversation panes. Conversation history and drafts retain their own identities across view changes.
 
-The conversation page controller delegates resource appearance to `frontend/workspace/resource-icons.ts` and list mechanics to `conversation-list.ts`. The icon store owns environment-specific reads, serialized resource edits and cross-window reloads. The backend merges each resource edit and retains legacy icon preferences. The list module owns the bounded scroll window, keyboard positioning and DOM row reuse. `conversation-state.ts` owns scope preferences, environment caches, request generations and partial-result publication. The page controller connects these modules to navigation, filters and DOM events.
+The conversation page controller delegates resource appearance to `frontend/app/resource-icons.ts` and list mechanics to `conversation-list.ts`. Appearance is environment-specific. The list module owns the bounded scroll window, keyboard positioning and DOM row reuse. `conversation-state.ts` owns scope preferences, environment caches, request generations and partial-result publication.
 
 The chat controller delegates debounced, ordered draft persistence to `frontend/chat/draft-persistence.ts` and saved-history pagination to `history-loader.ts`. The history loader receives connection and live-output revisions so delayed pages cannot replace a newer turn or title. Shared controller contracts live in `controller-types.ts`; type-only dependencies do not load the controller runtime.
 
 The page bridge, environment controls and legacy history controls access shared conversation state through `window.WorkHubConversations`. They must not depend on page-local variables for the selected view or page mode.
 
-Git HTTP handlers decode requests and translate errors. `internal/project/git_actions.go` coordinates repository serialization, workspace metadata changes and cache invalidation, with network, branch and merge operations in the corresponding `git_actions_*.go` files. Branch switching keeps its metadata lock through workspace-context publication.
+Git HTTP handlers decode requests and translate errors. `internal/project/git_actions.go` coordinates repository serialization and cache invalidation. Branch switching and worktree removal reserve the directory against new agent or terminal starts. Removal revalidates the worktree and its saved bindings before asking Git to remove it.
 
-New-conversation defaults are runtime preferences stored under `conversation_defaults:v1` in each execution environment’s settings table, exposed through `GET`/`PUT /api/settings/conversation-defaults`. Empty model and permission fields inherit the native Codex configuration. `chat-options` includes these preferences for the composer, while explicit draft settings remain separate. Creation merges explicit choices over saved preferences and leaves unspecified native fields out of the protocol request; existing sessions do not receive the creation defaults. The first turn uses the actual context returned by `thread/start`, including its sandbox and approval policy. See [session architecture](session-architecture.md) for runtime, storage and routing details.
+Agent defaults live under `conversation_defaults:v1` in the selected environment and are exposed through `GET` and `PUT /api/settings/conversation-defaults`. The composer keeps explicit draft settings separately. Managed Codex calls require an acknowledged directory profile before the first turn or a resumed turn. See [session architecture](session-architecture.md).
 
 ## Build and check
 
@@ -98,7 +97,7 @@ npm run chat:check
 npm run web:build
 npm run chat:build
 node --test scripts/*.test.cjs
-npm run workspace:test
+npm run app:test
 npm run chat:test
 go test ./...
 go vet ./...
@@ -106,16 +105,16 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 npm run desktop:check
 ```
 
-`npm run web:test` combines workspace type checking, the web build, workspace tests and the `.test.cjs` suite; it does not replace the separate chat build/check/test commands. `npm run web:watch` rebuilds workspace assets while editing; restart the Go process to update embedded resources.
+`npm run web:test` combines application type checking, the web build, application tests and the `.test.cjs` suite; it does not replace the separate chat build/check/test commands. `npm run web:watch` rebuilds application assets while editing; restart the Go process to update embedded resources.
 
 Core CI and each native desktop packaging job run the pinned `govulncheck` command against the selected Go toolchain and the current vulnerability database. Reachable findings fail the job; module/package findings without a reachable call are still reported for review. Run the scan after building the embedded frontend assets.
 
-Core CI also runs the isolated workspace workflow and race checks:
+Core CI also runs the isolated conversation workflow and race checks:
 
 ```bash
 go build -o bin/yolu-backend .
 node scripts/desktop-workflow-smoke.mjs bin/yolu-backend
-go test -race ./internal/store ./internal/workspace ./internal/project \
+go test -race ./internal/store ./internal/project \
   ./internal/session ./internal/terminal ./internal/execution ./internal/app
 ```
 
@@ -226,14 +225,14 @@ Follow the [brand reference](brand/yolu/README.md) and regenerate platform asset
 
 ## Shared UI implementation
 
-Follow [the shared UI guidelines](ui-guidelines.md) for the component inventory, token ownership, pane layout, conversation contract and verification workflow. `WorkspaceSplitLayout` and `WorkspacePane` provide reusable page surfaces, and static workspace/project markup uses the same `workspace-pane` class. Native coding conversations render the shared `ConversationPanel`, with `useConversationRuntime` for lifecycle/draft synchronization and `useChatReading` for history/reading behavior. `ConversationList`, `ConversationHeader`, `Thread`, `Composer`, run indicators and feedback are shared within that contract. Domain-specific state and capabilities are supplied through props and controllers.
+Follow [the shared UI guidelines](ui-guidelines.md) for the component inventory, token ownership, pane layout, conversation contract and verification workflow. `SplitLayout` and `ApplicationPane` provide reusable page surfaces, and static project markup uses the same `workspace-pane` class. Native coding conversations render the shared `ConversationPanel`, with `useConversationRuntime` for lifecycle/draft synchronization and `useChatReading` for history/reading behavior. `ConversationList`, `ConversationHeader`, `Thread`, `Composer`, run indicators and feedback are shared within that contract. Domain-specific state and capabilities are supplied through props and controllers.
 
 
 ## Localization
 
 Application text uses `uiText` from `frontend/i18n.ts`. The source message is the Simplified Chinese fallback; English translations live in `frontend/locales/en.json`. Interpolation uses numbered placeholders with values supplied separately, so user content is not translated or reordered accidentally.
 
-The shared bootstrap is built from `frontend/i18n-runtime.ts` to `web/ui/i18n.js` and copied to the bundled desktop startup page. It runs before workspace, chat and terminal controllers. Static HTML labels must be explicitly marked with `data-i18n`; the runtime never walks or rewrites arbitrary conversation, file or terminal contents. Use `uiLocale()` for locale-dependent formatting in components that can also render without a browser.
+The shared bootstrap is built from `frontend/i18n-runtime.ts` to `web/ui/i18n.js` and copied to the bundled desktop startup page. It runs before application, chat and terminal controllers. Static HTML labels must be explicitly marked with `data-i18n`; the runtime never walks or rewrites arbitrary conversation, file or terminal contents. Use `uiLocale()` for locale-dependent formatting in components that can also render without a browser.
 
 The application-local `GET`/`PUT /api/settings/language` endpoint stores `system`, `en` or `zh-CN` under `ui_language:v1` in the settings table. It uses the existing authentication/CSRF checks and bypasses WSL environment routing. Page responses embed the saved preference, allowing restoration across random desktop ports without depending on browser storage.
 

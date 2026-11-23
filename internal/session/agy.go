@@ -137,13 +137,16 @@ func (a *Service) scanAgyCatalog(ctx context.Context, scope sessionScope, archiv
 	return found, nil
 }
 
-func (a *Service) createAgySession(w http.ResponseWriter, r *http.Request, key, fingerprint, workspaceID string, input newSessionInput, execution executionContext) {
+func (a *Service) createAgySession(w http.ResponseWriter, r *http.Request, key, fingerprint string, input newSessionInput, execution executionContext) {
 	if a.Execution.Remote != nil {
 		httpx.WriteError(w, 501, "暂不支持在远端 WSL 环境启动 Antigravity 对话")
 		return
 	}
 	plan := execution.plan
 	ctx, cancel := context.WithCancel(context.Background())
+	// ACP has no isolated directory grant. Preserve approved associations as
+	// reference metadata and start only in the selected execution directory.
+	plan.AdditionalDirectories = nil
 	flags := agy.ACPFlagsForPermission(input.Settings.Permission, plan.AdditionalDirectories)
 	c, _, err := a.openAgy(ctx, flags...)
 	if err != nil {
@@ -207,12 +210,7 @@ func (a *Service) createAgySession(w http.ResponseWriter, r *http.Request, key, 
 		UpdatedAt:   now,
 		Source:      "workbench",
 	}
-	a.Execution.Mu.Lock()
-	err = a.Execution.Store.SaveSession(rec)
-	if err == nil && workspaceID != "" {
-		_, err = a.Execution.Store.DB.Exec(`INSERT OR IGNORE INTO workspace_session_pins(workspace_id,session_id) VALUES(?,?)`, workspaceID, rec.ID)
-	}
-	a.Execution.Mu.Unlock()
+	err = a.Execution.Store.SaveSessionWithBindings(rec, execution.bindings)
 	if err != nil {
 		httpx.DbError(w, err)
 		return
@@ -224,10 +222,6 @@ func (a *Service) createAgySession(w http.ResponseWriter, r *http.Request, key, 
 		}
 	}
 	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, rec.ID, key); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	if err := a.Execution.Store.SaveSessionDirectories(rec.ID, plan.AdditionalDirectories); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
@@ -243,6 +237,7 @@ func (a *Service) createAgySession(w http.ResponseWriter, r *http.Request, key, 
 		settings:  input.Settings,
 		state:     ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}},
 	}
+	run.writeRoots = writableRoots(plan)
 	a.chatMu.Lock()
 	a.chats[rec.ID] = run
 	a.chatMu.Unlock()
@@ -342,6 +337,9 @@ finished:
 }
 
 func (a *Service) DriveAgyChat(ctx context.Context, run *ChatRun, plan model.LaunchPlan, text string, images ...string) {
+	if plan.ManagedBindings {
+		plan.AdditionalDirectories = nil
+	}
 	defer close(run.finished)
 	defer run.cancel()
 	defer func() { run.mu.Lock(); run.ended = time.Now(); run.mu.Unlock() }()

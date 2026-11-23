@@ -2,9 +2,9 @@
 
 ## Scope and ownership
 
-Yolu uses one product UI across its browser and desktop entry points. These guidelines cover workspace, project, conversation and settings pages. They support the core workflow of finding a workspace, inspecting its participating projects and continuing development with consistent navigation and controls.
+Yolu uses one product UI across its browser and desktop entry points. These guidelines cover project, conversation and settings pages. They support starting and resuming conversations, inspecting attached directories and managing Git worktrees.
 
-The existing workspace and conversation pages are the visual reference. Before implementing a page, identify the corresponding shared layout, list, form or conversation component below. Extend that component when the same behavior is needed by several callers. Feature controllers own domain data and operations. Shared components own presentation and common interaction contracts.
+The existing project and conversation pages are the visual reference. Before implementing a page, identify the corresponding shared layout, list, form or conversation component below. Extend that component when the same behavior is needed by several callers. Feature controllers own domain data and operations. Shared components own presentation and common interaction contracts.
 
 Native title bars, window controls, application menus and operating-system dialogs use host capabilities. The retained `data-workhub-desktop` attribute selects the shared application layout in both entry points. Native integration also supplies `data-workhub-platform` and the host bridge.
 
@@ -16,14 +16,14 @@ Native title bars, window controls, application menus and operating-system dialo
 | Typography | `web/core/typography.css` | Font families, text sizes and weights |
 | Component tokens | `frontend/styles.css` | Scoped shadcn aliases, utility layers and shared imports |
 | Application frame | `web/core/chrome.css`, `desktop-frame.css`, `page-host.css` | Shared navigation, pane surfaces, elevation, gutters and host geometry |
-| Pane layout | `frontend/workspace/page-surface.tsx`, `page-surface.css` | Shared split layout and pane markup |
-| Lists | `frontend/workspace/list-controls.tsx`, `session-browser.tsx` | List headings, creation actions, search, rows, selection and date groups |
-| Working directories | `frontend/workspace/working-directories.tsx`, `working-directories.css` | Project and workspace directory tables, Git summaries and row actions |
-| Conversation surface | `frontend/workspace/conversation-surface.tsx`, `conversation-surface.css` | Header, status, context and pane actions |
+| Pane layout | `frontend/app/page-surface.tsx`, `page-surface.css` | Shared split layout and pane markup |
+| Lists | `frontend/app/list-controls.tsx`, `session-browser.tsx` | List headings, creation actions, search, rows, selection and date groups |
+| Working directories | `frontend/app/working-directories.tsx`, `working-directories.css` | Project directory tables, Git summaries and row actions |
+| Conversation surface | `frontend/app/conversation-surface.tsx`, `conversation-surface.css` | Header, status, context and pane actions |
 | Conversation panel | `frontend/chat/conversation-panel.tsx`, `use-chat-reading.ts` | Shared panel, runtime lifecycle, draft synchronization, history anchors, run state and feedback |
 | Conversation content | `frontend/components/assistant-ui/elements/thread.aui.tsx` | Messages, Markdown, shared composer, send/stop and keyboard behavior |
 | Basic controls | `frontend/components/ui/` | Buttons, inputs, selects, dialogs, alerts, badges and tables |
-| State and persistence | `frontend/chat/`, `frontend/workspace/` controllers | Requests, drafts, history, environment identity and lifecycle |
+| State and persistence | `frontend/chat/`, `frontend/app/` controllers | Requests, drafts, history, environment identity and lifecycle |
 
 Use component-level APIs for caller-specific labels and actions. For example, `ConversationList.onSelect` lets a caller use shared rows with its own selection callback. Legacy native-session callers retain their controller attributes. The shared `Composer` accepts input labels, placeholders and limits while retaining its editor, send/stop controls and shortcut behavior.
 
@@ -31,27 +31,29 @@ Use component-level APIs for caller-specific labels and actions. For example, `C
 
 The [navigation design](navigation-design.md) defines the shared navigator, resource collections and main-pane transitions.
 
-Workspace and project routes show a single list or detail surface at every viewport size. Their lists share `resource-list-page` and the existing creation, search and filter controls. Details use the full surface and pair a list breadcrumb with `ResourceSwitcherTrigger`. The switcher orders recently opened items by environment and identity, then offers the remaining items through search. Returning to a list restores its search, filters, scroll position and focused row.
+Project routes show a single list or detail surface at every viewport size. Their lists share `resource-list-page` and the existing creation, search and filter controls. Details use the full surface and pair a list breadcrumb with `ResourceSwitcherTrigger`. The switcher orders recently opened items by environment and identity, then offers the remaining items through search. Returning to a list restores its search, filters, scroll position and focused row.
 
-The shared page host provides Back and Forward controls beside the brand in both entry points. History restores the destination environment, resource route (including directory parameters) and specific conversation. Returning to a retained reader preserves its draft, reading position and split panes. Alt+Left/Right and macOS Cmd+[/] invoke the same history; unavailable directions are disabled. Title and run-state updates replace the current history snapshot without adding visits.
+The shared page host groups the product destination icons at the start of the header, with a separator before the Back and Forward controls. Use a 16px glyph in a 32px desktop target for each destination. Give the current page a tinted background, maintain a separate keyboard focus ring, and show each label on hover and keyboard focus. The destination icons remain available when the conversation sidebar is closed. History restores the destination environment, resource route (including directory parameters) and specific conversation. Returning to a retained reader preserves its draft, reading position and split panes. Alt+Left/Right and macOS Cmd+[/] invoke the same history; unavailable directions are disabled. Title and run-state updates replace the current history snapshot without adding visits.
 
-The shared page host opens global search from the topmost application header in both browser and desktop entry points, or **Cmd/Ctrl+K**. It shows recent resources when the query is empty and groups matching names or titles by workspace, project and conversation. Results retain their execution environment and use the same navigation paths as the sidebar. Keep the modal in the host so keyboard focus and navigation work across panes. Escape returns focus to the invoking control.
+The shared page host opens global search from the centered application-header trigger or **Cmd/Ctrl+K**. On narrow viewports, shorten the search trigger and hide auxiliary labels before reducing navigation targets. Global search shows recent resources when the query is empty and groups matching names or titles by project and conversation. Results retain their execution environment and use the same navigation paths as the sidebar. Keep the modal in the host so keyboard focus and navigation work across panes. Escape returns focus to the invoking control.
+
+The right side of the header shows the Git refresh action and the Codex quota trigger. Announce Git refresh progress and its outcome without moving focus. On hosts with an in-window native application menu, place its icon on the right with the window utilities. The quota trigger shows a percentage when available and a short label otherwise. Show quota errors and retry in its popover.
 
 Global search keeps results in memory across dialog opens and reads saved conversation titles and archive state first. Entering a search term starts background conversation discovery. Available results stay usable while discovery runs.
 
-Use `WorkspaceSplitLayout` when a workflow requires two simultaneously visible panes, such as browsing conversations. Use `WorkspacePane` for the list and detail surfaces. Static HTML and legacy controllers apply the same `workspace-pane` class.
+Use `SplitLayout` when a workflow requires two simultaneously visible panes, such as browsing conversations. Use `ApplicationPane` for the list and detail surfaces. Static HTML and legacy controllers apply the same `workspace-pane` class.
 
 ```tsx
-import {WorkspacePane, WorkspaceSplitLayout} from "@/workspace/page-surface";
+import {ApplicationPane, SplitLayout} from "@/app/page-surface";
 
-<WorkspaceSplitLayout>
-  <WorkspacePane as="aside" aria-label={listLabel}>
+<SplitLayout>
+  <ApplicationPane as="aside" aria-label={listLabel}>
     {list}
-  </WorkspacePane>
-  <WorkspacePane aria-labelledby="conversationTitle">
+  </ApplicationPane>
+  <ApplicationPane aria-labelledby="conversationTitle">
     {conversation}
-  </WorkspacePane>
-</WorkspaceSplitLayout>
+  </ApplicationPane>
+</SplitLayout>
 ```
 
 | Purpose | Existing token or contract |
@@ -66,7 +68,7 @@ import {WorkspacePane, WorkspaceSplitLayout} from "@/workspace/page-surface";
 | Floating controls and composer | `--yolu-elevation-float` |
 | Narrow layout | Existing 760px product-page breakpoint |
 
-Keep the canvas and pane gap at the application-frame layer. The global header and shared navigator use the same neutral frame canvas (`--yolu-rail-canvas`, light mode `#f3f5f4`). Main product panes use `--yolu-surface` (white in light mode) and meet the navigator edge without outer rounding, borders, shadows or insets. Apply these two surface levels to both browser and desktop entry points, including resource pages, settings and conversation readers. Dark mode keeps the corresponding dark frame and content surfaces. Reserve elevation for overlays and the composer. Parallel conversations have a persistent 1px vertical divider centered in the existing 8px resize gutter. Hover and keyboard focus reveal the resize grip. The current pane has a tinted header, a 2px primary-color top accent and a localized Current indicator. These follow the host's existing focus state, independently of conversation run status. Reserve the indicator's space in all split headers so focus changes do not shift actions; hide it in a single-pane layout. Pane contents use the available width with `min-width: 0` and a bounded scroll region. Give list and detail areas independent scrolling when the workflow requires both. Reuse `setupSplitResize` and the corresponding saved preference when a divider is adjustable.
+Keep the canvas and pane gap at the application-frame layer. The shared navigator uses the neutral frame canvas (`--yolu-rail-canvas`, light mode `#f3f5f4`). The global header tints that canvas slightly toward the theme foreground and has a 1px bottom divider to mark the transition to the sidebar and content. Main product panes use `--yolu-surface` (white in light mode) and meet the navigator edge without outer rounding, borders, shadows or insets. Apply these two surface levels to both browser and desktop entry points, including resource pages, settings and conversation readers. Dark mode keeps the corresponding dark frame and content surfaces. Reserve elevation for overlays and the composer. Parallel conversations have a persistent 1px vertical divider centered in the existing 8px resize gutter. Hover and keyboard focus reveal the resize grip. The current pane has a tinted header, a 2px primary-color top accent and a localized Current indicator. These follow the host's existing focus state, independently of conversation run status. Reserve the indicator's space in all split headers so focus changes do not shift actions; hide it in a single-pane layout. Pane contents use the available width with `min-width: 0` and a bounded scroll region. Give list and detail areas independent scrolling when the workflow requires both. Reuse `setupSplitResize` and the corresponding saved preference when a divider is adjustable.
 
 At narrow widths, keep the return control and switcher visible as the resource header wraps. For split conversation views, show the active pane and provide a keyboard-accessible return control. Preserve selection, unsent text and reading position while switching panes. Compare browser and desktop at the same viewport sizes.
 
@@ -89,20 +91,15 @@ Use `--font-sans` for application text and `--font-mono` for code and paths. Exi
 
 ## Lists, headers and forms
 
-Use `ListCreateButton` for a list's primary creation action and `ListSearch`/`ListFilter` when the workflow needs search or filtering. The shared conversation sidebar uses `ListSearch` with `variant="plain"` and inline split/compose actions; keep its search row borderless and leave directory creation out of it. In the default navigator, file each conversation once under its workspace before considering project directories. Explicit workspace and project scopes retain their complete membership. Show active scope and filters in a visible, removable chip below search. Keep workspace, project and settings entry points in the shared navigation footer. Other lists retain the default search field. Conversation lists use `ConversationList`, including its selected state, date groups, timestamps, truncation and focus styling. Put resource identity and essential state in the row. Detail views carry longer explanations and secondary actions.
+Use `ListCreateButton` for a list's primary creation action and `ListSearch`/`ListFilter` when the workflow needs search or filtering. The shared conversation sidebar uses `ListSearch` with `variant="plain"` and inline split/compose actions. Keep its search row borderless. Place the Recent and Grouped controls below search and retain active scope and filters in a visible, removable chip. Grouped uses section headings and dividers above resource rows. Recent uses a second line for the project or directory. Keep sidebar names on one line and expose truncated values. Show non-local environment labels where needed. Other lists retain the default search field. Conversation lists use `ConversationList` for selection, timestamps, truncation and focus styling. Put resource identity and essential state in the row. Detail views carry longer explanations and secondary actions.
 
-Use `WorkingDirectoryTable` and `WorkingDirectoryRow` in project and workspace details. Both show the directory, branch and copyable path together, with separate remote sync and local change columns. Keep the open-tool selector, files and changes, terminal and more actions in the same order. Workspace details use a flat overview for the goal, conversation actions and directory status filters on the same neutral canvas as projects and conversations. The project view adds a linked-workspace column, gives the primary directory a tinted row and groups derived worktrees by attention signals. These groups describe visible Git state. Callers supply directory availability, context-specific details, recovery notices and actions. The table stacks its fields when its containing surface narrows. A link between a workspace and its project detail supplies the directory path in the route so the destination can focus and reveal the matching row.
+Use `WorkingDirectoryTable` and `WorkingDirectoryRow` in project details. Show the directory, branch and copyable path together, with separate remote sync and local change columns. Keep the open-tool selector, files and changes, terminal and more actions in the same order. Give the primary directory a tinted row and group worktrees by visible Git state. A directory parameter in the project route focuses the matching row. Stack fields when the containing pane narrows.
 
 Use `ConversationHeader` and `ConversationStatusBadge` for native coding conversations. The header title identifies the active conversation. Context and controls use the component's existing slots.
 
 Forms use the shared `Button`, `Input`, `Textarea`, `NativeSelect`, `Label`, `Dialog` and `Alert` components. Choose variants and sizes from the shared component API. Keep one clear primary action for the current operation. Preserve editable values during polling, navigation and failed requests. Place feedback next to the affected action or field and expose pending state while preventing duplicate delivery.
 
-Project registration uses `ProjectForm` and `ProjectScanResults` for both entry
-points. Its fixed header and footer share the workspace dialog scroll layout. The
-project controller owns scan results, editable names, selection and per-item
-registration outcomes. Changing the scan root, source or execution environment
-invalidates the results. Successful registrations return to the invoking
-workspace picker with every added project selected.
+Project registration uses `ProjectForm` and `ProjectScanResults`. The project controller owns scan results, editable names, selection and per-item registration outcomes. Changing the scan root, source or execution environment invalidates the results.
 
 ## Conversation contract
 
@@ -118,7 +115,9 @@ Use the shared Markdown/message rendering, history-loading controls and run indi
 
 Coding conversations expose one settings popover on the composer's trailing side. Its model and permission rows open anchored menus with independent scrolling, and its effort and speed choices follow the selected model's catalog. Changing agents in a new conversation resets provider-specific settings and preserves the draft. When the runtime advertises response tiers, an explicit choice applies to the next turn. Review the current context in the same popover for existing and read-only conversations.
 
-New and existing coding conversations use the same bottom-docked composer and show the selected working directory in the header. Keep the workspace directory choices and the UI/terminal switch in the welcome area for both creation modes, below the same fixed conversation header. Use the shared `conversation-start`, `conversation-welcome-title` and `conversation-creation-setup` styles, the `--conversation-content-width` column, and the same responsive top offset. Creation options sit directly on the canvas, with no nested card. Terminal launch buttons follow the directory choices and use explicit Launch labels, with no pressed or preselected state; running terminals replace the welcome area with output while retaining the header. Keep the agent picker in its own creation-only section of the settings popover. Conversation headers keep the title and a muted, icon-free `project · branch` summary together on the left, with actions on the right. A separate working-details icon in the right action group controls the floating panel; the left summary never toggles it. Below a 780px pane width, the summary moves to a small second line. Use `ConversationHeader.context` and `ConversationWorkingContext` for UI and terminal conversations. Working details open as an anchored overlay without moving messages; click outside, Escape or the close control dismisses it. Keep full selectable paths and directory metadata inside that overlay, with workspace navigation in the overlay and project navigation also available in the left summary. Limit the summary width to 32ch, truncate long values, and expose full names through tooltips and working details. Ordinary idle, completed, stopped and unverified state labels stay in working details; attention states stay visible in the toolbar. Header icon controls have at least a 32px target, enlarged on touch devices. The composer summary uses agent, permission and speed icons alongside a model name that preserves its distinguishing suffix when truncated and exposes the full settings through its tooltip and accessible description. Show transient run and draft feedback above the composer so it can stay docked.
+New and existing coding conversations use the same bottom-docked composer. Keep the project, working directory and UI/terminal choices in the creation view. Reuse the shared welcome layout and typography. Keep the agent picker in the creation settings. Terminal launch buttons follow the directory options and retain the conversation header when they open terminal output.
+
+Use the conversation header for compact project context. Each binding shows its directory identity, observed branch and effective access or pending state. Keep the add control reachable when more bindings overflow. Open a selected binding's details in an anchored surface, with selectable paths and links to existing file and diff readers. Use one confirmation interaction for adding from the header, selecting an `@` mention or accepting a project suggestion. Show errors or write conflicts beside the affected directory. Busy or unsupported agent actions should leave the draft and saved bindings usable.
 
 Standalone Codex visualization references in assistant messages render as expandable previews. Only files in the local conversation's Codex visualization folder can be served. The preview uses an opaque-origin sandbox, an inline-only resource policy and a separate frame so the message renderer and application API keep their existing content policies.
 
@@ -141,6 +140,6 @@ Application text uses `uiText` with Simplified Chinese source messages and Engli
 4. Build both frontend bundles before backend or desktop compilation.
 5. Exercise populated, empty, loading and failed states relevant to the change. Verify keyboard navigation, list/detail transitions, draft restoration and long content.
 6. Compare browser and desktop entry points at comparable wide and narrow viewports. Check the saved appearance and language choices relevant to the changed surface.
-7. Run the affected workspace/chat checks and existing navigation/localization tests. Record visual evidence and any unavailable native-host verification.
+7. Run the affected application and chat checks and existing navigation/localization tests. Record visual evidence and any unavailable native-host verification.
 
 A change to these shared contracts updates the owning component, affected callers and this document together. This keeps the implementation and the guidance aligned as the application grows.

@@ -18,7 +18,7 @@ func TestNativeActivityIsObservedWithoutTakingOver(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "rollout.jsonl")
 	start := `{"type":"event_msg","payload":{"type":"task_started","turn_id":"native"}}` + "\n"
 	os.WriteFile(p, []byte(start), 0600)
-	native := codex.Session{ID: "session", Cwd: q.Members[0].Path, Path: p}
+	native := codex.Session{ID: "session", Cwd: q.Path, Path: p}
 	native.Status.Type = "notLoaded"
 	a.chats["session"] = &ChatRun{state: ChatState{ID: "old-owned-run", TurnID: "old-turn", Status: "completed"}}
 	defer delete(a.chats, "session")
@@ -58,7 +58,7 @@ func TestSessionImageReferencesAreAuthenticatedBoundedAndScoped(t *testing.T) {
 		return &fakeSessionClient{request: func(method string, p map[string]any) (any, error) {
 			switch method {
 			case "thread/read":
-				return map[string]any{"thread": codex.Session{ID: "session", Cwd: q.Members[0].Path, HistoryMode: "paginated"}}, nil
+				return map[string]any{"thread": codex.Session{ID: "session", Cwd: q.Path, HistoryMode: "paginated"}}, nil
 			case "thread/items/list":
 				return map[string]any{"data": []any{map[string]any{"turnId": "turn", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": fmt.Sprintf("![结果](<%s>)", image)}}}}, nil
 			}
@@ -84,7 +84,7 @@ func TestSessionImageReferencesAreAuthenticatedBoundedAndScoped(t *testing.T) {
 	if code != 403 {
 		t.Fatal(code)
 	}
-	a.SaveSession("", codex.Session{ID: "other", Cwd: q.Members[0].Path}, "workspace")
+	a.SaveSession(codex.Session{ID: "other", Cwd: q.Path}, "workspace")
 	code, _ = call(t, a, "GET", strings.Replace(endpoint, "/session/image", "/other/image", 1), nil)
 	if code != 403 {
 		t.Fatal("cross-session token accepted", code)

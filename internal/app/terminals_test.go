@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -22,65 +23,50 @@ func TestCleanupProtectsEmbeddedTerminalsAndRechecksOldPreview(t *testing.T) {
 	}
 	// Exercise Git-only cleanup without reading the installed Codex's sessions.
 	t.Setenv("PATH", "/usr/bin:/bin")
-	for _, directory := range []string{"project", "workspace-root"} {
-		t.Run(directory, func(t *testing.T) {
-			a := testApp(t)
-			p := register(t, a, "Repo", repo(t, "repo", "main"))
-			_, q, _ := create(t, a, p, nil, "terminal-cleanup")
-			path := q.Members[0].Path
-			review := func() project.CleanupCandidate {
-				t.Helper()
-				code, raw := call(t, a, "GET", "/api/workspaces/"+q.ID+"/review", nil)
-				var result struct {
-					Items []project.CleanupCandidate `json:"items"`
-				}
-				if code != 200 || json.Unmarshal(raw, &result) != nil || len(result.Items) != 1 {
-					t.Fatalf("review %d %s", code, raw)
-				}
-				return result.Items[0]
-			}
-			call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": true})
-			preview := review()
-			if !preview.Cleanable {
-				t.Fatalf("initially not cleanable: %+v", preview)
-			}
-			call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": false})
-			projectID := p
-			if directory == "workspace-root" {
-				projectID = ""
-			}
-			code, raw := call(t, a, "POST", "/api/terminals", map[string]any{"workspace_id": q.ID, "project_id": projectID, "profile_id": "custom", "executable": "/bin/sh", "args": []string{"-i"}})
-			var info terminal.Info
-			if code != 201 || json.Unmarshal(raw, &info) != nil {
-				t.Fatalf("start %d %s", code, raw)
-			}
-			call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": true})
-			if current := review(); current.Cleanable || !strings.Contains(strings.Join(current.Reasons, " "), "运行中的终端") {
-				t.Fatalf("active terminal not shown in review: %+v", current)
-			}
-			endpoint := "/api/workspaces/" + q.ID + "/cleanup/" + p
-			input := map[string]string{"path": path, "fingerprint": preview.Fingerprint}
-			if code, raw := call(t, a, "POST", endpoint, input); code != 409 || !strings.Contains(string(raw), "运行中的终端") {
-				t.Fatalf("old preview bypassed terminal guard: %d %s", code, raw)
-			}
-			if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
-				t.Fatal("active worktree was removed", err)
-			}
-			if code, raw := call(t, a, "DELETE", "/api/terminals/"+info.ID, nil); code != 200 {
-				t.Fatalf("remove %d %s", code, raw)
-			}
-			current := review()
-			if !current.Cleanable {
-				t.Fatalf("exited terminal blocks cleanup: %+v", current)
-			}
-			input["fingerprint"] = current.Fingerprint
-			if code, raw := call(t, a, "POST", endpoint, input); code != 200 {
-				t.Fatalf("cleanup %d %s", code, raw)
-			}
-			if _, err := os.Stat(path); !os.IsNotExist(err) {
-				t.Fatal("worktree retained after terminal exit", err)
-			}
-		})
+	a := testApp(t)
+	p := register(t, a, "Repo", repo(t, "repo", "main"))
+	tree := createWorktree(t, a, p, "terminal-cleanup")
+	endpoint := "/api/projects/" + p + "/worktree"
+	path := tree.Path
+	review := func() project.CleanupCandidate {
+		t.Helper()
+		code, raw := call(t, a, "GET", endpoint+"?path="+url.QueryEscape(path), nil)
+		var result project.CleanupCandidate
+		if code != 200 || json.Unmarshal(raw, &result) != nil {
+			t.Fatalf("review %d %s", code, raw)
+		}
+		return result
+	}
+	preview := review()
+	if !preview.Cleanable {
+		t.Fatalf("initially not cleanable: %+v", preview)
+	}
+	code, raw := call(t, a, "POST", "/api/terminals", map[string]any{"project_id": p, "cwd": path, "profile_id": "custom", "executable": "/bin/sh", "args": []string{"-i"}})
+	var info terminal.Info
+	if code != 201 || json.Unmarshal(raw, &info) != nil {
+		t.Fatalf("start %d %s", code, raw)
+	}
+	if current := review(); current.Cleanable || !strings.Contains(strings.Join(current.Reasons, " "), "运行中的终端") {
+		t.Fatalf("active terminal not shown in review: %+v", current)
+	}
+	input := map[string]string{"path": path, "fingerprint": preview.Fingerprint}
+	if code, raw := call(t, a, "DELETE", endpoint, input); code != 409 || !strings.Contains(string(raw), "运行中的终端") {
+		t.Fatalf("old preview bypassed terminal guard: %d %s", code, raw)
+	}
+	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
+		t.Fatal("active worktree was removed", err)
+	}
+	if code, raw := call(t, a, "DELETE", "/api/terminals/"+info.ID, nil); code != 200 {
+		t.Fatalf("remove %d %s", code, raw)
+	}
+	if current := review(); !current.Cleanable || current.Fingerprint != preview.Fingerprint {
+		t.Fatalf("exited terminal still affects cleanup: %+v", current)
+	}
+	if code, raw := call(t, a, "DELETE", endpoint, input); code != 200 {
+		t.Fatalf("cleanup %d %s", code, raw)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("worktree retained after terminal exit", err)
 	}
 }
 
@@ -90,7 +76,7 @@ func TestTerminalStartWaitsForDirectoryRemovalReservation(t *testing.T) {
 	}
 	a := testApp(t)
 	p := register(t, a, "Repo", repo(t, "repo", "main"))
-	_, q, _ := create(t, a, p, nil, "terminal-start-guard")
+	q := createWorktree(t, a, p, "terminal-start-guard")
 	// Simulate cleanup holding its reservation while it removes the directory.
 	a.terminalWorktreeMu.Lock()
 	locked := true
@@ -101,7 +87,7 @@ func TestTerminalStartWaitsForDirectoryRemovalReservation(t *testing.T) {
 	}()
 	done := make(chan int, 1)
 	go func() {
-		code, _ := call(t, a, "POST", "/api/terminals", map[string]any{"workspace_id": q.ID, "project_id": p, "profile_id": "custom", "executable": "/bin/sh"})
+		code, _ := call(t, a, "POST", "/api/terminals", map[string]any{"project_id": p, "cwd": q.Path, "profile_id": "custom", "executable": "/bin/sh"})
 		done <- code
 	}()
 	select {
@@ -109,7 +95,7 @@ func TestTerminalStartWaitsForDirectoryRemovalReservation(t *testing.T) {
 		t.Fatalf("terminal started during removal: %d", code)
 	case <-time.After(30 * time.Millisecond):
 	}
-	if err := os.RemoveAll(q.Members[0].Path); err != nil {
+	if err := os.RemoveAll(q.Path); err != nil {
 		t.Fatal(err)
 	}
 	a.terminalWorktreeMu.Unlock()
@@ -124,28 +110,24 @@ func TestTerminalStartWaitsForDirectoryRemovalReservation(t *testing.T) {
 	}
 }
 
-func TestTerminalWorkspaceScopeAndAuthenticatedLifecycle(t *testing.T) {
+func TestTerminalDirectoryAndAuthenticatedLifecycle(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix shell integration")
 	}
 	a := testApp(t)
-	p := testutil.Register(t, a, "terminal", testutil.Repo(t, "terminal", "master"))
-	code, q, raw := testutil.Create(t, a, p, nil, "terminal-workspace")
-	if code != 201 || q.State != "ready" {
-		t.Fatalf("create %d %s", code, raw)
-	}
-	for _, body := range []map[string]any{{"workspace_id": "missing", "profile_id": "shell"}, {"workspace_id": q.ID, "project_id": "unrelated", "profile_id": "shell"}, {"workspace_id": q.ID, "profile_id": "custom", "executable": "./relative"}} {
-		code, _ = testutil.Call(t, a, "POST", "/api/terminals", body)
-		if code < 400 {
-			t.Fatalf("invalid scope accepted: %+v", body)
+	p := register(t, a, "terminal", repo(t, "terminal", "master"))
+	q := createWorktree(t, a, p, "terminal-directory")
+	for _, body := range []map[string]any{
+		{"project_id": "missing", "profile_id": "shell"},
+		{"project_id": p, "profile_id": "shell", "cwd": t.TempDir()},
+		{"project_id": p, "profile_id": "custom", "executable": "./relative"},
+		{"session_id": "missing", "binding_id": "missing", "profile_id": "shell"},
+	} {
+		if code, _ := call(t, a, "POST", "/api/terminals", body); code < 400 {
+			t.Fatalf("invalid directory accepted: %+v", body)
 		}
 	}
-	code, raw = testutil.Call(t, a, "POST", "/api/terminals", map[string]any{"workspace_id": q.ID, "project_id": p, "profile_id": "shell", "cwd": "/untrusted-client-directory"})
-	// Decode rejects unknown fields rather than trusting a cwd supplied by a client.
-	if code < 400 {
-		t.Fatalf("client cwd accepted: %s", raw)
-	}
-	code, raw = testutil.Call(t, a, "POST", "/api/terminals", map[string]any{"workspace_id": q.ID, "project_id": p, "profile_id": "shell"})
+	code, raw := call(t, a, "POST", "/api/terminals", map[string]any{"project_id": p, "cwd": q.Path, "profile_id": "shell"})
 	if code != 201 {
 		t.Fatalf("start %d %s", code, raw)
 	}
@@ -153,8 +135,8 @@ func TestTerminalWorkspaceScopeAndAuthenticatedLifecycle(t *testing.T) {
 	if err := json.Unmarshal(raw, &info); err != nil {
 		t.Fatal(err)
 	}
-	if info.Cwd != q.Members[0].Path {
-		t.Fatalf("incorrect workspace directory %s", info.Cwd)
+	if info.Cwd != q.Path {
+		t.Fatalf("incorrect project directory %s", info.Cwd)
 	}
 	code, raw = testutil.Call(t, a, "POST", "/api/terminals/"+info.ID+"/ticket", nil)
 	if code != 200 || !strings.Contains(string(raw), "ticket") {

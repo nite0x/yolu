@@ -14,7 +14,6 @@ import (
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/execution"
-	"worktree-hub/internal/model"
 )
 
 type fakeLiveClient struct {
@@ -83,6 +82,11 @@ func (c *fakeLiveClient) Call(ctx context.Context, method string, params any, ou
 	case "turn/interrupt":
 		c.event("turn/completed", map[string]any{"turn": map[string]any{"id": "turn", "status": "interrupted"}})
 	}
+	if method == "thread/start" || method == "thread/resume" {
+		if profile, _ := params.(map[string]any)["permissions"].(string); profile != "" {
+			result.(map[string]any)["activePermissionProfile"] = map[string]string{"id": profile}
+		}
+	}
 	if out != nil {
 		raw, _ := json.Marshal(result)
 		return json.Unmarshal(raw, out)
@@ -96,18 +100,19 @@ func (c *fakeLiveClient) Reply(id json.RawMessage, result any) error {
 	c.replies = append(c.replies, string(id)+":"+string(raw))
 	return nil
 }
-func chatFixture(t *testing.T) (*App, model.Workspace, *fakeLiveClient, string) {
+func chatFixture(t *testing.T) (*App, testDirectory, *fakeLiveClient, string) {
 	t.Helper()
 	a := testApp(t)
 	p := register(t, a, "Repo", repo(t, "repo", "master"))
-	_, q, _ := create(t, a, p, nil, "chat")
-	if err := a.SaveSession(q.ID, codex.Session{ID: "session", Cwd: q.Members[0].Path}, "workspace"); err != nil {
+	q := newTestDirectory(t, a, p, "chat")
+	if err := a.SaveSession(codex.Session{ID: "session", Cwd: q.Path}, "workspace"); err != nil {
 		t.Fatal(err)
 	}
-	c := &fakeLiveClient{updates: make(chan codex.Event, 256), cwd: q.Members[0].Path}
+	fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Path}})
+	c := &fakeLiveClient{updates: make(chan codex.Event, 256), cwd: q.Path}
 	a.openLive = func(context.Context) (codex.LiveClient, error) { return c, nil }
 	a.terminalConflict = func(string, string) error { return nil }
-	return a, q, c, "/api/workspaces/" + q.ID + "/sessions/session/chat"
+	return a, q, c, "/api/sessions/session/chat"
 }
 func awaitChat(t *testing.T, a *App, condition func(ChatState) bool) ChatState {
 	t.Helper()
@@ -132,7 +137,7 @@ func startFakeChat(t *testing.T, a *App, endpoint string) {
 	awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
 }
 func TestChatStreamsRecordsApprovalsAndPreventsDuplicates(t *testing.T) {
-	a, q, c, endpoint := chatFixture(t)
+	a, _, c, endpoint := chatFixture(t)
 	startFakeChat(t, a, endpoint)
 	if code, _ := call(t, a, "POST", endpoint, map[string]string{"text": "运行测试", "request_id": "request1"}); code != 200 {
 		t.Fatal("idempotent retry failed")
@@ -140,7 +145,7 @@ func TestChatStreamsRecordsApprovalsAndPreventsDuplicates(t *testing.T) {
 	if code, _ := call(t, a, "POST", endpoint, map[string]string{"text": "another", "request_id": "request2"}); code != 409 {
 		t.Fatal("concurrent send accepted")
 	}
-	if code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/session/resume", nil); code != 409 {
+	if code, _ := call(t, a, "POST", "/api/sessions/session/resume", nil); code != 409 {
 		t.Fatal("terminal launched during page turn")
 	}
 	c.event("item/started", map[string]any{"turnId": "turn", "item": map[string]any{"type": "agentMessage", "id": "reply", "text": ""}})
@@ -236,10 +241,7 @@ func TestChatRejectsTerminalAndActiveRuntimeWithoutStarting(t *testing.T) {
 	}
 }
 func TestChatScopeErrorsAndSSESnapshot(t *testing.T) {
-	a, q, c, endpoint := chatFixture(t)
-	if code, _ := call(t, a, "POST", strings.Replace(endpoint, "/session/", "/unlinked/", 1), map[string]string{"text": "x", "request_id": "r"}); code != 404 {
-		t.Fatal(code)
-	}
+	a, _, c, endpoint := chatFixture(t)
 	startFakeChat(t, a, endpoint)
 	c.event("item/agentMessage/delta", map[string]any{"turnId": "other-turn", "itemId": "other", "delta": "DO_NOT_SHOW"})
 	c.event("item/agentMessage/delta", map[string]any{"turnId": "turn", "itemId": "reply", "delta": "hello"})
@@ -252,11 +254,11 @@ func TestChatScopeErrorsAndSSESnapshot(t *testing.T) {
 	if w.Code != 200 || !strings.HasPrefix(w.Body.String(), "data: ") || strings.Contains(w.Body.String(), "DO_NOT_SHOW") || !strings.Contains(w.Body.String(), "hello") {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": true}); code != 200 {
-		t.Fatal(code)
+	if err := a.Execution.Store.OrganizeSession("session", false, true); err != nil {
+		t.Fatal(err)
 	}
 	if code, _ := call(t, a, "POST", endpoint, map[string]string{"text": "x", "request_id": "archived"}); code != 409 {
-		t.Fatal("archived workspace started chat")
+		t.Fatal("archived session started chat")
 	}
 }
 func TestManualTerminalDetection(t *testing.T) {

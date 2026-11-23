@@ -13,74 +13,70 @@ import (
 	"worktree-hub/internal/execution"
 )
 
-func reviewItems(t *testing.T, a *App, id string) []CleanupCandidate {
+func reviewWorktree(t *testing.T, a *App, projectID, path string) CleanupCandidate {
 	t.Helper()
-	code, raw := call(t, a, "GET", "/api/workspaces/"+id+"/review", nil)
-	var result struct {
-		Items []CleanupCandidate `json:"items"`
-	}
+	code, raw := call(t, a, "GET", "/api/projects/"+projectID+"/worktree?path="+url.QueryEscape(path), nil)
+	var result CleanupCandidate
 	if err := json.Unmarshal(raw, &result); err != nil || code != 200 {
 		t.Fatalf("review %d %s %v", code, raw, err)
 	}
-	return result.Items
+	return result
 }
 
-func TestCleanupChecksArchiveDirtySharedIgnoredAndExpiredPreview(t *testing.T) {
+func TestCleanupChecksDirtyReferencedIgnoredAndExpiredPreview(t *testing.T) {
 	a := testApp(t)
 	id := register(t, a, "Repo", repo(t, "repo", "main"))
-	_, q, _ := create(t, a, id, nil, "cleanup")
-	endpoint := "/api/workspaces/" + q.ID + "/cleanup/" + id
-	if items := reviewItems(t, a, q.ID); len(items) != 1 || items[0].Cleanable {
-		t.Fatal(items)
-	}
-	call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": true})
-	clean := reviewItems(t, a, q.ID)[0]
+	q := createWorktree(t, a, id, "cleanup")
+	path := q.Path
+	endpoint := "/api/projects/" + id + "/worktree"
+	clean := reviewWorktree(t, a, id, path)
 	if !clean.Cleanable {
 		t.Fatal(clean)
 	}
-	path := q.Members[0].Path
-	if err := os.WriteFile(filepath.Join(path, "keep.txt"), []byte("unsaved"), 0600); err != nil {
+	input := map[string]string{"path": path, "fingerprint": clean.Fingerprint}
+	dirty := filepath.Join(path, "keep.txt")
+	if err := os.WriteFile(dirty, []byte("unsaved"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if code, _ := call(t, a, "POST", endpoint, map[string]string{"path": path, "fingerprint": clean.Fingerprint}); code != 409 {
-		t.Fatal("dirty removed", code)
+	if code, _ := call(t, a, "DELETE", endpoint, input); code != 409 {
+		t.Fatal("dirty worktree removed", code)
 	}
-	os.Remove(filepath.Join(path, "keep.txt"))
-	// Ignored files are also preserved, even though Git status reports clean.
-	testGit(t, path, "config", "core.excludesFile", filepath.Join(t.TempDir(), "ignore"))
-	ignore := testGit(t, path, "config", "--get", "core.excludesFile")
+	os.Remove(dirty)
+	// Ignored files are preserved even though Git status reports clean.
+	ignore := filepath.Join(t.TempDir(), "ignore")
+	testGit(t, path, "config", "core.excludesFile", ignore)
 	os.WriteFile(ignore, []byte("ignored.txt\n"), 0600)
-	os.WriteFile(filepath.Join(path, "ignored.txt"), []byte("keep ignored"), 0600)
-	if item := reviewItems(t, a, q.ID)[0]; item.Cleanable || !item.Ignored {
+	ignored := filepath.Join(path, "ignored.txt")
+	os.WriteFile(ignored, []byte("keep ignored"), 0600)
+	if item := reviewWorktree(t, a, id, path); item.Cleanable || !item.Ignored {
 		t.Fatal(item)
 	}
-	os.Remove(filepath.Join(path, "ignored.txt"))
-	// Shared directories cannot be removed, including references from archived workspaces.
-	code, raw := call(t, a, "POST", "/api/workspaces", map[string]any{"name": "Shared", "slug": "shared", "members": []map[string]string{{"project_id": id, "mode": "worktree", "path": path}}})
-	if code != 201 {
-		t.Fatalf("shared %d %s", code, raw)
-	}
-	if item := reviewItems(t, a, q.ID)[0]; item.Cleanable || len(item.Shared) != 1 {
+	os.Remove(ignored)
+	binding := bindTestSession(t, a, "saved", id, path)
+	if item := reviewWorktree(t, a, id, path); item.Cleanable || !strings.Contains(strings.Join(item.Reasons, " "), "仍有对话") {
 		t.Fatal(item)
 	}
-	var shared struct {
-		ID string `json:"id"`
+	if code, _ := call(t, a, "DELETE", endpoint, input); code != 409 {
+		t.Fatal("referenced worktree removed", code)
 	}
-	json.Unmarshal(raw, &shared)
-	call(t, a, "DELETE", "/api/workspaces/"+shared.ID+"/projects/"+id, nil)
-	current := reviewItems(t, a, q.ID)[0]
+	if err := a.Execution.Store.DeleteSessionBinding(binding.SessionID, binding.ID); err != nil {
+		t.Fatal(err)
+	}
+	current := reviewWorktree(t, a, id, path)
 	if !current.Cleanable {
 		t.Fatal(current)
 	}
-	if code, _ := call(t, a, "POST", endpoint, map[string]string{"path": path, "fingerprint": "old-preview"}); code != 409 {
+	input["fingerprint"] = "old-preview"
+	if code, _ := call(t, a, "DELETE", endpoint, input); code != 409 {
 		t.Fatal("expired preview accepted", code)
 	}
+	input["fingerprint"] = current.Fingerprint
 	a.ReserveWorktree = func(context.Context, string) (func(), error) { return nil, fmt.Errorf("active conversation") }
-	if code, _ := call(t, a, "POST", endpoint, map[string]string{"path": path, "fingerprint": current.Fingerprint}); code != 409 {
-		t.Fatal("active removed", code)
+	if code, _ := call(t, a, "DELETE", endpoint, input); code != 409 {
+		t.Fatal("active worktree removed", code)
 	}
 	a.ReserveWorktree = nil
-	if code, raw := call(t, a, "POST", endpoint, map[string]string{"path": path, "fingerprint": current.Fingerprint}); code != 200 {
+	if code, raw := call(t, a, "DELETE", endpoint, input); code != 200 {
 		t.Fatalf("cleanup %d %s", code, raw)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -88,43 +84,24 @@ func TestCleanupChecksArchiveDirtySharedIgnoredAndExpiredPreview(t *testing.T) {
 	}
 	ps, _ := a.Execution.Store.ProjectMap()
 	testGit(t, ps[id].Path, "show-ref", "--verify", "refs/heads/"+q.Branch)
-	saved, _ := a.Execution.Store.Workspace(q.ID)
-	if saved.Members[0].State != "removed" {
-		t.Fatal(saved)
+	if _, err := a.Execution.Store.DB.Exec(`DELETE FROM sessions WHERE id='saved'`); err != nil {
+		t.Fatal(err)
 	}
-	call(t, a, "POST", "/api/workspaces/"+q.ID+"/archive", map[string]bool{"archived": false})
-	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/retry", map[string]string{"project_id": id}); code != 200 {
-		t.Fatalf("restore %d %s", code, raw)
-	}
-	saved, _ = a.Execution.Store.Workspace(q.ID)
-	if saved.State != "ready" {
-		t.Fatal(saved)
+	if code, raw := manualWorktree(t, a, id, CreateWorktree{Slug: "cleanup", Mode: "existing", Branch: q.Branch}); code != 201 {
+		t.Fatalf("reuse kept branch %d %s", code, raw)
 	}
 }
 
-func TestCleanupFindsReplacedWorktreeAndRejectsUnpublishedCommit(t *testing.T) {
+func TestCleanupRejectsUnpublishedCommit(t *testing.T) {
 	a := testApp(t)
 	id := register(t, a, "Repo", repo(t, "repo", "main"))
-	_, q, _ := create(t, a, id, nil, "old-directory")
-	path := q.Members[0].Path
-	call(t, a, "PUT", "/api/workspaces/"+q.ID+"/projects/"+id, map[string]string{"mode": "project"})
-	items := reviewItems(t, a, q.ID)
-	var orphan CleanupCandidate
-	for _, item := range items {
-		if item.Path == path {
-			orphan = item
-		}
+	q := createWorktree(t, a, id, "unpublished")
+	if item := reviewWorktree(t, a, id, q.Path); !item.Cleanable {
+		t.Fatal(item)
 	}
-	if !orphan.Cleanable || orphan.Current {
-		t.Fatal(items)
-	}
-	os.WriteFile(filepath.Join(path, "commit.txt"), []byte("keep commit"), 0600)
-	testGit(t, path, "add", "commit.txt")
-	testGit(t, path, "commit", "-m", "not published")
-	for _, item := range reviewItems(t, a, q.ID) {
-		if item.Path == path && item.Cleanable {
-			t.Fatal("unpublished commit accepted")
-		}
+	commitFile(t, q.Path, "commit.txt", "keep commit")
+	if item := reviewWorktree(t, a, id, q.Path); item.Cleanable {
+		t.Fatal("unpublished commit accepted")
 	}
 }
 

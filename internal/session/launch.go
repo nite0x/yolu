@@ -1,8 +1,6 @@
 package session
 
 import (
-	"database/sql"
-	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,27 +10,6 @@ import (
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 )
-
-func (a *Service) LaunchHandler(w http.ResponseWriter, r *http.Request) {
-	releaseControl := a.lockControl("launch-workspace:" + r.PathValue("id"))
-	defer releaseControl()
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
-	p, err := a.plans.MakeLaunchPlan(r.Context(), r.PathValue("id"))
-	if errors.Is(err, sql.ErrNoRows) {
-		httpx.WriteError(w, 404, "工作区不存在")
-		return
-	}
-	if err != nil {
-		httpx.WriteError(w, 409, err.Error())
-		return
-	}
-	if err := a.LaunchConflict("", p.Cwd); err != nil {
-		httpx.WriteError(w, 409, err.Error())
-		return
-	}
-	a.LaunchCodexPlan(w, p)
-}
 
 func (a *Service) LaunchCodexPlan(w http.ResponseWriter, p model.LaunchPlan) {
 	// The managed terminal relay verifies peers through Linux /proc. Other
@@ -50,7 +27,7 @@ func (a *Service) LaunchCodexPlan(w http.ResponseWriter, p model.LaunchPlan) {
 		return
 	}
 	p.Script = filepath.Join(a.Execution.DataDir, "launches", model.NewID()+".sh")
-	b, err := a.NewTerminalBridge(p.Workspace, p.Cwd)
+	b, err := a.NewTerminalBridge(p.Cwd)
 	if err != nil {
 		httpx.WriteError(w, 503, "无法准备可交接终端："+err.Error())
 		return
@@ -74,7 +51,7 @@ func (a *Service) LaunchCodexPlan(w http.ResponseWriter, p model.LaunchPlan) {
 	p.Args = args
 	p.Args = append(p.Args, "--remote", "unix://"+b.socket)
 	p.Command = platform.DisplayCommand("codex", p.Args, false)
-	// Every argument is shell-quoted. No project or workspace text is evaluated as shell code.
+	// Every argument is shell-quoted. No project or session text is evaluated as shell code.
 	finishLaunch := "if [ -d " + platform.ShellQuote(b.dir) + " ]; then : > " + platform.ShellQuote(filepath.Join(b.dir, "launch-finished")) + "; fi"
 	script := "#!/usr/bin/env bash\nexport PATH=\"$HOME/.local/bin:$PATH\"\n" +
 		"finish_launch() { " + finishLaunch + "; }\ntrap finish_launch EXIT\n" +

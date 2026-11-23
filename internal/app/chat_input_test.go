@@ -25,7 +25,7 @@ func TestChatInputPreferencePersistsAcrossPagesPortsAndEnvironments(t *testing.T
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"send_shortcut":"`+shortcut+`"`) {
 			t.Fatalf("restore global shortcut: %d %s", w.Code, w.Body.String())
 		}
-		for _, url := range []string{"/", "/?workspace-page=workspace"} {
+		for _, url := range []string{"/", "/?app-page=app"} {
 			page := httptest.NewRecorder()
 			a.assetsHandler().ServeHTTP(page, httptest.NewRequest("GET", "http://localhost"+url, nil))
 			if !strings.Contains(page.Body.String(), `name="ui-send-shortcut" content="`+shortcut+`"`) || !strings.Contains(page.Body.String(), `/core/chat-input.js`) {

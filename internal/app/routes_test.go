@@ -20,7 +20,7 @@ func TestEmbeddedPageAssetsInBothSessionModes(t *testing.T) {
 			a.Execution.ReadOnlySessions = readOnly
 			handler := a.handler()
 			page := httptest.NewRecorder()
-			handler.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost:4317/?workspace-page=fixture", nil))
+			handler.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost:4317/?app-page=fixture", nil))
 			html := page.Body.String()
 			if page.Code != http.StatusOK || strings.Contains(html, "__CSRF_TOKEN__") || !strings.Contains(html, `name="session-mode" content="`+name+`"`) {
 				t.Fatalf("invalid page: %d %s", page.Code, html)
@@ -45,18 +45,18 @@ func TestEmbeddedPageAssetsInBothSessionModes(t *testing.T) {
 	}
 }
 
-func TestWorkspacePagesFramePolicy(t *testing.T) {
+func TestApplicationPagesFramePolicy(t *testing.T) {
 	handler := testApp(t).handler()
 	for _, tc := range []struct {
 		path, contains, ancestors string
 	}{
 		{"/", `id="workspacePages"`, "frame-ancestors 'none'"},
-		{"/?workspace-page=fixture", `id="sessionPageMount"`, "frame-ancestors 'self'"},
+		{"/?app-page=fixture", `id="sessionPageMount"`, "frame-ancestors 'self'"},
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("GET", "http://localhost:4317"+tc.path, nil))
 		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), tc.contains) {
-			t.Fatalf("invalid workspace page %s: %d", tc.path, response.Code)
+			t.Fatalf("invalid application page %s: %d", tc.path, response.Code)
 		}
 		if csp := response.Header().Get("Content-Security-Policy"); !strings.Contains(csp, tc.ancestors) || !strings.Contains(csp, "script-src 'self'") {
 			t.Fatalf("unexpected frame policy for %s: %s", tc.path, csp)

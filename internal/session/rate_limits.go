@@ -45,7 +45,7 @@ type RateLimitResetCard struct {
 }
 
 // Account limits are independent of threads. Reuse the environment's read-only
-// Codex channel and cache briefly so opening multiple workspace pages is cheap.
+// Codex channel and cache briefly so opening multiple conversation pages is cheap.
 func (s *Service) RateLimitsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	s.rateLimitsMu.Lock()

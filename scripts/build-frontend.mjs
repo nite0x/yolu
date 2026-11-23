@@ -8,11 +8,11 @@ const watch = process.argv.includes('--watch');
 // Go embeds these files, so every binary build must compile the UI first.
 await build({ root: fileURLToPath(new URL('../', import.meta.url)), ...(watch ? { build: { watch: {}, emptyOutDir: false } } : {}) });
 
-// Keep Shiki language/theme chunks out of the initial workspace bundle. All
+// Keep Shiki language/theme chunks out of the initial application bundle. All
 // assets are local and embedded by Go; the viewer loads only when opened.
 const viewerOptions = {
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
-  entryPoints: { 'file-display': 'frontend/workspace/file-display.ts' },
+  entryPoints: { 'file-display': 'frontend/app/file-display.ts' },
   outdir: 'web/ui/files', bundle: true, splitting: true, format: 'esm',
   target: ['es2022'], minify: true, legalComments: 'linked',
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },
@@ -26,7 +26,7 @@ if (watch) {
 
 const layoutOptions = {
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
-  entryPoints: ['frontend/workspace/page-layout.tsx'],
+  entryPoints: ['frontend/app/page-layout.tsx'],
   outfile: 'web/ui/page-layout.js', bundle: true, format: 'iife',
   globalName: 'WorkHubLayout', target: ['es2022'], jsx: 'automatic',
   minify: true, legalComments: 'linked',
@@ -39,11 +39,11 @@ if (watch) {
   await buildModule(layoutOptions);
 }
 
-// Terminal pages are independently mounted workspace panes. Keep xterm out of
-// the initial workspace/conversation bundle and bundle all assets locally.
+// Terminal pages are independently mounted application panes. Keep xterm out of
+// the initial application bundle and bundle all assets locally.
 const terminalOptions = {
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
-  entryPoints: ['frontend/workspace/terminal.ts'],
+  entryPoints: ['frontend/app/terminal.ts'],
   outfile: 'web/ui/terminal.js', bundle: true, format: 'iife',
   loader: { '.woff2': 'file' }, assetNames: 'fonts/[name]-[hash]',
   target: ['es2022'], jsx: 'automatic', minify: true, legalComments: 'linked',
@@ -56,7 +56,7 @@ if (watch) {
   await buildModule(terminalOptions);
 }
 
-// Load the shared locale before workspace, terminal and chat controllers.
+// Load the shared locale before application, terminal and chat controllers.
 await buildModule({
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
   entryPoints: ['frontend/i18n-runtime.ts'], outfile: 'web/ui/i18n.js',

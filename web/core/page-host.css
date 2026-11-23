@@ -53,11 +53,6 @@ button{font:inherit;cursor:pointer}
 }
 html[data-workhub-desktop],html[data-workhub-desktop] body{background:var(--yolu-subtle,#f3f5fa)}
 html[data-workhub-desktop] .workspace-page{background:var(--yolu-subtle,#f3f5fa)}
-.window-brand-menu{z-index:110;min-width:220px;padding:5px;border:1px solid var(--yolu-border,#dfe4ee);border-radius:9px;background:var(--yolu-surface,#fff);color:var(--yolu-secondary-ink,#475569);box-shadow:0 8px 28px #25324d1f;outline:none}
-.window-brand-menu-item{display:flex;align-items:center;gap:9px;min-height:34px;padding:7px 9px;border-radius:5px;font-size:13px;outline:none;cursor:pointer}
-.window-brand-menu-item[data-highlighted]{background:var(--yolu-selected,#edf0fc);color:var(--yolu-primary-ink,#454b84)}
-.window-brand-menu-item[data-disabled]{opacity:.45;pointer-events:none}
-.window-brand-menu-item svg{width:15px;height:15px;flex:none;color:var(--yolu-faint-ink,#8993a5)}
 html[data-workhub-desktop] .workspace-pages{top:var(--workspace-window-header-height,36px)}
 
 .workspace-pane-chrome{display:contents}

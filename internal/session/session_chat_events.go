@@ -283,10 +283,14 @@ func (a *Service) ChatApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	if !httpx.Decode(w, r, &input) {
 		return
 	}
+	releaseControl := a.lockSessionControl(r.PathValue("session"))
+	defer releaseControl()
 	run := a.ControlledRun(w, r, input.RunID)
 	if run == nil {
 		return
 	}
+	a.directoryStarts.Lock()
+	defer a.directoryStarts.Unlock()
 	run.mu.Lock()
 	if !run.state.Busy || run.state.Status == "stopping" {
 		run.mu.Unlock()
@@ -314,6 +318,8 @@ func (a *Service) ChatApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var result any
 	switch pending.Kind {
+	case "project_access":
+		err = a.approveDirectory(r.Context(), run, *pending, choice)
 	case "acp_permission":
 		if choice.ID == "cancel" {
 			result = map[string]any{"outcome": map[string]any{"outcome": "cancelled"}}
@@ -348,7 +354,9 @@ func (a *Service) ChatApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Keep this mutex through the short write so duplicate clicks cannot reply
 	// twice to one RPC request, and a completed turn cannot consume an old reply.
-	if pending.Kind == "acp_permission" && run.acpClient != nil {
+	if pending.Kind == "project_access" {
+		// The native directory response was sent with its persisted association.
+	} else if pending.Kind == "acp_permission" && run.acpClient != nil {
 		err = run.acpClient.Reply(pending.rpcID, result)
 	} else {
 		err = run.client.Reply(pending.rpcID, result)

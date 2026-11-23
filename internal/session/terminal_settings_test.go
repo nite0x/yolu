@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -106,10 +107,7 @@ func TestAllTerminalEntrypointsUseSavedLauncher(t *testing.T) {
 	path := repo(t, "terminal repo", "master")
 	testGit(t, path, "remote", "add", "origin", path)
 	id := register(t, a, "Terminal", path)
-	code, q, raw := create(t, a, id, nil, "terminal-settings")
-	if code != 201 || q.State != "ready" {
-		t.Fatalf("workspace: %d %s", code, raw)
-	}
+	q := newTestDirectory(t, a, id, "terminal-settings")
 	launcherDir := t.TempDir()
 	for _, entry := range []string{"codex", "resume", "git", "fetch", "login-fetch"} {
 		t.Run(entry, func(t *testing.T) {
@@ -130,18 +128,20 @@ func TestAllTerminalEntrypointsUseSavedLauncher(t *testing.T) {
 			if code, raw := call(t, a, "PUT", "/api/settings/terminal", settings); code != 200 {
 				t.Fatalf("save %d %s", code, raw)
 			}
-			cwd := q.Members[0].Path
+			cwd := q.Path
 			var code int
 			var raw []byte
 			if entry == "codex" {
-				code, raw = call(t, a, "POST", "/api/workspaces/"+q.ID+"/launch", nil)
+				w := httptest.NewRecorder()
+				a.LaunchCodexPlan(w, model.LaunchPlan{Cwd: cwd, Title: "Codex", Args: []string{"--cd", cwd}})
+				code, raw = w.Code, w.Body.Bytes()
 			} else if entry == "resume" {
 				s := codex.Session{ID: "saved-session", Cwd: cwd, Name: "继续对话"}
 				fakeSessions(a, map[string]codex.Session{s.ID: s})
-				if err := a.SaveSession(q.ID, s, "manual"); err != nil {
+				if err := a.SaveSession(s, "manual"); err != nil {
 					t.Fatal(err)
 				}
-				code, raw = call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/"+s.ID+"/resume", nil)
+				code, raw = call(t, a, "POST", "/api/sessions/"+s.ID+"/resume", nil)
 			} else if entry == "git" {
 				cwd = path
 				code, raw = gitAction(t, a, id, project.GitAction{Action: "terminal", Path: path})

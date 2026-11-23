@@ -12,7 +12,7 @@ concurrency:
   group: core-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# The workspace JSDOM suite exceeds Node's default 2 GiB heap on macOS.
+# The application JSDOM suite exceeds Node's default 2 GiB heap on macOS.
 env:
   NODE_OPTIONS: --max-old-space-size=4096
 
@@ -35,11 +35,11 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - run: go test ./...
       - run: go vet ./...
-      - name: Isolated workspace workflow
+      - name: Isolated conversation workflow
         run: |
           go build -o "$RUNNER_TEMP/yolu-backend" .
           node scripts/desktop-workflow-smoke.mjs "$RUNNER_TEMP/yolu-backend"
-      - run: go test -race ./internal/store ./internal/workspace ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
+      - run: go test -race ./internal/store ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
 
   core:
     runs-on: ubuntu-22.04
@@ -59,12 +59,12 @@ jobs:
       - name: Check reachable Go vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - run: node --test scripts/*.test.cjs
-      - run: npm run chat:test && npm run workspace:test
+      - run: npm run chat:test && npm run app:test
       - run: go test ./...
       - run: go vet ./...
-      - name: Isolated workspace workflow
+      - name: Isolated conversation workflow
         run: |
           go build -o "$RUNNER_TEMP/yolu-backend" .
           node scripts/desktop-workflow-smoke.mjs "$RUNNER_TEMP/yolu-backend"
-      - run: go test -race ./internal/store ./internal/workspace ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
+      - run: go test -race ./internal/store ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
       - run: npm run desktop:check

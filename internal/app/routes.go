@@ -31,7 +31,7 @@ func (a *App) handler() http.Handler {
 	}
 	mux.Handle("GET /api/state", overview.New(a.Execution, a.Projects))
 	mux.HandleFunc("POST /api/dialogs/directory", a.pickDirectoryHandler)
-	mux.HandleFunc("GET /api/workspace-inventory", a.workspaceInventoryHandler)
+	mux.HandleFunc("GET /api/project-inventory", a.projectInventoryHandler)
 	mux.HandleFunc("POST /api/issues/open-linear", func(w http.ResponseWriter, r *http.Request) {
 		if isBrowserRequest(r) {
 			httpx.WriteError(w, http.StatusForbidden, "请在浏览器中打开 Linear")
@@ -53,11 +53,12 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/chat-input", a.chatInputHandler)
 	mux.HandleFunc("GET /api/settings/browser-access", a.browserAccessHandler)
 	mux.HandleFunc("PUT /api/settings/browser-access", a.browserAccessHandler)
+	mux.HandleFunc("GET "+mcpSettingsPath, a.mcpSettingsHandler)
+	mux.HandleFunc("POST "+mcpSettingsPath, a.mcpSettingsHandler)
 	if a.voice != nil {
 		a.voiceRoutes(mux)
 	}
 	a.Projects.RegisterRoutes(mux)
-	a.Workspaces.RegisterRoutes(mux, a.Projects.InvalidateStateAfter)
 	a.Sessions.RegisterRoutes(mux)
 	a.Execution.RegisterRoutes(mux)
 	a.terminalRoutes(mux)

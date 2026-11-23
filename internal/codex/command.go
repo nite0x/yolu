@@ -18,6 +18,9 @@ func Command(ctx context.Context, args ...string) *exec.Cmd {
 		if root := codexHome(); filepath.IsAbs(root) {
 			managed := filepath.Join(root, "packages", "app-server-daemon", "current", "bin", "codex")
 			if info, err := os.Stat(managed); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0 {
+				if canonical, err := filepath.EvalSymlinks(managed); err == nil {
+					managed = canonical
+				}
 				return exec.CommandContext(ctx, managed, args...)
 			}
 		}
@@ -37,8 +40,13 @@ func Command(ctx context.Context, args ...string) *exec.Cmd {
 	if cmd.Err != nil {
 		if path := standalonePath(); path != "" {
 			if installed, err := exec.LookPath(path); err == nil {
-				return exec.CommandContext(ctx, installed, args...)
+				cmd = exec.CommandContext(ctx, installed, args...)
 			}
+		}
+	}
+	if cmd.Err == nil && len(args) >= 2 && args[0] == "app-server" && args[1] == "daemon" {
+		if canonical, err := filepath.EvalSymlinks(cmd.Path); err == nil {
+			return exec.CommandContext(ctx, canonical, args...)
 		}
 	}
 	return cmd

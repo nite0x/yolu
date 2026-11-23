@@ -7,7 +7,7 @@ import (
 	"worktree-hub/internal/execution"
 )
 
-// WatchCodexHistoryRaw adapts display snapshots to the workspace wire format.
+// WatchCodexHistoryRaw adapts display snapshots to the execution peer wire format.
 // Transport and agent hosts never need to know the history model.
 func WatchCodexHistoryRaw(ctx context.Context, id string, emit func(json.RawMessage) error) error {
 	return WatchCodexHistory(ctx, id, func(state HistoryPush) error {

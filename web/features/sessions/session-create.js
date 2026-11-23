@@ -2,64 +2,29 @@
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
 
 const newSessionRequests = new Map();
-const newSessionProjects = new Map();
-
 function prepareNewSession(current) {
-  if (current.target) {
-    $('#sessionHistoryTitle').textContent = uiText("新建对话");
-    $('#newSessionProjectField').hidden = true;
-    $('#sessionHistoryMeta').textContent = current.target.cwd || '';
-    $('#sessionHistoryEntries').innerHTML = window.WorkHubUI.newSession(uiText("当前目录"));
-    $('#sessionChatInput').focus();
-    return;
-  }
-  const q = state.workspaces.find(q => q.id === current.workspace);
-  const pending = newSessionRequests.get(q.id);
-  const selected = newSessionProjects.get(q.id) || pending?.project_id || q.primary_project_id;
   $('#sessionHistoryTitle').textContent = uiText("新建对话");
-  $('#newSessionProject').innerHTML = q.members.map(m => `<option value="${esc(m.project_id)}" ${m.project_id === selected ? 'selected' : ''}>${esc(m.project_name)}${m.project_id === q.primary_project_id ? uiText("（主项目）") : ''}</option>`).join('');
-  $('#newSessionProject').value = q.members.some(m => m.project_id === selected) ? selected : q.primary_project_id;
-  updateNewSessionProject(current);
-  $('#sessionHistoryEntries').innerHTML = window.WorkHubUI.newSession(q.name);
-  if (pending?.promise) watchNewSessionCreation(current, pending);
+  $('#sessionHistoryMeta').textContent = current.target?.cwd || '';
+  const pending = newSessionRequests.get(newSessionKey(current));
+  if (pending?.promise) void watchNewSessionCreation(current, pending);
   else $('#sessionChatInput').focus();
 }
-function updateNewSessionProject(current) {
-  const q = state.workspaces.find(q => q.id === current.workspace);
-  const project = $('#newSessionProject').value;
-  const member = q.members.find(m => m.project_id === project);
-  newSessionProjects.set(q.id, project);
-  $('#sessionHistoryMeta').textContent = member?.path || '';
-}
-document.addEventListener('click', event => {
-  const button = event.target.closest('[data-session-action="new"]');
-  if (!button || button.disabled || state.busy) return;
-  const q = state.workspaces.find(q => q.id === button.dataset.workspace);
-  if (!q || q.state !== 'ready') return;
-  if (sessionHistoryState?.workspace === q.id && !sessionHistoryState.session) {
-    if (typeof workspaceConversationOpened === 'function') workspaceConversationOpened(q.id, null);
-    (document.querySelector('#assistantChatRoot textarea') || $('#sessionChatInput')).focus(); return;
-  }
-  openSessionHistory(q.id);
-});
-$('#newSessionProject').addEventListener('change', () => {
-  const current = sessionHistoryState;
-  if (current && !current.session && !current.submitting) updateNewSessionProject(current);
-});
+
+function newSessionKey(current) { return JSON.stringify([current.environment, current.target]); }
 
 async function sendNewSession(current) {
   if (sessionHistoryState !== current || current.submitting) return;
   const text = $('#sessionChatInput').value.trim();
   if (!text) return;
-  const project = current.target?.project_id || $('#newSessionProject').value;
-  const key = current.target ? JSON.stringify([current.environment, current.target]) : current.workspace;
+  const project = current.target?.project_id || '';
+  const key = newSessionKey(current);
   const old = newSessionRequests.get(key);
   const pending = old?.text === text && old.project_id === project ? old : { text, project_id: project, request_id: crypto.randomUUID(), ...current.target };
   pending.key = key;
   newSessionRequests.set(key, pending);
   if (!pending.promise) {
     const { text, project_id, request_id } = pending;
-    pending.promise = api(`/api/sessions/new`, { environment: current.environment, method: 'POST', body: JSON.stringify({ text, project_id, request_id, ...(current.target || { workspace_id: current.workspace }) }) });
+    pending.promise = api(`/api/sessions/new`, { environment: current.environment, method: 'POST', body: JSON.stringify({ text, project_id, request_id, ...current.target }) });
   }
   await watchNewSessionCreation(current, pending);
 }
@@ -68,19 +33,13 @@ async function watchNewSessionCreation(current, pending) {
   const promise = pending.promise;
   try {
     const result = await promise;
-    const workspace = current.workspace;
-    const cached = workspaceSessions.get(workspace) || { sessions: [] };
-    cached.sessions = [result.session, ...cached.sessions.filter(s => s.id !== result.session.id)];
-    workspaceSessions.set(workspace, cached);
-    if (newSessionRequests.get(pending.key || workspace) === pending) newSessionRequests.delete(pending.key || workspace);
+    if (newSessionRequests.get(pending.key) === pending) newSessionRequests.delete(pending.key);
     // A finished request must not erase a different draft or replace a panel
     // opened while the creation was in flight.
     if (chatDrafts.get(chatDraftKey(current)) === pending.text) chatDrafts.delete(chatDraftKey(current));
-    updateWorkspaceSessionsView(workspace);
     if (sessionHistoryState === current) {
       current.browserContext?.created?.(result.session);
-      if (current.target) openSessionHistoryPanel(workspace, result.session.id, { ...current.browserContext, session: result.session });
-      else openSessionHistory(workspace, result.session.id);
+      openSessionHistoryPanel(result.session.id, {...current.browserContext, session:result.session});
       chatDrafts.delete(chatDraftKey(current));
       sessionHistoryState.newlyCreated = true;
       sessionHistoryState.sentDraft = pending.text;

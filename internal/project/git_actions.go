@@ -36,8 +36,7 @@ func gitCommandResult(message, output string, err error) (map[string]any, error)
 	return map[string]any{"message": message, "output": RedactGitOutput(output)}, nil
 }
 
-// PerformGitAction owns validation, repository serialization and workspace metadata
-// updates. HTTP handlers only decode requests and translate the result/error.
+// PerformGitAction validates inputs and serializes mutations within a repository.
 func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction) (map[string]any, error) {
 	// Failed commands can still change a checkout; invalidate after every action,
 	// including service callers that do not pass through the HTTP adapter.
@@ -62,22 +61,11 @@ func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction)
 	if err != nil {
 		return nil, gitIssue(gitInspection, err.Error())
 	}
-	if in.WorkspaceID != "" {
-		if err := a.validateGitWorkspace(p.ID, in); err != nil {
-			return nil, gitIssue(gitConflict, err.Error())
-		}
-	}
 	if in.Path != "" && in.ExpectedBranch != "" {
 		t, e := selectedWorktree(ctx, p, in.Path)
 		if e != nil || t.Branch != in.ExpectedBranch {
 			return nil, gitIssue(gitConflict, "当前分支已变化，请刷新后重新操作")
 		}
-	}
-	// Metadata and the Git checkout must change together. Keep the original
-	// repository -> metadata lock order through workspace-context publication.
-	if in.Action == "switch" || in.Action == "adopt_branch" {
-		a.Execution.Mu.Lock()
-		defer a.Execution.Mu.Unlock()
 	}
 	var result map[string]any
 	switch in.Action {
@@ -87,8 +75,6 @@ func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction)
 		result, err = a.createGitBranch(ctx, p, v, in)
 	case "switch":
 		result, err = a.switchGitBranch(ctx, p, v, in)
-	case "adopt_branch":
-		result, err = a.adoptGitBranch(ctx, p, v, in)
 	case "pull":
 		result, err = a.pullGit(ctx, p, v, in)
 	case "push":
@@ -107,15 +93,5 @@ func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction)
 		return nil, gitIssue(gitInvalid, "不支持的 Git 操作")
 	}
 
-	if err != nil {
-		return nil, err
-	}
-	if in.WorkspaceID != "" && (in.Action == "switch" || in.Action == "adopt_branch") && a.WorkspaceContextUpdated != nil {
-		if q, e := a.Execution.Store.Workspace(in.WorkspaceID); e == nil {
-			if e := a.WorkspaceContextUpdated(ctx, q); e != nil {
-				result["message"] = result["message"].(string) + "；自动工作区上下文更新失败：" + e.Error()
-			}
-		}
-	}
-	return result, nil
+	return result, err
 }

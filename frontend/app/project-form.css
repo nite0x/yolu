@@ -1,0 +1,19 @@
+/* One scroll surface keeps dialog headings and submit controls visible while
+   repository results or project configuration are expanded. The existing dialog lifecycle is retained. */
+dialog#projectDialog {
+  padding: 0;
+  overflow: hidden;
+  max-height: min(90dvh, 960px);
+}
+.project-dialog-form { display: flex; flex-direction: column; min-height: 0; max-height: min(90dvh, 960px); }
+.project-dialog-form > .dialog-header { flex: none; margin: 0 !important; padding: 22px 24px 16px; border-bottom: 1px solid var(--border); }
+.project-dialog-form > .dialog-header [data-slot="badge"] { margin-bottom: 8px !important; }
+.project-dialog-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 24px 22px; scrollbar-gutter: stable; }
+.project-dialog-scroll > .dialog-description { margin-top: 14px; margin-bottom: 20px; }
+.project-dialog-form > .dialog-footer { flex: none; margin: 0; padding: 14px 24px; background: var(--background, white); }
+.project-dialog-form > .dialog-footer .footer-note { max-width: none; flex: 1; }
+@media(max-width:600px) {
+  .project-dialog-form > .dialog-header { padding: 16px 16px 12px; }
+  .project-dialog-scroll { padding: 0 16px 18px; }
+  .project-dialog-form > .dialog-footer { padding: 12px 16px; }
+}

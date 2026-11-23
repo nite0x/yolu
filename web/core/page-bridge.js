@@ -3,11 +3,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 
 
 // Independent conversation readers retain their controllers and drafts.
-// Page navigation is owned by the workspace document.
+// Page navigation is owned by the application host.
 (() => {
   if (!window.parent || window.parent === window) return;
   const host = window.parent;
-  let active = false, restoring = true, timer, disposed = false, parallelPane = false, navigationOnly = new URLSearchParams(location.search).has('workspace-navigation');
+  let active = false, restoring = true, timer, disposed = false, parallelPane = false, navigationOnly = new URLSearchParams(location.search).has('app-navigation');
   let restoreRevision = 0;
   let creationHint = {};
   let parallelSessions = [], parallelFull = false, parallelSelected = '', groupSignature = '', canSplit = false;
@@ -38,25 +38,23 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (signature !== chromeSignature) {chromeSignature = signature; post('workhub:page-chrome', {chrome});}
   }
   function snapshot() {
-    const route = location.hash.slice(1) || '/workspaces';
+    const route = location.hash.slice(1) || '/sessions';
     const view = state.view === 'sessions' ? window.WorkHubConversations.current : null;
     const session = view ? conversationSelectedSession(view) : null;
     const project = state.projects.find(item => item.id === state.selectedProject);
-    const workspace = state.workspaces.find(item => item.id === state.selectedWorkspace);
     const draftTitle = view?.creating ? window.WorkHubAssistant?.draftTitle?.() || '' : '';
-    const title = view ? view.creating ? draftTitle ? uiText("草稿：{0}", draftTitle) : uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? 'Issues' : state.view === 'projects' ? uiText("项目") : workspace?.name || uiText("工作区");
+    const title = view ? view.creating ? draftTitle ? uiText("草稿：{0}", draftTitle) : uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? uiText("任务") : state.view === 'projects' ? uiText("项目") : uiText("对话");
     return {
       route, environment: activeEnvironment, title, kind: state.view, draftTitle,
       terminal:view?.creating ? creationHint : undefined,
       context: view ? (() => {
         const environment = session?.environment_id || activeEnvironment;
-        const workspace = conversationWorkspace(environment);
-        const context = session ? window.WorkHubUI.conversationContext(session.cwd, {workspaces:workspace.workspaces,projects:workspace.projects}, view.scope.kind === 'workspace' ? view.scope.id : undefined) : null;
-        return (context?.workspaces.map(workspace => workspace.name).join('、') || conversationScopeName(view.scope)) + ' · ' + environmentName(environment);
+        const context = session ? window.WorkHubUI.conversationContext(session.cwd, conversationOverview(environment), session.primary_project_id) : null;
+        return (context?.project || conversationScopeName(view.scope)) + ' · ' + environmentName(environment);
       })() : '',
       status:session?.chat_status || '',
       sessionEnvironment:session?.environment_id,
-      conversation: view ? {scope:view.scope, creating:!!view.creating, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(session.environment_id || activeEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
+      conversation: view ? {scope:view.scope, creating:!!view.creating, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(session.environment_id || activeEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,source:session.source,provider:session.provider,primary_project_id:session.primary_project_id,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
     };
   }
   function publish() {
@@ -74,7 +72,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (shared) window.WorkHubConversations.current.pane = 'detail';
       renderConversationBrowser();
       if (!restoring) {
-        void refreshSessionWorkspace(false);
+        void refreshConversations(false);
         if (active) showConversationSelection();
       }
     }
@@ -105,11 +103,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     restoring = true;
     const previousLocation = resourceLocation.key;
     try {
-      await selectEnvironment(saved.environment || 'local', saved.route || '/workspaces', 'replace', {refreshState:false});
+      await selectEnvironment(saved.environment || 'local', saved.route || '/sessions', 'replace', {refreshState:false});
       if (disposed || revision !== restoreRevision) return;
       if (state.view === 'sessions') {
         creationHint = {...saved.terminal};
-        const savedView = saved.conversation?.scope ? saved.conversation : {scope:{kind:'all'},pane:'list'};
+        const savedView = saved.conversation?.scope && ["all","project","directory"].includes(saved.conversation.scope.kind) ? saved.conversation : {scope:{kind:'all'},pane:'list'};
         rememberConversationView(); closeSessionHistory(false);
         window.WorkHubConversations.current = conversationViewFor(savedView.scope);
         Object.assign(window.WorkHubConversations.current, {
@@ -135,7 +133,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         else showConversationSelection();
         // A known conversation opens directly; its list and workspace metadata
         // are independent background reads, rather than prerequisites.
-        void refreshSessionWorkspace(false);
+        void refreshConversations(false);
         $('#sessionBrowserList').scrollTop = savedView.scrollTop || 0;
       }
     } catch (error) { if (!disposed) toast(uiText("页面加载失败：") + error.message, true); }
@@ -145,7 +143,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         document.documentElement.removeAttribute('data-workspace-initial-route');
         performance.mark?.('workhub:selection-ready');
         visibility(active);
-        if (active && !navigationOnly && previousLocation !== resourceLocation.key && ['projects','workspaces'].includes(state.view)) focusResourcePage();
+        if (active && !navigationOnly && previousLocation !== resourceLocation.key && state.view === 'projects') focusResourcePage();
         publish();
         post('workhub:page-restored');
         selectInitialConversation();
@@ -165,18 +163,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       const session = window.WorkHubConversations.current.sessions.find(item => conversationSessionKey(item) === key);
       return {...current, title:session?.name || uiText("对话"), conversation:{...current.conversation, selected:key, pane:'detail'}};
     }
-    const sessionAction = target.closest('[data-session-action="details"]');
-    if (sessionAction) return {...current, route:'/sessions', title:uiText("对话"), conversation:{scope:sessionAction.dataset.workspace ? {kind:'workspace', id:sessionAction.dataset.workspace, environment:activeEnvironment} : {kind:'all'}, selected:conversationEnvironmentKey(activeEnvironment,sessionAction.dataset.session), pane:'detail'}};
     const collection = target.closest('[data-collection-href]');
     if (collection) return {route:collection.dataset.collectionHref.slice(1),environment:collection.dataset.collectionEnvironment || activeEnvironment,title:collection.title};
-    const workspaceButton = target.closest('[data-action="open-workspace"], [data-action="jump-workspace"]');
-    if (workspaceButton) return {route:resourceDirectoryRoute('/workspaces/' + workspaceButton.dataset.id, workspaceButton.dataset.path), environment:workspaceButton.dataset.environment || activeEnvironment, title:workspaceButton.textContent.trim()};
     const directoryProject = target.closest('[data-action="jump-project"]');
     if (directoryProject) return {route:directoryProject.hash.slice(1), environment:activeEnvironment};
     const projectButton = target.closest('[data-action="select-project"]');
     if (projectButton) return {route:'/projects/' + projectButton.dataset.id, environment:activeEnvironment, title:state.projects.find(p => p.id === projectButton.dataset.id)?.name || uiText("项目")};
-    const conversations = target.closest('[data-action="workspace-conversations"], [data-action="project-conversations"]');
-    if (conversations) return {route:'/sessions',environment:activeEnvironment, title:uiText("对话"),conversation:{scope:{kind:conversations.dataset.action === 'workspace-conversations' ? 'workspace' : 'project', id:conversations.dataset.id, environment:activeEnvironment},pane:'detail'}};
+    const conversations = target.closest('[data-action="project-conversations"]');
+    if (conversations) return {route:'/sessions',environment:activeEnvironment, title:uiText("对话"),conversation:{scope:{kind:'project', id:conversations.dataset.id, environment:activeEnvironment},pane:'detail'}};
     const nav = target.closest('[data-view]');
     if (nav) return {route:'/' + nav.dataset.view, environment:activeEnvironment};
     const link = target.closest('a[href^="#/"]');
@@ -199,35 +193,27 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (formKind && !formKind.disabled && window.WorkHubConversations.current?.creating && !sessionHistoryState?.submitting) {
       event.preventDefault(); event.stopImmediatePropagation();
       const current = snapshot(), target = window.WorkHubConversations.current.target;
-      const terminal = {...creationHint,workspaceID:target ? target.workspace_id : creationHint.workspaceID || (window.WorkHubConversations.current.scope.kind === 'workspace' ? window.WorkHubConversations.current.scope.id : undefined),projectID:target ? target.project_id : creationHint.projectID};
+      const terminal = {...creationHint,projectID:target?.project_id,cwd:target?.cwd};
       post('workhub:conversation-kind',{kind:'terminal',snapshot:{...current,terminal,conversation:{...current.conversation,creationDirectory:target ? conversationEnvironmentKey(window.WorkHubConversations.current.targetEnvironment,conversationPathKey(target.cwd)) : current.conversation.creationDirectory}}}); return;
     }
-    const projectCreate = event.target.closest('[data-action="workspace-conversation-new"]');
-    if (projectCreate && !projectCreate.disabled && event.button === 0) {
-      event.preventDefault(); event.stopImmediatePropagation();
-      const workspaceID = state.selectedWorkspace || '';
-      const projectID = projectCreate.dataset.id || '';
-      const path = projectCreate.dataset.path;
-      const matches = q => q.members.some(m => m.project_id === projectID && m.path === path);
-      const workspace = state.workspaces.find(q => q.id === workspaceID && matches(q)) || state.workspaces.find(matches);
-      post('workhub:page-open',{create:true,snapshot:{route:'/sessions',environment:activeEnvironment,title:uiText("新建对话"),terminal:{workspaceID:workspace?.id,projectID},conversation:{scope:workspace ? {kind:'workspace',id:workspace.id,environment:activeEnvironment} : {kind:'project',id:projectID,environment:activeEnvironment},creationDirectory:path ? conversationEnvironmentKey(activeEnvironment,conversationPathKey(path)) : '',creating:true,selected:null,pane:'detail'}}}); return;
-    }
-    const create = event.target.closest('[data-conversation-action="new"], [data-session-action="new"]');
-    if (create && event.button === 0 && !create.disabled && !state.busy) {
-      const workspaceAction = create.dataset.sessionAction === 'new';
-      const workspace = workspaceAction ? state.workspaces.find(workspace => workspace.id === create.dataset.workspace) : null;
-      if (workspaceAction ? !workspace || workspace.state !== 'ready' || sessionReadOnly : $('#newBrowserSession').disabled) return;
+    const projectCreate = event.target.closest('[data-action="project-conversation-new"]');
+    const create = projectCreate || event.target.closest('[data-conversation-action="new"]');
+    if (create && event.button === 0 && !create.disabled && !state.busy && !sessionReadOnly) {
       const placement = create.dataset.conversationPlacement || 'current';
       if (placement === 'split' && !canSplit) return;
       event.preventDefault(); event.stopImmediatePropagation();
       $('#sessionScopePicker').open = false;
-      const selectedSession = !workspace && window.WorkHubConversations.current ? conversationSelectedSession(window.WorkHubConversations.current) : null;
-      const scope = workspace ? {kind:'workspace',id:workspace.id,environment:activeEnvironment} : window.WorkHubConversations.current?.scope || {kind:'all'};
-      const directory = !workspace && window.WorkHubConversations.current ? defaultConversationDirectory(window.WorkHubConversations.current, conversationFilteredDirectories().filter(d => !d.disabled && d.target)) : null;
-      post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:selectedSession?.environment_id || activeEnvironment,title:uiText("新建对话"),terminal:{workspaceID:workspace?.id || directory?.target?.workspace_id || (scope.kind === 'workspace' ? scope.id : undefined),projectID:directory?.target?.project_id},conversation:{scope,directory:workspace ? '' : window.WorkHubConversations.current?.directory || '',creationDirectory:directory?.key || '',environmentFilter:workspace ? '' : window.WorkHubConversations.current?.environmentFilter || '',selected:null,creating:true,pane:'detail'}}}); return;
+      const view = window.WorkHubConversations.current;
+      const scope = projectCreate ? {kind:'project',id:projectCreate.dataset.id,environment:activeEnvironment} : view?.scope || {kind:'all'};
+      const directory = projectCreate ? {
+        key:conversationEnvironmentKey(activeEnvironment,conversationPathKey(projectCreate.dataset.path)),
+        environment:activeEnvironment, cwd:projectCreate.dataset.path, target:{project_id:projectCreate.dataset.id},
+      } : view ? defaultConversationDirectory({...view,creationDirectory:view.directory || ''}) : null;
+      post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:directory?.environment || activeEnvironment,title:uiText("新建对话"),terminal:{projectID:directory?.target?.project_id,cwd:directory?.cwd},conversation:{scope,directory:projectCreate ? '' : view?.directory || '',creationDirectory:directory?.key || '',environmentFilter:projectCreate ? '' : view?.environmentFilter || '',selected:null,creating:true,pane:'detail'}}});
+      return;
     }
     if (event.target.closest('.brand[href="/"]') && !(event.metaKey || event.ctrlKey)) {
-      event.preventDefault(); event.stopImmediatePropagation(); open({route:'/workspaces',environment:activeEnvironment}); return;
+      event.preventDefault(); event.stopImmediatePropagation(); open({route:'/sessions',environment:activeEnvironment}); return;
     }
     if (!navigationOnly && !parallelPane && !document.documentElement.hasAttribute('data-workspace-conversation') && event.button === 0 && !(event.metaKey || event.ctrlKey)) {
       const saved = destination(event.target);
@@ -269,7 +255,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   document.addEventListener('pointerdown', focus, true);
   document.addEventListener('focusin', focus);
   window.addEventListener('hashchange', schedule);
-  window.addEventListener('workhub:workspace-refreshed', schedule);
+  window.addEventListener('workhub:app-refreshed', schedule);
   window.addEventListener('workhub:session-loaded', schedule);
   window.addEventListener('workhub:chat-draft', schedule);
   window.addEventListener('workhub:parallel-command',event => {if (parallelPane && ['close','zoom'].includes(event.detail)) post('workhub:page-pane-command',{command:event.detail});});
@@ -299,7 +285,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       }
       selectInitialConversation();
     }
-    else if (message?.type === 'workhub:workspace-route' && navigationOnly) {
+    else if (message?.type === 'workhub:navigation-route' && navigationOnly) {
       const view = message.route.split('/')[1]?.split('?')[0];
       document.documentElement.dataset.workspaceMainView = view;
       document.querySelectorAll('.sidebar [data-view]').forEach(button => {
@@ -347,7 +333,30 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     document.removeEventListener('pointerdown', focus, true);
     document.removeEventListener('focusin', focus);
   }
-  window.WorkHubPage = {snapshot,canClose,dispose,environmentName,refresh:() => refresh(true),get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
+  async function refreshFromHeader() {
+    const revision = environmentRevision;
+    const result = await refresh(true);
+    if (result !== 'pending') return result;
+    if (disposed || !active || revision !== environmentRevision) return 'cancelled';
+    // The existing status poll fetches the Git results after the backend finishes.
+    return new Promise(resolve => {
+      const finish = status => {
+        clearTimeout(timeout);
+        window.removeEventListener('workhub:app-refreshed', refreshed);
+        window.removeEventListener('workhub:page-visibility', visibilityChanged);
+        resolve(status);
+      };
+      const refreshed = event => {
+        if (revision !== environmentRevision) finish('cancelled');
+        else if (event.detail !== 'pending') finish(event.detail);
+      };
+      const visibilityChanged = event => { if (!event.detail.visible) finish('cancelled'); };
+      const timeout = setTimeout(() => finish('pending'), 10000);
+      window.addEventListener('workhub:app-refreshed', refreshed);
+      window.addEventListener('workhub:page-visibility', visibilityChanged);
+    });
+  }
+  window.WorkHubPage = {snapshot,canClose,dispose,environmentName,refresh:refreshFromHeader,get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
   visibility(false);
-  window.addEventListener('workhub:workspace-ready', () => post('workhub:page-ready'), {once:true});
+  window.addEventListener('workhub:app-ready', () => post('workhub:page-ready'), {once:true});
 })();

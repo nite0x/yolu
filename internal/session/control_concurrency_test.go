@@ -29,7 +29,7 @@ func (c *blockedCreationClient) Call(ctx context.Context, method string, params 
 }
 
 func TestSlowCreationAllowsOtherSessionControlsAndIndependentCreation(t *testing.T) {
-	a, q, base, _ := chatFixture(t)
+	a, _, base, _ := chatFixture(t)
 	release := make(chan struct{})
 	clients := []*blockedCreationClient{
 		{fakeLiveClient: base, entered: make(chan struct{}), release: release},
@@ -45,7 +45,7 @@ func TestSlowCreationAllowsOtherSessionControlsAndIndependentCreation(t *testing
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "check", "request_id": key})
+			code, _ := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "check", "request_id": key})
 			result <- code
 		}()
 		return result
@@ -85,7 +85,7 @@ func TestSlowCreationAllowsOtherSessionControlsAndIndependentCreation(t *testing
 }
 
 func TestConcurrentCreationRetriesShareOneDurableRequest(t *testing.T) {
-	a, q, base, _ := chatFixture(t)
+	a, _, base, _ := chatFixture(t)
 	base.session = "created"
 	release := make(chan struct{})
 	c := &blockedCreationClient{fakeLiveClient: base, entered: make(chan struct{}), release: release}
@@ -100,7 +100,7 @@ func TestConcurrentCreationRetriesShareOneDurableRequest(t *testing.T) {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			code, _ := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "check", "request_id": "same"})
+			code, _ := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "check", "request_id": "same"})
 			results <- code
 		}()
 	}

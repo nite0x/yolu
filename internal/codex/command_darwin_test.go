@@ -17,19 +17,23 @@ func TestDaemonCommandUsesManagedMacRuntime(t *testing.T) {
 	if err := os.WriteFile(managed, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	canonical, err := filepath.EvalSymlinks(managed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, action := range []string{"start", "version"} {
 		cmd := Command(context.Background(), "app-server", "daemon", action)
-		if cmd.Path != managed {
+		if cmd.Path != canonical {
 			t.Fatal("daemon command ignored installed runtime")
 		}
 	}
-	if cmd := Command(context.Background(), "app-server"); cmd.Path == managed {
+	if cmd := Command(context.Background(), "app-server"); cmd.Path == canonical {
 		t.Fatal("changed the explicitly selected session CLI")
 	}
 	if err := os.Chmod(managed, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if cmd := Command(context.Background(), "app-server", "daemon", "start"); cmd.Path == managed {
+	if cmd := Command(context.Background(), "app-server", "daemon", "start"); cmd.Path == canonical {
 		t.Fatal("selected a non-executable runtime")
 	}
 	t.Setenv("CODEX_HOME", ".codex")

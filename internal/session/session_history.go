@@ -306,7 +306,7 @@ func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) 
 		httpx.WriteError(w, 503, "无法读取对话详情："+err.Error())
 		return
 	}
-	if err := a.SaveSession("", s, "codex", titleObservedAt); err != nil {
+	if err := a.SaveSession(s, "codex", titleObservedAt); err != nil {
 		httpx.DbError(w, err)
 		return
 	}

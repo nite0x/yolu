@@ -45,7 +45,7 @@ func Open(dataDir, root string, remote *Client) (*Service, error) {
 			root = platform.JoinWorkspacePath(remote.Identity.Home, root[2:])
 		}
 		if !strings.HasPrefix(root, "/") {
-			return nil, fmt.Errorf("WSL 工作区根目录必须是 Linux 绝对路径或 ~/ 开头的路径")
+			return nil, fmt.Errorf("WSL Worktree 根目录必须是 Linux 绝对路径或 ~/ 开头的路径")
 		}
 		root = platform.CleanWorkspacePath(root)
 	} else if root, err = filepath.Abs(root); err != nil {

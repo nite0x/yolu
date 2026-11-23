@@ -51,8 +51,13 @@
   });
   if (platform === 'windows' && window === host) {
     window.WorkHubDesktopWindow = {
-      showMenu: (ready = false) => host.__TAURI_INTERNALS__?.invoke('show_app_menu', {ready})
-        .catch(error => console.error('Application menu failed:', error)),
+      showMenu(ready = false, trigger) {
+        const anchor = trigger?.getBoundingClientRect();
+        const x = anchor?.left ?? 9;
+        const y = anchor?.bottom ?? 32;
+        return host.__TAURI_INTERNALS__?.invoke('show_app_menu', {ready, x, y})
+          .catch(error => console.error('Application menu failed:', error));
+      },
     };
   }
   document.addEventListener('DOMContentLoaded', () => {
@@ -71,21 +76,22 @@
       // The startup/error page has no React layout, so provide its menu here.
       // The workspace replaces this fallback when it mounts its shared chrome.
       if (!controls.hasChildNodes()) {
-        const brand = document.createElement('button');
-        brand.type = 'button';
-        brand.className = 'window-brand-trigger';
-        brand.textContent = 'Yolu ▾';
-        brand.setAttribute('aria-label', window.YoluI18n?.text('Yolu 菜单') || 'Yolu 菜单');
-        brand.setAttribute('aria-haspopup', 'menu');
-        const showMenu = () => window.WorkHubDesktopWindow.showMenu();
-        brand.addEventListener('click', showMenu);
-        brand.addEventListener('keydown', event => {
+        const menu = document.createElement('button');
+        menu.type = 'button';
+        menu.className = 'window-utility-button window-app-menu';
+        menu.textContent = '⋯';
+        const label = window.YoluI18n?.text('应用菜单') || '应用菜单';
+        menu.setAttribute('aria-label', label);
+        menu.title = label;
+        menu.setAttribute('aria-haspopup', 'menu');
+        const showMenu = () => window.WorkHubDesktopWindow.showMenu(false, menu);
+        menu.addEventListener('click', showMenu);
+        menu.addEventListener('keydown', event => {
           if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
           event.preventDefault();
           showMenu();
         });
-        controls.append(brand);
-
+        controls.append(menu);
       }
 
       const actions = document.createElement('div');

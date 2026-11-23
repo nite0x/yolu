@@ -1,6 +1,6 @@
 # Yolu website
 
-A standalone, responsive application landing page. It introduces Yolu's workspace-centered development workflow without changing the desktop application's entry points or backend.
+A standalone, responsive application landing page. It introduces Yolu's conversation-centered development workflow without changing the desktop application's entry points or backend.
 
 ## Preview and build
 
@@ -21,7 +21,7 @@ Deploy the generated `website/dist/` directory to a static host. No package inst
 ## Content and interactions
 
 - Simplified Chinese by default, with an English toggle and a locally saved language preference.
-- A gallery of real production-UI captures showing workspaces, Git diffs, and the integrated terminal, with a keyboard-accessible screenshot switcher and enlarged view. The Mint palette is labeled as a development build; the data comes from isolated sample repositories. See [capture provenance](screenshots.md).
+- A gallery of real production-UI captures showing conversations, Git diffs, and the integrated terminal, with a keyboard-accessible screenshot switcher and enlarged view. The Mint palette is labeled as a development build; the data comes from isolated sample repositories. See [capture provenance](screenshots.md).
 - OS-specific package guidance linking to GitHub Releases, rather than assuming an artifact exists.
 - Keyboard-accessible tabs, native FAQ disclosures, reduced-motion support, and a copyable Git clone command.
 - The approved `web/yolu.svg` master is copied to `assets/yolu.svg`; synchronize this copy if the master changes.

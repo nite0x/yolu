@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -12,97 +13,80 @@ import (
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
-	"worktree-hub/internal/workspace"
 )
 
-func (a *Service) mergeConflictPlan(ctx context.Context, id, project, mergeHead string) (model.LaunchPlan, string, error) {
-	plan := model.LaunchPlan{}
-	q, err := a.Execution.Store.Workspace(id)
-	if err != nil || q.State != "ready" {
-		return plan, "", fmt.Errorf("工作区尚未就绪或已归档")
-	}
-	ps, err := a.Execution.Store.ProjectMap()
+// The directory has already been validated against the registered repository.
+func mergeConflictPrompt(ctx context.Context, directory, mergeHead string) (string, error) {
+	state, err := execution.ReadGitState(ctx, directory)
 	if err != nil {
-		return plan, "", err
+		return "", err
 	}
-	for _, member := range q.Members {
-		if member.ProjectID != project || member.State != "ready" {
-			continue
-		}
-		// Validate only this member so an unrelated project's unavailable worktree
-		// cannot prevent recovering this merge. Never accept a client-supplied cwd.
-		member.Mode = "worktree"
-		if err := workspace.VerifyMember(ctx, ps[project], member, ""); err != nil {
-			return plan, "", err
-		}
-		state, err := execution.ReadGitState(ctx, member.Path)
-		if err != nil {
-			return plan, "", err
-		}
-		if state.Operation != "merge" || mergeHead == "" || state.MergeHead != mergeHead {
-			return plan, "", fmt.Errorf("合并状态已变化，请刷新后重新打开 AI")
-		}
-		prompt := fmt.Sprintf("请完成当前 Git 合并。\n工作区：%s\n项目：%s\n工作目录：%s\n目标分支：%s\n目标 HEAD：%s\n待合入 MERGE_HEAD：%s\n当前未解决冲突文件：\n%s\n\n先读取工作区说明 %s 和适用的 AGENTS.md，再核实 git status、HEAD 和 MERGE_HEAD。如果合并目标已变化或已不存在，请停止并说明。理解双方改动意图后解决全部冲突，保留双方需要的功能，按项目要求运行必要检查，仅暂存此次合并涉及的文件并完成合并提交。不要切换分支、重置或丢弃其他修改，不要推送。遇到无法判断的业务选择时向用户询问，完成后报告合并结果与验证情况。", q.Name, member.ProjectName, member.Path, state.Branch, state.Head, state.MergeHead, strings.Join(state.Conflicts, "\n"), platform.JoinWorkspacePath(q.Path, "BRIEF.md"))
-		plan = model.LaunchPlan{Title: "Codex · 合并冲突 · " + member.ProjectName, Workspace: id, Cwd: member.Path, Args: []string{"--cd", member.Path, prompt}, AdditionalDirectories: []string{}}
-		plan.Command = platform.DisplayCommand("codex", plan.Args, platform.NativeWindows() && a.Execution.Remote == nil)
-		return plan, prompt, nil
+	if state.Operation != "merge" || mergeHead == "" || state.MergeHead != mergeHead {
+		return "", fmt.Errorf("合并状态已变化，请刷新后重新打开 AI")
 	}
-	return plan, "", fmt.Errorf("所选项目未关联当前工作区或目录尚未就绪")
+	return fmt.Sprintf("请完成当前 Git 合并。\n工作目录：%s\n目标分支：%s\n目标 HEAD：%s\n待合入 MERGE_HEAD：%s\n当前未解决冲突文件：\n%s\n\n先读取适用的 AGENTS.md，再核实 git status、HEAD 和 MERGE_HEAD。如果合并目标已变化或已不存在，请停止并说明。理解双方改动意图后解决全部冲突，保留双方需要的功能，按项目要求运行必要检查，仅暂存此次合并涉及的文件并完成合并提交。不要切换分支、重置或丢弃其他修改，不要推送。遇到无法判断的业务选择时向用户询问，完成后报告合并结果与验证情况。", directory, state.Branch, state.Head, state.MergeHead, strings.Join(state.Conflicts, "\n")), nil
 }
 
-// Read-only desktop sessions launch the existing terminal instead of using the
-// interactive app-server. Persist before launch so uncertain retries cannot
-// silently open a second AI that edits the same merge.
+// MergeAIHandler keeps terminal assistance available when in-app runs are disabled.
 func (a *Service) MergeAIHandler(w http.ResponseWriter, r *http.Request) {
 	if !a.Execution.ReadOnlySessions {
-		httpx.WriteError(w, 409, "请使用工作区侧栏处理合并")
+		httpx.WriteError(w, 409, "请在对话中启动合并处理")
 		return
 	}
 	var input struct {
-		Project   string `json:"project_id"`
+		ProjectID string `json:"project_id"`
+		Cwd       string `json:"cwd"`
 		MergeHead string `json:"merge_head"`
 		RequestID string `json:"request_id"`
 	}
 	if !httpx.Decode(w, r, &input) {
 		return
 	}
-	if input.RequestID == "" || len(input.RequestID) > 80 {
-		httpx.WriteError(w, 400, "缺少有效的启动标识")
+	if input.ProjectID == "" || input.Cwd == "" || input.MergeHead == "" || input.RequestID == "" || len(input.RequestID) > 80 {
+		httpx.WriteError(w, 400, "请选择有待处理合并的项目目录并提供启动标识")
 		return
 	}
-	id, key := r.PathValue("id"), "merge-terminal:"+input.RequestID
-	releaseControl := a.lockControl("launch-merge:" + id + ":" + key)
-	defer releaseControl()
-	var old string
-	err := a.Execution.Store.DB.QueryRow(`SELECT session_id FROM session_create_requests WHERE workspace_id=? AND request_id=?`, id, key).Scan(&old)
-	if err == nil {
-		if old == "launched" {
-			httpx.WriteJSON(w, 200, map[string]string{"message": "已向 Codex 终端发送合并处理请求，请查看终端"})
-		} else {
-			httpx.WriteError(w, 409, "上次终端启动结果未确认，请先检查终端，避免重复启动 AI")
-		}
+	key := "merge-terminal:" + input.RequestID
+	release := a.lockControl(key)
+	defer release()
+	fingerprint := fmt.Sprintf("%x", sha256.Sum256([]byte(input.ProjectID+"\x00"+input.Cwd+"\x00"+input.MergeHead)))
+	id, err := a.createdSessionID(r.Context(), key, fingerprint)
+	if err == nil && id == "launched" {
+		httpx.WriteJSON(w, 200, map[string]string{"message": "已打开合并处理终端"})
 		return
 	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		httpx.DbError(w, err)
-		return
-	}
-	plan, _, err := a.mergeConflictPlan(r.Context(), id, input.Project, input.MergeHead)
-	if err != nil {
+	if errors.Is(err, errCreationMismatch) || errors.Is(err, errCreationUncertain) {
 		httpx.WriteError(w, 409, err.Error())
 		return
 	}
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO session_create_requests(workspace_id,request_id) VALUES(?,?)`, id, key); err != nil {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		httpx.DbError(w, err)
 		return
 	}
+	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
+	binding, err := a.inspectBinding(ctx, bindingInput{ProjectID: input.ProjectID, Directory: input.Cwd, Access: model.SessionBindingWrite}, false)
+	if err != nil {
+		writeBindingError(w, err)
+		return
+	}
+	prompt, err := mergeConflictPrompt(ctx, binding.Directory, input.MergeHead)
+	if err != nil {
+		writeBindingError(w, err)
+		return
+	}
+	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
+		httpx.DbError(w, err)
+		return
+	}
+	plan := model.LaunchPlan{Title: "Codex · 合并冲突", Cwd: binding.Directory, Args: []string{"--cd", binding.Directory, prompt}}
+	plan.Command = platform.DisplayCommand("codex", plan.Args, platform.NativeWindows() && a.Execution.Remote == nil)
 	if err := a.Execution.LaunchSimpleTerminal(plan); err != nil {
-		httpx.WriteJSON(w, 503, map[string]string{"error": "无法打开 AI 终端：" + err.Error() + "；请检查终端后手动执行命令", "command": plan.Command})
+		httpx.WriteJSON(w, 503, map[string]string{"error": err.Error(), "command": plan.Command})
 		return
 	}
-	if _, err := a.Execution.Store.DB.Exec(`UPDATE session_create_requests SET session_id='launched' WHERE workspace_id=? AND request_id=?`, id, key); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id='launched' WHERE request_id=?`, key); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, 200, map[string]string{"message": "已打开 Codex 终端，携带当前目录的合并上下文"})
+	httpx.WriteJSON(w, 200, map[string]string{"message": "已在所选工作目录打开合并处理终端"})
 }

@@ -18,7 +18,7 @@ import {
 } from "@/components/assistant-ui/elements/thread.aui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ConversationHeader } from "../workspace/conversation-surface";
+import { ConversationHeader } from "../app/conversation-surface";
 import { uiText } from "../i18n";
 import type { useChatReading } from "./use-chat-reading";
 

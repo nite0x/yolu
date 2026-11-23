@@ -145,13 +145,13 @@ func TestBrowserChatFixture(t *testing.T) {
 		t.Skip("opt-in browser fixture")
 	}
 	a, q, _, _ := chatFixture(t)
-	_, _ = a.Execution.Store.DB.Exec(`UPDATE workspaces SET name='侧栏对话验证',description='验证文字输入、实时回复、审批和停止' WHERE id=?`, q.ID)
+
 	a.openLive = func(context.Context) (codex.LiveClient, error) {
-		return &browserLive{fakeLiveClient: &fakeLiveClient{updates: make(chan codex.Event, 256), cwd: q.Members[0].Path}, decision: make(chan string, 2), stop: make(chan struct{})}, nil
+		return &browserLive{fakeLiveClient: &fakeLiveClient{updates: make(chan codex.Event, 256), cwd: q.Path}, decision: make(chan string, 2), stop: make(chan struct{})}, nil
 	}
 	a.openSessions = func(context.Context) (codex.SessionClient, error) {
 		return &fakeSessionClient{request: func(method string, p map[string]any) (any, error) {
-			s := codex.Session{ID: "session", Name: "功能实现与测试", Cwd: q.Members[0].Path, UpdatedAt: time.Now().Unix(), HistoryMode: "paginated"}
+			s := codex.Session{ID: "session", Name: "功能实现与测试", Cwd: q.Path, UpdatedAt: time.Now().Unix(), HistoryMode: "paginated"}
 			if method == "model/list" {
 				return map[string]any{"data": []any{map[string]any{"id": "model", "model": "model", "displayName": "验收模型", "isDefault": true, "supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "medium"}, map[string]any{"reasoningEffort": "high"}}}}}, nil
 			}
@@ -162,7 +162,7 @@ func TestBrowserChatFixture(t *testing.T) {
 				return map[string]any{}, nil
 			}
 			if method == "thread/list" {
-				stored, _ := a.StoredSessions(q.ID)
+				stored, _ := a.Execution.Store.Sessions()
 				all := []codex.Session{}
 				for _, entry := range stored {
 					archived, _ := p["archived"].(bool)
@@ -222,18 +222,6 @@ func TestBrowserChatFixture(t *testing.T) {
 	}
 	production := a.handler()
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/workspace-inventory" {
-			workspace, _ := a.Execution.Store.Workspace(q.ID)
-			raw, _ := json.Marshal(workspace)
-			var row map[string]any
-			_ = json.Unmarshal(raw, &row)
-			row["environment_id"] = "local"
-			row["environment_name"] = "本机"
-			row["connected"] = true
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"workspaces": []any{row}, "environments": []any{map[string]any{"id": "local", "name": "本机", "connected": true}}, "project_count": 1})
-			return
-		}
 		if r.URL.Path == "/api/environments" {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{"environments": []any{map[string]any{"id": "local", "name": "本机", "connected": true}}, "distributions": []string{}, "wsl_supported": false})
@@ -248,6 +236,6 @@ func TestBrowserChatFixture(t *testing.T) {
 	server.Listener = listener
 	server.Start()
 	defer server.Close()
-	fmt.Println("CHAT_FIXTURE_READY http://localhost:44317/#/workspaces/" + q.ID)
+	fmt.Println("CHAT_FIXTURE_READY http://localhost:44317/#/sessions/session")
 	time.Sleep(30 * time.Minute)
 }

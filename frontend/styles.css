@@ -1,11 +1,11 @@
-/* No Preflight: the existing workspace, project and session pages retain their CSS.
+/* No Preflight: the existing project and conversation pages retain their CSS.
    Utilities win over legacy element selectors only where components use them. */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source(none) important;
-@import "./workspace/conversation-surface.css";
-@import "./workspace/page-surface.css";
-@import "./workspace/working-directories.css";
+@import "./app/conversation-surface.css";
+@import "./app/page-surface.css";
+@import "./app/working-directories.css";
 @source "./";
 /* dark: follows the saved Yolu palette, not prefers-color-scheme. */
 @custom-variant dark (&:where([data-color-scheme=dark], [data-color-scheme=dark] *));

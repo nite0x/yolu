@@ -18,7 +18,7 @@ func TestInstalledCodexSidebarTurn(t *testing.T) {
 	}
 	a := testApp(t)
 	p := register(t, a, "Smoke", repo(t, "smoke", "master"))
-	_, q, _ := create(t, a, p, nil, "live-smoke")
+	q := newTestDirectory(t, a, p, "live-smoke")
 	ctx, end := context.WithTimeout(context.Background(), 60*time.Second)
 	defer end()
 	c, err := codex.OpenLive(ctx)
@@ -29,7 +29,7 @@ func TestInstalledCodexSidebarTurn(t *testing.T) {
 	var thread struct {
 		Thread codex.Session `json:"thread"`
 	}
-	if err := c.Call(ctx, "thread/start", map[string]any{"cwd": q.Members[0].Path, "sandbox": "read-only", "approvalPolicy": "untrusted"}, &thread); err != nil {
+	if err := c.Call(ctx, "thread/start", map[string]any{"cwd": q.Path, "sandbox": "read-only", "approvalPolicy": "untrusted"}, &thread); err != nil {
 		t.Fatal(err)
 	}
 	// This test needs a stored thread so another connection can resume it.
@@ -69,10 +69,10 @@ func TestInstalledCodexSidebarTurn(t *testing.T) {
 			t.Fatal("seed turn timed out")
 		}
 	}
-	if err := a.SaveSession(q.ID, thread.Thread, "manual"); err != nil {
+	if err := a.SaveSession(thread.Thread, "manual"); err != nil {
 		t.Fatal(err)
 	}
-	endpoint := "/api/workspaces/" + q.ID + "/sessions/" + thread.Thread.ID + "/chat"
+	endpoint := "/api/sessions/" + thread.Thread.ID + "/chat"
 	if code, raw := call(t, a, "POST", endpoint, map[string]string{"text": "这是侧栏连通性测试。只回复 WORKTREE_HUB_SIDEBAR_OK，不调用工具，不读取文件。", "request_id": "sidebar-smoke"}); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}

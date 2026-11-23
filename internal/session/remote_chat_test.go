@@ -54,6 +54,7 @@ func TestRemoteChatHelper(t *testing.T) {
 			ID     json.RawMessage `json:"id"`
 			Method string          `json:"method"`
 			Result json.RawMessage `json:"result"`
+			Params map[string]any  `json:"params"`
 		}
 		if json.Unmarshal(scan.Bytes(), &req) != nil {
 			os.Exit(5)
@@ -62,7 +63,7 @@ func TestRemoteChatHelper(t *testing.T) {
 			continue
 		}
 		if req.Method == "" {
-			if string(req.ID) != `"remote-approval"` || !strings.Contains(string(req.Result), `"accept"`) {
+			if string(req.ID) != `"remote-approval"` || !strings.Contains(string(req.Result), `"fileSystem"`) {
 				os.Exit(6)
 			}
 			event("item/completed", map[string]any{"item": map[string]any{"id": "reply", "type": "agentMessage", "text": "审批已回传"}})
@@ -80,12 +81,23 @@ func TestRemoteChatHelper(t *testing.T) {
 		case "turn/start":
 			result = map[string]any{"turn": map[string]any{"id": "remote-turn"}}
 		}
+		if profile, _ := req.Params["permissions"].(string); profile != "" && (req.Method == "thread/start" || req.Method == "thread/resume") {
+			result.(map[string]any)["activePermissionProfile"] = map[string]string{"id": profile}
+		}
 		emit(map[string]any{"id": req.ID, "result": result})
 		if req.Method == "turn/start" {
 			for i := 0; i < 512; i++ {
 				event("item/agentMessage/delta", map[string]any{"itemId": "reply", "delta": "片"})
 			}
-			emit(map[string]any{"id": "remote-approval", "method": "item/commandExecution/requestApproval", "params": map[string]any{"threadId": "remote-session", "turnId": "remote-turn", "command": "pwd", "availableDecisions": []string{"accept", "decline"}}})
+			grant := os.Getenv("WORKTREE_HUB_REMOTE_CHAT_GRANT")
+			rawInput, _ := json.Marshal(req.Params["input"])
+			if strings.Contains(string(rawInput), "继续这次对话") {
+				grant = os.Getenv("WORKTREE_HUB_REMOTE_CHAT_OTHER_GRANT")
+			}
+			emit(map[string]any{"id": "remote-approval", "method": "item/permissions/requestApproval", "params": map[string]any{
+				"threadId": "remote-session", "turnId": "remote-turn", "reason": "read additional directory",
+				"permissions": map[string]any{"fileSystem": map[string]any{"read": []string{grant}}},
+			}})
 		}
 		if req.Method == "turn/interrupt" {
 			event("turn/completed", map[string]any{"turn": map[string]any{"id": "remote-turn", "status": "interrupted"}})
@@ -93,22 +105,22 @@ func TestRemoteChatHelper(t *testing.T) {
 	}
 	os.Exit(0)
 }
-func TestRemoteWorkspaceChatCreatesStreamsApprovesContinuesAndStops(t *testing.T) {
+func TestRemoteChatCreatesStreamsApprovesContinuesAndStops(t *testing.T) {
 	a, q, _, _ := chatFixture(t)
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(executable, "-test.run=^TestRemoteChatHelper$", "--", "--workspace-agent")
-	cmd.Env = append(os.Environ(), "WORKTREE_HUB_REMOTE_CHAT_HELPER=1", "WORKTREE_HUB_REMOTE_CHAT_CWD="+q.Members[0].Path, "WORKTREE_HUB_REMOTE_CHAT_BUSY=1")
+	cmd.Env = append(os.Environ(), "WORKTREE_HUB_REMOTE_CHAT_HELPER=1", "WORKTREE_HUB_REMOTE_CHAT_CWD="+q.Path, "WORKTREE_HUB_REMOTE_CHAT_BUSY=1", "WORKTREE_HUB_REMOTE_CHAT_GRANT="+t.TempDir(), "WORKTREE_HUB_REMOTE_CHAT_OTHER_GRANT="+t.TempDir())
 	remote, err := execution.StartClient(cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer remote.Close()
 	a.Execution.Remote = remote
-	a.Service = New(a.Execution, a.Workspaces)
-	endpoint := "/api/workspaces/" + q.ID + "/sessions/remote-session/chat"
+	a.Service = New(a.Execution)
+	endpoint := "/api/sessions/remote-session/chat"
 	wait := func(predicate func(ChatState) bool) ChatState {
 		t.Helper()
 		deadline := time.Now().Add(8 * time.Second)
@@ -124,7 +136,7 @@ func TestRemoteWorkspaceChatCreatesStreamsApprovesContinuesAndStops(t *testing.T
 		t.Fatal("remote turn did not reach expected state")
 		return ChatState{}
 	}
-	if code, body := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "测试远程对话", "request_id": "new-remote"}); code != 202 {
+	if code, body := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "测试远程对话", "request_id": "new-remote", "project_id": q.ProjectID, "cwd": q.Path}); code != 202 {
 		t.Fatalf("create: %d %s", code, body)
 	}
 	waiting := wait(func(s ChatState) bool { return len(s.Approvals) == 1 })

@@ -10,7 +10,7 @@ type sessionControlLock struct {
 // Control operations share the cleanup gate, but only serialize with operations
 // on the same session or creation receipt. Worktree removal takes the gate's
 // exclusive side before checking occupancy and keeps it until removal ends.
-// Lock order: cleanup gate -> control key -> workspace metadata -> runtime state.
+// Lock order: cleanup gate -> control key -> environment metadata -> runtime state.
 func (a *Service) lockControl(key string) func() {
 	a.controlMu.RLock()
 	release := a.lockControlKey(key)

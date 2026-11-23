@@ -1,5 +1,5 @@
 import { uiText } from "../i18n";
-import {ConversationHeader, ConversationPaneButtons, ConversationWorkingContext} from "../workspace/conversation-surface";
+import {ConversationHeader, ConversationPaneButtons, ConversationWorkingContext} from "../app/conversation-surface";
 import {useChatState} from "./use-chat-state";
 import {memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from "react";
 import {ExportedMessageRepository, MessageNotSentError, type ThreadMessage} from "@assistant-ui/react";
@@ -10,7 +10,6 @@ import {Alert, AlertDescription} from "@/components/ui/alert";
 import {Button} from "@/components/ui/button";
 import {Card, CardContent, CardFooter, CardHeader, CardTitle} from "@/components/ui/card";
 import {Input} from "@/components/ui/input";
-import {Label} from "@/components/ui/label";
 import {NativeSelect, NativeSelectOption} from "@/components/ui/native-select";
 import {ChatController} from "./controller";
 import {useChatReading} from "./use-chat-reading";
@@ -20,11 +19,12 @@ import {ApprovalActions, ElicitationFields} from "./approval-fields";
 import {ChatControls, ChatSearch, ChatSessionMenu, ChatStatus} from "./controls";
 import {ChatMediaProvider, ChatMessageText, ChatUserImage} from "./media";
 import {ChatAttachmentAdapter} from "./attachments";
-import {conversationContext} from "../workspace/conversation-context";
+import {conversationContext, isGeneralConversationDirectory} from "../app/conversation-context";
 import {ChatToolFallback, ChatChangeSummary, ChatChangePathsProvider} from "./file-changes";
 import {QuestionComposer} from "./questions";
 import {sendShortcut} from "./input-preference";
 import {draftTitle} from "./draft-title";
+import {useSessionDirectories} from "./session-directories";
 
 function ConversationDraftTitle({controller}: {controller: ChatController}) {
   const preview = useChatState(controller, state => draftTitle(state.draft));
@@ -137,6 +137,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   };
   const state = useSyncExternalStore(controller.subscribe, controller.getViewSnapshot);
   const attachments = useMemo(() => new ChatAttachmentAdapter((name, data) => controller.options.request("/api/chat-attachments", {method: "POST", body: JSON.stringify({name, data})})), [controller]);
+  const directories = useSessionDirectories(controller,state.session,state.provider,state.chat.busy || state.submitting);
   const question = !readOnly ? controller.question() : undefined;
   const approvals = state.chat.approvals.filter(a => a !== question);
   const previousQuestion = useRef<string | undefined>(undefined);
@@ -164,8 +165,9 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       controller.draftAttachments = message.attachments || [];
       // The composer returns failed submissions to its draft. Let it own that
       // restoration, then mirror the result below so text is never appended twice.
-      try { await controller.send(text, images, false); } catch (error) {
+      try { await directories.send(text, images); } catch (error) {
         if (!panel.current && !controller.getSnapshot().draft) controller.setDraft(text);
+        controller.setError((error as Error).message);
         throw new MessageNotSentError((error as Error).message);
       }
     },
@@ -186,13 +188,13 @@ export function ChatPanel({controller}: {controller: ChatController}) {
     const unsubscribeErrors = composer.unstable_on("attachmentAddError", event => controller.setError(event.message));
     return () => { unsubscribe(); unsubscribeErrors(); };
   }, [controller, runtime, state.draftRestore]);
-  const workspace = controller.options.workspace;
-  const path = state.chat.context?.cwd || state.context?.cwd || state.session?.cwd || controller.options.target?.cwd || workspace?.members.find(m => m.project_id === state.project)?.path || "";
-  const context = conversationContext(path, controller.options.overview || (workspace ? {workspaces: [workspace], projects: []} : undefined), workspace?.id || controller.options.target?.workspace_id);
-  const additionalDirectories = state.chat.context?.additional_directories || state.context?.additional_directories || [];
+  const path = (state.chat.busy ? state.chat.context?.cwd : directories.cwd) || state.context?.cwd || state.session?.cwd || directories.target.cwd || "";
+  const displayPath = isGeneralConversationDirectory(path) ? uiText("普通对话") : path;
+  const context = conversationContext(path, controller.options.overview, state.session?.primary_project_id || directories.target.project_id);
+  const additionalDirectories = state.chat.context?.additional_directories || state.context?.additional_directories || state.session?.additional_directories || [];
   const changePaths = useMemo(() => ({cwd: path, additionalDirectories,
-    projectRoots: [...(controller.options.overview?.projects.flatMap(project => [project.path, ...project.worktrees.map(tree => tree.path)]) || []), ...(controller.options.overview?.workspaces.flatMap(workspace => workspace.members.map(member => member.path)) || []), ...(workspace?.members.map(member => member.path) || [])],
-  }), [path, additionalDirectories, controller.options.overview, workspace]);
+    projectRoots: controller.options.overview?.projects.flatMap(project => [project.path, ...project.worktrees.map(tree => tree.path)]) || [],
+  }), [path, additionalDirectories, controller.options.overview]);
   const status = state.chat.blocked;
   const feedback = (state.draftNotice || status || state.chat.notice || state.chat.retrying || state.chat.can_handoff || state.error || state.chat.error) &&
     <ConversationFeedback messages={[status, state.draftNotice, state.chat.notice, state.chat.retrying]} error={state.error || state.chat.error}>
@@ -208,32 +210,33 @@ export function ChatPanel({controller}: {controller: ChatController}) {
               <TooltipIconButton ref={searchTrigger} className="chat-panel-secondary-action" tooltip={uiText("查找消息")} aria-label={uiText("查找消息")} aria-expanded={searchOpen} onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}><SearchIcon /></TooltipIconButton>
               <TooltipIconButton className="chat-panel-secondary-action" tooltip={uiText("刷新历史")} aria-label={uiText("刷新历史")} disabled={state.loading} onClick={() => void controller.history()}><RefreshCwIcon className={state.loading ? "animate-spin motion-reduce:animate-none" : ""} /></TooltipIconButton>
             </>}
-            {!readOnly && state.session && controller.options.newConversation && <TooltipIconButton tooltip={uiText("新建对话")} aria-label={uiText("新建对话")} disabled={!!workspace && workspace.state !== "ready"} onClick={controller.options.newConversation}><PlusIcon /></TooltipIconButton>}
+            {!readOnly && state.session && controller.options.newConversation && <TooltipIconButton tooltip={uiText("新建对话")} aria-label={uiText("新建对话")} onClick={controller.options.newConversation}><PlusIcon /></TooltipIconButton>}
             <ChatFileToggle />
             <ConversationWorkingContext>
           <dl className="chat-context-facts grid gap-2 text-xs">
             <dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd>
-            <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openWorkspace ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openWorkspace?.("project", context.projectID!)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
+            <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openProject?.(context.projectID!,path)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
             {context.branch && <><dt>{uiText("分支")}</dt><dd>{context.branch}</dd></>}
-            <dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd><code className="chat-workspace-path">{path || uiText("请选择工作目录")}</code></dd>
+            <dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd><code className="chat-workspace-path">{displayPath || uiText("普通对话")}</code></dd>
             <dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd>
-            <dt>{uiText("关联工作区")}</dt><dd>{context.workspaces.length ? <nav className="chat-workspace-links" aria-label={uiText("关联工作区详情")}>{context.workspaces.map(t => controller.options.openWorkspace ? <button key={t.id} type="button" className="chat-workspace-link" aria-label={uiText("打开工作区详情：{0}", t.name)} onClick={() => controller.options.openWorkspace?.("workspace", t.id)}>{t.name}</button> : <span key={t.id}>{t.name}</span>)}</nav> : uiText("未关联工作区")}</dd>
             {additionalDirectories.length > 0 && <><dt>{uiText("额外工作目录")}</dt><dd>{additionalDirectories.map(directory => <code key={directory} className="chat-context-directory">{directory}</code>)}</dd></>}
           </dl>
           {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
           {!readOnly && state.session && <Button type="button" size="sm" variant="outline" className="chat-workspace-resume" disabled={!state.session.available} onClick={() => void controller.resume()}><TerminalIcon aria-hidden="true" />{uiText("在终端继续")}</Button>}
-        {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
+        {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
             </ConversationWorkingContext>
             <ChatSessionMenu controller={controller} portal={panel} onSearch={() => setSearchOpen(true)} />
             <ParallelPaneControls />
         </>}
         context={<>
 
-          <span className="chat-workspace-project" title={context.project}>{context.projectID && controller.options.openWorkspace ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openWorkspace?.("project", context.projectID!)}>{context.project}</button> : <span>{context.project || uiText("工作目录")}</span>}</span>
+          <span className="chat-workspace-project" title={context.project}>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openProject?.(context.projectID!,path)}>{context.project}</button> : <span>{context.project || uiText("工作目录")}</span>}</span>
           {context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><span>{context.branch}</span></span>}
         </>}>
 
 
+        {directories.bar}
+        {directories.details}
         {state.session && <ChatSearch controller={controller} container={reading.container} open={searchOpen} onClose={closeSearch} />}
       </ConversationHeader>}
       onKeyDownCapture={event => {
@@ -245,13 +248,11 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       beforeThread={state.historyError && <Alert variant="destructive" className="shrink-0 rounded-none"><AlertDescription>{state.historyError}</AlertDescription></Alert>}
       thread={{
         dockComposer: !readOnly,
-        emptyStateControls: !readOnly && !state.session && <ConversationCreationSetup>
-          {workspace && <div className="flex flex-wrap items-center gap-3 p-3"><Label htmlFor="assistantChatProject">{uiText("工作项目")}</Label><NativeSelect id="assistantChatProject" value={state.project} disabled={state.submitting} onChange={e => controller.setProject(e.target.value)}>{workspace.members.map(m => <NativeSelectOption key={m.project_id} value={m.project_id}>{m.project_name}{m.project_id === workspace.primary_project_id ? uiText("（主项目）") : ""}</NativeSelectOption>)}</NativeSelect></div>}
-        </ConversationCreationSetup>,
-        composerStatus: !readOnly && <>{feedback}<ChatRunIndicator controller={controller} /></>, components: chatComponents,
+        emptyStateControls: !readOnly && !state.session && <ConversationCreationSetup>{directories.creation}</ConversationCreationSetup>,
+        composerStatus: !readOnly && <>{directories.composer}{feedback}<ChatRunIndicator controller={controller} /></>, components: chatComponents,
         autoFocus: !!controller.options.focusComposer && !readOnly && !state.session && !document.documentElement.hasAttribute("data-workspace-inactive"), readOnly,
         composer: question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined,
-        composerControls: <ChatControls controller={controller} portal={panel} />,
+        composerControls: <ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />,
       }}
       composerInput={{placeholder: uiText(state.session ? "补充说明、询问进展，或交代下一步…" : "描述你要完成的任务…")}}
       afterThread={<>

@@ -12,7 +12,7 @@ const result = await build({absWorkingDir: root, entryPoints: ["frontend/chat/ma
   }}],
 });
 // Official registry components ship Tailwind classes. Compile their stylesheet
-// independently so chat:build doesn't depend on a preceding workspace UI build.
+// independently so chat:build doesn't depend on a preceding application UI build.
 await buildCSS({
   root, configFile: false, plugins: [tailwindcss()],
   build: {outDir: "web/chat", emptyOutDir: false, rollupOptions: {
@@ -33,7 +33,7 @@ for (const input of [...Object.keys(result.metafile.inputs), "node_modules/tw-sh
   packages.set(match[1], `\n${"=".repeat(72)}\n${pkg.name} ${pkg.version}\nLicense: ${pkg.license}\n${texts.join("\n").replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "").trimEnd()}\n`);
 }
 const registryLicenses = `\nOfficial assistant-ui registry sources\n${await readFile(path.join(root, "frontend/components/assistant-ui/LICENSE"), "utf8")}\nOfficial shadcn UI sources\n${await readFile(path.join(root, "frontend/shadcn-LICENSE.md"), "utf8")}`;
-await writeFile(path.join(root,"web/chat/THIRD-PARTY-NOTICES.txt"), ("Yolu workspace chat — browser dependency licenses\n" + registryLicenses + [...packages].sort(([a],[b])=>a.localeCompare(b)).map(([,text])=>text).join("")).trimEnd() + "\n");
+await writeFile(path.join(root,"web/chat/THIRD-PARTY-NOTICES.txt"), ("Yolu conversation UI — browser dependency licenses\n" + registryLicenses + [...packages].sort(([a],[b])=>a.localeCompare(b)).map(([,text])=>text).join("")).trimEnd() + "\n");
 const legalPath = path.join(root, "web/chat/assistant.js.LEGAL.txt");
 await writeFile(legalPath, (await readFile(legalPath, "utf8")).replace(/\r\n/g, "\n").replace(/^[ \t]+/gm, "").trimEnd() + "\n");
-console.log(`Built assistant-ui workspace chat (${packages.size} dependency license notices)`);
+console.log(`Built assistant-ui conversation UI (${packages.size} dependency license notices)`);

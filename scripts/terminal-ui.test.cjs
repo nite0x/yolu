@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {JSDOM} = require('jsdom');
 
-async function mount(t, terminal = {workspaceID:'workspace',projectID:'app'}, rows = [], {storage = {}, profiles, conversation, intercept} = {}) {
+async function mount(t, terminal = {projectID:'app',cwd:'/worktrees/app'}, rows = [], {storage = {}, profiles, conversation, intercept} = {}) {
   const host = new JSDOM('',{url:'http://localhost:4317'});
-  const dom = new JSDOM(fs.readFileSync('web/terminal.html','utf8'),{url:'http://localhost:4317/?workspace-terminal=1',runScripts:'outside-only',pretendToBeVisual:true});
+  const dom = new JSDOM(fs.readFileSync('web/terminal.html','utf8'),{url:'http://localhost:4317/?app-terminal=1',runScripts:'outside-only',pretendToBeVisual:true});
   const w = dom.window, messages = [], requests = [];
   for (const [key,value] of Object.entries(storage)) w.localStorage.setItem('workhub:conversation-defaults:v1:' + key,value);
   Object.defineProperty(w,'parent',{value:host.window});
@@ -25,7 +25,7 @@ async function mount(t, terminal = {workspaceID:'workspace',projectID:'app'}, ro
     requests.push({path,options});
     const intercepted = await intercept?.(path, options);
     if (intercepted) return intercepted;
-    const value = path === '/api/workspace-inventory' ? {workspaces:[{id:'workspace',name:'测试工作区',path:'/workspace/workspace',has_directory:true,state:'ready',members:[{project_id:'app',project_name:'App',path:'/workspace/workspace/app',state:'ready',worktree:{branch:'codex/header-unification'}}]}]} : path === '/api/terminal-profiles' ? profiles || [{id:'shell',name:'Shell',executable:'/bin/sh',args:[],available:true}] : rows;
+    const value = path === '/api/state' ? {projects:[{id:'app',name:'App',path:'/repo/app',worktrees:[{path:'/repo/app',branch:'main'},{path:'/worktrees/app',branch:'codex/header-unification'}]}]} : path === '/api/terminal-profiles' ? profiles || [{id:'shell',name:'Shell',executable:'/bin/sh',args:[],available:true}] : rows;
     return {ok:true,json:async()=>value};
   };
   w.eval(fs.readFileSync('web/ui/terminal.js','utf8'));
@@ -38,8 +38,8 @@ async function mount(t, terminal = {workspaceID:'workspace',projectID:'app'}, ro
 
 test('a delayed stop response never overwrites an already received terminal exit', async t => {
   let complete;
-  const row = {id:'one',name:'Shell',workspace_id:'workspace',project_id:'app',cwd:'/workspace/workspace/app',state:'running',attached:false};
-  const h = await mount(t, {workspaceID:'workspace',projectID:'app',id:'one'}, [row], {intercept:(path) => {
+  const row = {id:'one',name:'Shell',project_id:'app',cwd:'/worktrees/app',state:'running',attached:false};
+  const h = await mount(t, {projectID:'app',cwd:'/worktrees/app',id:'one'}, [row], {intercept:(path) => {
     if (path.endsWith('/ticket')) return {ok:true,json:async()=>({ticket:'test'})};
     if (path.endsWith('/stop')) return new Promise(resolve => {complete=resolve;});
   }});
@@ -62,32 +62,32 @@ test('terminal creation exposes directory choices without expanding working deta
   assert.equal(h.$('.conversation-kind-switch').parentElement.id,'terminalKind');
   assert.equal(h.$('.conversation-kind-switch [aria-pressed=true]').textContent,'终端');
   assert.equal(h.$('.conversation-surface-header h2').textContent,'新建对话');
-  assert.equal(h.$('#terminalContext').textContent,'测试工作区');
+  assert.equal(h.$('#terminalContext').textContent,'App');
   assert.equal(h.$('#terminalDirectoryName').textContent,'App');
   assert.equal(h.$('#terminalBranchName').textContent,'codex/header-unification');
   assert.equal(h.$('#terminalBranch').hidden,false);
   assert(h.$('.conversation-surface-header').contains(h.$('#terminalStatusBadge')));
   assert.equal(h.$('#terminalConsole').querySelector('button'),null,'terminal output starts directly beneath the shared header');
   assert.equal(h.$('#terminalDirectoryContext').open,false);
-  assert.equal(h.$('#terminalWorkspace').form,h.$('#terminalForm'));
+  assert.equal(h.$('#terminalProject').form,h.$('#terminalForm'));
   assert.equal(h.$('#terminalDirectory').hidden,true);
-  h.$('#terminalDirectoryChoices [data-creation-choice=""]').click();
-  assert.equal(h.$('#terminalDirectory').value,'');
-  assert.equal(h.$('#terminalDirectoryChoices [data-creation-choice=""]').getAttribute('aria-pressed'),'true');
+  h.$('#terminalDirectoryChoices [data-creation-choice="/repo/app"]').click();
+  assert.equal(h.$('#terminalDirectory').value,'/repo/app');
+  assert.equal(h.$('#terminalDirectoryChoices [data-creation-choice="/repo/app"]').getAttribute('aria-pressed'),'true');
   assert.equal(h.$('#terminalDirectoryContext').open,false,'one click changes the directory without opening working details');
-  assert.equal(h.$('#terminalForm').checkValidity(),true,'workspace-root directory is a valid launch selection');
+  assert.equal(h.$('#terminalForm').checkValidity(),true,'project root is a valid launch selection');
   h.$('#terminalKindUI').click();
   const switched=h.messages.findLast(message=>message.type==='workhub:conversation-kind');
   assert.equal(switched.kind,'ui');
-  assert.equal(switched.snapshot.conversation.creationDirectory,'/workspace/workspace');
+  assert.equal(switched.snapshot.conversation.creationDirectory,'/repo/app');
   assert.equal(h.requests.some(request=>request.options.method==='POST'),false,'switching form does not start a process');
   assert.equal(h.$('#terminalExisting').hidden,true,'empty terminal history does not add another card');
 });
 
-test('terminal defaults pick a valid workspace and Codex, remember Agent and retain an explicit directory', async t => {
+test('terminal defaults pick a valid project and Codex, remember Agent and retain an explicit directory', async t => {
   const profiles = ['shell','codex','claude'].map(id => ({id,name:id,executable:id,args:[],available:true}));
   const h = await mount(t, {}, [], {profiles});
-  assert.equal(h.$('#terminalWorkspace').value,'workspace');
+  assert.equal(h.$('#terminalProject').value,'app');
   assert.equal(h.$('#terminalProfile').value,'codex');
   assert.equal(h.$('#startTerminal').disabled,false);
   assert.equal(h.$('#terminalForm').checkValidity(),true);
@@ -99,9 +99,9 @@ test('terminal defaults pick a valid workspace and Codex, remember Agent and ret
   h.$('#terminalProfileChoices [data-creation-choice="custom"]').click();
   assert.equal(h.$('#customTerminal').hidden,false);
   h.$('#customExecutable').value='my-agent';
-  const restored = await mount(t, {workspaceID:'workspace',projectID:'app'}, [], {profiles,storage:{'terminal-profile':'claude','terminal-directory:workspace':'/workspace/workspace'}});
+  const restored = await mount(t, {projectID:'app',cwd:'/worktrees/app'}, [], {profiles,storage:{'terminal-profile':'claude','terminal-directory':'/repo/app'}});
   assert.equal(restored.$('#terminalProfile').value,'claude');
-  assert.equal(restored.$('#terminalDirectory').value,'app','explicit entry overrides a remembered workspace root');
+  assert.equal(restored.$('#terminalDirectory').value,'/worktrees/app','explicit entry overrides remembered directory');
   const unavailable = await mount(t, {}, [], {profiles:[...profiles.filter(p => p.id !== 'claude'),{...profiles[2],available:false}],storage:{'terminal-profile':'claude'}});
   assert.equal(unavailable.$('#terminalProfile').value,'codex');
   assert.equal(h.requests.some(r => r.options.method === 'POST'),false);
@@ -110,7 +110,7 @@ test('terminal defaults pick a valid workspace and Codex, remember Agent and ret
 test('clicking the default Agent starts once, freezes launch settings and allows retry after failure', async t => {
   let complete;
   const profiles = ['codex','claude'].map(id => ({id,name:id,executable:id,args:[],available:true}));
-  const h = await mount(t, {workspaceID:'workspace',projectID:'app'}, [], {profiles, intercept:(path,options) => path === '/api/terminals' && options.method === 'POST' ? new Promise(resolve => {complete=resolve;}) : undefined});
+  const h = await mount(t, {projectID:'app',cwd:'/worktrees/app'}, [], {profiles, intercept:(path,options) => path === '/api/terminals' && options.method === 'POST' ? new Promise(resolve => {complete=resolve;}) : undefined});
   const launches = () => h.requests.filter(r => r.path === '/api/terminals' && r.options.method === 'POST');
   assert.equal(launches().length,0,'restoring the selected Agent never launches it');
   assert.equal(h.$('#startTerminal').closest('[hidden]')?.id,'customTerminal','standard Agents have no separate launch button');
@@ -120,7 +120,7 @@ test('clicking the default Agent starts once, freezes launch settings and allows
   assert.equal(launches().length,1);
   assert.equal(JSON.parse(launches()[0].options.body).profile_id,'codex');
   assert.equal(JSON.parse(launches()[0].options.body).project_id,'app');
-  assert.equal(h.$('#terminalDirectoryChoices [data-creation-choice=""]').disabled,true);
+  assert.equal(h.$('#terminalDirectoryChoices [data-creation-choice="/repo/app"]').disabled,true);
   assert.equal(h.$('#terminalKindUI').disabled,true);
   complete({ok:false,json:async()=>({error:'fixture launch failed'})});
   for(let i=0;i<4;i++) await new Promise(resolve=>setImmediate(resolve));
@@ -148,7 +148,7 @@ test('custom Agent requires its configuration before an explicit launch', async 
 });
 
 test('terminal pane icons share close and zoom commands and existing terminals remain reconnectable', async t => {
-  const h=await mount(t,{workspaceID:'workspace'},[{id:'one',name:'Shell',workspace_id:'workspace',project_id:'app',cwd:'/workspace/workspace/app',state:'running',attached:false}]);
+  const h=await mount(t,{projectID:'app'},[{id:'one',name:'Shell',project_id:'app',cwd:'/worktrees/app',state:'running',attached:false}]);
   h.send({type:'workhub:parallel-layout',split:true,focused:true,canZoom:true});
   assert.equal(h.$('#zoomTerminal').hidden,false);
   assert.equal(h.w.document.documentElement.hasAttribute('data-workspace-focused'),true);

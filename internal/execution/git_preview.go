@@ -46,7 +46,7 @@ func RunGitPreview(ctx context.Context, path string, args ...string) (GitPreview
 	}
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.quotePath=false", "-C", path}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.quotePath=false", "-c", "core.fsmonitor=false", "-C", path}, args...)...)
 	platform.HideCommand(cmd)
 	for _, v := range os.Environ() {
 		k := strings.SplitN(v, "=", 2)[0]

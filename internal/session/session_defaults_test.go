@@ -19,23 +19,23 @@ func (c *nativeDefaultsClient) Call(ctx context.Context, method string, params, 
 		return err
 	}
 	if method == "thread/start" {
-		raw, _ := json.Marshal(map[string]any{"model": "provider-native", "reasoningEffort": "low", "approvalPolicy": "untrusted", "approvalsReviewer": "user", "sandbox": map[string]any{"type": "readOnly"}, "thread": map[string]any{"id": c.sessionID(), "cwd": c.cwd}})
+		raw, _ := json.Marshal(map[string]any{"model": "provider-native", "reasoningEffort": "low", "approvalPolicy": "untrusted", "approvalsReviewer": "user", "sandbox": map[string]any{"type": "readOnly"}, "activePermissionProfile": map[string]any{"id": params.(map[string]any)["permissions"]}, "thread": map[string]any{"id": c.sessionID(), "cwd": c.cwd}})
 		return json.Unmarshal(raw, out)
 	}
 	return nil
 }
 
-func TestNewConversationInheritsNativeModelEffortAndPermissions(t *testing.T) {
-	a, q, base, _ := chatFixture(t)
+func TestNewConversationInheritsNativeModelEffortWithManagedDirectoryPermissions(t *testing.T) {
+	a, _, base, _ := chatFixture(t)
 	a.openLive = func(context.Context) (codex.LiveClient, error) { return &nativeDefaultsClient{base}, nil }
-	if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", map[string]string{"text": "Use the environment configuration", "request_id": "native-defaults"}); code != 202 {
+	if code, raw := call(t, a, "POST", "/api/sessions/new", map[string]string{"text": "Use the environment configuration", "request_id": "native-defaults"}); code != 202 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	state := awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
 	base.mu.Lock()
 	defer base.mu.Unlock()
 	start, turn := base.threadParams["thread/start"], base.startParams
-	for _, key := range []string{"model", "sandbox", "approvalPolicy", "approvalsReviewer"} {
+	for _, key := range []string{"model", "sandbox"} {
 		if _, ok := start[key]; ok {
 			t.Errorf("thread/start overrides %s: %v", key, start)
 		}
@@ -43,13 +43,16 @@ func TestNewConversationInheritsNativeModelEffortAndPermissions(t *testing.T) {
 	if _, ok := start["config"].(map[string]any)["model_reasoning_effort"]; ok {
 		t.Error("overrode native effort", start)
 	}
-	for _, key := range []string{"model", "effort", "sandboxPolicy", "approvalPolicy", "approvalsReviewer"} {
+	for _, key := range []string{"model", "effort", "sandboxPolicy"} {
 		if _, ok := turn[key]; ok {
 			t.Errorf("turn/start overrides %s: %v", key, turn)
 		}
 	}
-	if state.Context == nil || state.Context.Model != "provider-native" || state.Context.Effort != "low" || state.Context.ApprovalPolicy != "untrusted" || state.Context.Sandbox.(map[string]any)["type"] != "readOnly" {
-		t.Fatal("native context lost", state.Context)
+	if state.Context == nil || state.Context.Model != "provider-native" || state.Context.Effort != "low" || state.Context.ApprovalPolicy != "on-request" || state.Context.Sandbox.(map[string]any)["type"] != "readOnly" {
+		t.Fatal("native model context lost", state.Context)
+	}
+	if start["permissions"] == nil || start["permissions"] != turn["permissions"] {
+		t.Fatal("named permissions profile did not carry into the turn", start, turn)
 	}
 }
 
@@ -69,7 +72,7 @@ func TestConversationPreferencesPersistValidateAndResetOffline(t *testing.T) {
 	if code, raw := call(t, a, "PUT", endpoint, desired); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
-	restored := New(a.Execution, a.Workspaces)
+	restored := New(a.Execution)
 	t.Cleanup(restored.Close)
 	got, err := restored.conversationPreferences(context.Background())
 	if err != nil || got.Model != "model" || got.Permission != "ask" {
@@ -111,7 +114,7 @@ func TestNewConversationPreferencesPreserveExplicitChoices(t *testing.T) {
 	}
 	for _, explicit := range []bool{false, true} {
 		t.Run(fmt.Sprintf("explicit-%t", explicit), func(t *testing.T) {
-			a, q, base, _ := chatFixture(t)
+			a, _, base, _ := chatFixture(t)
 			preferencesCatalog(a)
 			if code, raw := call(t, a, "PUT", "/api/settings/conversation-defaults", defaults); code != 200 {
 				t.Fatalf("%d %s", code, raw)
@@ -122,7 +125,7 @@ func TestNewConversationPreferencesPreserveExplicitChoices(t *testing.T) {
 			if explicit {
 				body["settings"] = TurnSettings{Model: "model", Permission: "ask", Effort: "high"}
 			}
-			if code, raw := call(t, a, "POST", "/api/workspaces/"+q.ID+"/sessions/new", body); code != 202 {
+			if code, raw := call(t, a, "POST", "/api/sessions/new", body); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			state := awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
@@ -134,7 +137,7 @@ func TestNewConversationPreferencesPreserveExplicitChoices(t *testing.T) {
 					t.Fatal(start, turn)
 				}
 			} else {
-				if start["model"] != "gpt-6.1-sol" || start["sandbox"] != "danger-full-access" || turn["effort"] != "medium" || state.Context.Sandbox.(map[string]any)["type"] != "dangerFullAccess" {
+				if start["model"] != "gpt-6.1-sol" || start["permissions"] == nil || start["permissions"] != turn["permissions"] || turn["effort"] != "medium" || state.Context.ApprovalPolicy != "on-request" {
 					t.Fatal(start, turn, state.Context)
 				}
 			}
@@ -158,11 +161,11 @@ func TestConversationDefaultsNeverOverrideExistingSession(t *testing.T) {
 }
 
 func TestUnavailableDefaultModelDoesNotLeaveCreationReceipt(t *testing.T) {
-	a, q, base, _ := chatFixture(t)
+	a, _, base, _ := chatFixture(t)
 	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('conversation_defaults:v1','{"model":"missing"}')`); err != nil {
 		t.Fatal(err)
 	}
-	endpoint := "/api/workspaces/" + q.ID + "/sessions/new"
+	endpoint := "/api/sessions/new"
 	body := map[string]string{"text": "Check unavailable model", "request_id": "missing-model"}
 	if code, raw := call(t, a, "POST", endpoint, body); code != 400 {
 		t.Fatalf("%d %s", code, raw)

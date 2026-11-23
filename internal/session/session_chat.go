@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -18,17 +19,19 @@ import (
 )
 
 type ChatApproval struct {
-	ID          string               `json:"id"`
-	Kind        string               `json:"kind"`
-	Title       string               `json:"title"`
-	Details     string               `json:"details"`
-	Questions   []ChatQuestion       `json:"questions,omitempty"`
-	CanAccept   bool                 `json:"can_accept"`
-	Choices     []ChatApprovalChoice `json:"choices,omitempty"`
-	Elicitation *ChatElicitation     `json:"elicitation,omitempty"`
-	rpcID       json.RawMessage
-	method      string
-	params      json.RawMessage
+	ID               string                 `json:"id"`
+	Kind             string                 `json:"kind"`
+	Title            string                 `json:"title"`
+	Details          string                 `json:"details"`
+	Questions        []ChatQuestion         `json:"questions,omitempty"`
+	CanAccept        bool                   `json:"can_accept"`
+	Choices          []ChatApprovalChoice   `json:"choices,omitempty"`
+	Elicitation      *ChatElicitation       `json:"elicitation,omitempty"`
+	ProjectAccess    *projectAccessApproval `json:"project_access,omitempty"`
+	directoryBinding *model.SessionProjectBinding
+	rpcID            json.RawMessage
+	method           string
+	params           json.RawMessage
 }
 type ChatQuestion struct {
 	ID       string `json:"id"`
@@ -60,24 +63,31 @@ type ChatState struct {
 	Context        *ChatContext   `json:"context,omitempty"`
 }
 type ChatRun struct {
-	mu              sync.Mutex
-	provider        string
-	state           ChatState
-	session, cwd    string
-	client          codex.LiveClient
-	acpClient       acp.Client
-	acpSetup        *acp.SessionSetupResult
-	cancel          context.CancelFunc
-	notify          chan struct{}
-	finished        chan struct{}
-	ended           time.Time
-	created         *codex.Session
-	createdContext  *ChatContext
-	handoff         bool
-	settings        TurnSettings
-	asyncRequest    string
-	started         chan struct{}
-	recordFirstTurn func()
+	mu                     sync.Mutex
+	provider               string
+	state                  ChatState
+	session, cwd           string
+	client                 codex.LiveClient
+	acpClient              acp.Client
+	acpSetup               *acp.SessionSetupResult
+	cancel                 context.CancelFunc
+	notify                 chan struct{}
+	finished               chan struct{}
+	ended                  time.Time
+	created                *codex.Session
+	createdContext         *ChatContext
+	handoff                bool
+	settings               TurnSettings
+	asyncRequest           string
+	started                chan struct{}
+	writeRoots             []string
+	directoryRoots         []string
+	baseline               map[string]fileSnapshot
+	finalSnapshots         map[string]fileSnapshot
+	configured             map[string]configuredDirectory
+	directoryError         string
+	managedBindings        bool
+	pendingDirectoryGrants map[string]model.SessionProjectBinding
 }
 
 func (run *ChatRun) snapshot() ChatState {
@@ -150,10 +160,11 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 	releaseControl := a.lockSessionControl(r.PathValue("session"))
 	defer releaseControl()
 	var input struct {
-		Text      string       `json:"text"`
-		RequestID string       `json:"request_id"`
-		Images    []string     `json:"images"`
-		Settings  TurnSettings `json:"settings"`
+		Text        string       `json:"text"`
+		RequestID   string       `json:"request_id"`
+		Images      []string     `json:"images"`
+		Settings    TurnSettings `json:"settings"`
+		AllowShared bool         `json:"allow_shared"`
 	}
 	if !httpx.DecodeLimit(w, r, &input, chatRequestLimit) {
 		return
@@ -168,7 +179,6 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	record, ok := a.requestSession(w, r)
-	cwd := record.Cwd
 	if !ok {
 		return
 	}
@@ -186,7 +196,6 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	plan := savedSessionPlan(record)
 	if record.Archived {
 		httpx.WriteError(w, 409, "请先恢复已归档对话")
 		return
@@ -199,6 +208,22 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 400, "所选对话引擎不支持设置响应速度")
 		return
 	}
+	planCtx := execution.WithClient(r.Context(), a.Execution.Remote)
+	plan, err := a.savedSessionPlan(planCtx, record, input.AllowShared)
+	if err != nil {
+		httpx.WriteError(w, 409, err.Error())
+		return
+	}
+	if err := validateProviderBindings(record.Provider, plan); err != nil {
+		httpx.WriteError(w, 409, err.Error())
+		return
+	}
+	releaseDirectories, conflicts := a.reserveDirectories("session:"+record.ID, record.ID, plan)
+	if releaseDirectories == nil {
+		writeBindingConflict(w, conflicts)
+		return
+	}
+	defer releaseDirectories()
 	a.chatMu.Lock()
 	if previous := a.chats[r.PathValue("session")]; previous != nil {
 		s := previous.snapshot()
@@ -214,19 +239,14 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &ChatRun{provider: model.NormalizeProvider(record.Provider), session: r.PathValue("session"), cwd: cwd, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
+	run := &ChatRun{provider: model.NormalizeProvider(record.Provider), session: r.PathValue("session"), cwd: plan.Cwd, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
 	run.settings = input.Settings
-	// Keep only recent finished snapshots; active turns are never evicted.
-	for id, old := range a.chats {
-		old.mu.Lock()
-		expired := !old.ended.IsZero() && time.Since(old.ended) > 10*time.Minute
-		old.mu.Unlock()
-		if expired {
-			delete(a.chats, id)
-		}
-	}
+	run.writeRoots = writableRoots(plan)
+	run.directoryRoots = uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
+	run.managedBindings = plan.ManagedBindings
 	a.chats[run.session] = run
 	a.chatMu.Unlock()
+	a.pruneFinishedChats()
 	if run.provider == model.ProviderAgy {
 		go a.DriveAgyChat(ctx, run, plan, input.Text, input.Images...)
 	} else {
@@ -295,24 +315,27 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	}
 	s := metadata.Thread.Session
 	if s.ID != run.session || !platform.AbsoluteWorkspacePath(s.Cwd) {
-		fail("对话工作目录不可用")
+		fail("对话原工作目录信息不可用")
 		return
 	}
 	fileCtx := execution.WithClient(ctx, a.Execution.Remote)
-	if info, err := execution.Stat(fileCtx, s.Cwd, true); err != nil || !info.IsDir() {
-		fail("对话原工作目录不可用")
-		return
+	if !plan.ManagedBindings {
+		var err error
+		plan.Cwd, err = canonicalDirectory(fileCtx, s.Cwd)
+		if err != nil {
+			fail("对话原工作目录不可用")
+			return
+		}
 	}
 	if run.created == nil {
-		if err := a.SaveSession("", s, "codex", titleObservedAt); err != nil {
+		if err := a.SaveSession(s, "codex", titleObservedAt); err != nil {
 			fail(err.Error())
 			return
 		}
 	}
 	run.mu.Lock()
-	run.cwd = s.Cwd
+	run.cwd = plan.Cwd
 	run.mu.Unlock()
-	plan.Cwd = s.Cwd
 	checkOwner := func() error {
 		if err := a.AppTerminalConflict(run.session, s.Cwd); err != nil {
 			return err
@@ -342,13 +365,39 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		} `json:"thread"`
 		Sandbox map[string]any `json:"sandbox"`
 	}
+	var profile string
+	configurationFailure := func(err error) {
+		run.mu.Lock()
+		run.directoryError = err.Error()
+		run.mu.Unlock()
+		fail(err.Error())
+	}
 	if run.created != nil {
 		if run.createdContext != nil {
 			resumed.ChatContext = *run.createdContext
 			resumed.Sandbox, _ = run.createdContext.Sandbox.(map[string]any)
+			if run.createdContext.ActivePermissionProfile != nil {
+				profile = run.createdContext.ActivePermissionProfile.ID
+			}
 		}
-	} else if err := call("thread/resume", map[string]any{"threadId": run.session, "excludeTurns": true, "config": chatQuestionConfig()}, &resumed); err != nil {
-		fail(err.Error())
+	} else {
+		resumeParams := map[string]any{"threadId": run.session, "excludeTurns": true, "config": chatQuestionConfig()}
+		if err := a.configureCodexThread(ctx, c, resumeParams, plan); err != nil {
+			configurationFailure(err)
+			return
+		}
+		if err := call("thread/resume", resumeParams, &resumed); err != nil {
+			configurationFailure(err)
+			return
+		}
+		if err := verifyCodexProfile(resumeParams, resumed.ActivePermissionProfile); err != nil {
+			configurationFailure(err)
+			return
+		}
+		profile, _ = resumeParams["permissions"].(string)
+	}
+	if plan.ManagedBindings && profile == "" {
+		configurationFailure(fmt.Errorf("Codex 没有核实对话目录权限"))
 		return
 	}
 	defer func() {
@@ -361,7 +410,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		ownerFailure(err)
 		return
 	}
-	params := map[string]any{"threadId": run.session, "cwd": s.Cwd, "input": chatTurnInput(text, images)}
+	params := map[string]any{"threadId": run.session, "cwd": plan.Cwd, "input": chatTurnInput(text, images)}
 	if run.asyncRequest != "" {
 		params["clientUserMessageId"] = run.asyncRequest
 	}
@@ -382,7 +431,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 			resumed.ChatContext.Effort, _ = settings["reasoning_effort"].(string)
 		}
 	}
-	resumed.ChatContext.Cwd = s.Cwd
+	resumed.ChatContext.Cwd = plan.Cwd
 	resumed.ChatContext.AdditionalDirectories = plan.AdditionalDirectories
 	if resumed.ChatContext.Model == "" {
 		resumed.ChatContext.Model = s.Model
@@ -400,30 +449,30 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	if run.settings.ServiceTier != "" {
 		resumed.ChatContext.ServiceTier = run.settings.ServiceTier
 	}
-	// Preserve model, approval policy and the roots chosen at creation; opening
-	// the same session from another workspace never adds that workspace's directories.
-	if resumed.Sandbox["type"] == "workspaceWrite" {
-		roots, _ := resumed.Sandbox["writableRoots"].([]any)
-		for _, dir := range uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...)) {
-			present := false
-			for _, root := range roots {
-				if path, ok := root.(string); ok && platform.SameWorkspacePath(path, dir) {
-					present = true
-					break
-				}
-			}
-			if !present {
-				roots = append(roots, dir)
-			}
+	if plan.ManagedBindings {
+		addCodexDirectoryContext(params, plan.Bindings)
+		params["permissions"] = profile
+		params["approvalPolicy"] = "on-request"
+		params["approvalsReviewer"] = "user"
+		params["runtimeWorkspaceRoots"] = uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
+		resumed.ChatContext.ApprovalPolicy = "on-request"
+		resumed.ChatContext.ApprovalsReviewer = "user"
+		if run.settings.Permission == "full" || run.settings.Permission == "auto" {
+			run.change(func(state *ChatState) {
+				state.Notice = "对话继续按已关联目录授权。扩大访问范围需要你的明确确认。"
+			})
 		}
-		resumed.Sandbox["writableRoots"] = roots
-		params["sandboxPolicy"] = resumed.Sandbox
-	}
-	if run.settings.Permission != "" {
-		setTurnPermissions(params, run.settings.Permission, uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...)))
-		resumed.ChatContext.ApprovalPolicy = params["approvalPolicy"]
-		resumed.ChatContext.ApprovalsReviewer = params["approvalsReviewer"].(string)
-		resumed.ChatContext.Sandbox = params["sandboxPolicy"]
+	} else {
+		if resumed.Sandbox["type"] == "workspaceWrite" && len(plan.AdditionalDirectories) > 0 {
+			resumed.Sandbox["writableRoots"] = writableRoots(plan)
+			params["sandboxPolicy"] = resumed.Sandbox
+		}
+		if run.settings.Permission != "" {
+			setTurnPermissions(params, run.settings.Permission, writableRoots(plan))
+			resumed.ChatContext.ApprovalPolicy = params["approvalPolicy"]
+			resumed.ChatContext.ApprovalsReviewer = params["approvalsReviewer"].(string)
+			resumed.ChatContext.Sandbox = params["sandboxPolicy"]
+		}
 	}
 	if resumed.ChatContext.Effort == "" {
 		resumed.ChatContext.Effort = s.Effort
@@ -438,17 +487,30 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		fail(err.Error())
 		return
 	}
+	if len(plan.Bindings) > 0 {
+		inspect, cancel := context.WithTimeout(ctx, 5*time.Second)
+		a.captureRunDirectories(inspect, run, plan.Bindings)
+		cancel()
+	}
 	if err := call("turn/start", params, &started); err != nil {
-		fail(err.Error())
+		configurationFailure(err)
 		return
 	}
 	if started.Turn.ID == "" {
 		fail("Codex 未返回运行标识，请刷新历史检查进展")
 		return
 	}
+	defer a.freezeRunDirectories(run)
+	run.mu.Lock()
+	run.configured = map[string]configuredDirectory{}
+	for _, b := range plan.Bindings {
+		run.configured[b.Directory] = configuredDirectory{id: b.ID, access: b.Access, updatedAt: b.UpdatedAt}
+	}
+	run.mu.Unlock()
 	run.change(func(state *ChatState) { state.TurnID = started.Turn.ID; state.Status = "running" })
-	if run.recordFirstTurn != nil {
-		run.recordFirstTurn()
+	if plan.ManagedBindings && !platform.SameWorkspacePath(s.Cwd, plan.Cwd) {
+		s.Cwd = plan.Cwd
+		_ = a.SaveSession(s, "codex", titleObservedAt)
 	}
 	a.startSessionTitle(run, text)
 	if run.asyncRequest != "" {
@@ -469,6 +531,9 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 			}
 			if event.Method == "thread/name/updated" {
 				a.syncSessionName(run, event)
+				continue
+			}
+			if a.handleDirectoryPermission(ctx, run, event) {
 				continue
 			}
 			if run.handle(event) {
@@ -599,6 +664,26 @@ func (a *Service) ChatEventsHandler(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-tick.C:
+		}
+	}
+}
+
+// Inspect snapshots outside the registry lock. Approval replies may need to
+// look up other running writes while holding one run's lock.
+func (a *Service) pruneFinishedChats() {
+	a.chatMu.Lock()
+	all := maps.Clone(a.chats)
+	a.chatMu.Unlock()
+	for id, run := range all {
+		run.mu.Lock()
+		expired := !run.ended.IsZero() && time.Since(run.ended) > 10*time.Minute
+		run.mu.Unlock()
+		if expired {
+			a.chatMu.Lock()
+			if a.chats[id] == run {
+				delete(a.chats, id)
+			}
+			a.chatMu.Unlock()
 		}
 	}
 }

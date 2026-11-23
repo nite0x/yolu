@@ -13,12 +13,12 @@
   <main>
     <img src="/yolu.svg" width="52" height="52" alt="Yolu">
     <h1 data-i18n="浏览器登录">浏览器登录</h1>
-    <p data-i18n="在主机的 Yolu 设置中查看配对码，登录后继续使用同一份工作区。">在主机的 Yolu 设置中查看配对码，登录后继续使用同一份工作区。</p>
+    <p data-i18n="在主机的 Yolu 设置中查看配对码，登录后继续已有对话。">在主机的 Yolu 设置中查看配对码，登录后继续已有对话。</p>
     <form action="/browser-login" method="post">
       <label for="code" data-i18n="配对码">配对码</label>
       <input id="code" name="code" type="password" required maxlength="128" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" autofocus>
       <p class="error" role="alert" __LOGIN_ERROR_HIDDEN__ data-i18n="配对码无效，请从主机的 Yolu 设置中重新复制。">配对码无效，请从主机的 Yolu 设置中重新复制。</p>
-      <button type="submit" data-i18n="登录工作区">登录工作区</button>
+      <button type="submit" data-i18n="登录">登录</button>
     </form>
   </main>
 </body>

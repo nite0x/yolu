@@ -6,7 +6,7 @@ The application is now **Yolu**. The main executable is `yolu` (`yolu.exe` on Wi
 
 1. Finish active Git operations and session work. In the old application choose **Quit and stop backend**; closing the window alone leaves the backend running.
 2. Stop backends using custom `--data` paths separately. Back up the whole business data directory: `%LOCALAPPDATA%\WorktreeHub` on Windows, or `~/.local/share/worktree-hub` on macOS/Linux, unless overridden.
-3. Back up repositories, worktrees and Codex data separately. The rename does not require manually renaming the database or moving workspaces.
+3. Back up repositories, worktrees and Codex data separately. The rename does not require manually renaming the database or moving worktrees.
 
 ## Platform steps
 
@@ -16,9 +16,11 @@ The application is now **Yolu**. The main executable is `yolu` (`yolu.exe` on Wi
 - **Linux DEB:** stop the old application, then use `sudo apt install ./yolu_<version>_x86_64-unknown-linux-gnu.deb`. The new package declares replacement/conflict with `work-hub`; apt handles removing that package. If a direct `dpkg -i` encounters a conflict, remove the old package before installing. Maintenance scripts check both old and new host/backend process names.
 - **AppImage:** safely stop the old backend, replace the file and update any manually created launcher path.
 
-Open Yolu and verify projects, workspaces, working directories and session references before removing remaining old application files. A mismatched old backend is not silently reused; stop it through the old application and retry. Do not remove authentication/discovery files to bypass this check.
+Open Yolu and verify projects, worktrees, session bindings and history before removing remaining old application files. A mismatched old backend is not silently reused; stop it through the old application and retry. Do not remove authentication/discovery files to bypass this check.
 
-The backend upgrades workspace tables when it opens an existing database. Saved workspace IDs, directories and conversation associations carry forward. Workspace links use `#/workspaces/<id>` and API clients use `/api/workspaces` with `workspace_id` for scoped requests.
+On first open, the backend migrates legacy Workspace records into session directory bindings. It preserves the original paths, native session IDs, and project checkout registrations. The database keeps recoverable source records and migration exceptions in `migration_recovery`. Existing notes and generated context files remain in their directories. The pre-upgrade backup remains the supported way to open the data in an older build.
+
+To start with empty Yolu metadata, stop the current backend and launch Yolu with `--data` pointing to a new directory. This starts a separate profile. Existing Git directories and agent history stay in their own locations. Yolu can still discover provider history when you use the same agent profile.
 
 ## Intentionally retained identifiers
 
@@ -26,9 +28,8 @@ The backend upgrades workspace tables when it opens an existing database. Saved 
 | --- | --- |
 | `WorktreeHub`, `~/.local/share/worktree-hub`, `worktree-hub.db` | Existing data, database locking and backup paths; new installations use the same data convention |
 | `dev.work-hub.desktop` and `.preview` | Stable desktop identity and preview isolation |
-| `WORK_HUB_CONTEXT.md` | Generated workspace context and agent instructions. The next generated update refreshes the file marker. |
 | Go module `worktree-hub`, backend protocol/authentication identifiers and WSL helper paths | Module and cross-process compatibility |
 | `workhub:*` storage keys, events, CSS and `WorkHub*` internal interfaces | Existing preferences, drafts and frontend/backend integration |
 | `WORK_HUB_*` / `WORKTREE_HUB_*` environment variables | Script compatibility; Windows signing prefers `YOLU_WINDOWS_CERTIFICATE_THUMBPRINT` |
 
-These are compatibility identifiers, not alternate public product names. The rename does not introduce an automatic updater or relocate saved workspaces.
+These are compatibility identifiers, not alternate public product names. The rename does not introduce an automatic updater or relocate saved directories.

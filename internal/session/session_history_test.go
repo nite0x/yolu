@@ -14,9 +14,9 @@ import (
 func TestSessionHistoryIsReadOnlyScopedAndChronological(t *testing.T) {
 	a := testApp(t)
 	p := register(t, a, "Repo", repo(t, "repo", "master"))
-	_, q, _ := create(t, a, p, nil, "history")
-	s := codex.Session{ID: "linked", Name: "工作记录", Cwd: q.Members[0].Path, HistoryMode: "paginated"}
-	if err := a.SaveSession(q.ID, s, "workspace"); err != nil {
+	q := newTestDirectory(t, a, p, "history")
+	s := codex.Session{ID: "linked", Name: "工作记录", Cwd: q.Path, HistoryMode: "paginated"}
+	if err := a.SaveSession(s, "workspace"); err != nil {
 		t.Fatal(err)
 	}
 	requests := []string{}
@@ -47,7 +47,7 @@ func TestSessionHistoryIsReadOnlyScopedAndChronological(t *testing.T) {
 			}
 		}}, nil
 	}
-	code, raw := call(t, a, "GET", "/api/workspaces/"+q.ID+"/sessions/linked/history?cursor=opaque%20cursor", nil)
+	code, raw := call(t, a, "GET", "/api/sessions/linked/history?cursor=opaque%20cursor", nil)
 	if code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
@@ -71,17 +71,7 @@ func TestSessionHistoryIsReadOnlyScopedAndChronological(t *testing.T) {
 	if !reflect.DeepEqual(requests, []string{"thread/read", "thread/items/list"}) {
 		t.Fatal(requests)
 	}
-	requests = nil
-	if code, _ := call(t, a, "GET", "/api/workspaces/"+q.ID+"/sessions/unlinked/history", nil); code != 404 || len(requests) != 0 {
-		t.Fatal("unlinked history queried Codex")
-	}
-	_, other, _ := create(t, a, p, nil, "other-history")
-	if code, _ := call(t, a, "GET", "/api/workspaces/"+other.ID+"/sessions/linked/history", nil); code != 404 || len(requests) != 0 {
-		t.Fatal("cross-workspace history exposed")
-	}
-	if code, _ := call(t, a, "GET", "/api/workspaces/missing/sessions/linked/history", nil); code != 404 {
-		t.Fatal(code)
-	}
+
 }
 
 func TestLegacySessionHistoryPaginationAndEmptyPages(t *testing.T) {
@@ -113,16 +103,16 @@ func TestLegacySessionHistoryPaginationAndEmptyPages(t *testing.T) {
 func TestSessionHistoryFailurePreservesAssociation(t *testing.T) {
 	a := testApp(t)
 	p := register(t, a, "Repo", repo(t, "repo", "master"))
-	_, q, _ := create(t, a, p, nil, "history-error")
-	if err := a.SaveSession(q.ID, codex.Session{ID: "missing", Cwd: q.Path}, "manual"); err != nil {
+	q := newTestDirectory(t, a, p, "history-error")
+	if err := a.SaveSession(codex.Session{ID: "missing", Cwd: q.Path}, "manual"); err != nil {
 		t.Fatal(err)
 	}
 	fakeSessions(a, map[string]codex.Session{})
-	endpoint := "/api/workspaces/" + q.ID + "/sessions/missing/history"
+	endpoint := "/api/sessions/missing/history"
 	if code, raw := call(t, a, "GET", endpoint, nil); code != 503 || !strings.Contains(string(raw), "无法读取对话详情") {
 		t.Fatalf("%d %s", code, raw)
 	}
-	stored, err := a.StoredSessions(q.ID)
+	stored, err := a.Execution.Store.Sessions()
 	if err != nil || len(stored) != 1 {
 		t.Fatal(stored, err)
 	}

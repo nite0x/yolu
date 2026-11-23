@@ -118,7 +118,7 @@ fn connect(app: tauri::AppHandle, stop: bool) {
                     }
                     *host.origin.lock().unwrap() = Some(url.origin().ascii_serialization());
                     if let Some(window) = app.get_webview_window("main") {
-                        // Keep the selected workspace/environment when reconnecting to a new port.
+                        // Keep the selected conversation/environment when reconnecting to a new port.
                         if let Ok(old) = window.url() {
                             if old.host_str() == Some("127.0.0.1") {
                                 url.set_query(old.query());
@@ -152,7 +152,7 @@ fn set_ui_language(app: tauri::AppHandle, window: tauri::WebviewWindow, language
 }
 
 #[tauri::command]
-fn show_app_menu(app: tauri::AppHandle, window: tauri::WebviewWindow, ready: bool) -> Result<(), String> {
+fn show_app_menu(app: tauri::AppHandle, window: tauri::WebviewWindow, ready: bool, x: f64, y: f64) -> Result<(), String> {
     if !cfg!(windows) || window.label() != "main" {
         return Err("Application popup menu is only available in the main Windows window".into());
     }
@@ -160,7 +160,7 @@ fn show_app_menu(app: tauri::AppHandle, window: tauri::WebviewWindow, ready: boo
     if let Some(item) = menu.get("home").and_then(|item| item.as_menuitem().cloned()) {
         item.set_enabled(ready).map_err(|e| e.to_string())?;
     }
-    window.popup_menu_at(&menu, tauri::LogicalPosition::new(9.0, 32.0))
+    window.popup_menu_at(&menu, tauri::LogicalPosition::new(x, y))
         .map_err(|e| e.to_string())
 }
 
@@ -196,7 +196,7 @@ fn menu(app: &tauri::AppHandle, chinese: bool) -> tauri::Result<Menu<tauri::Wry>
         ],
     )?;
     if cfg!(windows) {
-        let home = MenuItem::with_id(app, "home", label("工作区首页", "Workspace home"), false, None::<&str>)?;
+        let home = MenuItem::with_id(app, "home", label("对话首页", "Conversations"), false, None::<&str>)?;
         Menu::with_items(app, &[
             &home,
             &PredefinedMenuItem::separator(app)?,
@@ -223,6 +223,15 @@ fn menu(app: &tauri::AppHandle, chinese: bool) -> tauri::Result<Menu<tauri::Wry>
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(target_os = "linux")]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--mcp")) {
+        use std::os::unix::process::CommandExt;
+        // Relaunch from an AppImage while preserving the agent's stdio.
+        let error = std::process::Command::new(backend::binary_path()?)
+            .args(std::env::args_os().skip(1))
+            .exec();
+        return Err(error.into());
+    }
     let context = tauri::generate_context!();
     let options = Options::parse(std::env::args_os().skip(1))?;
     if context.config().identifier == "dev.work-hub.desktop.preview"
@@ -253,8 +262,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     let same = |requested: &Option<PathBuf>, active: &PathBuf| requested.as_ref()
                         .is_none_or(|p| p.canonicalize().unwrap_or_else(|_| p.clone()) == *active);
                     if !same(&incoming.data, &service.data_dir) || !same(&incoming.root, &service.root) {
-                        // Keep the current workspace intact; report the conflict in a separate window.
-                        show_notice(app, "另一个数据目录或工作区的桌面窗口已经打开。请先关闭该窗口，再使用新的启动参数。");
+                        // Keep the current window intact; report the conflict in a separate window.
+                        show_notice(app, "另一个数据目录或 Worktree 根目录的桌面窗口已经打开。请先关闭该窗口，再使用新的启动参数。");
                         return;
                     }
                 }
@@ -265,7 +274,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .setup(move |app| {
             let mut options = options;
-            // Finder launches of the preview use their own backend and workspace.
+            // Finder launches of the preview use their own backend and worktree directory.
             if app.config().identifier == "dev.work-hub.desktop.preview" {
                 let preview = app.path().app_data_dir()?;
                 options.data.get_or_insert_with(|| preview.join("data"));

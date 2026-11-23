@@ -12,13 +12,11 @@ import (
 	"worktree-hub/internal/project"
 	"worktree-hub/internal/session"
 	"worktree-hub/internal/terminal"
-	"worktree-hub/internal/workspace"
 )
 
 type App struct {
 	Execution           *execution.Service
 	Projects            *project.Service
-	Workspaces          *workspace.Service
 	Sessions            *session.Service
 	Terminals           *terminal.Manager
 	token               string
@@ -28,6 +26,7 @@ type App struct {
 	closeErr            error
 	pickDirectory       func(context.Context) (string, error)
 	directoryPickerBusy atomic.Bool
+	mcpInstallMu        sync.Mutex
 	terminalWorktreeMu  sync.RWMutex
 	browser             *browserAccess
 	voice               *codex.VoiceService
@@ -39,14 +38,10 @@ func openAppForExecution(dataDir, root string, remote *execution.Client) (*App, 
 	if err != nil {
 		return nil, err
 	}
-	workspaces := workspace.New(env)
-	sessions := session.New(env, workspaces)
+	sessions := session.New(env)
 	projects := project.New(env)
-	workspaces.LockRepositories = projects.LockRepositories
-	workspaces.StateChanged = projects.InvalidateState
 	projects.ReserveWorktree = sessions.ReserveWorktree
-	projects.WorkspaceContextUpdated = workspace.WriteBriefContext
-	a := &App{Execution: env, Workspaces: workspaces, Projects: projects, Sessions: sessions, Terminals: terminal.New(), token: model.NewID() + model.NewID(), pickDirectory: platform.PickDirectory}
+	a := &App{Execution: env, Projects: projects, Sessions: sessions, Terminals: terminal.New(), token: model.NewID() + model.NewID(), pickDirectory: platform.PickDirectory}
 	if remote == nil {
 		a.voice = codex.NewVoiceService(env.DataDir, codex.OpenLive)
 		a.browser = newBrowserAccess(a)

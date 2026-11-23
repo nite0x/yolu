@@ -57,23 +57,19 @@ func TestManualNewWorktreeUsesSelectedRemoteCommitAndKeepsDirtyCheckout(t *testi
 		t.Fatal(string(state))
 	}
 	var snapshot struct {
-		Projects   []model.Project   `json:"projects"`
-		Workspaces []model.Workspace `json:"workspaces"`
+		Projects []model.Project `json:"projects"`
 	}
 	if err := json.Unmarshal(state, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Workspaces) != 0 {
-		t.Fatal("manual creation unexpectedly created a workspace")
-	}
 	found := false
 	for _, tree := range snapshot.Projects[0].Worktrees {
 		if tree.Path == target {
-			found = tree.Branch == "codex/manual-fix" && tree.WorkspaceID == ""
+			found = tree.Branch == "codex/manual-fix"
 		}
 	}
 	if !found {
-		t.Fatal("manual worktree is not visible as unassociated")
+		t.Fatal("manual worktree is not visible")
 	}
 }
 
@@ -102,28 +98,20 @@ func TestManualExistingBranchKeepsUpstreamAndRejectsOccupiedBranch(t *testing.T)
 	}
 }
 
-func TestManualWorktreeGroupsProjectsAndRejectsReservedWorkspaceDirectory(t *testing.T) {
+func TestManualWorktreesCanShareAParentDirectory(t *testing.T) {
 	a := testApp(t)
 	front, back := repo(t, "front", "master"), repo(t, "back", "master")
 	p1, p2 := register(t, a, "Front", front), register(t, a, "Back", back)
 	for _, id := range []string{p1, p2} {
 		if code, raw := manualWorktree(t, a, id, CreateWorktree{Slug: "shared-fix", Mode: "new", Source: "refs/heads/master"}); code != 201 {
-			t.Fatalf("shared workspace failed %d %s", code, raw)
+			t.Fatalf("shared worktree parent failed %d %s", code, raw)
 		}
 	}
 	entries, err := os.ReadDir(filepath.Join(a.Execution.Root, "shared-fix"))
 	if err != nil || len(entries) != 2 {
 		t.Fatal("project worktrees were not grouped under one directory")
 	}
-	if code, _, raw := create(t, a, p1, nil, "registered-demand"); code != 201 {
-		t.Fatalf("fixture workspace failed %d %s", code, raw)
-	}
-	if code, raw := manualWorktree(t, a, p2, CreateWorktree{Slug: "registered-demand", Mode: "new", Branch: "codex/separate", Source: "refs/heads/master"}); code != 409 || !strings.Contains(string(raw), "已登记工作区") {
-		t.Fatalf("reserved workspace directory accepted %d %s", code, raw)
-	}
-	if _, err := execution.Git(context.Background(), back, "rev-parse", "--verify", "refs/heads/codex/separate"); err == nil {
-		t.Fatal("reserved directory rejection created a branch")
-	}
+
 }
 
 func TestManualWorktreeRejectsInvalidInputsAndExistingPathsBeforeMutation(t *testing.T) {
@@ -144,7 +132,7 @@ func TestManualWorktreeRejectsInvalidInputsAndExistingPathsBeforeMutation(t *tes
 		}
 	}
 	if entries, err := os.ReadDir(a.Execution.Root); err != nil || len(entries) != 0 {
-		t.Fatal("invalid requests changed workspace root")
+		t.Fatal("invalid requests changed worktree root")
 	}
 	folder := gitView(t, a, id).Project.Folder
 	outside := t.TempDir()
@@ -167,7 +155,7 @@ func TestManualWorktreeRejectsInvalidInputsAndExistingPathsBeforeMutation(t *tes
 		t.Fatal("existing file was overwritten")
 	}
 	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
-		t.Fatal("symlink escaped workspace root")
+		t.Fatal("symlink escaped worktree root")
 	}
 	if code, raw := manualWorktree(t, a, id, CreateWorktree{Slug: "explicit-main", Mode: "new", Source: "refs/heads/main"}); code != 201 {
 		t.Fatalf("explicit main should work without master %d %s", code, raw)

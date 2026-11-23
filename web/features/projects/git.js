@@ -4,43 +4,25 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 let gitState = null;
 let gitViewRevision = 0;
 let gitSelectedPath = '';
-let gitWorkspaceID = '';
 let gitMergePreviewData = null;
 let gitMergeIntoPreviewData = null;
 let gitMergeIntoSelectionRevision = 0;
 const mergeAIRequests = new Map();
 let gitAILaunching = false;
-let workspaceGitReturn = null;
-function workspaceGitMenuTrigger(menu) {
-  return menu?.previousElementSibling?.querySelector('.ui-menu-trigger') || menu?.querySelector('summary');
-}
-function openGit(id, path = '', workspace = '', section = '', trigger = null) {
+function openGit(id, path = '', section = '') {
   if (state.busy || gitAILaunching) return;
-  if (workspace && state.view === 'workspaces' && state.selectedWorkspace === workspace) {
-    const dialog = $('#gitDialog');
-    if (dialog.open) return;
-    const menu = trigger?.closest('.workspace-project-more');
-    workspaceGitReturn = {
-      environment:activeEnvironment, workspace, project:id, action:trigger?.dataset.action,
-      trigger:workspaceGitMenuTrigger(menu) || trigger, fromMenu:!!menu,
-      scrollTop:$('#workspaceProjectsView').scrollTop,
-    };
-    if (menu) menu.open = false;
-    return loadGit(id, path, workspace, { modal: true, section });
-  }
   const query = new URLSearchParams();
   if (path) query.set('path',path);
-  if (workspace) query.set('workspace',workspace);
+  if (section) query.set('section',section);
   navigate(projectResourceRoute(id, 'git', query));
   return syncProjectPage();
 }
-async function loadGit(id, path = '', workspaceID = '', { modal = false, section = '' } = {}) {
+async function loadGit(id, path = '', section = '') {
   if (state.busy || gitAILaunching) return;
   const revision = ++gitViewRevision;
   const environment = activeEnvironment;
   gitState = null;
   gitSelectedPath = path;
-  gitWorkspaceID = workspaceID;
   gitMergePreviewData = null;
   gitMergeIntoPreviewData = null;
   $('#gitError').hidden = true;
@@ -48,19 +30,13 @@ async function loadGit(id, path = '', workspaceID = '', { modal = false, section
   $('#gitResult').hidden = true;
   $('#gitProgress').hidden = true;
   $('#gitTitle').textContent = uiText("Git 操作");
-  const workspaceContext = $('#gitWorkspaceContext');
-  const workspace = modal ? state.workspaces.find(q => q.id === workspaceID) : null;
-  workspaceContext.hidden = !workspace;
-  workspaceContext.textContent = workspace ? uiText("工作区 · ") + workspace.name : '';
   window.WorkHubUI.resetGitView($('#gitContent'));
-  const dialog = $('#gitDialog');
-  dialog.toggleAttribute('data-workspace-git', modal);
-  if (modal) dialog.showModal(); else dialog.show();
+  $('#gitDialog').show();
   try {
     const overview = await api(`/api/projects/${id}/git`, {environment});
     if (revision !== gitViewRevision || environment !== activeEnvironment || !$('#gitDialog').open) return;
     if (path && !overview.project.worktrees.some(t => t.path === path && !t.bare && !t.missing && !t.prunable && !t.error)) {
-      throw new Error(uiText("该工作区的工作目录已不可用，请关闭面板并刷新工作区状态。"));
+      throw new Error(uiText("该工作目录已不可用，请关闭面板并刷新项目状态。"));
     }
     gitState = overview;
     gitSelectedPath = path || gitState.project.path;
@@ -68,19 +44,6 @@ async function loadGit(id, path = '', workspaceID = '', { modal = false, section
     if (section === 'branches') window.WorkHubUI.scrollToGitSection($('#gitContent'), section);
   } catch (error) { if (revision !== gitViewRevision || environment !== activeEnvironment || !$('#gitDialog').open) return; window.WorkHubUI.resetGitView($('#gitContent'), ''); $('#gitError').textContent = error.message; $('#gitError').hidden = false; }
 }
-$('#gitDialog').addEventListener('close', () => {
-  if ($('#gitDialog').open || !workspaceGitReturn) return;
-  const saved = workspaceGitReturn;
-  workspaceGitReturn = null;
-  if (saved.environment !== activeEnvironment || state.view !== 'workspaces' || state.selectedWorkspace !== saved.workspace) return;
-  // A background status refresh may have replaced the originating project row.
-  const row = [...document.querySelectorAll('.workspace-project')].find(node => node.dataset.projectId === saved.project);
-  const replacement = saved.fromMenu ? workspaceGitMenuTrigger(row?.querySelector('.workspace-project-more')) :
-    [...(row?.querySelectorAll('[data-action]') || [])].find(node => node.dataset.action === saved.action && !node.closest('.workspace-project-more'));
-  const trigger = saved.trigger?.isConnected ? saved.trigger : replacement;
-  (trigger && !trigger.disabled ? trigger : $('#pageTitle')).focus({preventScroll:true});
-  $('#workspaceProjectsView').scrollTop = saved.scrollTop;
-});
 function defaultBranchSource(v) {
   return ['refs/heads/master', 'refs/heads/main', 'refs/remotes/origin/master', 'refs/remotes/origin/main'].find(ref => v.branches.some(b => b.ref === ref)) || 'HEAD';
 }
@@ -93,7 +56,6 @@ function renderGit() {
   $('#gitTitle').textContent = uiText("Git 操作 · ") + v.project.name;
   window.WorkHubUI.mountGitView($('#gitContent'), v);
   $('#gitWorktree').value = gitSelectedPath;
-  $('#gitWorktree').disabled = !!gitWorkspaceID;
   if (!$('#gitWorktree').value) {
     $('#gitWorktree').insertAdjacentHTML('afterbegin', uiText("<option value=\"\">原工作目录不可用，请明确选择其他目录</option>"));
     $('#gitWorktree').value = '';
@@ -124,7 +86,7 @@ function updateGitWorktree() {
   $('#gitContext').textContent = uiText("{0} · 当前分支 {1} · {2}\n{3}", environmentName(), t?.branch || 'detached HEAD', t?.dirty ? uiText("{0} 项未提交修改", t.dirty) : uiText("工作目录干净"), !t?.upstream ? uiText("尚未设置上游，推送时可发布当前分支") : !t.sync_available ? uiText("上游 {0} 不可用，请获取远端", t.upstream) : uiText("上游 {0} · 待推送 {1} · 待拉取 {2}", t.upstream, t.sync_ahead || 0, t.sync_behind || 0));
   $('#gitSwitch').innerHTML = gitState.branches.map(b => `<option value="${esc(b.ref)}" ${b.worktrees.some(p => p !== gitSelectedPath) ? 'disabled' : ''}>${esc(b.name)}${b.kind === 'remote' ? uiText("（新建跟踪分支）") : ''}${b.worktrees.some(p => p !== gitSelectedPath) ? uiText("（其他 Worktree 占用）") : ''}</option>`).join('');
   if (t?.branch) $('#gitSwitch').value = 'refs/heads/' + t.branch;
-  $('#gitSwitchNote').textContent = gitWorkspaceID ? uiText("切换后同步更新当前工作区的关联分支，创建基线保留。") : uiText("切换作用于所选目录；关联工作区会显示分支变化。");
+  $('#gitSwitchNote').textContent = uiText("切换作用于所选目录，关联对话将显示新的实际分支。");
   updateGitSwitch();
   const remotes = [...gitState.remotes].sort((a, b) => b.name.length - a.name.length);
   const upstreamRemote = remotes.find(r => t?.upstream?.startsWith(r.name + '/'));
@@ -134,8 +96,8 @@ function updateGitWorktree() {
   updateGitPush();
   $('#gitMergeActive').hidden = t?.operation !== 'merge';
   $('#gitMergeForm').hidden = t?.operation === 'merge';
-  $('#gitMergeStatus').textContent = t?.operation === 'merge' ? uiText("合并进行中{0}\n{1}", t.conflicts?.length ? uiText("，{0} 个冲突文件：\n{1}", t.conflicts.length, t.conflicts.join('\n')) : uiText("，等待完成合并提交"), gitWorkspaceID ? uiText("可交给 AI 继续完成合并。") : uiText("请从关联工作区进入以使用 AI 处理。")) : '';
-  $('[data-action="git-merge-ai"]').disabled = !gitWorkspaceID && t?.workspaces?.length !== 1;
+  $('#gitMergeStatus').textContent = t?.operation === 'merge' ? uiText("合并进行中{0}\n{1}", t.conflicts?.length ? uiText("，{0} 个冲突文件：\n{1}", t.conflicts.length, t.conflicts.join('\n')) : uiText("，等待完成合并提交"), uiText("可交给 AI 继续完成合并。")) : '';
+  $('[data-action="git-merge-ai"]').disabled = !t?.merge_head;
   const upstream = gitState.branches.find(b => b.kind === 'remote' && b.name === t?.upstream);
   $('#gitMergeSource').value = upstream?.ref || '';
   clearGitMergePreview();
@@ -181,42 +143,32 @@ function clearGitMergePreview() {
 async function launchGitMergeAI() {
   if (gitAILaunching) return;
   const t = gitState?.project.worktrees.find(t => t.path === gitSelectedPath);
-  const workspace = gitWorkspaceID || (t?.workspaces?.length === 1 ? t.workspaces[0].id : '');
-  if (!t?.merge_head || !workspace) throw new Error(uiText("请从关联工作区进入合并目录后再打开 AI。"));
+  if (!t?.merge_head) throw new Error(uiText("当前无法启动 AI 合并，请在 Git 面板或终端继续处理。"));
   const project = gitState.project.id;
   gitAILaunching = true;
   const controls = [...$('#gitDialog').querySelectorAll('button, input, select')].map(control => [control, control.disabled]);
   controls.forEach(([control]) => { control.disabled = true; });
   try {
   const environment = activeEnvironment, revision = environmentRevision;
-  const key = [environment, workspace, project, t.path, t.head, t.merge_head].join(':');
+  const key = [environment, project, t.path, t.head, t.merge_head].join(':');
   let pending = mergeAIRequests.get(key);
   if (!pending) {
     pending = { request_id: crypto.randomUUID() };
     mergeAIRequests.set(key, pending);
   }
   if (!pending.promise) {
-    const body = { request_id: pending.request_id, project_id: project, merge_head: t.merge_head };
-    const route = sessionReadOnly ? 'merge-ai' : 'sessions/new';
-    if (!sessionReadOnly) body.purpose = 'merge_conflict';
-    pending.promise = api(`/api/workspaces/${encodeURIComponent(workspace)}/${route}`, { method: 'POST', body: JSON.stringify(body), environment });
+    const body = {request_id:pending.request_id,project_id:project,cwd:t.path,merge_head:t.merge_head,...(!sessionReadOnly ? {provider:'codex',purpose:'merge_conflict'} : {})};
+    const endpoint = sessionReadOnly ? '/api/sessions/merge-terminal' : '/api/sessions/new';
+    pending.promise = api(endpoint, {method:'POST',body:JSON.stringify(body),environment});
+
   }
   let result;
   try { result = await pending.promise; }
   catch (error) { delete pending.promise; throw error; }
   if (revision !== environmentRevision) return;
   if (result.session) {
-    const cached = workspaceSessions.get(workspace) || { sessions: [] };
-    cached.sessions = [result.session, ...cached.sessions.filter(s => s.id !== result.session.id)];
-    workspaceSessions.set(workspace, cached);
-    updateWorkspaceSessionsView(workspace);
     $('#gitDialog').close();
-    openSessionHistory(workspace, result.session.id);
-    if (!sessionHistoryState.assistant) {
-      sessionHistoryState.newlyCreated = true;
-      applyChatState(sessionHistoryState, result.chat);
-      if (result.chat.busy) streamChat(sessionHistoryState, result.chat.id);
-    }
+    openSessionHistory(result.session.id,environment,project);
     toast(uiText("合并出现冲突，AI 已开始处理，请在对话中查看进展。"));
   } else {
     $('#gitResultTitle').textContent = result.message;
@@ -235,11 +187,10 @@ async function gitOperation(body, title) {
   const environment = activeEnvironment, revision = gitViewRevision;
   const current = () => revision === gitViewRevision && environment === activeEnvironment && $('#gitDialog').open;
   const request = (path, options = {}) => api(path, {...options, environment});
-  const scopedActions = ['switch', 'adopt_branch', 'pull', 'push', 'merge_preview', 'merge', 'merge_abort', 'merge_into_preview', 'merge_into'];
+  const scopedActions = ['switch', 'pull', 'push', 'merge_preview', 'merge', 'merge_abort', 'merge_into_preview', 'merge_into'];
   if (scopedActions.includes(body.action)) {
     body.path ||= gitSelectedPath;
     const t = gitState.project.worktrees.find(t => t.path === body.path);
-    if (gitWorkspaceID) body.workspace_id = gitWorkspaceID;
     if (t?.branch) body.expected_branch ||= t.branch;
   }
   let result;
@@ -259,7 +210,12 @@ async function gitOperation(body, title) {
   }, 1000);
   try { await mutation(title, async () => {
     try {
-      result = await request(`/api/projects/${id}/git`, { method: 'POST', body: JSON.stringify(body) });
+      const endpoint = `/api/projects/${id}/git`;
+      try { result = await request(endpoint, {method:'POST',body:JSON.stringify(body)}); }
+      catch (error) {
+        if (body.action !== 'switch' || !current() || !String(error.message).includes(uiText("多个对话关联了此目录，请确认切换分支会影响这些对话")) || !confirm(error.message)) throw error;
+        result = await request(endpoint, {method:'POST',body:JSON.stringify({...body,allow_shared:true})});
+      }
     } catch (error) {
       if (current()) $('#gitAuthHelp').hidden = error.code !== 'authentication_required';
       try { const updated = await request(`/api/projects/${id}/git`); if (current()) { gitState = updated; renderGit(); } } catch { /* Keep the last readable state and original action error. */ }
@@ -308,7 +264,7 @@ document.addEventListener('submit', event => {
   if (event.target.id !== 'gitCreateForm') return;
   event.preventDefault();
   const body = { action: 'create_branch', name: $('#gitBranchName').value, source: $('#gitBranchSource').value, track: $('#gitTrack').checked };
-  if (body.source === 'HEAD') { body.path = gitSelectedPath; if (gitWorkspaceID) body.workspace_id = gitWorkspaceID; }
+  if (body.source === 'HEAD') body.path = gitSelectedPath;
   gitOperation(body, uiText("正在创建本地分支"));
 });
 document.addEventListener('change', event => {
@@ -324,28 +280,7 @@ document.addEventListener('click', async event => {
   const button = event.target.closest('[data-action^="git-"]');
   if (!button || button.disabled || state.busy || gitAILaunching) return;
   const action = button.dataset.action;
-  if (action === 'git-open') return openGit(button.dataset.id, button.dataset.path, button.dataset.workspace, button.dataset.gitSection, button);
-  if (action.startsWith('git-workspace-')) {
-    await openGit(button.dataset.id, button.dataset.path, button.dataset.workspace, '', button);
-    if (!gitState) return;
-    if (action === 'git-workspace-pull') return gitOperation({ action: 'pull' }, uiText("正在快进拉取"));
-    if (action === 'git-workspace-push') {
-      const t = gitState.project.worktrees.find(t => t.path === gitSelectedPath);
-      if (t?.upstream) return pushGitBranch();
-      $('#gitPushName').focus(); return;
-    }
-    if (action === 'git-workspace-adopt') return gitOperation({ action: 'adopt_branch' }, uiText("正在更新工作区关联分支"));
-    if (action === 'git-workspace-ai') {
-      try { await launchGitMergeAI(); } catch (error) { $('#gitError').textContent = error.message; $('#gitError').hidden = false; if (error.command) showCommand(error.command); }
-      return;
-    }
-  }
-  if (action === 'git-prepare-project') {
-    const environment = $('#workspaceEnvironment').value;
-    $('#workspaceDialog').close();
-    await selectEnvironment(environment, '/projects');
-    state.selectedProject = button.dataset.id; render(); return openGit(button.dataset.id);
-  }
+  if (action === 'git-open') return openGit(button.dataset.id,button.dataset.path,button.dataset.gitSection);
   if (!gitState) return;
   if (action === 'git-reload') {
     try { gitState = await api(`/api/projects/${gitState.project.id}/git`); $('#gitError').hidden = true; $('#gitAuthHelp').hidden = true; renderGit(); } catch (e) { $('#gitError').textContent = e.message; $('#gitError').hidden = false; } return;
@@ -355,12 +290,8 @@ document.addEventListener('click', async event => {
   if (action === 'git-fetch-terminal') return gitOperation({ action: 'fetch_terminal', remote: $('#gitRemote').value }, uiText("正在打开终端获取分支"));
   if (action === 'git-prepare-master') return gitOperation({ action: 'create_branch', name: 'master', source: gitState.master_source, track: true }, uiText("正在从远端创建本地 master"));
   if (action === 'git-switch') {
-    const t = gitState.project.worktrees.find(t => t.path === gitSelectedPath);
-    const shared = (t?.workspaces || []).filter(q => q.id !== gitWorkspaceID);
-    if (shared.length && !confirm(uiText("该目录还关联工作区：{0}。切换会影响这些工作区的实际分支，是否继续？", shared.map(q => q.name).join('、')))) return;
     const body = { action: 'switch', source: $('#gitSwitch').value, path: $('#gitWorktree').value };
     if (body.source.startsWith('refs/remotes/')) body.name = $('#gitSwitchName').value.trim();
-    if (shared.length) body.allow_shared = true;
     return gitOperation(body, uiText("正在切换工作目录分支"));
   }
   if (action === 'git-pull') return gitOperation({ action: 'pull', path: $('#gitWorktree').value }, uiText("正在快进拉取当前分支"));

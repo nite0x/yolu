@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -75,7 +76,7 @@ func readDesktopService(dataDir string) (desktopServiceInfo, error) {
 		return info, err
 	}
 	u, err := url.Parse(info.URL)
-	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || info.Token == "" {
+	if err != nil || u.Scheme != "http" || !net.ParseIP(u.Hostname()).IsLoopback() || u.Port() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || info.Token == "" {
 		return info, fmt.Errorf("本机服务地址无效")
 	}
 	client := desktopHTTPClient(time.Second)
@@ -134,7 +135,7 @@ func compatibleDesktopService(info desktopServiceInfo, dataDir, root string, roo
 			requested = resolved
 		}
 		if !platform.SameWorkspacePath(info.Root, requested) {
-			return fmt.Errorf("%w：已运行后台的工作区为 %s；请先停止后台再更改 --root", errDesktopConflict, info.Root)
+			return fmt.Errorf("%w：已运行后台的 Worktree 根目录为 %s；请先停止后台再更改 --root", errDesktopConflict, info.Root)
 		}
 	}
 	return nil

@@ -15,14 +15,12 @@ import (
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/project"
 	"worktree-hub/internal/testutil"
-	"worktree-hub/internal/workspace"
 )
 
 type App struct {
 	*Service
-	Projects   *project.Service
-	Workspaces *workspace.Service
-	token      string
+	Projects *project.Service
+	token    string
 }
 
 func openApp(dataDir, root string) (*App, error) {
@@ -30,8 +28,7 @@ func openApp(dataDir, root string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	workspaces := workspace.New(env)
-	return &App{Service: New(env, workspaces), Projects: project.New(env), Workspaces: workspaces, token: model.NewID()}, nil
+	return &App{Service: New(env), Projects: project.New(env), token: model.NewID()}, nil
 }
 
 func testApp(t *testing.T) *App {
@@ -50,7 +47,7 @@ func testApp(t *testing.T) *App {
 }
 
 func (a *App) handler() http.Handler {
-	return testutil.Handler(a.Execution, a.token, a.Projects, a.Projects.RegisterRoutes, func(mux *http.ServeMux) { a.Workspaces.RegisterRoutes(mux, a.Projects.InvalidateStateAfter) }, a.RegisterRoutes)
+	return testutil.Handler(a.Execution, a.token, a.Projects, a.Projects.RegisterRoutes, a.RegisterRoutes)
 }
 func gitView(t *testing.T, a *App, id string) project.GitOverview {
 	t.Helper()
@@ -97,7 +94,6 @@ var (
 	repo          = testutil.Repo
 	call          = testutil.Call
 	register      = testutil.Register
-	create        = testutil.Create
 	remoteClone   = testutil.RemoteClone
 	advanceRemote = testutil.AdvanceRemote
 )
@@ -105,3 +101,15 @@ var settledState = testutil.SettledState
 
 func (a *App) TestHandler() http.Handler { return a.handler() }
 func (a *App) TestToken() string         { return a.token }
+
+type testDirectory struct {
+	ProjectID string
+	Path      string
+	Parent    string
+}
+
+func newTestDirectory(t *testing.T, a *App, projectID, name string) testDirectory {
+	t.Helper()
+	tree := testutil.CreateWorktree(t, a, projectID, name)
+	return testDirectory{ProjectID: projectID, Path: tree.Path, Parent: filepath.Dir(tree.Path)}
+}

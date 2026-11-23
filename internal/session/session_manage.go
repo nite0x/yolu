@@ -150,11 +150,30 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 			if err := c.Call("thread/name/set", map[string]any{"threadId": result.Thread.ID, "name": result.Thread.Name}, &struct{}{}); err != nil {
 				result.Thread.Name = ""
 			}
-			if err := a.SaveSession("", result.Thread, "workbench"); err != nil {
+			managed, err := a.Execution.Store.SessionBindingsManaged(record.ID)
+			if err != nil {
 				httpx.DbError(w, err)
 				return
 			}
-			if err := a.Execution.Store.SaveSessionDirectories(result.Thread.ID, record.AdditionalDirectories); err != nil {
+			if managed {
+				bindings, err := a.Execution.Store.SessionBindings(record.ID)
+				if err != nil {
+					httpx.DbError(w, err)
+					return
+				}
+				for i := range bindings {
+					bindings[i].ID = ""
+					bindings[i].SessionID = result.Thread.ID
+					bindings[i].CreatedAt, bindings[i].UpdatedAt = 0, 0
+				}
+				fork := result.Thread
+				err = a.Execution.Store.SaveSessionWithBindings(model.Session{
+					ID: fork.ID, Name: sessionName(fork), Cwd: fork.Cwd, CreatedAt: fork.CreatedAt, UpdatedAt: fork.UpdatedAt, Source: "workbench",
+				}, bindings)
+			} else if err = a.SaveSession(result.Thread, "workbench"); err == nil {
+				err = a.Execution.Store.SaveSessionDirectories(result.Thread.ID, record.AdditionalDirectories)
+			}
+			if err != nil {
 				httpx.DbError(w, err)
 				return
 			}

@@ -24,7 +24,7 @@ function rememberProjectOpenTool(choice) {
   try { localStorage.setItem('workhub:project-open:v1', tool); } catch { /* Keep the preference for this page. */ }
   const label = { vscode: 'VS Code', idea: 'IDEA', terminal: uiText("终端") }[tool];
   document.querySelectorAll('[data-project-open-primary]').forEach(button => {
-    button.dataset.action = tool === 'terminal' ? 'workspace-terminal' : 'project-open-' + tool;
+    button.dataset.action = tool === 'terminal' ? 'project-terminal' : 'project-open-' + tool;
     button.setAttribute('aria-label', uiText("用 {0} 打开工作目录", label));
     button.querySelector('[data-project-open-label]').textContent = uiText("{0} 打开", label);
     button.querySelector('svg')?.replaceWith(choice.querySelector('svg').cloneNode(true));
@@ -57,8 +57,7 @@ function renderProjects() {
   const text = projectDetailOpen ? '' : $('#search').value.trim().toLowerCase();
   const projects = state.projects.filter(p => `${p.name} ${p.path}`.toLowerCase().includes(text));
   const directoryFilter = projectDirectoryFilters.get(projectDirectoryFilterKey(state.selectedProject)) || 'all';
-  const source = state.workspaces.find(workspace => workspace.id === resourceLocation.fromWorkspace);
-  return window.WorkHubUI.projects(projects, state.selectedProject, preferredProjectOpenTool(), projectFilter, projectDetailOpen, state.workspaces, directoryFilter, !!text, status, source?.id);
+  return window.WorkHubUI.projects(projects, state.selectedProject, preferredProjectOpenTool(), projectFilter, projectDetailOpen, directoryFilter, !!text, status);
 }
 
 function renderProjectPage(markup) {
@@ -343,8 +342,6 @@ let leavingProjectPage = false;
 function syncProjectPage() {
   const route = location.hash.slice(1), path = route.split('?')[0];
   const match = path.match(/^\/projects\/([a-zA-Z0-9_-]+)\/(git|worktrees)$/);
-  const workspaceGit = $('#gitDialog[open][data-workspace-git]');
-  if (workspaceGit?.open && (state.view !== 'workspaces' || state.selectedWorkspace !== gitWorkspaceID || activeEnvironment !== workspaceGitReturn?.environment)) workspaceGit.close();
   const key = match ? JSON.stringify([activeEnvironment,route]) : '';
   document.body.classList.toggle('project-tool-page',!!match);
   const dialog = match ? $(match[2] === 'git' ? '#gitDialog' : '#worktreeDialog') : null;
@@ -359,7 +356,7 @@ function syncProjectPage() {
   if (!match) return;
   $('main').append(dialog);
   const params = new URLSearchParams(route.split('?')[1] || '');
-  if (match[2] === 'git') projectPageLoad = loadGit(match[1],params.get('path') || '',params.get('workspace') || '');
+  if (match[2] === 'git') projectPageLoad = loadGit(match[1],params.get('path') || '',params.get('section') || '');
   else projectPageLoad = loadWorktree(match[1]);
   return projectPageLoad;
 }

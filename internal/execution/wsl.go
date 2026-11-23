@@ -102,7 +102,7 @@ printf '%s\n' "$target"
 	if !strings.HasPrefix(remote, "/") || strings.ContainsAny(remote, "\r\n") {
 		return nil, fmt.Errorf("辅助程序路径无效")
 	}
-	cmd := exec.Command("wsl.exe", WSLArgs(distro, user, remote, "--workspace-agent")...)
+	cmd := exec.Command("wsl.exe", WSLArgs(distro, user, remote, "--execution-agent")...)
 	c, err := StartClient(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("连接 WSL 辅助程序失败：%w", err)

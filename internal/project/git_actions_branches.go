@@ -67,17 +67,28 @@ func (a *Service) createGitBranch(ctx context.Context, p model.Project, v GitOve
 func (a *Service) switchGitBranch(ctx context.Context, p model.Project, v GitOverview, in GitAction) (map[string]any, error) {
 	var output, message string
 	var err error
-	if in.WorkspaceID != "" {
-		if e := a.validateGitWorkspace(p.ID, in); e != nil {
-			return nil, gitIssue(gitConflict, e.Error())
-		}
-	}
-	if e := a.checkSharedSwitch(p.ID, in); e != nil {
-		return nil, gitIssue(gitConflict, e.Error())
-	}
 	t, e := selectedWorktree(ctx, p, in.Path)
 	if e != nil {
 		return nil, gitIssue(gitConflict, e.Error())
+	}
+	if a.ReserveWorktree != nil {
+		release, e := a.ReserveWorktree(ctx, t.Path)
+		if e != nil {
+			return nil, gitIssue(gitConflict, e.Error())
+		}
+		defer release()
+	}
+	if e := a.checkSharedSwitch(t.Path, in.AllowShared); e != nil {
+		return nil, gitIssue(gitConflict, e.Error())
+	}
+	// Reinspect after reserving the directory so the dirty state and expected
+	// branch are checked after any managed run has finished.
+	t, e = selectedWorktree(ctx, p, t.Path)
+	if e != nil {
+		return nil, gitIssue(gitConflict, e.Error())
+	}
+	if in.ExpectedBranch != "" && in.ExpectedBranch != t.Branch {
+		return nil, gitIssue(gitConflict, "当前分支已变化，请刷新后重新操作")
 	}
 	if t.Dirty > 0 || t.Operation != "" {
 		return nil, gitIssue(gitConflict, "所选目录有未提交修改或未结束的 Git 操作，请先在终端或编辑器处理后再切换分支")
@@ -104,30 +115,6 @@ func (a *Service) switchGitBranch(ctx context.Context, p model.Project, v GitOve
 		output, err = execution.Git(ctx, t.Path, "switch", "--no-guess", "--", b.Name)
 	}
 	message = "所选工作目录已切换到 " + b.Name
-	if err == nil && in.WorkspaceID != "" {
-		_, err = a.Execution.Store.DB.Exec(`UPDATE members SET branch=? WHERE workspace_id=? AND project_id=? AND path=?`, b.Name, in.WorkspaceID, p.ID, t.Path)
-		if err != nil {
-			err = fmt.Errorf("分支已切换，但工作区关联更新失败，请刷新后采用当前分支：%w", err)
-		}
-	}
-	return gitCommandResult(message, output, err)
-}
-
-func (a *Service) adoptGitBranch(ctx context.Context, p model.Project, v GitOverview, in GitAction) (map[string]any, error) {
-	var output, message string
-	var err error
-	if in.WorkspaceID == "" {
-		return nil, gitIssue(gitInvalid, "请从工作区内采用当前分支")
-	}
-	if e := a.validateGitWorkspace(p.ID, in); e != nil {
-		return nil, gitIssue(gitConflict, e.Error())
-	}
-	t, e := selectedWorktree(ctx, p, in.Path)
-	if e != nil || t.Detached || t.Branch == "" {
-		return nil, gitIssue(gitConflict, "当前目录未检出可关联的分支")
-	}
-	_, err = a.Execution.Store.DB.Exec(`UPDATE members SET branch=? WHERE workspace_id=? AND project_id=? AND path=?`, t.Branch, in.WorkspaceID, p.ID, t.Path)
-	message = "工作区已采用当前分支 " + t.Branch
 	return gitCommandResult(message, output, err)
 }
 
