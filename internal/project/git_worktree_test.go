@@ -68,6 +68,40 @@ func TestWorktreePushPublishesOnlySelectedBranchAndTracksUpstream(t *testing.T) 
 	}
 }
 
+func TestWorktreeChangeCountsMatchChangedFiles(t *testing.T) {
+	a := testApp(t)
+	root := repo(t, "changes", "master")
+	commitFile(t, root, "old.txt", "remove")
+	commitFile(t, root, "edit.txt", "before")
+	id := register(t, a, "App", root)
+	tree := createWorktree(t, a, id, "change-count")
+	if err := os.Remove(filepath.Join(tree.Path, "old.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(tree.Path, "new"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for file, content := range map[string]string{"edit.txt": "after", "new/first.txt": "first", "new/second.txt": "second", "staged.txt": "staged"} {
+		if err := os.WriteFile(filepath.Join(tree.Path, file), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	testGit(t, tree.Path, "add", "--", "staged.txt")
+	ctx := context.Background()
+	state, err := execution.ReadGitState(ctx, tree.Path)
+	if err != nil || state.Changes == nil || *state.Changes != (model.WorktreeChanges{Modified: 1, Added: 3, Deleted: 1}) || state.Dirty != 5 {
+		t.Fatalf("unexpected worktree state: %+v, breakdown %+v, err %v", state, state.Changes, err)
+	}
+	files, err := ReadDirectoryChanges(ctx, tree.Path)
+	if err != nil || len(files) != state.Dirty {
+		t.Fatalf("file list and state disagree: %+v %v", files, err)
+	}
+	main, err := execution.ReadGitState(ctx, root)
+	if err != nil || main.Dirty != 0 {
+		t.Fatalf("main checkout was affected: %+v %v", main, err)
+	}
+}
+
 func TestWorktreeSwitchUsesLiveBranchAndRejectsStaleSelection(t *testing.T) {
 	a := testApp(t)
 	root := repo(t, "switch", "master")

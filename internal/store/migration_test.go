@@ -143,8 +143,8 @@ func assertMigratedBindings(t *testing.T, s *Store, tree, extra string) {
 	if managed, err := s.SessionBindingsManaged("unrelated"); err != nil || managed {
 		t.Fatalf("unrelated session changed: %v %v", managed, err)
 	}
-	linked, err := s.SessionIDsForProject("q")
-	if err != nil || len(linked) != 3 || !linked["shared"] {
+	linked, err := s.SessionDirectoriesForProject("q")
+	if err != nil || len(linked) != 3 || len(linked["shared"]) != 1 || linked["shared"][0] != extra {
 		t.Fatalf("project context: %+v %v", linked, err)
 	}
 	var count int

@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { mountGitView, resetGitView, scrollToGitSection } from "./git-interactive"
 import { notifyWorkspace } from "./interactions"
 import { ProjectScanResults } from "./project-scan"
-import { Projects, type DirectoryFilter, type ProjectFilter } from "./projects"
+import { Projects, type ProjectFilter } from "./projects"
 import { GitView } from "./git"
 import { HistoryMessage, FileChange, ChatApprovals, HistoryAttention, type HistoryEntry, type Approval } from "./session-timeline"
 import { Branch, EmptyState, SourceOptions, StatusBadge, TreeStatus } from "./shared"
@@ -50,7 +50,7 @@ export const workspaceUI = {
   conversationList: (props: Parameters<typeof ConversationList>[0]) => renderToStaticMarkup(<ConversationList {...props} />),
   conversationScopes: (scopes: Parameters<typeof ConversationScopes>[0]["scopes"], selected?: Parameters<typeof ConversationScopes>[0]["selected"]) => renderToStaticMarkup(<ConversationScopes scopes={scopes} selected={selected} />),
   readElicitation,
-  projects: (projects: Project[], selectedID: string | null, openTool?: ProjectOpenTool, filter?: ProjectFilter, detailOpen?: boolean, directoryFilter?: DirectoryFilter, searching?: boolean, status?: ComponentProps<typeof Projects>["status"]) => renderToStaticMarkup(<Projects projects={projects} selectedID={selectedID} openTool={openTool} filter={filter} detailOpen={detailOpen} directoryFilter={directoryFilter} searching={searching} status={status} />),
+  projects: (projects: Project[], selectedID: string | null, openTool: ProjectOpenTool, filter: ProjectFilter, detailOpen: boolean, detailView: ComponentProps<typeof Projects>["detailView"], searching?: boolean, status?: ComponentProps<typeof Projects>["status"]) => renderToStaticMarkup(<Projects projects={projects} selectedID={selectedID} openTool={openTool} filter={filter} detailOpen={detailOpen} detailView={detailView} searching={searching} status={status} />),
   git: (overview: GitOverview) => renderToStaticMarkup(<GitView overview={overview} />),
   badge: (kind: string, text?: string) => renderToStaticMarkup(<span className="shadcn-scope"><StatusBadge kind={kind}>{text}</StatusBadge></span>),
   branch: (value: string) => renderToStaticMarkup(<span className="shadcn-scope"><Branch>⑂ {value || "detached HEAD"}</Branch></span>),

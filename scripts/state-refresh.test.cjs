@@ -97,11 +97,13 @@ test('explicit environment calls survive navigation while old ambient calls are 
   assert.equal(h.requests.at(-1).options.headers['X-Environment-ID'], 'wsl-ubuntu');
 });
 
-test('background refresh keeps the project table and only updates its check time', async () => {
+test('background refresh keeps the worktree cards and only updates the open Git status time', async () => {
   const h = harness();
+  h.context.projectDetailView('app').cards.set('/workspace/app', {expanded:true, section:'git'});
   await h.refresh(snapshot());
+  await h.context.refreshProjectConversations();
   const content = h.element('#content');
-  assert.equal(content.writes, 1);
+  const writes = content.writes;
   assert.match(content.innerHTML, /上次检查 <time/);
   let datetime = '2026-10-22T05:23:13Z';
   const time = {
@@ -112,18 +114,18 @@ test('background refresh keeps the project table and only updates its check time
   h.times.push(time);
   // The backend returns its previous result while a scan is running.
   await h.refresh(snapshot('2026-10-22T05:23:13Z', true));
-  assert.equal(content.writes, 1);
+  assert.equal(content.writes, writes);
   assert.equal(h.timers.at(-1), 1000);
   assert.doesNotMatch(content.innerHTML, /更新中/);
   // A completed scan with identical Git data must not replace focused buttons.
   await h.refresh(snapshot('2026-10-22T05:23:24Z'));
-  assert.equal(content.writes, 1);
+  assert.equal(content.writes, writes);
   assert.equal(h.times[0], time);
   assert.equal(datetime, '2026-10-22T05:23:24Z');
   assert.equal(time.textContent, new Date(datetime).toLocaleTimeString('zh-CN', { hour12: false }));
   assert.equal(h.timers.at(-1), 10000);
   await h.refresh(snapshot('2026-10-22T05:23:24Z', true), true);
-  assert.equal(content.writes, 1);
+  assert.equal(content.writes, writes);
 });
 
 test('the first completed check enables project actions even with no Git changes', async () => {
@@ -131,31 +133,37 @@ test('the first completed check enables project actions even with no Git changes
   await h.refresh(snapshot(null, true));
   assert.match(h.element('#content').innerHTML, /正在检查/);
   assert.equal(markup(h.element('#content').innerHTML).querySelector('[data-project-open-primary]').disabled, true);
+  await h.context.refreshProjectConversations();
+  const writes = h.element('#content').writes;
   await h.refresh(snapshot());
-  assert.equal(h.element('#content').writes, 2);
+  assert.equal(h.element('#content').writes, writes + 1);
   assert.equal(markup(h.element('#content').innerHTML).querySelector('[data-project-open-primary]').disabled, false);
-  assert.equal(markup(h.element('#content').innerHTML).querySelector('.directory-status').textContent, '干净');
+  assert.equal(markup(h.element('#content').innerHTML).querySelector('.directory-local-status').textContent, '干净');
 });
 
 test('real status changes are rendered, including errors and branch drift', async () => {
   for (const patch of [{ dirty: 2 }, { branch: 'other' }, { missing: true }, { error: 'Git failed' }, { ahead: 1, behind: 2, compare_available: true }]) {
     const h = harness();
     await h.refresh(snapshot());
+    await h.context.refreshProjectConversations();
+    const writes = h.element('#content').writes;
     const next = snapshot('2026-10-22T05:23:24Z');
     Object.assign(next.projects[0].worktrees[0], patch);
     await h.refresh(next);
-    assert.equal(h.element('#content').writes, 2, JSON.stringify(patch));
+    assert.equal(h.element('#content').writes, writes + 1, JSON.stringify(patch));
   }
 });
 
-test('connection failures retain the last table and recover without rebuilding it', async () => {
+test('connection failures retain the last worktree cards and recover without rebuilding them', async () => {
   const h = harness();
   await h.refresh(snapshot());
+  await h.context.refreshProjectConversations();
+  const writes = h.element('#content').writes;
   await h.fail();
-  assert.equal(h.element('#content').writes, 1);
+  assert.equal(h.element('#content').writes, writes);
   assert.equal(h.element('#offlineBanner').hidden, false);
   await h.refresh(snapshot('2026-10-22T05:23:24Z'));
-  assert.equal(h.element('#content').writes, 1);
+  assert.equal(h.element('#content').writes, writes);
   assert.equal(h.element('#offlineBanner').hidden, true);
 });
 

@@ -79,7 +79,7 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
       const query = new URL(url, 'http://localhost').searchParams;
       const project = data.projects.find(item => item.id === query.get('project_id'));
       const paths = project?.worktrees.map(tree => tree.path);
-      result = {sessions:sessions.filter(item => (!paths || paths.includes(item.cwd)) && (!query.has('cwd') || query.get('cwd') === item.cwd))};
+      result = {sessions:sessions.filter(item => (!paths || paths.includes(item.cwd) || item.project_directories?.some(dir => paths.includes(dir))) && (!query.has('cwd') || query.get('cwd') === item.cwd))};
     }
     else if (url.endsWith('/git')) result = options.method === 'POST' ? { message: '已完成', output: 'fixture result' } : overview(data.projects.find(p => url.includes('/' + p.id + '/')));
     else if (url === '/api/projects' && options.method === 'POST') { data.projects.push({ id: 'new-project', ...body, folder: 'new-project', worktrees: [tree(body.path, 'master')] }); result = { id: 'new-project' }; }
@@ -103,7 +103,7 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
 
 for (const readOnly of [true, false]) test(`the production project and conversation UI mounts in ${readOnly ? 'read-only' : 'interactive'} mode`, async t => {
   const h = await harness(t, readOnly);
-  assert(h.$('#content .working-directory-table'));
+  assert(h.$('#content .working-directory-cards'));
   assert(h.$('#projectForm [data-slot="input"]'));
   const ids = [...h.document.querySelectorAll('[id]')].map(node => node.id);
   assert.equal(new Set(ids).size, ids.length);
@@ -1249,12 +1249,15 @@ test('project directory controls retain the exact worktree and compact zero-valu
   Object.assign(tree, { upstream: 'origin/feature/workspace', sync_available: true, sync_ahead: 0, sync_behind: 0, compare_available: true, comparison_ref: 'main', ahead: 0, behind: 0 });
   await h.navigate('/projects/app');
   await h.window.refresh(true);
-  const row = h.$('[data-action="git-open"][data-path="/workspace/workspace/app"]').closest('tr');
+  const row = h.$('[data-action="git-open"][data-path="/workspace/workspace/app"]').closest('article');
   assert.equal(row.querySelector('.directory-sync-summary').textContent, 'origin/feature/workspace↑0↓0');
   assert.equal(row.querySelector('.directory-sync-counts').getAttribute('aria-label'), '待推送 0 个提交，待拉取 0 个提交');
   assert.equal(row.querySelector('.directory-local-status').textContent, '干净');
-  assert.equal(row.querySelector('.directory-details').open, false);
-  assert.match(row.querySelector('.directory-details').textContent, /与基线一致/);
+  assert.equal(row.querySelector('.directory-card-expanded').hidden, true);
+  const rowSelector = '[data-directory-path="/workspace/workspace/app"]';
+  h.click(rowSelector + ' [data-action="project-directory-toggle"]');
+  h.click(rowSelector + ' [data-section="git"]');
+  assert.match(h.$(rowSelector + ' .directory-detail-content').textContent, /与基线一致/);
   h.click('[data-action="git-open"][data-path="/workspace/workspace/app"]'); await settle();
   assert.equal(h.$('#gitWorktree').value, '/workspace/workspace/app');
   h.$('#gitDialog').close();
@@ -1279,18 +1282,45 @@ test('project directory controls retain the exact worktree and compact zero-valu
   assert.equal(updatedRow().querySelector('.directory-local-status').textContent, '有改动 1');
 });
 
-test('project details pin the main directory and group only actionable worktree signals', async t => {
+test('project detail cards retain expansion and isolate Git and conversation activity by path', async t => {
   const h = await harness(t);
   const [main, worktree] = h.data.projects[0].worktrees;
   const detached = {...worktree, path:'/repo/detached', branch:'', detached:true, sync_available:true, sync_ahead:4};
-  const awaitingPush = {...worktree, path:'/repo/awaiting-push', upstream:'origin/main', sync_available:true, sync_ahead:1};
+  const awaitingPush = {...worktree, path:'/repo/awaiting-push', upstream:'origin/main', sync_available:true, sync_ahead:1, dirty:4, changes:{added:2,modified:1,deleted:1}};
   h.data.projects[0].worktrees = [detached, worktree, awaitingPush, main];
+  h.sessions.push({id:'secondary', name:'Additional directory', cwd:'/unrelated', project_directories:[main.path, detached.path], updated_at:1792735201, available:true});
   await h.navigate('/projects/app');
   await h.window.refresh(true);
-  const table = h.$('#projectDetail .working-directory-table');
-  assert.deepEqual([...table.querySelectorAll('[data-directory-path]')].map(row => row.dataset.directoryPath), [main.path, awaitingPush.path, detached.path, worktree.path]);
-  assert.equal(table.querySelector('[data-primary-directory]').dataset.directoryPath, main.path);
-  assert.deepEqual([...table.querySelectorAll('.directory-group h4')].map(heading => heading.textContent), ['需要关注1', '其他 Worktree2']);
+  await h.window.refreshProjectConversations(true);
+  await settle();
+  const cards = () => [...h.document.querySelectorAll('#projectDetail [data-directory-path]')].map(row => row.dataset.directoryPath);
+  const card = path => `[data-directory-path="${path}"]`;
+  assert.deepEqual(cards(), [main.path, detached.path, worktree.path, awaitingPush.path]);
+  assert.equal(h.$('[data-primary-directory]').dataset.directoryPath, main.path);
+  h.change('[data-project-directory-sort]', 'changes');
+  assert.deepEqual(cards().slice(0, 2), [main.path, awaitingPush.path]);
+  h.change('[data-project-directory-filter]', 'dirty');
+  assert.deepEqual(cards(), [awaitingPush.path]);
+  h.click(card(awaitingPush.path) + ' [data-action="project-directory-toggle"]');
+  assert.deepEqual([...h.document.querySelectorAll('.directory-change-legend span')].map(label => label.textContent), ['修改 1', '新增 2', '删除 1']);
+  h.change('[data-project-directory-filter]', 'active');
+  assert(!cards().includes(awaitingPush.path));
+  h.click(card(detached.path) + ' .directory-session-count');
+  assert.equal(h.$(card(detached.path) + ' .project-conversation-row').dataset.session, 'secondary');
+  h.click('[data-action="project-directory-expand-all"]');
+  assert([...h.document.querySelectorAll('.directory-card-expanded')].every(panel => !panel.hidden));
+  h.click('[data-action="project-directory-expand-all"]');
+  assert([...h.document.querySelectorAll('.directory-card-expanded')].every(panel => panel.hidden));
+  await h.navigate('/projects/app?directory=' + encodeURIComponent(awaitingPush.path));
+  assert.deepEqual(cards().slice(0, 2), [main.path, awaitingPush.path]);
+  assert.equal(h.document.activeElement.dataset.directoryPath, awaitingPush.path);
+  h.click(card(awaitingPush.path) + ' [data-action="project-commit-plan"]');
+  assert.equal(h.$('#changesCommitPlan').hidden, false);
+  assert.match(h.$('#changesPlanContext').textContent, /awaiting-push/);
+  h.click('#returnToChanges');
+  assert.equal(h.$('#changesBrowser').hidden, false);
+  assert.equal(h.$('#changesCommitPlan').hidden, true);
+  h.$('#changesDialog').close();
 });
 
 test('empty search states offer a direct reset without confusing an empty project with a pending scan', async t => {
@@ -2080,6 +2110,8 @@ test('page bridge delegates sidebar conversation navigation before changing the 
   assert.equal(draft.create,true);
   assert.equal(draft.snapshot.conversation.scope.id,'app');
   assert.equal(draft.snapshot.conversation.creationDirectory,'/workspace/workspace/app');
+  h.click('[data-action="project-conversations"][data-session="session-1"]');
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').snapshot.conversation.selected, 'session-1');
   h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-active',active:false}}));
   assert.equal(h.window.WorkHubPage.active,false);
   assert(h.document.documentElement.hasAttribute('data-workspace-inactive'));

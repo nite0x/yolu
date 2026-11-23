@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { NativeSelect, NativeSelectOption as Option, NativeSelectOptGroup } from "@/components/ui/native-select"
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { ChevronDown, CodeXml, Terminal } from "lucide-react"
+import { ChevronDown, CodeXml, FolderOpen, Terminal } from "lucide-react"
 import type { GitOverview, Worktree } from "./types"
 
 export const statusLabels: Record<string, string> = { ready: uiText("已就绪"), partial: uiText("部分就绪"), archived: uiText("已归档"), creating: uiText("创建中"), pending: uiText("待创建"), failed: uiText("创建失败"), removed: uiText("目录已清理") }
@@ -45,6 +45,7 @@ export function ProjectOpenActions({ project, path, disabled, tool, primary = fa
     <Action className="workspace-split-primary rounded-r-none" variant={primary ? "default" : "outline"} action={tool === "terminal" ? "project-terminal" : `project-open-${tool}`} id={project} data-path={path} data-project-open-primary aria-label={uiText("用 {0} 打开工作目录", projectOpenLabels[tool])} disabled={disabled}>{tool === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}<span data-project-open-label>{uiText("{0} 打开", projectOpenLabels[tool])}</span></Action>
     {!disabled ? <details className="workspace-action-menu"><summary aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></summary><div className="workspace-action-menu-body">
       {(["vscode", "idea", "terminal"] as const).map(choice => <Action key={choice} variant="ghost" className="justify-start font-normal" action={choice === "terminal" ? "project-terminal" : `project-open-${choice}`} id={project} data-path={path} data-project-open-choice={choice}>{choice === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}{projectOpenLabels[choice]}</Action>)}
+      <Action variant="ghost" className="justify-start font-normal" action="project-open-folder" id={project} data-path={path}><FolderOpen aria-hidden="true" />{uiText("在文件管理器中打开")}</Action>
     </div></details> : <Button className="workspace-split-toggle rounded-l-none border-l-0" size="icon-sm" variant={primary ? "default" : "outline"} disabled aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></Button>}
   </div>
 }

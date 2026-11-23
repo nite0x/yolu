@@ -61,7 +61,6 @@ body.projects-page { --resource-detail-width: 1160px; }
 .directory-project-link { width: fit-content; color: var(--yolu-primary-ink); font-weight: var(--yolu-font-weight-row); text-decoration: none; }
 .directory-project-link span { margin-inline-start: 5px; color: var(--yolu-muted-ink); }
 .directory-project-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-.working-directory-row:focus { outline: 2px solid var(--yolu-ring); outline-offset: -2px; background: var(--yolu-hover); }
 
 #resourceSwitcher { width: min(460px, calc(100% - 28px)); max-height: min(570px, 90dvh); overflow: hidden; padding: 0; }
 .resource-switcher-content { display: flex; flex-direction: column; min-height: 0; max-height: min(570px, 90dvh); padding: 14px; gap: 10px; }

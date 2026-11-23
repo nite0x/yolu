@@ -19,9 +19,9 @@ import (
 // A scope is a query, never an owner of a session. A nil directory set lists all
 // sessions in this environment; an empty set lists none.
 type sessionScope struct {
-	paths         []string
-	boundSessions map[string]bool
-	cwd           string
+	paths            []string
+	boundDirectories map[string][]string
+	cwd              string
 }
 
 type invalidSessionTarget string
@@ -32,7 +32,7 @@ func (s sessionScope) includes(id, cwd string) bool {
 	if s.cwd != "" && !platform.SameWorkspacePath(s.cwd, cwd) {
 		return false
 	}
-	if s.paths == nil || s.boundSessions[id] {
+	if s.paths == nil || len(s.boundDirectories[id]) != 0 {
 		return true
 	}
 	for _, p := range s.paths {
@@ -65,22 +65,19 @@ func uniqueDirectories(paths []string) []string {
 }
 
 func (a *Service) projectScope(ctx context.Context, id string) (sessionScope, error) {
-	bound, err := a.Execution.Store.SessionIDsForProject(id)
-	if err != nil {
-		return sessionScope{}, err
-	}
 	p, err := project.LookupProject(ctx, a.Execution, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return sessionScope{}, err
 	}
-	scope := sessionScope{paths: []string{}, boundSessions: bound}
+	scope := sessionScope{paths: []string{}}
 	if err == nil {
 		if found, err := projectDirectoryScope(ctx, p); err == nil {
 			scope.paths = found.paths
 		}
 	}
 	// Explicit associations remain visible when Git or the checkout is unavailable.
-	return scope, nil
+	scope.boundDirectories, err = a.Execution.Store.SessionDirectoriesForProject(id, scope.paths...)
+	return scope, err
 }
 
 func projectDirectoryScope(ctx context.Context, p model.Project) (sessionScope, error) {
@@ -133,6 +130,7 @@ func (a *Service) cachedScope(scope sessionScope) ([]model.Session, error) {
 	out := []model.Session{}
 	for _, s := range all {
 		if scope.includes(s.ID, s.Cwd) {
+			s.ProjectDirectories = scope.boundDirectories[s.ID]
 			out = append(out, s)
 		}
 	}

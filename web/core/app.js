@@ -196,6 +196,7 @@ function render() {
   if (focusedDirectory && !document.body.classList.contains('project-tool-page')) resourceLocation.locate = true;
   locateResourceDirectory();
   if (typeof renderResourceIcons === 'function') renderResourceIcons();
+  refreshProjectConversations();
 }
 
 async function handleAction(action, target) {
@@ -215,25 +216,15 @@ async function handleAction(action, target) {
     (wasOpen ? picker.querySelector('summary') : $('#search')).focus({preventScroll:true});
     return;
   }
-  if (action === 'project-directory-filter') {
-    projectDirectoryFilters.set(projectDirectoryFilterKey(id), target.dataset.filter);
-    render();
-    document.querySelector('.project-directory-filters [data-filter="' + target.dataset.filter + '"]')?.focus({preventScroll:true});
-    return;
-  }
+  if (action.startsWith('project-directory-')) return changeProjectDirectories(action, target);
+  if (action === 'project-conversations-refresh') return refreshProjectConversations(true);
   if (action === 'project-refresh') return refresh(true);
   if (action === 'clear-project-search') { $('#search').value = ''; changeListFilters(); $('#search').focus(); return; }
   if (action === 'project-terminal') return mutation(uiText("正在打开项目终端"), async () => {
     const result = await api(`/api/projects/${id}/git`, { method: 'POST', body: JSON.stringify({ action: 'terminal', path: target.dataset.path }) });
     toast(result.message);
   }, undefined, {project:id});
-  if (action === 'changes-open') {
-    const path = target.dataset.path;
-    $('#changesTitle').textContent = uiText("文件与改动");
-    window.WorkHubUI.mountFileBrowser($('#changesBrowser'), {project:id,path,environment:activeEnvironment,request:api});
-    $('#changesDialog').showModal();
-    return;
-  }
+  if (action === 'changes-open' || action === 'project-commit-plan') return showProjectChanges(target, action === 'project-commit-plan');
   if (action === 'copy-path') return copy(target.dataset.path);
   if (action === 'remove-project') return openRemoval(id);
   if (action === 'remove-worktree') return openWorktreeRemoval(id, target.dataset.path);
@@ -269,7 +260,6 @@ document.addEventListener('keydown',event => {
 });
 document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('cancel', event => { if (dialog.hasAttribute('data-block-close')) event.preventDefault(); }));
 
-$('#changesDialog').addEventListener('close', () => window.WorkHubUI.mountFileBrowser($('#changesBrowser')));
 $('#copyCommand').addEventListener('click', () => copy($('#commandText').value));
 window.addEventListener('DOMContentLoaded', async () => {
   readRoute();

@@ -7,8 +7,41 @@ let projectScan = null;
 let projectOpenTool;
 let projectFilter = 'all';
 let projectDetailOpen = false;
-const projectDirectoryFilters = new Map();
-function projectDirectoryFilterKey(id) { return JSON.stringify([activeEnvironment, id]); }
+const projectDetailViews = new Map();
+function projectDetailView(id) {
+  const key = JSON.stringify([activeEnvironment, id]);
+  if (!projectDetailViews.has(key)) projectDetailViews.set(key, {
+    filter:'all', sort:'recent', cards:new Map(), conversations:{sessions:[], loading:true}, checkedAt:0, pending:null,
+  });
+  return projectDetailViews.get(key);
+}
+
+function refreshProjectConversations(force = false) {
+  if (state.view !== 'projects' || !projectDetailOpen || window.WorkHubPage?.restoring || window.WorkHubPage?.active === false) return;
+  const id = state.selectedProject;
+  if (!state.projects.some(project => project.id === id && !project.error)) return;
+  const view = projectDetailView(id);
+  if (view.pending || (!force && Date.now() - view.checkedAt < 10000)) return view.pending;
+  const environment = activeEnvironment;
+  view.checkedAt = Date.now();
+  if (force) {
+    view.conversations = {sessions:view.conversations.sessions, loading:true};
+    render();
+  }
+  const query = new URLSearchParams({project_id:id});
+  view.pending = conversationRequests.load(api, environment, query.toString(), force)
+    .then(
+      result => ({sessions:Array.isArray(result.sessions) ? result.sessions : [], error:result.error}),
+      error => ({sessions:view.conversations.sessions, error:error.message}),
+    ).then(conversations => {
+      view.pending = null;
+      if (JSON.stringify(view.conversations) === JSON.stringify(conversations)) return;
+      view.conversations = conversations;
+      if (activeEnvironment === environment && state.view === 'projects' && state.selectedProject === id && window.WorkHubPage?.active !== false) render();
+    });
+  return view.pending;
+}
+window.addEventListener('workhub:app-refreshed', () => refreshProjectConversations());
 
 function preferredProjectOpenTool() {
   if (projectOpenTool) return projectOpenTool;
@@ -56,10 +89,14 @@ function renderProjects() {
   const status = !state.loaded ? 'loading' : !state.projects.length ? 'empty' : undefined;
   const text = projectDetailOpen ? '' : $('#search').value.trim().toLowerCase();
   const projects = state.projects.filter(p => `${p.name} ${p.path}`.toLowerCase().includes(text));
-  const directoryFilter = projectDirectoryFilters.get(projectDirectoryFilterKey(state.selectedProject)) || 'all';
-  return window.WorkHubUI.projects(projects, state.selectedProject, preferredProjectOpenTool(), projectFilter, projectDetailOpen, directoryFilter, !!text, status);
+  const view = projectDetailView(state.selectedProject);
+  return window.WorkHubUI.projects(projects, state.selectedProject, preferredProjectOpenTool(), projectFilter, projectDetailOpen, {
+    ...view, directory:window.WorkHubUI.conversationPathKey(resourceLocation.directory), readOnly:sessionReadOnly,
+  }, !!text, status);
 }
 
+let renderedProjectDetail = '';
+let renderedProjectKey = '';
 function renderProjectPage(markup) {
   const content = $('#content');
   const toolbar = $('#panelToolbar');
@@ -67,6 +104,9 @@ function renderProjectPage(markup) {
   template.innerHTML = markup;
   const next = template.content.querySelector('.project-workspace');
   const current = content.querySelector('.project-workspace');
+  const detail = next.querySelector('#projectDetail');
+  const detailMarkup = detail.innerHTML;
+  const detailKey = JSON.stringify([activeEnvironment, state.selectedProject]);
   // Keep the shared search field and both scroll containers mounted on refresh.
   if (!current) content.replaceChildren(next);
   else {
@@ -77,18 +117,85 @@ function renderProjectPage(markup) {
       target.hidden = incoming.hidden;
       if (selector === '#projectListPane') {
         target.querySelector('.project-list-scroll').replaceChildren(...incoming.querySelector('.project-list-scroll').childNodes);
-      } else {
+      } else if (renderedProjectDetail !== detailMarkup || renderedProjectKey !== detailKey) {
+        const focused = target.contains(document.activeElement) ? document.activeElement : null;
+        const path = focused?.closest('[data-directory-path]')?.dataset.directoryPath;
+        const focusKey = focused?.dataset.detailFocus;
         target.setAttribute('aria-label', incoming.getAttribute('aria-label'));
         target.replaceChildren(...incoming.childNodes);
+        if (renderedProjectKey !== detailKey) target.scrollTop = 0;
+        else if (focusKey) {
+          const scope = path ? [...target.querySelectorAll('[data-directory-path]')].find(card => card.dataset.directoryPath === path) : target;
+          [...(scope?.querySelectorAll('[data-detail-focus]') || [])].find(node => node.dataset.detailFocus === focusKey)?.focus({preventScroll:true});
+        }
       }
     }
   }
+  renderedProjectDetail = detailMarkup;
+  renderedProjectKey = detailKey;
   const list = $('#projectListPane');
   if (!list.contains(toolbar)) list.prepend(toolbar);
   if (!toolbar.contains($('#projectAddButton'))) toolbar.querySelector('.toolbar-actions').append($('#projectAddButton'));
   if (!$('#projectEnvironmentSlot').contains($('#projectEnvironmentWrap'))) $('#projectEnvironmentSlot').append($('#projectEnvironmentWrap'));
   $('#projectListFilterSlot').replaceChildren(next.querySelector('.project-filters'));
 }
+
+function changeProjectDirectories(action, target) {
+  const view = projectDetailView(state.selectedProject);
+  const pathKey = window.WorkHubUI.conversationPathKey;
+  if (action === 'project-directory-reset') view.filter = 'all';
+  else if (action === 'project-directory-expand-all') {
+    for (const card of $('#projectDetail').querySelectorAll('[data-directory-path]')) {
+      const key = pathKey(card.dataset.directoryPath);
+      view.cards.set(key, {...view.cards.get(key), expanded:target.dataset.expand === 'true'});
+    }
+  } else {
+    const key = pathKey(target.dataset.path);
+    const card = view.cards.get(key);
+    const toggle = action === 'project-directory-toggle';
+    view.cards.set(key, toggle
+      ? {...card, expanded:target.getAttribute('aria-expanded') !== 'true'}
+      : {expanded:true, section:target.dataset.section});
+  }
+  render();
+}
+
+$('#content').addEventListener('change', event => {
+  const target = event.target;
+  if (!target.matches('[data-project-directory-filter], [data-project-directory-sort]')) return;
+  const view = projectDetailView(state.selectedProject);
+  if (target.matches('[data-project-directory-filter]')) view.filter = target.value;
+  else view.sort = target.value;
+  render();
+});
+
+let projectChangesOrigin;
+function showProjectChanges(target, plan) {
+  const dialog = $('#changesDialog');
+  const {id, path} = target.dataset;
+  if (!id || !path) return;
+  if (!dialog.open) projectChangesOrigin = target;
+  const tree = state.projects.find(project => project.id === id)?.worktrees.find(tree => tree.path === path);
+  $('#changesTitle').textContent = plan ? uiText("分批提交计划") : uiText("文件与改动");
+  $('#changesPlanContext').textContent = tree?.branch ? `${path} · ${tree.branch}` : path;
+  $('#changesCommitPlan').hidden = !plan;
+  $('#changesBrowser').hidden = plan;
+  for (const [selector, visible] of [['#showChangesPlan', !plan], ['#returnToChanges', plan]]) {
+    const button = $(selector);
+    Object.assign(button.dataset, {id, path});
+    button.hidden = !visible;
+  }
+  if (!plan && !$('#changesBrowser').hasChildNodes()) {
+    window.WorkHubUI.mountFileBrowser($('#changesBrowser'), {project:id,path,environment:activeEnvironment,request:api});
+  }
+  if (!dialog.open) dialog.showModal();
+  else $(plan ? '#returnToChanges' : '#showChangesPlan').focus();
+}
+$('#changesDialog').addEventListener('close', () => {
+  window.WorkHubUI.mountFileBrowser($('#changesBrowser'));
+  if (projectChangesOrigin?.isConnected) projectChangesOrigin.focus({preventScroll:true});
+  projectChangesOrigin = null;
+});
 
 function openProject(onAdded = null, environment = activeEnvironment) {
   if (state.busy) return;
@@ -328,10 +435,11 @@ document.addEventListener('click', event => {
   const button = event.target.closest('[data-action^="project-open-"]');
   if (!button || button.disabled || state.busy) return;
   const tool = button.dataset.action.slice('project-open-'.length);
-  mutation(tool === 'remote' ? uiText("正在打开远端仓库") : uiText("正在打开项目编辑器"), async () => {
+  const title = tool === 'remote' ? uiText("正在打开远端仓库") : tool === 'folder' ? uiText("正在打开工作目录") : uiText("正在打开项目编辑器");
+  mutation(title, async () => {
     const result = await api(`/api/projects/${encodeURIComponent(button.dataset.id)}/open`, { method: 'POST', body: JSON.stringify({ tool, path: button.dataset.path }) });
     toast(result.message);
-  });
+  }, undefined, {project:button.dataset.id});
 });
 
 // Project tools are addressable pages in the workspace document. Reuse their

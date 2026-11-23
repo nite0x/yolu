@@ -30,6 +30,7 @@ func TestProjectOpenIsScopedToWorktreeAndRemoteCredentialsAreRemoved(t *testing.
 	q := createWorktree(t, a, id, "open-worktree")
 	var tool, opened, distro, remote string
 	a.OpenEditor = func(t, p, d string) error { tool, opened, distro = t, p, d; return nil }
+	a.OpenDirectory = func(p, d string) error { opened, distro = p, d; return nil }
 	a.OpenExternal = func(u string) error { remote = u; return nil }
 	endpoint := "/api/projects/" + id + "/open"
 	for _, editor := range []string{"vscode", "idea"} {
@@ -43,6 +44,12 @@ func TestProjectOpenIsScopedToWorktreeAndRemoteCredentialsAreRemoved(t *testing.
 	opened = ""
 	if code, _ := call(t, a, "POST", endpoint, map[string]string{"tool": "idea", "path": t.TempDir()}); code != 409 || opened != "" {
 		t.Fatal("arbitrary directory launched")
+	}
+	if code, _ := call(t, a, "POST", endpoint, map[string]string{"tool": "folder", "path": t.TempDir()}); code != 409 || opened != "" {
+		t.Fatal("arbitrary directory opened in file manager")
+	}
+	if code, raw := call(t, a, "POST", endpoint, map[string]string{"tool": "folder", "path": q.Path}); code != 200 || opened != q.Path || distro != "" {
+		t.Fatalf("file manager target %s (%s): %d %s", opened, distro, code, raw)
 	}
 	testGit(t, path, "remote", "add", "origin", "https://user:secret@example.invalid/org/repo.git?token=hidden")
 	if code, raw := call(t, a, "POST", endpoint, map[string]string{"tool": "remote", "path": q.Path}); code != 200 || strings.Contains(string(raw), "secret") {

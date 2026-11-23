@@ -9,7 +9,7 @@ import { Feedback } from "./shared"
 
 export interface Session {
   terminal?: {projectID?: string; cwd?: string; sessionID?: string; bindingID?: string; attached: boolean};
-  primary_project_id?: string; project_ids?: string[];
+  primary_project_id?: string; project_ids?: string[]; project_directories?: string[];
   browser_key?: string; environment_id?: string; environment_name?: string;
   context?: ReturnType<typeof import("./conversation-context").conversationContext>;
   id: string; provider?: "codex" | "agy"; name: string; cwd: string; updated_at?: number; updatedAt?: number;

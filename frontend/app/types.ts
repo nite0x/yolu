@@ -1,6 +1,7 @@
 export interface Worktree {
   path: string; branch?: string; head?: string; bare?: boolean; missing?: boolean;
   prunable?: boolean; locked?: boolean; detached?: boolean; error?: string;
+  changes?: {modified: number; added: number; deleted: number};
   dirty?: number; status_updated_at?: string; compare_available?: boolean;
   comparison_ref?: string; ahead?: number; behind?: number;
   upstream?: string; sync_available?: boolean; sync_ahead?: number; sync_behind?: number;

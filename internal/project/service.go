@@ -16,13 +16,14 @@ type Service struct {
 	CredentialHelper  string
 	gitLocks          sync.Map // common Git directory -> *sync.Mutex
 	OpenEditor        func(tool, path, distro string) error
+	OpenDirectory     func(path, distro string) error
 	OpenExternal      func(string) error
 	ReserveWorktree   func(context.Context, string) (func(), error)
 	CheckWorktreeIdle func(string) error
 }
 
 func New(environment *execution.Service) *Service {
-	s := &Service{Execution: environment, cache: newStateCache(), CredentialHelper: execution.CredentialHelperCommand(), OpenEditor: platform.OpenEditor, OpenExternal: platform.OpenExternal}
+	s := &Service{Execution: environment, cache: newStateCache(), CredentialHelper: execution.CredentialHelperCommand(), OpenEditor: platform.OpenEditor, OpenDirectory: platform.OpenDirectory, OpenExternal: platform.OpenExternal}
 	if environment.Remote != nil {
 		s.CredentialHelper = environment.Remote.Identity.CredentialHelper
 		s.cache.ctx = execution.WithClient(s.cache.ctx, environment.Remote)

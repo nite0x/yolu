@@ -109,6 +109,22 @@ func OpenEditor(tool, path, distro string) error {
 	return startDesktopCommand(cmd)
 }
 
+func OpenDirectory(path, distro string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		if distro != "" {
+			path = `\\wsl.localhost\` + distro + strings.ReplaceAll(path, "/", `\`)
+		}
+		cmd = exec.Command("explorer.exe", path)
+	case "darwin":
+		cmd = exec.Command("open", path)
+	default:
+		cmd = exec.Command("xdg-open", path)
+	}
+	return startDesktopCommand(cmd)
+}
+
 func OpenExternal(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {

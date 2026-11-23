@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -79,21 +80,30 @@ func (s *Store) queryBindings(where string, args ...any) ([]model.SessionProject
 	return out, rows.Err()
 }
 
-func (s *Store) SessionIDsForProject(projectID string) (map[string]bool, error) {
-	rows, err := s.DB.Query(`SELECT DISTINCT session_id FROM session_project_bindings WHERE project_id=?`, projectID)
+func (s *Store) SessionDirectoriesForProject(projectID string, paths ...string) (map[string][]string, error) {
+	keys := make([]string, len(paths))
+	for i, path := range paths {
+		keys[i] = bindingDirectoryKey(path)
+	}
+	raw, err := json.Marshal(keys)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.DB.Query(`SELECT session_id,directory FROM session_project_bindings
+ WHERE project_id=? OR directory_key IN (SELECT value FROM json_each(?)) ORDER BY directory`, projectID, string(raw))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	ids := map[string]bool{}
+	directories := map[string][]string{}
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var id, directory string
+		if err := rows.Scan(&id, &directory); err != nil {
 			return nil, err
 		}
-		ids[id] = true
+		directories[id] = append(directories[id], directory)
 	}
-	return ids, rows.Err()
+	return directories, rows.Err()
 }
 
 func (s *Store) SessionBindingsManaged(id string) (bool, error) {

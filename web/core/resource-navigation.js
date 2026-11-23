@@ -14,7 +14,12 @@ function readResourceLocation(route) {
   const directory = params.get('directory') || '';
   resourceLocation = { key, directory, locate: !!directory && /^\/projects\/[\w-]+$/.test(pathname) };
   if (!resourceLocation.locate) return;
-  if (state.view === 'projects' && projectDetailOpen) projectDirectoryFilters.delete(projectDirectoryFilterKey(state.selectedProject));
+  if (state.view === 'projects' && projectDetailOpen) {
+    const view = projectDetailView(state.selectedProject);
+    const key = window.WorkHubUI.conversationPathKey(directory);
+    view.filter = 'all';
+    view.cards.set(key, {...view.cards.get(key), expanded:true});
+  }
 }
 function projectResourceRoute(id, tool = '', params = new URLSearchParams()) {
   if (state.view === 'projects' && state.selectedProject === id && resourceLocation.directory) {

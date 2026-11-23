@@ -141,7 +141,7 @@ html[data-workhub-desktop] .session-browser-list-tools { gap: var(--workspace-li
 html[data-workhub-desktop] .session-browser-list-heading { min-height: var(--workspace-list-heading-height); }
 .session-browser-list-heading strong,
 html[data-workhub-desktop] :is(.workspace-browser-heading h1,.projects-page #panelTitle) { font-size: var(--yolu-font-size-list-title); font-weight: var(--yolu-font-weight-title); letter-spacing: -.01em; }
-html[data-workhub-desktop] :is(.workspaces-page .page-heading h1,.project-detail-heading h2) { font-size: var(--yolu-font-size-detail-title); font-weight: var(--yolu-font-weight-title); line-height: 1.4; }
+html[data-workhub-desktop] .workspaces-page .page-heading h1 { font-size: var(--yolu-font-size-detail-title); font-weight: var(--yolu-font-weight-title); line-height: 1.4; }
 html[data-workhub-desktop] :is(.workspace-list-scroll .row-title,.project-list-name strong,.session-browser-item-title) { font-size: var(--yolu-font-size-row); font-weight: var(--yolu-font-weight-row); }
 /* Search fields are filled, not outlined. Utilities force a transparent
    background colour, so the fill is painted as a background image instead. */

@@ -46,7 +46,6 @@ function refreshConversationTerminals(force = false) {
 // The same split survives navigation and scope changes.
 window.WorkHubUI.setupConversationResize(conversationHost, window);
 const conversationFiles = window.WorkHubUI.createConversationFiles(document, api);
-const conversationRequests = window.WorkHubUI.createSessionRequests();
 const conversationPathKey = window.WorkHubUI.conversationPathKey;
 const conversationScopeKey = (scope, environment = activeEnvironment) => JSON.stringify([environment, scope.kind, scope.id || '', scope.cwd || '', scope.environment || '']);
 const conversationSessionKey = session => session.browser_key || session.id;
@@ -766,7 +765,7 @@ document.addEventListener('click', event => {
     const create = entry.dataset.action === 'project-conversation-new';
     if (entry.disabled || state.busy || create && sessionReadOnly) return;
     const environment = entry.dataset.environment || activeEnvironment;
-    openConversations({kind:'project',id:entry.dataset.id,environment});
+    openConversations({kind:'project',id:entry.dataset.id,environment}, entry.dataset.session);
     if (create) {
       conversationState.current.creationDirectory = conversationEnvironmentKey(environment,conversationPathKey(entry.dataset.path));
       startBrowserConversation();

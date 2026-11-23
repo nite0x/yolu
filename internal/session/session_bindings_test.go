@@ -87,8 +87,11 @@ func TestSessionBindingProfileManageRestoreAndDiff(t *testing.T) {
 	if code, _ := call(t, a, "POST", base, map[string]any{"directory": alias, "access": "write"}); code != 400 {
 		t.Fatalf("duplicate path alias accepted: %d", code)
 	}
-	if related := getProjectSessions(t, a, other.ProjectID); len(related) != 1 || related[0].ID != "session" {
+	if related := getProjectSessions(t, a, other.ProjectID); len(related) != 1 || related[0].ID != "session" || len(related[0].ProjectDirectories) != 1 || related[0].ProjectDirectories[0] != other.Path {
 		t.Fatalf("session missing from secondary project's history: %+v", related)
+	}
+	if related := getProjectSessions(t, a, q.ProjectID); len(related) != 1 || len(related[0].ProjectDirectories) != 1 || related[0].ProjectDirectories[0] != q.Path {
+		t.Fatalf("primary project returned the wrong directories: %+v", related)
 	}
 	bindings = getBindings(t, a, "session")
 	if len(bindings) != 2 {

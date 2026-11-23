@@ -170,7 +170,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const projectButton = target.closest('[data-action="select-project"]');
     if (projectButton) return {route:'/projects/' + projectButton.dataset.id, environment:activeEnvironment, title:state.projects.find(p => p.id === projectButton.dataset.id)?.name || uiText("项目")};
     const conversations = target.closest('[data-action="project-conversations"]');
-    if (conversations) return {route:'/sessions',environment:activeEnvironment, title:uiText("对话"),conversation:{scope:{kind:'project', id:conversations.dataset.id, environment:activeEnvironment},pane:'detail'}};
+    if (conversations) {
+      const selected = conversations.dataset.session ? conversationEnvironmentKey(activeEnvironment, conversations.dataset.session) : null;
+      return {route:'/sessions',environment:activeEnvironment, title:uiText("对话"),conversation:{scope:{kind:'project', id:conversations.dataset.id, environment:activeEnvironment},selected,pane:'detail'}};
+    }
     const nav = target.closest('[data-view]');
     if (nav) return {route:'/' + nav.dataset.view, environment:activeEnvironment};
     const link = target.closest('a[href^="#/"]');

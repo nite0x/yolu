@@ -103,8 +103,8 @@ func (a *Service) OpenProjectHandler(w http.ResponseWriter, r *http.Request) {
 	if !httpx.Decode(w, r, &input) {
 		return
 	}
-	if input.Tool != "vscode" && input.Tool != "idea" && input.Tool != "remote" {
-		httpx.WriteError(w, 400, "请选择远端仓库、VS Code 或 IDEA")
+	if input.Tool != "vscode" && input.Tool != "idea" && input.Tool != "remote" && input.Tool != "folder" {
+		httpx.WriteError(w, 400, "请选择远端仓库、文件管理器、VS Code 或 IDEA")
 		return
 	}
 	p, err := a.RegisteredProject(r.Context(), r.PathValue("id"))
@@ -133,6 +133,14 @@ func (a *Service) OpenProjectHandler(w http.ResponseWriter, r *http.Request) {
 	distro := ""
 	if a.Execution.Remote != nil {
 		distro = a.Execution.Remote.Identity.Distro
+	}
+	if input.Tool == "folder" {
+		if err := a.OpenDirectory(t.Path, distro); err != nil {
+			httpx.WriteError(w, 503, "无法打开文件管理器："+err.Error())
+			return
+		}
+		httpx.WriteJSON(w, 200, map[string]string{"message": "已发送文件管理器打开请求", "path": t.Path})
+		return
 	}
 	if err := a.OpenEditor(input.Tool, t.Path, distro); err != nil {
 		httpx.WriteError(w, 503, err.Error())

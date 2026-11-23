@@ -57,6 +57,7 @@ type Session struct {
 	Source                string   `json:"source"`
 	LastSyncedAt          int64    `json:"last_synced_at"`
 	AdditionalDirectories []string `json:"additional_directories,omitempty"`
+	ProjectDirectories    []string `json:"project_directories,omitempty"`
 	Available             bool     `json:"available"`
 	Error                 string   `json:"error,omitempty"`
 	ChatStatus            string   `json:"chat_status,omitempty"`

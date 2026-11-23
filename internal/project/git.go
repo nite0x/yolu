@@ -93,6 +93,7 @@ func ScanWorktreeStatus(ctx context.Context, v model.Worktree) model.Worktree {
 		return v
 	}
 	v.Branch, v.Head, v.Detached, v.Dirty = s.Branch, s.Head, s.Detached, s.Dirty
+	v.Changes = s.Changes
 	v.Upstream, v.SyncAvailable, v.SyncAhead, v.SyncBehind = s.Upstream, s.SyncAvailable, s.SyncAhead, s.SyncBehind
 	v.Operation, v.MergeHead, v.Conflicts = s.Operation, s.MergeHead, s.Conflicts
 	ref := execution.DefaultBranchSource(ctx, v.Path)

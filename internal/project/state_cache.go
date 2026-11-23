@@ -162,6 +162,7 @@ func (c *stateCache) refreshWorktreeLocked(id string, p *cachedProject, entry *c
 	// Inventory fields are copied; status fields are rebuilt by the scanner.
 	tree := entry.value
 	tree.Dirty, tree.Ahead, tree.Behind = 0, 0, 0
+	tree.Changes = nil
 	tree.Missing, tree.CompareAvailable, tree.Refreshing = false, false, false
 	tree.Error, tree.StatusUpdatedAt = "", ""
 	c.enqueueLocked(func(ctx context.Context) {

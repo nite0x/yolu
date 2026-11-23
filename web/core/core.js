@@ -61,6 +61,7 @@ function treeState(t, pending = false) {
 }
 
 const operations = window.WorkHubUI.createOperations();
+const conversationRequests = window.WorkHubUI.createSessionRequests();
 function syncMutationControls() {
   const pending = operations.snapshot();
   const active = new Set(pending.map(item => String(item.id)));

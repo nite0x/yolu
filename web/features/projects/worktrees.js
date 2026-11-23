@@ -73,7 +73,7 @@ $('#worktreeForm').addEventListener('submit', async event => {
   try {
     await mutation(uiText("正在创建独立 Worktree"), async () => {
       const result = await api(`/api/projects/${id}/worktrees`, { method: 'POST', body: JSON.stringify(body) });
-      state.selectedProject = id; navigate('/projects/' + id); $('#search').value = '';
+      state.selectedProject = id; navigate(resourceDirectoryRoute('/projects/' + id, result.path)); $('#search').value = '';
       $('#worktreeDialog').close();
       toast(`${result.message} · ${result.branch}`);
     }, $('#worktreeError'));
