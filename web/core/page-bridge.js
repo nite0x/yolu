@@ -285,9 +285,19 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         const label = (message.split === false ? uiText("当前对话：") : uiText("切换当前栏：")) + (message.targetTitle || uiText("对话"));
         if (listPane.getAttribute('aria-description') !== label) listPane.setAttribute('aria-description',label);
       }
-      if (window.WorkHubConversations.current && selectionChanged) {
-        if (focusChanged && message.target) followConversationSelection(message.target);
-        else {window.WorkHubConversations.current.selected = message.selected; if (focusChanged) window.WorkHubConversations.current.locateSelection = message.selected; renderConversationList();}
+      const view = window.WorkHubConversations.current;
+      if (view && selectionChanged) {
+        if (focusChanged && message.selected && message.target && !message.createdConversation) followConversationSelection(message.target);
+        else {
+          view.selected = parallelSelected;
+          if (focusChanged) {
+            view.locateSelection = null;
+            view.requestedSession = null;
+            view.followTarget = null;
+          }
+          renderConversationList();
+          if (message.createdConversation) void refreshConversations(true);
+        }
       }
       selectInitialConversation();
     }

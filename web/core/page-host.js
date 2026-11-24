@@ -246,14 +246,18 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (page.visible !== active) {page.visible = active; send(page,'workhub:page-active',{active});}
       send(page,'workhub:parallel-layout',{split,focused:page.id === group.focused,zoomed:!!group.zoomed,canZoom:wide(group),canSplit:canSplit(group)});
     }
+    const focused = group.pages.find(page => page.id === group.focused);
+    const selected = conversationsVisible && focused ? listIdentity(focused.snapshot) : '';
+    const createdConversation = !!selected && focused.createdConversation === selected;
     send(navigation,'workhub:navigation-route',{route:conversationsVisible ? '/sessions' : workspace.snapshot.route});
     send(navigation,'workhub:conversation-group',{
-      targetTitle:group.pages.find(page => page.id === group.focused)?.snapshot.title,
-      target:conversationsVisible ? group.pages.find(page => page.id === group.focused)?.snapshot : undefined,
-      sessions:group.pages.map(page => listIdentity(page.snapshot)),selected:conversationsVisible ? listIdentity(group.pages.find(page => page.id === group.focused)?.snapshot || {}) : '',
+      targetTitle:focused?.snapshot.title,
+      target:conversationsVisible ? focused?.snapshot : undefined,
+      sessions:group.pages.map(page => listIdentity(page.snapshot)),selected,createdConversation,
       autoSelect:conversationsVisible && !group.pages.some(page => isTerminal(page.snapshot) || page.snapshot.conversation?.selected || page.snapshot.conversation?.creating),
       full:group.pages.length >= 3,listWidth:renderedConversationListWidth(),split,canSplit:canSplit(group),
     });
+    if (createdConversation && navigation?.ready) delete focused.createdConversation;
     renderPaneChrome(); renderChrome();
     const current = currentPage();
     if (current?.visible && current.restored) search.remember(current.snapshot);
@@ -492,6 +496,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         return;
       }
       if (clean.conversation?.creating && !isTerminal(clean)) clean.terminal = {...page.snapshot.terminal,...clean.terminal};
+      if (isConversation(clean) && page.snapshot.conversation?.creating) page.createdConversation = listIdentity(clean);
       page.snapshot = clean; page.frame.title = clean.title;
       if (page === workspace && clean.route === '/sessions') openPage(clean);
       else if (displayed) update();

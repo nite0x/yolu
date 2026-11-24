@@ -6,7 +6,7 @@ Yolu keeps the conversation navigator beside the active pane. Desktop and browse
 
 - Conversations is the landing view. The shared header also opens Projects, Issues and Settings. Back and Forward traverse the application history. Global search finds projects and conversations.
 - The conversation filter menu offers Recent and Grouped views. Recent shows a flat list ordered by activity with project or directory context beneath the title. Grouped shows registered projects and independent conversations. A collection can open its project detail separately from expanding its conversation rows.
-- The compose action starts an independent conversation. Project details also provide **New conversation** with the project selected. Choose the primary checkout, an existing worktree or an independent worktree.
+- The compose action starts an independent conversation. Project details also provide **New conversation** with the project selected. Choose the primary checkout, an existing worktree or an independent worktree. Opening a draft and sending its first message preserve the navigator's current search and filters.
 - Project details contain worktrees, Git operations, files, changes and related conversations. Issues opens the existing link to Linear.
 
 ## Pane behavior

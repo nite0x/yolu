@@ -242,10 +242,16 @@ test("new Codex conversations expose permission choices and allow overriding sav
     assert.equal(trigger.querySelector(".chat-settings-state-icons [data-danger]"), null);
     await chooseMenuSetting(h, await openSettingMenu(h, "权限"), "");
     await until(() => trigger.title.includes("按目录授权"));
+    const effortOrder = () => [...setting(h, "下轮思考强度").querySelectorAll("input")].map(input => input.value);
     assert.equal(selectedSetting(h, "下轮思考强度"), "high");
+    assert.deepEqual(effortOrder(), ["", "low", "high"]);
+    chooseSetting(h, "下轮思考强度", "low");
+    await until(() => selectedSetting(h, "下轮思考强度") === "low");
+    assert.deepEqual(effortOrder(), ["", "low", "high"]);
     assert.equal(selectedSetting(h, "响应速度"), "fast");
     chooseSetting(h, "下轮思考强度", "");
     await until(() => selectedSetting(h, "下轮思考强度") === "");
+    assert.deepEqual(effortOrder(), ["", "low", "high"]);
     chooseSetting(h, "响应速度", "");
     await until(() => selectedSetting(h, "响应速度") === "");
     h.type('Use default effort, speed and permission for this conversation');await tick();h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
