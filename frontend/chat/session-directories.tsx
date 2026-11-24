@@ -29,7 +29,6 @@ type Prompt = {
   initial?: BindingInput;
   binding?: Binding;
   conflict?: string;
-  mention?: string;
   purpose: string;
   resolve?: (confirm: boolean) => void;
 }
@@ -51,8 +50,8 @@ export function projectMention(draft: string) {
   return draft.match(/(?:^|\s)@([^\s@]*)$/u)?.[1]
 }
 
-export function namedProject(text: string, projects: ProjectOption[], excluded: Set<string>) {
-  const matches = projects.filter(project => !excluded.has(project.id) && new RegExp(
+function namedProject(text: string, projects: ProjectOption[]) {
+  const matches = projects.filter(project => new RegExp(
     `(?:^|[^\\p{L}\\p{N}_.-])${project.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|[^\\p{L}\\p{N}_.-])`, "iu",
   ).test(text))
   return matches.length === 1 ? matches[0] : undefined
@@ -165,10 +164,6 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
       plannedRef.current = next
       setPlanned(next)
     }
-    if (prompt.mention) {
-      const draft = controller.getSnapshot().draft
-      if (projectMention(draft) !== undefined) controller.setDraft(draft.replace(/@[^\s@]*$/u, () => "@" + prompt.mention + " "))
-    }
     rememberProject(environment, input.project_id)
     closePrompt(true)
   }
@@ -195,12 +190,29 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
     window.dispatchEvent(new CustomEvent("workhub:binding-files", {detail:{session:session?.id, environment, id:binding.id, path:binding.directory, project:binding.project_id, git:!!binding.git, file:path,mode}}))
   }
   async function send(text: string, images: string[]) {
-    const match = text !== dismissed ? namedProject(text, projects, excluded) : undefined
-    if (match) {
-      const approved = await ask({initial:{project_id:match.id,access:"read"},purpose:uiText("消息提到了此项目。确认将目录提供给 Agent。")})
-      if (!approved) { setDismissed(text); throw new Error(uiText("消息已保留。再次发送可继续当前对话。")) }
-    }
     let payload: SessionTarget = session ? {} : {...primary, bindings:plannedRef.current}
+    const match = !readOnly && !session?.archived && !busy ? namedProject(text, projects) : undefined
+    if (match && match.id !== target.project_id && match.id !== session?.primary_project_id) {
+      // Read saved bindings before attaching, including when the first poll has not returned.
+      const saved = base ? await request<BindingSet>(base) : undefined
+      const attached = [...(saved?.bindings || []), ...plannedRef.current]
+      const path = conversationPathKey(match.path)
+      if (![saved?.cwd, session?.cwd, target.cwd].some(cwd => cwd && conversationPathKey(cwd) === path) &&
+          !attached.some(binding => binding.project_id === match.id ||
+            (binding.directory && conversationPathKey(binding.directory) === path))) {
+        const input: BindingInput = {project_id:match.id, directory:match.path, access:"read", role:"additional"}
+        if (base) {
+          revision.current++
+          const result = await request<BindingSet>(base, json("POST", input))
+          revision.current++
+          setData(result)
+          setError("")
+        } else {
+          payload = {...payload, bindings:[...plannedRef.current, input]}
+        }
+        rememberProject(environment, match.id)
+      }
+    }
     if (!session && (target.cwd || target.project_id) && (target.access || "write") === "write") {
       const binding = await request<Binding>("/api/session-bindings/inspect", json("POST", {
         project_id:target.project_id, directory:target.cwd, role:"primary", access:"write", provider,
@@ -322,15 +334,13 @@ function DraftProjectSuggestions({controller, projects, excluded, dismissed, dis
   const mention = projectMention(draft)
   if (mention !== undefined) return <div className="session-context-suggestion" aria-label={uiText("选择要引用的项目")}>
     {projects.filter(project => !excluded.has(project.id) && project.name.toLowerCase().includes(mention.toLowerCase())).slice(0, 6).map(project =>
-      <Button key={project.id} type="button" size="sm" variant="outline" onClick={() => configure({mention:project.name,initial:{project_id:project.id,access:"read"},purpose:uiText("确认此项目引用和访问权限。")})}>@{project.name}</Button>)}
+      <Button key={project.id} type="button" size="sm" variant="outline" onClick={() =>
+        controller.setDraft(draft.replace(/@[^\s@]*$/u, () => "@" + project.name + " "))
+      }>@{project.name}</Button>)}
     <Button type="button" size="sm" variant="ghost" onClick={() => configure({initial:{access:"read"},purpose:uiText("选择消息所引用的本地目录。")})}><FolderOpen aria-hidden="true" />{uiText("选择本地目录…")}</Button>
     <Button type="button" size="icon-sm" variant="ghost" aria-label={uiText("关闭项目选择器")} onClick={() => dismiss(draft)}><X aria-hidden="true" /></Button>
   </div>
-  const suggestion = namedProject(draft,projects,excluded)
-  return suggestion ? <div className="session-context-suggestion">
-    <Button type="button" size="sm" variant="outline" onClick={() => configure({initial:{project_id:suggestion.id,access:"read"},purpose:uiText("消息提到了此项目。确认将目录提供给 Agent。")})}>{uiText("关联 {0}…", suggestion.name)}</Button>
-    <Button type="button" size="icon-sm" variant="ghost" aria-label={uiText("忽略项目建议")} onClick={() => dismiss(draft)}><X aria-hidden="true" /></Button>
-  </div> : null
+  return null
 }
 
 function BindingDetails({binding, close, edit, remove, showFiles, openProject, openTerminal}: {

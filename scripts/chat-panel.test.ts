@@ -1736,7 +1736,7 @@ test("voice dictation appends to the native draft, stops when hidden and preserv
   } finally {h.dispose();}
 });
 
-test("project mentions ask before attaching and show configured directories as pending until access is effective", async () => {
+test("sending a project mention attaches it silently and shows pending access in working details", async () => {
   const backend = {id:"backend",name:"yolu-web",path:"/repos/backend",worktrees:[{path:"/repos/backend",branch:"main"}]};
   const calls: {path:string; method?:string; body?:any}[] = [];
   const attached = {id:"secondary",project_id:backend.id,project_name:backend.name,directory:backend.path,branch:"main",status:"pending",role:"additional",access:"read"};
@@ -1763,14 +1763,9 @@ test("project mentions ask before attaching and show configured directories as p
     await until(choice);
     assert.equal(calls.some(call => call.method === "POST"),false);
     choice()!.click();
-    await until(() => document.querySelector(".session-binding-dialog form"));
-    const form = document.querySelector<HTMLFormElement>(".session-binding-dialog form")!;
-    const submit = () => form.dispatchEvent(new h.w.Event("submit",{bubbles:true,cancelable:true}));
-    submit();
-    await until(() => document.querySelector(".session-binding-preview"));
-    assert.match(document.querySelector(".session-binding-preview")!.textContent || "", /\/repos\/backend/);
-    assert.equal(calls.some(call => call.path.endsWith("/bindings") && call.method === "POST"),false);
-    submit();
+    await until(() => h.input().value.includes("@yolu-web"));
+    assert.equal(calls.some(call => call.method === "POST"),false);
+    document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
     await until(() => document.querySelector(".session-context-chip[data-status=pending]"));
     const binding = document.querySelector<HTMLButtonElement>(".session-context-chip[data-status=pending]")!;
     assert.match(binding.textContent || "", /yolu-web.*main.*待配置/);
@@ -1781,20 +1776,20 @@ test("project mentions ask before attaching and show configured directories as p
     const bindingDetails = () => workingDetails.querySelector(".session-binding-details");
     await until(bindingDetails);
     assert.match(bindingDetails()!.textContent || "", /\/repos\/backend/);
-    assert.match(h.input().value, /@yolu-web/);
-    assert.deepEqual(calls.find(call => call.path.endsWith("/bindings") && call.method === "POST")?.body, {project_id:"backend",directory:"/repos/backend",access:"read",role:"additional",allow_shared:false});
-    assert.equal(calls.some(call => call.path.endsWith("/chat") && call.method === "POST"),false);
+    assert.equal(document.querySelector(".session-binding-dialog"),null);
+    assert.deepEqual(calls.find(call => call.path.endsWith("/bindings") && call.method === "POST")?.body, {project_id:"backend",directory:"/repos/backend",access:"read",role:"additional"});
+    await until(() => calls.some(call => call.path.endsWith("/chat") && call.method === "POST"));
   } finally {h.dispose();}
 });
 
-test("a natural-language match waits for an explicit decision before sending", async () => {
+test("a natural-language project reference is included in the first send", async () => {
   const backend = {id:"backend",name:"yolu-web",path:"/repos/backend",worktrees:[]};
-  let sends = 0;
+  const starts: any[] = [];
   const h = mount(false, [], {
     overview:{projects:[backend]},
     async request(path, init) {
       if (path === "/api/sessions/new" && init?.method === "POST") {
-        sends++;
+        starts.push(JSON.parse(String(init.body)));
         return {session,chat:idleChat()} as any;
       }
       return {models:[],modes:[],entries:[],session} as any;
@@ -1805,14 +1800,9 @@ test("a natural-language match waits for an explicit decision before sending", a
     const text = "Review changes in yolu-web";
     h.type(text); await tick();
     h.w.document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
-    await until(() => h.w.document.querySelector(".session-binding-dialog"));
-    const dialog = h.w.document.querySelector<HTMLDialogElement>(".session-binding-dialog")!;
-    assert.equal(sends,0);
-    dialog.querySelector<HTMLButtonElement>("footer button[type=button]")!.click();
-    await until(() => h.input().value === text);
-    assert.equal(sends,0);
-    h.w.document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
-    await until(() => sends === 1);
+    await until(() => starts.length === 1);
+    assert.equal(h.w.document.querySelector(".session-binding-dialog"),null);
+    assert.deepEqual(starts[0].bindings, [{project_id:"backend",directory:backend.path,access:"read",role:"additional"}]);
   } finally {h.dispose();}
 });
 
@@ -1843,12 +1833,12 @@ test("a conflicting binding can create an independent worktree and confirm its a
   const {document} = h.w;
   try {
     await until(h.input);
-    h.type("Check @yolu");
-    const choice = () => [...document.querySelectorAll<HTMLButtonElement>(".session-context-suggestion button")].find(button => button.textContent === "@yolu-web");
-    await until(choice);
-    choice()!.click();
+    document.querySelector<HTMLButtonElement>(".session-dir-add")!.click();
     await until(() => document.querySelector<HTMLDialogElement>(".session-binding-dialog"));
     const dialog = document.querySelector<HTMLDialogElement>(".session-binding-dialog")!;
+    const projectSelect = dialog.querySelector<HTMLSelectElement>("select")!;
+    projectSelect.value = backend.id;
+    projectSelect.dispatchEvent(new h.w.Event("change",{bubbles:true}));
     const access = [...dialog.querySelectorAll("select")].find(select => select.options.item(0)?.textContent?.includes("只读"))!;
     access.value = "write";
     access.dispatchEvent(new h.w.Event("change",{bubbles:true}));
