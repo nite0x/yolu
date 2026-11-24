@@ -1,6 +1,6 @@
-import { Check, ChevronDown, ChevronRight, CircleAlert, Copy, Folder, GitBranch, GitCommitHorizontal, Layers, MessageSquare, MoreHorizontal, Pencil, Plus, Terminal } from "lucide-react"
+import { Check, ChevronDown, ChevronRight, CircleAlert, CodeXml, Copy, Files, Folder, FolderOpen, GitBranch, GitCommitHorizontal, Layers, MessageSquare, MoreHorizontal, Pencil, Plus, Terminal } from "lucide-react"
 import { uiLocale, uiText } from "../i18n"
-import { Action, Branch, Feedback, ProjectOpenActions, StatusBadge, TreeStatus, type ProjectOpenTool } from "./shared"
+import { Action, Branch, Feedback, projectOpenLabels, StatusBadge, TreeStatus, type ProjectOpenTool } from "./shared"
 import { conversationPathKey } from "./conversation-runtime"
 import { conversationStatusMatches } from "./conversation-list"
 import { sessionTime, type Session } from "./sessions"
@@ -101,8 +101,6 @@ export function WorkingDirectoryCard({project, tree, name, primary, tool, state,
   const section = state.section || (tree.dirty || !sessions.length ? "changes" : "sessions")
   const target = { id: project, "data-path": path }
   const panel = `directory-panel-${encodeURIComponent(path)}`
-  const lastSession = sessions[0]
-  const lastTimestamp = lastSession ? updatedAt(lastSession) : 0
   const previewSessions = sessions.slice(0, DIRECTORY_SESSION_PREVIEW_LIMIT)
   const sections: [DirectorySection, string, number?][] = [
     ["changes", uiText("变更摘要"), usable && tree.dirty ? tree.dirty : undefined],
@@ -126,21 +124,18 @@ export function WorkingDirectoryCard({project, tree, name, primary, tool, state,
             <Action action="project-directory-section" {...target} data-section="sessions" variant="ghost" className="directory-session-count" data-empty={!sessions.length || undefined} data-detail-focus="session-count" aria-controls={panel}>
               <MessageSquare aria-hidden="true" />{conversations.loading && !conversations.sessions.length || conversations.error && !conversations.sessions.length ? uiText("关联对话") : uiText("{0} 条关联对话", sessions.length)}
             </Action>
-            {lastSession?.name ? <>
-              <span className="directory-meta-sep" aria-hidden="true">·</span>
-              <span className="directory-last-session" title={lastSession.name}>{lastSession.provider === "agy" ? "Antigravity" : "Codex"} · {lastSession.name}</span>
-            </> : null}
-            {lastTimestamp ? <time className="directory-last-time" dateTime={new Date(lastTimestamp * 1000).toISOString()}>{sessionTime(lastTimestamp)}</time> : null}
           </div>
         </div>
         <div className="directory-actions">
-          <Action action="project-conversation-new" {...target} variant="ghost" className="directory-primary-action" disabled={!usable || readOnly} aria-label={uiText("为 {0} 新建对话", name)}><Plus aria-hidden="true" /><span>{uiText("新建对话")}</span></Action>
-          <Action action="changes-open" {...target} variant="ghost" size="icon-sm" className="directory-icon-action" data-has-changes={usable && tree.dirty ? "true" : undefined} disabled={!usable} title={uiText("查看变更")} aria-label={uiText("文件与改动")}><Pencil aria-hidden="true" /></Action>
-          <ProjectOpenActions project={project} path={path} tool={tool} disabled={!usable} compact />
-          <Action action="project-terminal" {...target} variant="ghost" disabled={!usable} size="icon-sm" className="directory-terminal directory-icon-action" title={uiText("用 {0} 打开工作目录", uiText("终端"))} aria-label={uiText("用 {0} 打开工作目录", uiText("终端"))}><Terminal aria-hidden="true" /></Action>
-          <details className="workspace-more directory-more">
-            <summary aria-label={uiText("{0} 更多操作", name)}><MoreHorizontal aria-hidden="true" /></summary>
+          <Action action="project-conversation-new" {...target} variant="ghost" size="icon-sm" className="directory-primary-action directory-icon-action" disabled={!usable || readOnly} title={uiText("为 {0} 新建对话", name)} aria-label={uiText("为 {0} 新建对话", name)}><Plus aria-hidden="true" /></Action>
+          <Action action="changes-open" {...target} data-mode="all" data-detail-focus="files" variant="ghost" size="icon-sm" className="directory-icon-action" disabled={!usable} title={uiText("文件与改动")} aria-label={uiText("文件与改动")} aria-controls="projectFilesPane"><Files aria-hidden="true" /></Action>
+          <details className="workspace-more directory-more" data-project-open>
+            <summary title={uiText("{0} 更多操作", name)} aria-label={uiText("{0} 更多操作", name)}><MoreHorizontal aria-hidden="true" /></summary>
             <div className="workspace-more-menu">
+              <Action action={tool === "terminal" ? "project-terminal" : `project-open-${tool}`} {...target} data-project-open-primary disabled={!usable} title={uiText("用 {0} 打开工作目录", projectOpenLabels[tool])} aria-label={uiText("用 {0} 打开工作目录", projectOpenLabels[tool])}>{tool === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}<span data-project-open-label>{uiText("{0} 打开", projectOpenLabels[tool])}</span></Action>
+              {(["vscode", "idea", "terminal"] as const).filter(choice => choice !== tool).map(choice => <Action key={choice} action={choice === "terminal" ? "project-terminal" : `project-open-${choice}`} {...target} data-project-open-choice={choice} disabled={!usable}>{choice === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}{projectOpenLabels[choice]}</Action>)}
+              <Action action="project-open-folder" {...target} disabled={!usable}><FolderOpen aria-hidden="true" />{uiText("在文件管理器中打开")}</Action>
+              <Action action="changes-open" {...target} disabled={!usable}><Pencil aria-hidden="true" />{uiText("查看变更")}</Action>
               <Action action="git-open" {...target} disabled={!usable}>{uiText("Git 操作")}</Action>
               <Action action="project-commit-plan" {...target} disabled={!usable}><Layers aria-hidden="true" />{uiText("分批提交")}</Action>
               <Action action="project-open-remote" {...target} disabled={!usable}>{uiText("打开远端仓库")}</Action>

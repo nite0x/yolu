@@ -124,7 +124,16 @@ function renderProjectPage(markup) {
         const path = focused?.closest('[data-directory-path]')?.dataset.directoryPath;
         const focusKey = focused?.dataset.detailFocus;
         target.setAttribute('aria-label', incoming.getAttribute('aria-label'));
+        const files = target.querySelector('#projectFilesMount');
+        const fileFocus = files?.contains(focused) ? focused : null;
+        const reading = [...(files?.querySelectorAll('.changes-text,.browser-files') || [])].map(node => ({node, top:node.scrollTop, left:node.scrollLeft}));
+        if (files) files.remove();
         target.replaceChildren(...incoming.childNodes);
+        if (files) target.querySelector('#projectFilesMount')?.replaceWith(files);
+        if (renderedProjectKey === detailKey) {
+          for (const {node, top, left} of reading) { node.scrollTop = top; node.scrollLeft = left; }
+          fileFocus?.focus({preventScroll:true});
+        }
         if (renderedProjectKey !== detailKey) target.scrollTop = 0;
         else if (focusKey) {
           const scope = path ? [...target.querySelectorAll('[data-directory-path]')].find(card => card.dataset.directoryPath === path) : target;
@@ -140,10 +149,88 @@ function renderProjectPage(markup) {
   if (!toolbar.contains($('#projectAddButton'))) toolbar.querySelector('.toolbar-actions').append($('#projectAddButton'));
   if (!$('#projectEnvironmentSlot').contains($('#projectEnvironmentWrap'))) $('#projectEnvironmentSlot').append($('#projectEnvironmentWrap'));
   $('#projectListFilterSlot').replaceChildren(next.querySelector('.project-filters'));
+  syncProjectFiles();
 }
+
+let projectFilesIdentity = '';
+let projectFilesMount;
+let projectFilesHandle;
+let disposeProjectFilesResize;
+function syncProjectFiles() {
+  const workspace = $('#projectDetailWorkspace');
+  const mount = $('#projectFilesMount');
+  if (!workspace || !mount) return;
+  const view = projectDetailView(state.selectedProject);
+  const files = view.files;
+  const project = state.projects.find(item => item.id === state.selectedProject);
+  const tree = project?.worktrees.find(item => item.path === files?.path);
+  const available = !!tree && !project.error && !tree.missing && !tree.error && !tree.prunable && !tree.bare && !!tree.status_updated_at;
+  const open = projectDetailOpen && !!files?.open && available;
+  workspace.toggleAttribute('data-files-open', open);
+  workspace.toggleAttribute('data-files-expanded', open && !!files.expanded);
+  $('#projectFilesPane').hidden = !open;
+  $('#projectFilesResize').hidden = !open || !!files?.expanded;
+  $('#projectFilesDirectory').textContent = tree ? tree.branch || tree.path.split(/[\\/]/).filter(Boolean).at(-1) : '';
+  $('#projectFilesDirectory').title = tree?.path || '';
+  const expand = workspace.querySelector('[data-action="project-directory-files-expand"]');
+  expand.setAttribute('aria-pressed', String(!!files?.expanded));
+  expand.setAttribute('aria-label', files?.expanded ? uiText("还原") : uiText("全屏查看文件"));
+  expand.title = expand.getAttribute('aria-label');
+  for (const card of workspace.querySelectorAll('[data-directory-path]')) {
+    const current = open && card.dataset.directoryPath === files.path;
+    card.toggleAttribute('data-files-current', current);
+    card.querySelector('.directory-session-count')?.toggleAttribute('hidden', open);
+    const trigger = card.querySelector('[data-detail-focus="files"]');
+    trigger?.setAttribute('aria-expanded', String(current));
+  }
+  const identity = open ? JSON.stringify([activeEnvironment, project.id, files.path, files.mode]) : '';
+  if (identity !== projectFilesIdentity || mount !== projectFilesMount) {
+    if (projectFilesMount) window.WorkHubUI.mountFileBrowser(projectFilesMount);
+    projectFilesMount = mount;
+    projectFilesIdentity = identity;
+    if (identity) window.WorkHubUI.mountFileBrowser(mount, {
+      project:project.id, path:files.path, environment:activeEnvironment, request:api,
+      idPrefix:'projectFiles', initialMode:files.mode,
+    });
+  }
+  const handle = $('#projectFilesResize');
+  if (handle !== projectFilesHandle) {
+    disposeProjectFilesResize?.();
+    projectFilesHandle = handle;
+    try {
+      const width = Number(localStorage.getItem('workhub:project-files-width:v1'));
+      if (width >= 360) workspace.style.setProperty('--project-files-width', `${width}px`);
+    } catch { /* Optional storage. */ }
+    disposeProjectFilesResize = window.WorkHubUI.setupSplitResize({
+      handle, container:workspace, panel:$('#projectFilesPane'), axis:'x', direction:-1,
+      bounds:() => {
+        const width = workspace.getBoundingClientRect().width;
+        return width > 900 && workspace.hasAttribute('data-files-open') && !workspace.hasAttribute('data-files-expanded') ? {min:360, max:width - 360} : null;
+      },
+      resize:width => workspace.style.setProperty('--project-files-width', `${width}px`),
+      commit:() => {try {localStorage.setItem('workhub:project-files-width:v1', workspace.style.getPropertyValue('--project-files-width').replace('px',''));} catch { /* Optional storage. */ }},
+    });
+  }
+}
+window.addEventListener('pagehide', () => {
+  disposeProjectFilesResize?.();
+  if (projectFilesMount) window.WorkHubUI.mountFileBrowser(projectFilesMount);
+}, {once:true});
 
 function changeProjectDirectories(action, target) {
   const view = projectDetailView(state.selectedProject);
+  if (action === 'project-directory-files-close') {
+    if (view.files) { view.files.open = false; view.files.expanded = false; }
+    syncProjectFiles();
+    const origin = [...$('#projectDetail').querySelectorAll('[data-action="changes-open"][data-detail-focus="files"]')].find(button => button.dataset.path === view.files?.path);
+    (origin || $('#projectDetail h2'))?.focus({preventScroll:true});
+    return;
+  }
+  if (action === 'project-directory-files-expand') {
+    if (view.files) view.files.expanded = !view.files.expanded;
+    syncProjectFiles();
+    return;
+  }
   const pathKey = window.WorkHubUI.conversationPathKey;
   if (action === 'project-directory-reset') view.filter = 'all';
   else if (action === 'project-directory-filter') {
@@ -165,6 +252,13 @@ function changeProjectDirectories(action, target) {
   render();
 }
 
+$('#content').addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || event.defaultPrevented || !event.target.closest('#projectFilesPane')) return;
+  event.preventDefault();
+  const view = projectDetailView(state.selectedProject);
+  changeProjectDirectories(view.files?.expanded ? 'project-directory-files-expand' : 'project-directory-files-close');
+});
+
 $('#content').addEventListener('change', event => {
   const target = event.target;
   if (!target.matches('[data-project-directory-filter], [data-project-directory-sort]')) return;
@@ -179,6 +273,13 @@ function showProjectChanges(target, plan) {
   const dialog = $('#changesDialog');
   const {id, path} = target.dataset;
   if (!id || !path) return;
+  if (!plan && projectDetailOpen && state.view === 'projects' && state.selectedProject === id && !dialog.open) {
+    const view = projectDetailView(id);
+    view.files = {path, mode:target.dataset.mode || 'working', open:true, expanded:view.files?.expanded || false};
+    syncProjectFiles();
+    $('#projectFilesPane')?.querySelector('button')?.focus({preventScroll:true});
+    return;
+  }
   if (!dialog.open) projectChangesOrigin = target;
   const tree = state.projects.find(project => project.id === id)?.worktrees.find(tree => tree.path === path);
   $('#changesTitle').textContent = plan ? uiText("分批提交计划") : uiText("文件与改动");
@@ -434,7 +535,7 @@ $('#projectForm').addEventListener('submit', async event => {
 document.addEventListener('click', event => {
   const choice = event.target.closest('[data-project-open-choice]');
   if (choice && !choice.disabled && !state.busy) rememberProjectOpenTool(choice);
-  document.querySelectorAll('.workspace-action-menu[open], .project-more[open]').forEach(menu => {
+  document.querySelectorAll('.workspace-action-menu[open], .project-more[open], .directory-more[open]').forEach(menu => {
     if (!menu.contains(event.target) || event.target.closest('button:not(:disabled)')) menu.open = false;
   });
   const button = event.target.closest('[data-action^="project-open-"]');

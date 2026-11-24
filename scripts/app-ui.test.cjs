@@ -321,13 +321,13 @@ for (const readOnly of [true, false]) test(`merge conflict automatically opens A
   assert.equal(h.requests.filter(r => r.url.endsWith(readOnly ? '/merge-terminal' : '/sessions/new')).length, 1);
 });
 
-test('the open split button remembers the chosen tool and retains its worktree after rendering', async t => {
+test('the directory overflow remembers the chosen tool and retains its worktree after rendering', async t => {
   const h = await harness(t);
   assert.match(h.$('[data-project-open-primary]').textContent, /VS Code 打开/);
   h.click('[data-project-open] summary');
-  assert.equal(h.$('[data-project-open] details').open, true);
+  assert.equal(h.$('details[data-project-open]').open, true);
   h.click('[data-project-open-choice="idea"]'); await settle();
-  assert.equal(h.$('[data-project-open] details').open, false);
+  assert.equal(h.$('details[data-project-open]').open, false);
   assert.equal(h.window.localStorage.getItem('workhub:project-open:v1'), 'idea');
   assert.deepEqual(h.requests.find(r => r.url === '/api/projects/app/open').body, { tool: 'idea', path: '/repo/app' });
   h.window.render();
@@ -336,7 +336,7 @@ test('the open split button remembers the chosen tool and retains its worktree a
   assert.equal(h.requests.filter(r => r.url === '/api/projects/app/open').length, 2);
   h.click('[data-project-open] summary');
   h.$('[data-project-open] summary').dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  assert.equal(h.$('[data-project-open] details').open, false);
+  assert.equal(h.$('details[data-project-open]').open, false);
   assert.equal(h.document.activeElement, h.$('[data-project-open] summary'));
   h.click('[data-project-open-choice="terminal"]'); await settle();
   assert.deepEqual(h.requests.find(r => r.body?.action === 'terminal').body, { action: 'terminal', path: '/repo/app' });
@@ -1706,16 +1706,17 @@ test('read-only changes show working and staged files as inert text and reject l
     if(params.get('file')==='new.txt')return new Promise(resolve=>{release=resolve;});
     return {ok:true,json:async()=>({text:params.get('mode')==='index'?'+staged':'<script>inert</script>',truncated:false})};
   });
-  h.click('[data-action="changes-open"]');await settle();
-  assert.equal(h.$('#changesDialog').open,true);
-  assert.equal(h.$('#changesText script'),null);
-  assert.match(h.$('#changesText').textContent,/<script>inert/);
+  h.click('.directory-more [data-action="changes-open"]');await settle();
+  assert.equal(h.$('#changesDialog').open,false);
+  assert.equal(h.$('#projectFilesPane').hidden,false);
+  assert.equal(h.$('#projectFilesText script'),null);
+  assert.match(h.$('#projectFilesText').textContent,/<script>inert/);
   h.click('[data-change-file="new.txt"]');await settle();
-  h.change('#changesMode','index');await settle();
+  h.change('#projectFilesMode','index');await settle();
   assert.equal(h.document.querySelectorAll('[data-change-file]').length,1);
-  assert.equal(h.$('#changesText').textContent,'+staged');
+  assert.equal(h.$('#projectFilesText').textContent,'+staged');
   release({ok:true,json:async()=>({text:'old untracked result',truncated:false})});await settle();
-  assert.equal(h.$('#changesText').textContent,'+staged');
+  assert.equal(h.$('#projectFilesText').textContent,'+staged');
 });
 
 test('a Git network operation keeps refreshing and does not overwrite a different project after closing', async t => {
@@ -1802,22 +1803,22 @@ test('file browser lazily expands directories, renders unchanged source and disp
     }
     return {ok:true,json:async()=>({entries:query.get('dir') === 'src' ? [{name:'clean.ts',path:'src/clean.ts',directory:false}] : [{name:'src',path:'src',directory:true},{name:'late.txt',path:'late.txt',directory:false},{name:'link',path:'link',symlink:true,directory:false}],truncated:false})};
   });
-  h.click('[data-action="changes-open"]'); await settle();
-  h.change('#changesMode', 'all'); await settle();
+  h.click('.directory-more [data-action="changes-open"]'); await settle();
+  h.change('#projectFilesMode', 'all'); await settle();
   assert.equal(h.requests.filter(r=>r.url.includes('/files?') && r.url.includes('dir=src')).length,0);
-  h.click('#changesFiles button[aria-expanded="false"]'); await settle();
+  h.click('#projectFilesFiles button[aria-expanded="false"]'); await settle();
   assert.equal(h.requests.filter(r=>r.url.includes('/files?') && r.url.includes('dir=src')).length,1);
-  assert.equal(h.$('#changesFiles button[title*="符号链接"]').disabled,true);
+  assert.equal(h.$('#projectFilesFiles button[title*="符号链接"]').disabled,true);
   h.click('[data-change-file="src/clean.ts"]'); await settle();
-  assert.match(h.$('#changesText').textContent,/src\/clean.ts.*\nconst html/);
-  assert.equal(h.$('#changesText script'),null);
-  assert.equal(h.$('#changesLayout').disabled,true);
+  assert.match(h.$('#projectFilesText').textContent,/src\/clean.ts.*\nconst html/);
+  assert.equal(h.$('#projectFilesText script'),null);
+  assert.equal(h.$('#projectFilesLayout').disabled,true);
   h.click('[data-change-file="late.txt"]'); await settle();
   assert.equal(disposed,1);
-  h.$('#changesDialog').close(); await settle();
+  h.click('[data-action="project-directory-files-close"]'); await settle();
   assert.equal(lateSignal.aborted,true);
   resolveLate({ok:true,json:async()=>({text:'late content'})}); await settle();
-  assert.equal(h.$('#changesBrowser').childElementCount,0);
+  assert.equal(h.$('#projectFilesMount').childElementCount,0);
 });
 
 test('file browser switches Pierre diff layouts without refetching and falls back safely for partial patches', async t => {
@@ -1830,18 +1831,61 @@ test('file browser switches Pierre diff layouts without refetching and falls bac
     const query = new URL(url,'http://localhost').searchParams;
     return {ok:true,json:async()=>query.has('file') ? {name:'file.ts',format:'patch',text:'<script>plain patch</script>',truncated} : {branch:'main',files:[{path:'file.ts',index:'M',working:'M'}]}};
   });
-  h.click('[data-action="changes-open"]'); await settle();
+  h.click('.directory-more [data-action="changes-open"]'); await settle();
   assert.deepEqual(layouts,[true]);
   const before=h.requests.filter(r=>r.url.includes('/changes?')).length;
-  h.change('#changesLayout','unified'); await settle();
+  h.change('#projectFilesLayout','unified'); await settle();
   assert.deepEqual(layouts,[true,false]);
   assert.equal(h.requests.filter(r=>r.url.includes('/changes?')).length,before);
   truncated=true;
-  h.click('#changesRefresh'); await settle();
-  assert.equal(h.$('#changesTruncated').hidden,false);
-  assert.equal(h.$('#changesText script'),null);
-  assert.match(h.$('#changesText').textContent,/<script>plain patch/);
+  h.click('#projectFilesRefresh'); await settle();
+  assert.equal(h.$('#projectFilesTruncated').hidden,false);
+  assert.equal(h.$('#projectFilesText script'),null);
+  assert.match(h.$('#projectFilesText').textContent,/<script>plain patch/);
   assert.equal(layouts.length,2);
+});
+
+for (const desktop of [false, true]) test(`project file dock preserves reading through refresh and resets checkout context (${desktop ? 'desktop' : 'browser'})`, async t => {
+  const h = await harness(t, false, {desktop, width:1440});
+  let release, signal;
+  h.window.WorkHubFileDisplay = {render(container, preview) {container.textContent = preview.text; return () => container.replaceChildren();}};
+  h.setIntercept((url, options) => {
+    if (!url.includes('/files?')) return;
+    const query = new URL(url, 'http://localhost').searchParams;
+    if (!query.has('file')) return {ok:true,json:async()=>({entries:[{name:'read.ts',path:'read.ts',directory:false},{name:'late.ts',path:'late.ts',directory:false}],truncated:false})};
+    if (query.get('file') === 'late.ts') {signal = options.signal; return new Promise(resolve => {release = resolve;});}
+    return {ok:true,json:async()=>({text:query.get('path') + '/read.ts'})};
+  });
+  const open = path => h.click(`[data-directory-path="${path}"] [data-detail-focus="files"]`);
+  open('/repo/app'); await settle();
+  assert.equal(h.$('#projectFilesMode').value, 'all');
+  assert.equal(h.$('#changesDialog').open, false);
+  h.click('#projectFilesFiles [data-change-file="read.ts"]'); await settle();
+  const source = h.$('#projectFilesText'); source.scrollTop = 86; source.scrollLeft = 24; source.focus();
+  const reads = h.requests.filter(request => request.url.includes('/files?')).length;
+  h.data.projects[0].worktrees[0].dirty = 2;
+  await h.window.refresh(); await settle();
+  assert.equal(h.$('#projectFilesText'), source);
+  assert.equal(source.scrollTop, 86); assert.equal(source.scrollLeft, 24);
+  assert.equal(h.document.activeElement, source);
+  assert.equal(h.requests.filter(request => request.url.includes('/files?')).length, reads);
+  h.click('[data-action="project-directory-files-expand"]');
+  assert(h.$('#projectDetailWorkspace').hasAttribute('data-files-expanded'));
+  assert.equal(h.$('#projectFilesText'), source);
+  h.click('[data-action="project-directory-files-expand"]');
+  h.click('#projectFilesFiles [data-change-file="late.ts"]'); await settle();
+  open('/workspace/workspace/app'); await settle();
+  assert.equal(signal.aborted, true);
+  assert.equal(h.$('#projectFilesText').textContent.includes('/repo/app/read.ts'), false);
+  release({ok:true,json:async()=>({text:'stale main checkout'})}); await settle();
+  assert.equal(h.$('#projectFilesText').textContent.includes('stale main checkout'), false);
+  h.click('#projectFilesFiles [data-change-file="read.ts"]'); await settle();
+  assert.equal(h.$('#projectFilesText').textContent, '/workspace/workspace/app/read.ts');
+  h.click('[data-action="project-directory-files-close"]'); await settle();
+  assert.equal(h.$('#projectFilesPane').hidden, true);
+  assert.equal(h.$('#projectFilesMount').childElementCount, 0);
+  assert.equal(h.document.activeElement.dataset.path, '/workspace/workspace/app');
+  assert.equal(h.$('.project-activity'), null);
 });
 
 test('conversation files remain beside the same chat and fullscreen retains the mounted file and reading position', async t => {
@@ -2178,6 +2222,7 @@ test('page bridge delegates sidebar conversation navigation before changing the 
   assert.equal(draft.create,true);
   assert.equal(draft.snapshot.conversation.scope.id,'app');
   assert.equal(draft.snapshot.conversation.creationDirectory,'/workspace/workspace/app');
+  h.click('[data-directory-path="/workspace/workspace/app"] [data-action="project-directory-toggle"]');
   h.click('[data-action="project-conversations"][data-session="session-1"]');
   assert.equal(host.messages.findLast(message=>message.type==='workhub:page-open').snapshot.conversation.selected, 'session-1');
   h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-active',active:false}}));

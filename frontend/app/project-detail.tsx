@@ -1,4 +1,4 @@
-import { Activity, ChevronRight, Folder, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw } from "lucide-react"
+import { Activity, ChevronRight, Folder, GitBranchPlus, Maximize2, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, X } from "lucide-react"
 import { uiText } from "../i18n"
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Action, Feedback, type ProjectOpenTool } from "./shared"
@@ -6,7 +6,7 @@ import { ResourceIcon } from "./shortcut-icons"
 import { ResourceSwitcherTrigger } from "./list-controls"
 import { conversationPathKey } from "./conversation-runtime"
 import { conversationStatusMatches } from "./conversation-list"
-import { DirectoryPath, ProjectConversationFeedback, ProjectConversationRows, WorkingDirectoryCard, directoryHasIssue, directoryNames, directoryNeedsAttention, directoryUsable, type DirectoryCardState, type ProjectConversations } from "./working-directories"
+import { DirectoryPath, ProjectConversationFeedback, WorkingDirectoryCard, directoryHasIssue, directoryNames, directoryNeedsAttention, directoryUsable, type DirectoryCardState, type ProjectConversations } from "./working-directories"
 import type { Project } from "./types"
 import type { Session } from "./sessions"
 
@@ -29,7 +29,6 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
       sessionsByPath.set(path, related)
     }
   }
-  const labels = new Map<string, string[]>()
   const mainKey = conversationPathKey(project.path)
   const resolvedNames = directoryNames(project.worktrees, mainKey, project.folder)
   const items = project.worktrees.map(tree => {
@@ -37,7 +36,6 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
     const primary = key === mainKey
     const name = resolvedNames.get(key) ?? tree.path
     const related = sessionsByPath.get(key) ?? []
-    for (const session of related) labels.set(session.id, [...(labels.get(session.id) ?? []), name])
     return {tree, primary, name, related, state: cards.get(key) ?? {expanded: primary || key === directory}}
   })
   const visible = items.filter(({tree, related}) => {
@@ -72,10 +70,9 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
         <ResourceSwitcherTrigger kind="project" />
       </div>
       <div className="project-detail-actions">
-        <Action action="project-conversation-new" id={project.id} data-path={project.path} variant="default" disabled={!!project.error || !directoryUsable(main?.tree) || readOnly}><Plus aria-hidden="true" />{uiText("新建对话")}</Action>
-        <Action action="project-conversations" id={project.id} variant="ghost">{uiText("相关对话")}</Action>
-        <Action action="new-worktree" id={project.id} variant="ghost" disabled={!!project.error}><Plus aria-hidden="true" />{uiText("创建 Worktree")}</Action>
-        <details className="workspace-project-details project-more"><summary aria-label={uiText("更多项目操作")}><MoreHorizontal aria-hidden="true" /></summary>
+        <Action action="project-conversation-new" id={project.id} data-path={project.path} variant="default" size="icon-sm" title={uiText("新建对话")} aria-label={uiText("新建对话")} disabled={!!project.error || !directoryUsable(main?.tree) || readOnly}><Plus aria-hidden="true" /></Action>
+        <Action action="new-worktree" id={project.id} variant="ghost" size="icon-sm" title={uiText("创建 Worktree")} aria-label={uiText("创建 Worktree")} disabled={!!project.error}><GitBranchPlus aria-hidden="true" /></Action>
+        <details className="workspace-project-details project-more"><summary title={uiText("更多项目操作")} aria-label={uiText("更多项目操作")}><MoreHorizontal aria-hidden="true" /></summary>
           <div className="workspace-project-details-body">
             <Action action="project-refresh" id={project.id} variant="ghost"><RefreshCw aria-hidden="true" />{uiText("刷新 Git 状态")}</Action>
             <Action action="git-open" id={project.id} variant="ghost" disabled={!!project.error}>{uiText("Git 操作 · 分支管理")}</Action>
@@ -85,9 +82,10 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
         </details>
       </div>
     </header>
+    <div className="project-detail-workspace" id="projectDetailWorkspace">
     <div className="project-detail-body">
       <div className="project-detail-overview">
-        <DirectoryPath path={project.path} project />
+        {items.length !== 1 ? <DirectoryPath path={project.path} project /> : null}
         {!project.error ? <ul className="project-detail-summary" aria-label={uiText("项目摘要")}>
           <li><Action action="project-directory-reset" id={project.id} variant="ghost" className="project-summary-stat" data-active={filter === "all" ? undefined : "false"}><Folder aria-hidden="true" /><strong>{project.refreshing && !items.length ? "…" : items.length}</strong>{uiText("个工作目录")}</Action></li>
           <li title={unknownStatus ? uiText("部分工作目录的 Git 状态暂不可用") : undefined}><Action action="project-directory-filter" id={project.id} data-filter="dirty" variant="ghost" className="project-summary-stat" data-tone={totalChanges ? "warning" : undefined} data-zero={!totalChanges && !unknownStatus || undefined} aria-pressed={filter === "dirty"}><Pencil aria-hidden="true" /><strong>{unknownStatus ? items.some(({tree}) => directoryUsable(tree)) ? `${totalChanges}+` : "—" : totalChanges}</strong>{uiText("项本地变更")}</Action></li>
@@ -124,12 +122,19 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
               {!project.refreshing ? <Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action> : null}</>}
             </div>}
         </section>
-        <section className="project-activity" aria-labelledby="projectActivityTitle">
-          <div className="resource-section-heading"><h3 id="projectActivityTitle">{uiText("最近开发活动")}</h3><Action action="project-conversations" id={project.id} variant="ghost">{uiText("查看全部")}<ChevronRight aria-hidden="true" /></Action></div>
-          <ProjectConversationRows project={project.id} sessions={sessions.slice(0, 5)} directoryLabels={labels} />
-          <ProjectConversationFeedback conversations={conversations} project={project.id} empty={sessions.length ? undefined : uiText("暂无项目对话")} />
-        </section>
+
       </>}
+    </div>
+    <div id="projectFilesResize" className="reading-splitter project-files-resize" role="separator" tabIndex={0} aria-label={uiText("调整文件预览区域大小")} aria-orientation="vertical" hidden />
+    <aside id="projectFilesPane" className="project-files-pane" aria-label={uiText("文件与改动")} hidden>
+      <header className="project-files-heading">
+        <h3>{uiText("文件与改动")}</h3>
+        <span id="projectFilesDirectory" />
+        <Action action="project-directory-files-expand" variant="ghost" size="icon-sm" title={uiText("全屏查看文件")} aria-label={uiText("全屏查看文件")} aria-pressed={false}><Maximize2 aria-hidden="true" /></Action>
+        <Action action="project-directory-files-close" variant="ghost" size="icon-sm" title={uiText("关闭文件预览")} aria-label={uiText("关闭文件预览")}><X aria-hidden="true" /></Action>
+      </header>
+      <div id="projectFilesMount" />
+    </aside>
     </div>
   </div>
 }

@@ -1951,5 +1951,7 @@
   "正在打开工作目录": "Opening working directory",
   "请选择远端仓库、文件管理器、VS Code 或 IDEA": "Choose a remote repository, file manager, VS Code, or IDEA",
   "无法打开文件管理器：": "Could not open the file manager: ",
-  "已发送文件管理器打开请求": "Sent the request to open the file manager"
+  "已发送文件管理器打开请求": "Sent the request to open the file manager",
+  "调整文件预览区域大小": "Resize file preview",
+  "关闭文件预览": "Close file preview"
 }

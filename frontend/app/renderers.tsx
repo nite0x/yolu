@@ -17,6 +17,7 @@ import { ConversationList, ConversationScopes } from "./session-browser"
 import { conversationContext, isGeneralConversationDirectory } from "./conversation-context"
 import { createOperations } from "./operations"
 import { setupConversationResize, conversationPathKey, conversationEnvironmentKey } from "./conversation-runtime"
+import { setupSplitResize } from "./split-resize"
 import { mountFileBrowser } from "./file-browser"
 import { createConversationFiles } from "./conversation-files"
 import { createSessionRequests } from "./session-requests"
@@ -43,7 +44,7 @@ export const workspaceUI = {
   renderCreationChoices,
   mountGitView, resetGitView, scrollToGitSection, notifyWorkspace,
   setupConversationResize, conversationPathKey, conversationEnvironmentKey, createSessionRequests,
-  createOperations, createConversationFiles, mountFileBrowser,
+  createOperations, createConversationFiles, mountFileBrowser, setupSplitResize,
   projectScanResults: (scan: Parameters<typeof ProjectScanResults>[0]) => renderToStaticMarkup(<ProjectScanResults {...scan} />),
   codexDiagnostics: (results: Parameters<typeof CodexDiagnosticsResults>[0]["results"]) => renderToStaticMarkup(<CodexDiagnosticsResults results={results} />),
   agyDiagnostics: (results: Parameters<typeof AgyDiagnosticsResults>[0]["results"]) => renderToStaticMarkup(<AgyDiagnosticsResults results={results} />),

@@ -141,3 +141,53 @@ button.project-summary-stat[aria-pressed="true"] { background: var(--yolu-select
 .project-scan-list { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
 .project-scan-list > li { display: grid; gap: 8px; min-width: 0; border: 1px solid var(--border); border-radius: var(--yolu-chip-radius); padding: 12px; }
 .project-scan-path { display: block; overflow-wrap: anywhere; white-space: pre-wrap; font-size: var(--yolu-font-size-label); color: var(--muted-foreground); }
+
+/* Project-only file dock reuses the conversation FileBrowser without a modal. */
+.project-detail-workspace { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; container: project-workspace / inline-size; }
+.project-detail-workspace > .project-detail-body { min-width: 0; flex: 1; padding: 12px 20px 32px; }
+.project-detail-actions > button[data-action] { width: 30px; height: 30px; padding: 0; }
+.project-detail-overview { margin-bottom: 12px; padding-bottom: 10px; }
+.project-files-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 0 0 clamp(360px, var(--project-files-width, 64%), calc(100% - 360px)); background: var(--yolu-surface); }
+.project-files-heading { display: flex; flex: none; align-items: center; gap: 8px; min-height: 40px; padding: 4px 12px; border-bottom: 1px solid var(--yolu-border); }
+.project-files-heading h3 { flex: none; margin: 0; font-size: var(--yolu-font-size-compact); font-weight: 600; }
+.project-files-heading > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--yolu-font-size-label) var(--font-mono); color: var(--yolu-muted-ink); }
+.project-files-heading > button { flex: none; width: 28px; height: 28px; padding: 0; }
+.project-files-resize { flex-basis: 8px; }
+.project-files-resize::after { inset: 0 auto 0 3px; width: 1px; border-radius: 0; background: var(--yolu-border); }
+#projectFilesMount { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; padding: 12px; }
+#projectFilesMount .file-browser { display: flex; flex-direction: column; flex: 1; gap: 10px; min-width: 0; min-height: 0; }
+#projectFilesMount .dialog-description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; font: var(--yolu-font-size-label) var(--font-mono); color: var(--yolu-muted-ink); }
+#projectFilesMount .changes-controls { padding: 0; gap: 6px; border: 0; border-radius: 0; background: transparent; }
+#projectFilesMount .changes-controls > [data-slot="native-select-wrapper"] { flex: 1 1 150px; width: auto; }
+#projectFilesMount .changes-controls > button { height: 28px; padding-inline: 8px; font-size: var(--yolu-font-size-label); }
+#projectFilesMount .file-browser[data-mode="all"] label[for$="Layout"],
+#projectFilesMount .file-browser[data-mode="all"] [data-slot="native-select-wrapper"]:has(select[id$="Layout"]) { display: none; }
+#projectFilesMount .file-split-layout { min-height: 0; }
+#projectFilesMount .file-tree-pane, #projectFilesMount .changes-text { border-radius: 4px; }
+#projectFilesMount [role="alert"] { margin: 0; font-size: var(--yolu-font-size-label); color: var(--destructive); }
+.project-detail-workspace[data-files-expanded] > .project-detail-body { display: none; }
+.project-detail-workspace[data-files-expanded] > .project-files-pane { flex: 1; }
+.project-detail-content .working-directory-card[data-primary-directory] { box-shadow: none; }
+.project-detail-content .working-directory-card[data-files-current] { background: var(--yolu-selected); box-shadow: inset 2px 0 0 var(--yolu-primary); }
+.project-detail-content .directory-card-body { padding: 10px 8px; }
+.project-detail-content .directory-card-row { gap: 8px; }
+.project-detail-content .directory-card-expanded { margin: 0 8px 10px 30px; padding: 0 8px 8px; border: 0; border-radius: 0; background: transparent; }
+.project-detail-content .directory-sections { gap: 4px 12px; }
+.project-detail-content .directory-section-content { padding-top: 4px; }
+.project-detail-content .project-conversation-row { min-height: 42px; line-height: 1.35; }
+.project-detail-content .project-conversation-info > strong { font-size: var(--yolu-font-size-compact); font-weight: 500; }
+.project-detail-content .directory-actions > .directory-primary-action { padding: 0 !important; }
+.project-detail-content .directory-actions > button, .project-detail-content .directory-more > summary { width: 28px !important; height: 28px !important; }
+@container project-workspace (max-width: 900px) {
+  .project-detail-workspace[data-files-open] > .project-detail-body { display: none; }
+  .project-detail-workspace[data-files-open] > .project-files-pane { flex: 1; }
+  .project-detail-workspace > .project-files-resize { display: none; }
+}
+/* Keep checkout identity and its path readable beside the file dock. */
+.project-detail-workspace[data-files-open] .directory-card-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.project-detail-workspace[data-files-open] .directory-card-main { display: contents; }
+.project-detail-workspace[data-files-open] .directory-identity-main { grid-column: 1 / -1; }
+.project-detail-workspace[data-files-open] .directory-card-meta { grid-column: 1; padding-inline-start: 0; }
+.project-detail-workspace[data-files-open] .directory-card-meta > .directory-meta-sep { display: none; }
+.project-detail-workspace[data-files-open] .directory-actions { grid-column: 2; }
+.project-detail-workspace[data-files-open] .directory-card-expanded { margin-inline: 8px; }
