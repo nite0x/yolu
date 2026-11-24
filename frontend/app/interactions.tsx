@@ -72,10 +72,11 @@ function ActionMenu({ source, label, iconOnly }: { source: HTMLDetailsElement; l
   const portal = source.closest("dialog") || document.body
   const trigger = source.querySelector("summary")
   const isSessionMenu = source.classList.contains("session-item-menu")
+  const isDirectoryMenu = !!source.closest(".directory-actions")
   const isSplitMenu = source.classList.contains("workspace-action-menu")
   return <DropdownMenu.Root modal={false} open={source.open} onOpenChange={open => { source.open = open }}>
     <DropdownMenu.Trigger asChild>
-      <Button type="button" variant={source.closest(".workspace-split-accent") ? "default" : isSessionMenu ? "ghost" : "outline"} size={iconOnly ? isSessionMenu ? "icon-xs" : "icon-sm" : "sm"} className={`ui-menu-trigger${isSplitMenu ? " rounded-l-none border-l-0" : ""}`} aria-label={label}
+      <Button type="button" variant={source.closest(".workspace-split-accent") ? "default" : (isSessionMenu || isDirectoryMenu) ? "ghost" : "outline"} size={iconOnly ? isSessionMenu ? "icon-xs" : "icon-sm" : "sm"} className={`ui-menu-trigger${isSplitMenu ? " rounded-l-none border-l-0" : ""}`} aria-label={label}
         title={trigger?.getAttribute("title") || label} onClick={event => event.stopPropagation()}>
         {iconOnly ? isSplitMenu ? <ChevronDown aria-hidden="true" /> : <Ellipsis aria-hidden="true" /> : <>{trigger?.textContent?.trim() || uiText("更多")}<ChevronDown aria-hidden="true" /></>}
       </Button>

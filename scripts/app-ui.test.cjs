@@ -1359,6 +1359,38 @@ test('project detail cards retain expansion and isolate Git and conversation act
   h.$('#changesDialog').close();
 });
 
+test('project detail disambiguates duplicate worktree names, defaults clean primary cards to sessions and toggles dirty filter from summary', async t => {
+  const h = await harness(t);
+  const [main, worktree] = h.data.projects[0].worktrees;
+  main.dirty = 0;
+  worktree.dirty = 2;
+  const releaseAgent = {...worktree, path:'/tmp/noah-release/agent', branch:'', head:'a1b2c3d4e5f6', detached:true, dirty:0, upstream:''};
+  const reviewAgent = {...worktree, path:'/project/noah-review/agent', branch:'', head:'f6e5d4c3b2a1', detached:true, dirty:0, upstream:''};
+  h.data.projects[0].worktrees = [main, worktree, releaseAgent, reviewAgent];
+  h.sessions.push(
+    ...Array.from({length: 6}, (_, index) => ({
+      id: `main-extra-${index}`, name: `Main task ${index}`, cwd: main.path, updated_at: 1792735210 + index, available: true,
+    })),
+  );
+  await h.navigate('/projects/app');
+  await h.window.refresh(true);
+  await h.window.refreshProjectConversations(true);
+  await settle();
+  const card = path => h.$(`[data-directory-path="${path}"]`);
+  assert.equal(card(releaseAgent.path).querySelector('h4').textContent, 'noah-release/agent');
+  assert.equal(card(reviewAgent.path).querySelector('h4').textContent, 'noah-review/agent');
+  assert.equal(card(releaseAgent.path).querySelector('.branch').textContent, 'detached @ a1b2c3d');
+  assert.equal(card(releaseAgent.path).querySelector('.directory-card-row .directory-sync'), null);
+  assert.equal(card(releaseAgent.path).dataset.idleDirectory, 'true');
+  assert.equal(card(main.path).querySelector('.directory-sections [data-section="sessions"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(card(main.path).querySelectorAll('.directory-section-content .project-conversation-row').length, 5);
+  assert.match(card(main.path).querySelector('.directory-sessions-footer').textContent, /查看全部 \d+ 条关联对话/);
+  h.click('.project-detail-summary [data-action="project-directory-filter"][data-filter="dirty"]');
+  assert.deepEqual([...h.document.querySelectorAll('#projectDetail [data-directory-path]')].map(node => node.dataset.directoryPath), [worktree.path]);
+  h.click('.project-detail-summary [data-action="project-directory-filter"][data-filter="dirty"]');
+  assert.equal(h.document.querySelectorAll('#projectDetail [data-directory-path]').length, 4);
+});
+
 test('empty search states offer a direct reset without confusing an empty project with a pending scan', async t => {
   const h = await harness(t);
   await h.navigate('/projects');

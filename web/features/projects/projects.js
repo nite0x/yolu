@@ -57,8 +57,10 @@ function rememberProjectOpenTool(choice) {
   try { localStorage.setItem('workhub:project-open:v1', tool); } catch { /* Keep the preference for this page. */ }
   const label = { vscode: 'VS Code', idea: 'IDEA', terminal: uiText("终端") }[tool];
   document.querySelectorAll('[data-project-open-primary]').forEach(button => {
+    const openLabel = uiText("用 {0} 打开工作目录", label);
     button.dataset.action = tool === 'terminal' ? 'project-terminal' : 'project-open-' + tool;
-    button.setAttribute('aria-label', uiText("用 {0} 打开工作目录", label));
+    button.setAttribute('aria-label', openLabel);
+    button.setAttribute('title', openLabel);
     button.querySelector('[data-project-open-label]').textContent = uiText("{0} 打开", label);
     button.querySelector('svg')?.replaceWith(choice.querySelector('svg').cloneNode(true));
   });
@@ -144,7 +146,10 @@ function changeProjectDirectories(action, target) {
   const view = projectDetailView(state.selectedProject);
   const pathKey = window.WorkHubUI.conversationPathKey;
   if (action === 'project-directory-reset') view.filter = 'all';
-  else if (action === 'project-directory-expand-all') {
+  else if (action === 'project-directory-filter') {
+    const next = target.dataset.filter || 'all';
+    view.filter = view.filter === next ? 'all' : next;
+  } else if (action === 'project-directory-expand-all') {
     for (const card of $('#projectDetail').querySelectorAll('[data-directory-path]')) {
       const key = pathKey(card.dataset.directoryPath);
       view.cards.set(key, {...view.cards.get(key), expanded:target.dataset.expand === 'true'});

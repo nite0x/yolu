@@ -40,13 +40,15 @@ export function Action({ action, id, children, ...props }: ComponentProps<typeof
 
 export type ProjectOpenTool = "vscode" | "idea" | "terminal"
 export const projectOpenLabels: Record<ProjectOpenTool, string> = { vscode: "VS Code", idea: "IDEA", terminal: uiText("终端") }
-export function ProjectOpenActions({ project, path, disabled, tool, primary = false }: { project: string; path: string; disabled?: boolean; tool: ProjectOpenTool; primary?: boolean }) {
-  return <div className={`workspace-split-action${primary ? " workspace-split-accent" : ""}`} data-project-open>
-    <Action className="workspace-split-primary rounded-r-none" variant={primary ? "default" : "outline"} action={tool === "terminal" ? "project-terminal" : `project-open-${tool}`} id={project} data-path={path} data-project-open-primary aria-label={uiText("用 {0} 打开工作目录", projectOpenLabels[tool])} disabled={disabled}>{tool === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}<span data-project-open-label>{uiText("{0} 打开", projectOpenLabels[tool])}</span></Action>
+export function ProjectOpenActions({ project, path, disabled, tool, primary = false, compact = false }: { project: string; path: string; disabled?: boolean; tool: ProjectOpenTool; primary?: boolean; compact?: boolean }) {
+  const openLabel = uiText("用 {0} 打开工作目录", projectOpenLabels[tool])
+  const buttonVariant = primary ? "default" : compact ? "ghost" : "outline"
+  return <div className={`workspace-split-action${primary ? " workspace-split-accent" : ""}${compact ? " workspace-split-compact" : ""}`} data-project-open>
+    <Action className="workspace-split-primary rounded-r-none" variant={buttonVariant} action={tool === "terminal" ? "project-terminal" : `project-open-${tool}`} id={project} data-path={path} data-project-open-primary title={openLabel} aria-label={openLabel} disabled={disabled}>{tool === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}<span data-project-open-label className={compact ? "sr-only" : undefined}>{uiText("{0} 打开", projectOpenLabels[tool])}</span></Action>
     {!disabled ? <details className="workspace-action-menu"><summary aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></summary><div className="workspace-action-menu-body">
       {(["vscode", "idea", "terminal"] as const).map(choice => <Action key={choice} variant="ghost" className="justify-start font-normal" action={choice === "terminal" ? "project-terminal" : `project-open-${choice}`} id={project} data-path={path} data-project-open-choice={choice}>{choice === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}{projectOpenLabels[choice]}</Action>)}
       <Action variant="ghost" className="justify-start font-normal" action="project-open-folder" id={project} data-path={path}><FolderOpen aria-hidden="true" />{uiText("在文件管理器中打开")}</Action>
-    </div></details> : <Button className="workspace-split-toggle rounded-l-none border-l-0" size="icon-sm" variant={primary ? "default" : "outline"} disabled aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></Button>}
+    </div></details> : <Button className="workspace-split-toggle rounded-l-none border-l-0" size="icon-sm" variant={buttonVariant} disabled aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></Button>}
   </div>
 }
 export function Field({ id, label, help, required, children, ...props }: ComponentProps<"div"> & { id: string; label: string; help?: string; required?: boolean; children: ReactNode }) {
