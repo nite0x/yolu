@@ -625,7 +625,7 @@ function showConversationSelection() {
       conversationState.record(environment, [created]);
       if (!view.sessions.some(s => conversationSessionKey(s) === conversationSessionKey(created))) view.sessions.unshift(created);
       if (conversationState.current !== view || selection !== conversationState.selection) return;
-      view.selected = conversationSessionKey(created); view.creating = false; view.target = null; view.search = ''; view.statusFilter = 'all'; resetConversationListWindow(view);
+      view.selected = conversationSessionKey(created); view.creating = false; view.target = null;
       renderConversationBrowser(); showConversationSelection(); rememberConversationView();
     }
   });

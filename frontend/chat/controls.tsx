@@ -117,8 +117,11 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
   const modelOptions = s.models.map(m => ({value: m.model, label: m.displayName || m.model}));
   if (nextModel && !modelOptions.some(m => m.value === nextModel)) modelOptions.unshift({value: nextModel, label: modelName || nextModel});
   if (!s.session || !nextModel) modelOptions.unshift({value: "", label: defaultLabel});
-  const efforts = [...new Set([...(nextEffort ? [nextEffort] : []), ...(selectedModel?.supportedReasoningEfforts || []).map(e => e.reasoningEffort)])].map(value => ({value, label: effortLabel(value)}));
-  if (!s.session || !nextEffort) efforts.unshift({value: "", label: uiText("默认")});
+  const efforts = [...new Set([
+    ...(selectedModel?.supportedReasoningEfforts || []).map(e => e.reasoningEffort),
+    ...(nextEffort ? [nextEffort] : []),
+  ])].map(value => ({value, label: effortLabel(value)}));
+  if (!s.session || !nextEffort) efforts.unshift({value: "", label: defaultLabel});
   const modes = [...new Set([...(nextMode ? [nextMode] : []), ...s.modes])].map(value => ({value, label: modeLabel(value)}));
   modes.unshift({value: "", label: uiText("默认")});
   const summaryModel = modelName || defaultLabel;

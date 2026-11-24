@@ -212,6 +212,23 @@ test('a retained creation form can finish restoring while its alternate is visib
   assert.deepEqual(visible(h),[terminal]);
 });
 
+for (const desktop of [false, true]) test(`saving a draft keeps navigator filters in the ${desktop ? 'desktop' : 'browser'} host`, t => {
+  const h = harness(t, '#/projects', {desktop});
+  const draft = {route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},creating:true,pane:'detail'}};
+  open(h,draft);
+  const nav = h.nav(), reader = visible(h)[0];
+  const group = () => h.messages.get(nav).findLast(message => message.type === 'workhub:conversation-group');
+
+  assert.equal(group().target.conversation.creating,true);
+  h.send(reader,'workhub:page-state',{snapshot:conversation('created')});
+  assert.equal(group().selected,'created');
+  assert.equal(group().createdConversation,true);
+
+  open(h,conversation('existing'));
+  assert.equal(group().selected,'existing');
+  assert.equal(group().createdConversation,false);
+});
+
 test('independent pages reuse one document and preserve project routes and directory parameters', t => {
   const h = harness(t);
   for (const route of ['/projects','/projects/app','/projects/app/git?path=%2Frepo%2Fapp','/projects/app/worktrees','/projects/app','/settings']) {

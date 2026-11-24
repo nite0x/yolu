@@ -2428,7 +2428,7 @@ test('grouped navigation expands by project name, saves display preferences and 
   assert.equal(opened().conversation.scope.id,'app');
   assert.equal(opened().conversation.creationDirectory,'/repo/app');
 
-  post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'project',id:'app'},directory:'/repo/app',pane:'list'}}});
+  post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'project',id:'app'},directory:'/repo/app',search:'existing search',statusFilter:'waiting',pane:'list'}}});
   await settle(); await settle();
   nav.click('#newBrowserSession'); await settle();
   const independent = opened();
@@ -2442,6 +2442,21 @@ test('grouped navigation expands by project name, saves display preferences and 
   assert.match(draft.$('#sessionBrowserDirectoryChoices [aria-pressed="true"]').textContent,/默认目录/);
   draft.click('#sessionBrowserDirectoryChoices [data-creation-choice="/repo/backend"]');
   assert.equal(draft.currentSession().target.project_id,'backend');
+
+  const filters = () => {
+    const {scope, directory, search, statusFilter} = nav.window.WorkHubPage.snapshot().conversation;
+    return {project:scope.id, directory, search, statusFilter};
+  };
+  const previousFilters = {project:'app', directory:'/repo/app', search:'existing search', statusFilter:'waiting'};
+  post(nav,{type:'workhub:conversation-group',selected:'',split:false,target:independent});
+  assert.deepEqual(filters(),previousFilters);
+  const created = {id:'new-session',name:'Backend work',cwd:'/repo/backend',primary_project_id:'backend'};
+  post(nav,{type:'workhub:conversation-group',selected:created.id,split:false,createdConversation:true,target:{...independent,conversation:{...independent.conversation,creating:false,selected:created.id,session:created}}});
+  await settle(); await settle();
+  assert.deepEqual(filters(),previousFilters);
+  assert.equal(nav.$('#sessionBrowserSearch').value,'existing search');
+  assert.equal(nav.$('[data-conversation-status="waiting"]').getAttribute('aria-pressed'),'true');
+  assert.equal(nav.$('[data-conversation-session="new-session"]'),null);
 });
 
 test('search group overrides preserve saved expansion, explain matches and support keyboard browsing', async t => {
