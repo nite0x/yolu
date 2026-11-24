@@ -474,16 +474,15 @@ test('settings preserve unsaved edits during polling and keep the terminal reque
   assert.equal(h.$('#terminalError').hidden, true);
 });
 
-test('send shortcut settings retain edits, apply after saving and retain the saved shortcut after failures', async t => {
+test('send shortcut settings save immediately on selection and revert on failure', async t => {
   const h = await harness(t, true, {route:'/settings', intercept:(url, options, body) => {
     if (url === '/api/settings/chat-input') return {ok:true,json:async()=>body};
   }});
-  assert.equal(h.$('#sendShortcutSelect').value, 'enter');
-  h.change('#sendShortcutSelect', 'ctrlEnter');
-  await h.window.refresh();
-  assert.equal(h.$('#sendShortcutSelect').value, 'ctrlEnter');
-  assert.equal(h.window.YoluChatInput.current(), 'enter');
-  await h.submit('#chatInputForm');
+  const selectedShortcut = () => h.$('#sendShortcutGroup input[name="send_shortcut"]:checked')?.value;
+  assert.equal(selectedShortcut(), 'enter');
+  h.click('#sendShortcutGroup input[value="ctrlEnter"]');
+  await settle();
+  assert.equal(selectedShortcut(), 'ctrlEnter');
   assert.equal(h.window.YoluChatInput.current(), 'ctrlEnter');
   assert.match(h.$('#chatInputStatus').textContent, /已保存并应用/);
   const save = h.requests.find(r => r.url === '/api/settings/chat-input');
@@ -491,14 +490,61 @@ test('send shortcut settings retain edits, apply after saving and retain the sav
   assert.equal(save.options.headers['X-Environment-ID'], 'local');
   await h.navigate('/sessions');
   await h.navigate('/settings');
-  assert.equal(h.$('#sendShortcutSelect').value, 'ctrlEnter');
+  assert.equal(selectedShortcut(), 'ctrlEnter');
   h.setIntercept(url => url === '/api/settings/chat-input' ? {ok:false,json:async()=>({error:'Save failed'})} : undefined);
-  h.change('#sendShortcutSelect', 'enter');
-  await h.submit('#chatInputForm');
+  h.click('#sendShortcutGroup input[value="enter"]');
+  await settle();
   assert.equal(h.window.YoluChatInput.current(), 'ctrlEnter');
-  assert.equal(h.$('#sendShortcutSelect').value, 'enter');
-  assert.equal(h.$('#saveChatInput').disabled, false);
-  assert.match(h.$('#chatInputStatus').textContent, /Save failed/);
+  assert.equal(selectedShortcut(), 'ctrlEnter');
+  assert.equal(h.$('#chatInputError').hidden, false);
+  assert.match(h.$('#chatInputError').textContent, /Save failed/);
+});
+
+test('appearance palettes apply immediately with rollback on failure, and language actions appear only when dirty', async t => {
+  const h = await harness(t, true, {route:'/settings', intercept:(url, options, body) => {
+    if (url === '/api/settings/appearance') return {ok:true,json:async()=>body};
+  }});
+  const selectedTheme = () => h.$('#colorThemeGroup input[name="color_theme"]:checked')?.value;
+  assert.equal(selectedTheme(), 'mint');
+  assert.equal(h.$('#saveLanguage').hidden, true);
+  assert.equal(h.$('#cancelLanguage').hidden, true);
+  h.click('#colorThemeGroup input[value="dark"]');
+  await settle();
+  assert.equal(selectedTheme(), 'dark');
+  assert.equal(h.window.YoluTheme.current(), 'dark');
+  assert.match(h.$('#appearanceStatus').textContent, /已保存/);
+  assert.deepEqual(h.requests.findLast(r => r.url === '/api/settings/appearance').body, {color_theme:'dark'});
+  h.setIntercept(url => url === '/api/settings/appearance' ? {ok:false,json:async()=>({error:'Palette write failed'})} : undefined);
+  h.click('#colorThemeGroup input[value="light"]');
+  await settle();
+  assert.equal(h.window.YoluTheme.current(), 'dark');
+  assert.equal(selectedTheme(), 'dark');
+  assert.equal(h.$('#appearanceError').hidden, false);
+  assert.match(h.$('#appearanceError').textContent, /Palette write failed/);
+  h.change('#languageSelect', 'en');
+  assert.equal(h.$('#saveLanguage').hidden, false);
+  assert.equal(h.$('#cancelLanguage').hidden, false);
+  h.click('#cancelLanguage');
+  assert.equal(h.$('#languageSelect').value, 'zh-CN');
+  assert.equal(h.$('#saveLanguage').hidden, true);
+  assert.equal(h.$('#cancelLanguage').hidden, true);
+});
+
+test('preset terminal changes save immediately while custom terminal waits for explicit submit', async t => {
+  const h = await harness(t);
+  h.data.terminal.supported_kinds = ['auto', 'otty', 'custom'];
+  await h.window.refresh();
+  await h.navigate('/settings');
+  h.change('#terminalKind', 'otty');
+  await settle();
+  const put = h.requests.findLast(r => r.url === '/api/settings/terminal' && r.options.method === 'PUT');
+  assert.deepEqual(put.body, {kind:'otty', path:'', style:'otty'});
+  assert.match(h.$('#terminalSaveStatus').textContent, /已保存/);
+  const beforeCustom = h.requests.filter(r => r.url === '/api/settings/terminal' && r.options.method === 'PUT').length;
+  h.change('#terminalKind', 'custom');
+  await settle();
+  assert.equal(h.requests.filter(r => r.url === '/api/settings/terminal' && r.options.method === 'PUT').length, beforeCustom);
+  assert.equal(h.$('#terminalCustomFields').hidden, false);
 });
 
 test('Codex diagnostics stay read-only, retain report details during polling and provide a copy fallback', async t => {
@@ -622,77 +668,84 @@ test('Codex installation uses the selected report environment and refreshes it a
   assert.equal(h.requests.filter(r => r.url === '/api/settings/codex/install' && r.options.method === 'POST').length, 1);
 });
 
-test('title settings select a separate Codex model and retain unsaved edits during polling', async t => {
+test('title settings save immediately on selection and report failures accessibly', async t => {
   const h = await harness(t);
   await h.navigate('/settings');
   assert.equal(h.$('#sessionTitleFields').disabled, false);
   assert.equal(h.$('#sessionTitleModel').value, '');
   h.change('#sessionTitleModel', 'title-model');
-  await h.window.refresh(true); await settle();
+  await settle();
   assert.equal(h.$('#sessionTitleModel').value, 'title-model');
-  await h.submit('#sessionTitleForm');
-  assert.deepEqual(h.requests.find(r => r.url === '/api/settings/session-title' && r.options.method === 'PUT').body, {model:'title-model'});
+  assert.deepEqual(h.requests.findLast(r => r.url === '/api/settings/session-title' && r.options.method === 'PUT').body, {model:'title-model'});
   assert.equal(h.$('#sessionTitleError').hidden, true);
+  assert.match(h.$('#sessionTitleStatus').textContent, /已保存/);
   h.setIntercept((url, options) => url === '/api/settings/session-title' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'模型已不可用'})} : undefined);
   h.change('#sessionTitleModel', 'body-model');
-  await h.submit('#sessionTitleForm');
+  await settle();
   assert.equal(h.$('#sessionTitleModel').value, 'body-model');
   assert.equal(h.$('#sessionTitleError').getAttribute('role'), 'alert');
+  assert.equal(h.$('#sessionTitleError').hidden, false);
   assert.match(h.$('#sessionTitleError').textContent, /模型已不可用/);
 });
 
-test('conversation defaults save and reset per environment while polling preserves unsaved choices', async t => {
+test('conversation defaults save automatically per agent and environment with segmented controls', async t => {
   const h = await harness(t);
   await h.navigate('/settings');
+  const effortValue = () => h.$('#conversationDefaultEffort input[name="conversation_default_effort"]:checked')?.value ?? '';
+  const permissionValue = () => h.$('#conversationDefaultPermission input[name="conversation_default_permission"]:checked')?.value ?? '';
   assert.equal(h.$('#conversationDefaultsFields').disabled, false);
   assert.equal(h.$('#conversationDefaultModel').value, '');
-  assert.equal(h.$('#conversationDefaultPermission').value, '');
-  h.change('#conversationDefaultModel', 'body-model');
-  h.change('#conversationDefaultSpeed', 'fast');
-  h.change('#conversationDefaultEffort', 'high');
-  h.change('#conversationDefaultPermission', 'ask');
+  assert.equal(permissionValue(), '');
+  assert.equal(h.$('#environmentSelect').closest('form').id, 'conversationDefaultsForm');
+  assert.match(h.$('#settingsTitleEnv').textContent, /本机.*仅用于新对话/);
+  h.change('#conversationDefaultModel', 'body-model'); await settle();
+  h.change('#conversationDefaultSpeed', 'fast'); await settle();
+  h.click('#conversationDefaultEffort input[value="high"]'); await settle();
+  h.click('#conversationDefaultPermission input[value="ask"]'); await settle();
   await h.window.refresh(true); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
-  assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
-  await h.submit('#conversationDefaultsForm');
-  const saved = h.requests.find(r => r.url === '/api/settings/conversation-defaults' && r.options.method === 'PUT');
+  assert.equal(permissionValue(), 'ask');
+  const saved = h.requests.findLast(r => r.url === '/api/settings/conversation-defaults' && r.options.method === 'PUT');
   assert.deepEqual(saved.body, {model:'body-model',effort:'high',serviceTier:'fast',permission:'ask'});
   assert.equal(saved.options.headers['X-Environment-ID'], 'local');
   assert.match(h.$('#conversationDefaultsStatus').textContent, /已保存/);
-  h.change('#conversationDefaultProvider', 'agy'); await settle();
+  h.click('#conversationDefaultPermission input[value="full"]'); await settle();
+  assert.equal(h.$('#conversationDefaultPermissionHelp').dataset.danger, 'true');
+  h.click('#conversationDefaultPermission input[value="ask"]'); await settle();
+  assert.equal(h.$('#conversationDefaultPermissionHelp').dataset.danger, 'false');
+  h.click('#conversationDefaultProviderGroup input[value="agy"]'); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, '');
-  assert.equal(h.$('#conversationDefaultPermission').options[1].text, '启用沙箱');
+  assert.match(h.$('#conversationDefaultPermission').textContent, /启用沙箱/);
   assert.equal(h.$('#conversationDefaultSpeed').disabled, true);
-  h.change('#conversationDefaultModel', 'claude');
-  h.change('#conversationDefaultEffort', 'low');
-  h.change('#conversationDefaultPermission', 'ask');
-  h.change('#conversationDefaultProvider', 'codex'); await settle();
-  assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
-  assert.equal(h.$('#conversationDefaultEffort').value, 'high');
-  h.change('#conversationDefaultProvider', 'agy'); await settle();
-  assert.equal(h.$('#conversationDefaultModel').value, 'claude');
-  assert.equal(h.$('#conversationDefaultEffort').value, 'low');
-  await h.submit('#conversationDefaultsForm');
+  h.change('#conversationDefaultModel', 'claude'); await settle();
+  h.click('#conversationDefaultEffort input[value="low"]'); await settle();
+  h.click('#conversationDefaultPermission input[value="ask"]'); await settle();
   assert.deepEqual(h.data.agy_conversation_defaults, {model:'claude',effort:'low',serviceTier:'',permission:'ask'});
+  h.click('#conversationDefaultProviderGroup input[value="codex"]'); await settle();
+  assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
+  assert.equal(effortValue(), 'high');
+  h.click('#conversationDefaultProviderGroup input[value="agy"]'); await settle();
+  assert.equal(h.$('#conversationDefaultModel').value, 'claude');
+  assert.equal(effortValue(), 'low');
   h.click('#conversationDefaultsReload'); await settle();
-  assert.equal(h.$('#conversationDefaultEffort').value, 'low');
-  h.change('#conversationDefaultProvider', 'codex'); await settle();
+  assert.equal(effortValue(), 'low');
+  h.click('#conversationDefaultProviderGroup input[value="codex"]'); await settle();
   h.click('#conversationDefaultsReload'); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
-  assert.equal(h.$('#conversationDefaultEffort').value, 'high');
+  assert.equal(effortValue(), 'high');
   assert.equal(h.$('#conversationDefaultSpeed').value, 'fast');
-  h.change('#conversationDefaultModel', 'other-model');
-  assert.equal(h.$('#conversationDefaultEffort').value, '');
+  h.change('#conversationDefaultModel', 'other-model'); await settle();
+  assert.equal(effortValue(), '');
   assert.equal(h.$('#conversationDefaultSpeed').value, '');
   assert.equal(h.$('#conversationDefaultSpeed').disabled, true);
-  h.change('#conversationDefaultModel', ''); h.change('#conversationDefaultPermission', '');
-  await h.submit('#conversationDefaultsForm');
+  h.change('#conversationDefaultModel', ''); await settle();
+  h.click('#conversationDefaultPermission input[value=""]'); await settle();
   assert.deepEqual(h.data.conversation_defaults, {model:'',effort:'',serviceTier:'',permission:''});
   h.setIntercept((url, options) => url === '/api/settings/conversation-defaults' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'模型已不可用'})} : undefined);
-  h.change('#conversationDefaultModel', 'body-model');
-  await h.submit('#conversationDefaultsForm');
+  h.change('#conversationDefaultModel', 'body-model'); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
   assert.equal(h.$('#conversationDefaultsFields').disabled, false);
+  assert.equal(h.$('#conversationDefaultsError').hidden, false);
   assert.match(h.$('#conversationDefaultsError').textContent, /模型已不可用/);
 });
 
@@ -707,11 +760,69 @@ test('late conversation defaults cannot overwrite another environment and offlin
   });
   await h.window.loadEnvironments(); await h.navigate('/settings');
   await h.window.selectEnvironment('wsl-test','/settings'); await settle();
-  assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
+  assert.equal(h.$('#conversationDefaultPermission input[name="conversation_default_permission"]:checked')?.value, 'ask');
   assert.equal(h.$('#conversationDefaultsFields').disabled, false);
   assert.match(h.$('#conversationDefaultsStatus').textContent, /CLI offline/);
   resolveLocal(); await settle();
-  assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
+  assert.equal(h.$('#conversationDefaultPermission input[name="conversation_default_permission"]:checked')?.value, 'ask');
+});
+
+test('large reasoning catalogs retain every choice and save the visible dropdown value', async t => {
+  const efforts = ['low','medium','high','xhigh','max','ultra'];
+  const h = await harness(t, true, {route:'/settings', intercept:(url, options) => {
+    if (url === '/api/settings/conversation-defaults' && options.method !== 'PUT') return {ok:true,json:async()=>({settings:{effort:'ultra'},models:[{model:'large',isDefault:true,supportedReasoningEfforts:efforts.map(reasoningEffort=>({reasoningEffort}))}]})};
+  }});
+  assert.equal(h.$('#conversationDefaultEffort').hidden, true);
+  assert.equal(h.$('#conversationDefaultEffortDropdown').hidden, false);
+  assert.equal(h.$('#conversationDefaultEffortSelect').value, 'ultra');
+  assert.deepEqual([...h.$('#conversationDefaultEffortSelect').options].map(o=>o.value), ['',...efforts]);
+  h.change('#conversationDefaultEffortSelect', 'max'); await settle();
+  assert.equal(h.requests.findLast(r=>r.url === '/api/settings/conversation-defaults' && r.options.method === 'PUT').body.effort, 'max');
+});
+
+test('rapid default changes serialize writes and retain the final persisted selection', async t => {
+  const h = await harness(t, true, {route:'/settings'});
+  let completeFirst;
+  let writes = 0;
+  h.setIntercept((url, options, body) => {
+    if (url !== '/api/settings/conversation-defaults' || options.method !== 'PUT') return;
+    writes++;
+    if (writes === 1) return new Promise(resolve => {completeFirst = () => {h.data.conversation_defaults = body; resolve({ok:true,json:async()=>({})});};});
+  });
+  h.click('#conversationDefaultPermission input[value="ask"]'); await settle();
+  h.click('#conversationDefaultPermission input[value="auto"]'); await settle();
+  assert.equal(writes, 1, 'the second request waits for the first write');
+  assert.match(h.$('#conversationDefaultsStatus').textContent, /保存中/);
+  completeFirst(); await settle();
+  assert.equal(writes, 2);
+  assert.equal(h.data.conversation_defaults.permission, 'auto');
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, 'auto');
+  assert.match(h.$('#conversationDefaultsStatus').textContent, /已保存/);
+});
+
+test('failed default drafts survive refresh and scope changes and can be retried', async t => {
+  const h = await harness(t, true, {route:'/settings'});
+  h.environments.environments.push({id:'wsl-test',name:'WSL test'});
+  await h.window.loadEnvironments();
+  h.setIntercept((url, options) => url === '/api/settings/conversation-defaults' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'Write failed'})} : undefined);
+  h.click('#conversationDefaultPermission input[value="auto"]'); await settle();
+  assert.equal(h.$('#conversationDefaultsRetry').hidden, false);
+  h.click('#conversationDefaultProviderGroup input[value="agy"]'); await settle();
+  h.click('#conversationDefaultProviderGroup input[value="codex"]'); await settle();
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, 'auto');
+  h.click('#conversationDefaultsReload'); await settle();
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, 'auto');
+  await h.window.selectEnvironment('wsl-test','/settings'); await settle();
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, '');
+  await h.window.selectEnvironment('local','/settings'); await settle();
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, 'auto');
+  assert.match(h.$('#conversationDefaultsError').textContent, /Write failed/);
+  assert.equal(h.$('#conversationDefaultsRetry').hidden, false);
+  h.setIntercept(undefined);
+  h.click('#conversationDefaultsRetry'); await settle();
+  assert.equal(h.$('#conversationDefaultsRetry').hidden, true);
+  assert.equal(h.$('#conversationDefaultsError').hidden, true);
+  assert.equal(h.data.conversation_defaults.permission, 'auto');
 });
 
 test('failed terminal saves keep the draft and show an accessible error', async t => {

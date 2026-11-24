@@ -63,7 +63,7 @@ test('English applies to production React forms while project names remain verba
  assert.match(scan,/Found 1 repositories, including 0 already registered/);
  assert.match(scan,/用户项目/);
  assert.equal(w.document.querySelector('#languageTitle').textContent,'Interface language');
- assert.equal(w.document.querySelector('#saveLanguage').textContent,'Save and apply language');
+ assert.equal(w.document.querySelector('#saveLanguage').textContent,'Apply and reload');
  assert.equal(w.document.querySelector('#languageSelect option[value="zh-CN"]').textContent,'简体中文');
  const html=w.WorkHubUI.projects([{id:'project',name:'用户项目',path:'/project',worktrees:[]}],null);
  const container=w.document.createElement('div');container.innerHTML=html;

@@ -120,13 +120,13 @@ Disconnected environments retain their locally stored project registrations. Rec
 
 ### Color palette
 
-In Settings, choose **Appearance → Color palette** and select **Yolu Mint**, **Classic indigo**, **Light**, **Dark** or **Follow system**. Save and apply to update the colors of open pages, conversations and terminals immediately. This does not reload pages or stop running work. The palette is stored in the local application database, shared across execution environments and retained when the backend port changes. Existing installations keep Classic indigo until a different palette is selected.
+In Settings, choose **Appearance → Color palette** and select **Yolu Mint**, **Classic indigo**, **Light**, **Dark** or **Follow system**. Selection immediately updates the colors of open pages, conversations and terminals and saves automatically. A failed save restores the last saved palette. This does not reload pages or stop running work. The palette is stored in the local application database, shared across execution environments and retained when the backend port changes. Existing installations keep Classic indigo until a different palette is selected.
 
 Yolu Mint uses a warm white background, deep teal text and mint accents. Light is a neutral white and gray palette with blue accents, and Dark is its charcoal counterpart with sky blue accents. Follow system switches between Light and Dark with the operating system appearance, including while Yolu is open. Status colors and code syntax colors retain their separate meanings.
 
 ## Interface language
 
-Open Settings and choose Follow system, English or Simplified Chinese under Interface language. Save and apply to reload the application in the selected language. The choice is stored in the local application database, applies across execution environments and survives backend port changes and restarts.
+Open Settings and choose Follow system, English or Simplified Chinese under Interface language. Choose **Apply and reload** to reload the application in the selected language. The choice is stored in the local application database, applies across execution environments and survives backend port changes and restarts.
 
 Before reloading, Yolu waits for open conversation drafts to be saved. If a draft cannot be saved, the page remains open and explains the failure. Background conversations and terminal processes continue during the UI reload. Save other unfinished settings before applying a language change.
 
@@ -135,6 +135,8 @@ Application labels, conversation controls, accessibility labels, date formatting
 ## Settings and diagnostics
 
 Settings manages execution environments, agent preferences, terminal tools and the optional daily default-branch update configuration. Terminal actions share the configured tool. macOS defaults to Terminal; other options depend on the execution platform and installed tools.
+
+In **Settings → Conversation → New-conversation defaults**, select the execution environment and agent before changing the model, response speed, reasoning effort or permissions. Changes save automatically and apply only to new conversations. Existing conversations can override their own settings. Larger reasoning-effort catalogs use a dropdown. Failed default changes retain your choices and offer **Retry save**, including after switching agents or environments. Automatic title settings also apply to new conversations in the selected environment; the send shortcut applies throughout the application, including open conversations.
 
 In **Settings → Codex installation diagnostics**, check the local host or a registered WSL user. Choose **Install Codex CLI** to install the latest stable release with the OpenAI installer. **Upgrade Codex CLI** uses the detected standalone installation, npm package or Homebrew cask. Use the original installation method for other distributions.
 

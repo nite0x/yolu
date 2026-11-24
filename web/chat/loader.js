@@ -24,7 +24,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       }
     },
     close() { version++; mounted?.close(); },
-    async flushDraft() { const saved = await Promise.all([mounted?.flushDraft() ?? true?.flushGlobalAssistantDraft() ?? true]); return saved.every(Boolean); },
+    async flushDraft() { return await (mounted?.flushDraft() ?? true); },
     updateOverview(overview) { currentOverview = overview; mounted?.updateOverview(overview); },
     updateSession(session) { mounted?.updateSession(session); }
   };
