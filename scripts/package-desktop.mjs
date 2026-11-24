@@ -5,7 +5,8 @@ import { root, run, desktopVersion, packagePlan, bundleFiles, writeChecksums, va
 const plan = packagePlan(process.argv.slice(2), run('rustc', ['--print', 'host-tuple']));
 const version = desktopVersion();
 const mode = plan.debug ? 'debug' : 'release';
-const output = path.join(root, 'dist/desktop', version, plan.target, plan.preview ? `${mode}-preview` : mode);
+const previewSuffix = plan.preview ? (plan.previewLabel ? `preview-${plan.previewLabel}` : 'preview') : '';
+const output = path.join(root, 'dist/desktop', version, plan.target, previewSuffix ? `${mode}-${previewSuffix}` : mode);
 if (plan.requireSigning) validateReleaseSource(plan, run('git', ['status', '--porcelain', '--untracked-files=normal']));
 if (plan.dryRun) {
   console.log(JSON.stringify({ version, target: plan.target, bundles: plan.bundles, mode, requireSigning: plan.requireSigning, output }, null, 2));
@@ -26,7 +27,7 @@ if (plan.dryRun) {
   mkdirSync(output, { recursive: true });
   const names = [];
   for (const artifact of artifacts) {
-    const name = `yolu${plan.preview ? '-preview' : ''}_${version}_${plan.target}${artifact.suffix}`;
+    const name = `yolu${previewSuffix ? `-${previewSuffix}` : ''}_${version}_${plan.target}${artifact.suffix}`;
     cpSync(artifact.source, path.join(output, name));
     names.push(name);
   }

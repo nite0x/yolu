@@ -12,6 +12,7 @@ import { Branch, EmptyState, SourceOptions, StatusBadge, TreeStatus } from "./sh
 import type { GitOverview, Project, Worktree } from "./types"
 import type { ProjectOpenTool } from "./shared"
 import {readElicitation} from "../chat/approval"
+import {effortLabel, findChatModel, permissionChoices, serviceTierLabel} from "../chat/settings"
 import { ConversationList, ConversationScopes } from "./session-browser"
 import { conversationContext, isGeneralConversationDirectory } from "./conversation-context"
 import { createOperations } from "./operations"
@@ -50,6 +51,7 @@ export const workspaceUI = {
   conversationList: (props: Parameters<typeof ConversationList>[0]) => renderToStaticMarkup(<ConversationList {...props} />),
   conversationScopes: (scopes: Parameters<typeof ConversationScopes>[0]["scopes"], selected?: Parameters<typeof ConversationScopes>[0]["selected"]) => renderToStaticMarkup(<ConversationScopes scopes={scopes} selected={selected} />),
   readElicitation,
+  effortLabel, findChatModel, permissionChoices, serviceTierLabel,
   projects: (projects: Project[], selectedID: string | null, openTool: ProjectOpenTool, filter: ProjectFilter, detailOpen: boolean, detailView: ComponentProps<typeof Projects>["detailView"], searching?: boolean, status?: ComponentProps<typeof Projects>["status"]) => renderToStaticMarkup(<Projects projects={projects} selectedID={selectedID} openTool={openTool} filter={filter} detailOpen={detailOpen} detailView={detailView} searching={searching} status={status} />),
   git: (overview: GitOverview) => renderToStaticMarkup(<GitView overview={overview} />),
   badge: (kind: string, text?: string) => renderToStaticMarkup(<span className="shadcn-scope"><StatusBadge kind={kind}>{text}</StatusBadge></span>),

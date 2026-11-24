@@ -1,0 +1,326 @@
+/* Shared file/diff browser dialog, split-pane viewer, and project directory action menus. */
+.workspace-more { position: relative; }
+.workspace-more > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--foreground);
+  background: var(--background, var(--yolu-surface, #fff));
+  white-space: nowrap;
+  list-style: none;
+  transition: background-color .12s, border-color .12s;
+}
+.workspace-more > summary::-webkit-details-marker { display: none; }
+.workspace-more > summary svg { width: 16px; height: 16px; }
+.workspace-more > summary:hover { background: var(--muted); }
+.workspace-more > summary:focus-visible,
+.workspace-action-menu > summary:focus-visible,
+.workspace-project-details > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.workspace-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 184px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 5px;
+  background: var(--background, var(--yolu-surface, #fff));
+  box-shadow: var(--yolu-elevation-float);
+}
+.workspace-more-menu > button { justify-content: flex-start; border: 0; box-shadow: none; font-weight: 400; }
+.workspace-more-menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+
+.workspace-split-action { display: inline-flex; align-items: stretch; position: relative; }
+.workspace-split-action > .workspace-split-primary { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.workspace-action-menu { position: static; }
+.workspace-action-menu > summary,
+.workspace-split-action > .workspace-split-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 7px 7px 0;
+  background: var(--background, var(--yolu-surface, #fff));
+  color: var(--foreground);
+  cursor: pointer;
+  list-style: none;
+  transition: background-color .12s;
+}
+.workspace-action-menu > summary::-webkit-details-marker { display: none; }
+.workspace-action-menu > summary svg { width: 14px; height: 14px; }
+.workspace-action-menu > summary:hover,
+.workspace-action-menu[open] > summary { background: var(--muted); }
+.workspace-action-menu-body {
+  position: fixed;
+  z-index: 20;
+  display: grid;
+  gap: 2px;
+  width: 176px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background, var(--yolu-surface, #fff));
+  box-shadow: var(--yolu-elevation-float);
+}
+.workspace-action-menu-body > button { justify-content: flex-start; border: 0; box-shadow: none; font-weight: 400; }
+.workspace-action-menu-body hr { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.workspace-split-accent .workspace-action-menu > summary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+.workspace-split-accent .workspace-action-menu > summary:hover { background: color-mix(in srgb, var(--primary) 90%, transparent); }
+
+/* Read-only project file & diff browser dialog. */
+.changes-dialog {
+  width: min(1320px, calc(100vw - 32px));
+  max-height: min(88dvh, 880px);
+  padding: 0;
+  overflow: hidden;
+}
+.changes-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  height: min(86dvh, 840px);
+}
+.changes-dialog > .dialog-header {
+  flex: none;
+  margin: 0 !important;
+  min-height: 44px;
+  padding: 6px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--yolu-border) 70%, transparent);
+  align-items: center;
+}
+.changes-dialog > .dialog-header h2 { font-size: var(--yolu-font-size-row); font-weight: 600; }
+.changes-dialog > #changesBrowser {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px 14px;
+  overflow: hidden;
+}
+.changes-dialog > #changesCommitPlan {
+  margin: 16px 20px;
+}
+.changes-dialog > .dialog-footer {
+  flex: none;
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+}
+.changes-dialog .file-browser {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.changes-dialog .file-browser > .dialog-description {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.changes-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--muted);
+}
+.changes-controls > label {
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.changes-controls > [data-slot="native-select-wrapper"] {
+  width: min(100%, 210px);
+  flex: 0 1 210px;
+}
+.changes-controls > [data-slot="native-select-wrapper"] select {
+  height: 32px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 12px;
+  background: var(--background);
+}
+.changes-controls > button[data-action="project-open-vscode"] {
+  margin-inline-start: auto;
+}
+.changes-file-list {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+}
+.changes-file-list button {
+  align-items: flex-start;
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.changes-text {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  min-height: 200px;
+  overflow: auto;
+  white-space: pre;
+  font: 12px/1.7 var(--font-mono, monospace);
+  tab-size: 4;
+  color: var(--foreground);
+  background: var(--yolu-surface, #fff);
+}
+.changes-text[role="status"] {
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 13px;
+  white-space: normal;
+  background: var(--muted);
+}
+.browser-files {
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid var(--border);
+  padding-right: 8px;
+}
+.browser-files .quiet {
+  padding: 12px 8px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.browser-tree { list-style: none; margin: 0; padding: 0; }
+.browser-tree .browser-tree-entry {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 30px;
+  height: auto;
+  gap: 5px;
+  text-align: left;
+  font-size: 12px;
+}
+.browser-tree-entry > svg { flex-shrink: 0; width: 14px; height: 14px; }
+.browser-tree-entry > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-content .changes-text {
+  padding: 0;
+  white-space: pre;
+  overflow: auto;
+  background: var(--yolu-surface, #fff);
+}
+.browser-content .changes-text[role="status"] {
+  padding: 24px;
+  background: var(--muted);
+}
+.changes-text:has(> diffs-container) { white-space: normal; }
+.changes-text diffs-container { display: block; --diffs-font-size: 12px; --diffs-line-height: 20px; }
+#changesError { margin: 0; color: var(--destructive); font-size: 12px; white-space: pre-wrap; }
+
+.file-split-layout {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  flex: 1;
+  min-height: 240px;
+  min-width: 0;
+}
+.file-tree-pane {
+  flex: 0 0 clamp(150px, var(--file-tree-width, 250px), 52%);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  background: var(--background);
+}
+.file-split-layout .browser-files {
+  display: block;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  padding: 0 4px 0 0;
+  overflow: auto;
+}
+.file-split-layout > .browser-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.file-split-layout .browser-content .changes-text {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+.file-split-layout[data-stacked="true"] { flex-direction: column; }
+.file-split-layout[data-stacked="true"] .file-tree-pane {
+  flex-basis: clamp(90px, var(--file-tree-height, 170px), 46%);
+}
+
+.reading-splitter {
+  position: relative;
+  flex: 0 0 10px;
+  touch-action: none;
+  cursor: col-resize;
+  outline: none;
+}
+.reading-splitter::after {
+  content: "";
+  position: absolute;
+  inset: 12px auto 12px 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background-color .12s;
+}
+.reading-splitter:hover::after,
+.reading-splitter:focus-visible::after {
+  background: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+.reading-splitter[aria-orientation="horizontal"] { cursor: row-resize; }
+.reading-splitter[aria-orientation="horizontal"]::after {
+  inset: 4px 12px auto;
+  width: auto;
+  height: 2px;
+}
+[data-split-resizing], [data-split-resizing] * { user-select: none !important; }
+[data-split-resizing="x"], [data-split-resizing="x"] * { cursor: col-resize !important; }
+[data-split-resizing="y"], [data-split-resizing="y"] * { cursor: row-resize !important; }
+
+@media (max-width: 760px) {
+  .changes-dialog[open] {
+    width: calc(100vw - 20px);
+    height: calc(100dvh - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+  .changes-dialog > .dialog-header,
+  .changes-dialog > .dialog-footer { padding: 12px 14px; }
+  .changes-dialog > #changesBrowser { padding: 10px 14px 12px; }
+  .changes-controls > button[data-action="project-open-vscode"] { margin-inline-start: 0; }
+}

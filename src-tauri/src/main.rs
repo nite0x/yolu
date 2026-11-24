@@ -222,6 +222,11 @@ fn menu(app: &tauri::AppHandle, chinese: bool) -> tauri::Result<Menu<tauri::Wry>
     }
 }
 
+fn is_preview_identifier(identifier: &str) -> bool {
+    identifier == "dev.work-hub.desktop.preview"
+        || identifier.starts_with("dev.work-hub.desktop.preview.")
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "linux")]
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--mcp")) {
@@ -234,7 +239,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let context = tauri::generate_context!();
     let options = Options::parse(std::env::args_os().skip(1))?;
-    if context.config().identifier == "dev.work-hub.desktop.preview"
+    if is_preview_identifier(&context.config().identifier)
         && (options.stop || options.backend_info) && options.data.is_none()
     {
         return Err("测试版命令行操作必须显式指定 --data，避免操作正式版后台".into());
@@ -275,7 +280,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .setup(move |app| {
             let mut options = options;
             // Finder launches of the preview use their own backend and worktree directory.
-            if app.config().identifier == "dev.work-hub.desktop.preview" {
+            if is_preview_identifier(&app.config().identifier) {
                 let preview = app.path().app_data_dir()?;
                 options.data.get_or_insert_with(|| preview.join("data"));
                 options.root.get_or_insert_with(|| preview.join("workspaces"));

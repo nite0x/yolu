@@ -86,16 +86,16 @@ export function WorkingDirectoryCard({project, tree, name, primary, tool, state,
       </div>
       <div className="directory-card-status">
         {usable ? <><GitSyncStatus tree={tree} /> <DirectoryLocalStatus tree={tree} project={project} name={name} /></> : <TreeStatus tree={tree} compact />}
-        <Action action="project-directory-section" {...target} data-section="sessions" variant="secondary" className="directory-session-count" data-detail-focus="session-count" aria-controls={panel}>
+        <Action action="project-directory-section" {...target} data-section="sessions" variant="outline" className="directory-session-count" data-detail-focus="session-count" aria-controls={panel}>
           <MessageSquare aria-hidden="true" />{conversations.loading && !conversations.sessions.length || conversations.error && !conversations.sessions.length ? uiText("关联对话") : uiText("{0} 条关联对话", sessions.length)}
         </Action>
         {sessions[0]?.name ? <span className="directory-last-session" title={sessions[0].name}>{sessions[0].provider === "agy" ? "Antigravity" : "Codex"} · {sessions[0].name}</span> : null}
       </div>
       <div className="directory-actions">
-        <Action action="project-conversation-new" {...target} variant="default" disabled={!usable || readOnly} aria-label={uiText("为 {0} 新建对话", name)}><Plus aria-hidden="true" />{uiText("新建对话")}</Action>
-        <Action action="changes-open" {...target} disabled={!usable} aria-label={uiText("文件与改动")}><Pencil aria-hidden="true" />{uiText("查看变更")}</Action>
+        <Action action="project-conversation-new" {...target} variant="ghost" className="directory-primary-action" disabled={!usable || readOnly} aria-label={uiText("为 {0} 新建对话", name)}><Plus aria-hidden="true" />{uiText("新建对话")}</Action>
+        <Action action="changes-open" {...target} variant="ghost" disabled={!usable} aria-label={uiText("文件与改动")}><Pencil aria-hidden="true" />{uiText("查看变更")}</Action>
         <ProjectOpenActions project={project} path={path} tool={tool} disabled={!usable} />
-        <Action action="project-terminal" {...target} disabled={!usable} size="icon-sm" className="directory-terminal" title={uiText("用 {0} 打开工作目录", uiText("终端"))} aria-label={uiText("用 {0} 打开工作目录", uiText("终端"))}><Terminal aria-hidden="true" /></Action>
+        <Action action="project-terminal" {...target} variant="ghost" disabled={!usable} size="icon-sm" className="directory-terminal" title={uiText("用 {0} 打开工作目录", uiText("终端"))} aria-label={uiText("用 {0} 打开工作目录", uiText("终端"))}><Terminal aria-hidden="true" /></Action>
         <details className="workspace-more directory-more">
           <summary aria-label={uiText("{0} 更多操作", name)}><MoreHorizontal aria-hidden="true" /></summary>
           <div className="workspace-more-menu">

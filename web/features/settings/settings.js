@@ -14,6 +14,8 @@ let titleSettingsRevision = 0;
 let conversationDefaultsEnvironment = null;
 let conversationDefaultsRevision = 0;
 let conversationDefaultsLoading = false;
+let conversationDefaultModels = [];
+const conversationDefaultsDrafts = new Map();
 const codexDiagnostics = new Map();
 const agyDiagnostics = new Map();
 const codexInstallationMonitors = new Set();
@@ -234,30 +236,75 @@ $('#sessionTitleForm').addEventListener('submit', event => {
   }, $('#sessionTitleError'));
 });
 
-async function loadConversationDefaults() {
+function setConversationDefaultOptions(select, defaultLabel, options, value, unavailableLabel) {
+  const selected = options.some(option => option.value === value);
+  if (value && !selected && unavailableLabel) options.unshift(new Option(uiText(unavailableLabel, value), value));
+  select.replaceChildren(new Option(defaultLabel, ''), ...options);
+  select.value = selected || unavailableLabel ? value : '';
+}
+
+function renderConversationModelOptions(provider, effort, speed, unavailableLabel) {
+  const {findChatModel, effortLabel, serviceTierLabel} = window.WorkHubUI;
+  const model = findChatModel(conversationDefaultModels, $('#conversationDefaultModel').value);
+  const effortOptions = [...new Set(model?.supportedReasoningEfforts?.map(item => item.reasoningEffort).filter(Boolean))];
+  const tiers = new Map((model?.serviceTiers || []).filter(tier => tier.id).map(tier => [tier.id, tier]));
+  const effortSelect = $('#conversationDefaultEffort');
+  const speedSelect = $('#conversationDefaultSpeed');
+  setConversationDefaultOptions(effortSelect, uiText('使用模型默认强度'), effortOptions.map(value => new Option(effortLabel(value), value)), effort, unavailableLabel);
+  if (provider === 'agy') {
+    speedSelect.replaceChildren(new Option(uiText('Antigravity 由模型决定响应速度'), ''));
+  } else {
+    setConversationDefaultOptions(speedSelect, uiText('沿用 Codex 默认速度'), [...tiers.values()].map(tier => new Option(serviceTierLabel(tier), tier.id)), speed, unavailableLabel);
+  }
+  effortSelect.disabled = effortSelect.options.length === 1;
+  speedSelect.disabled = speedSelect.options.length === 1;
+}
+
+function conversationDefaultsPath(provider, reload = false) {
+  return '/api/settings/conversation-defaults' + (provider === 'agy' ? '?provider=agy' + (reload ? '&refresh=1' : '') : '');
+}
+
+function conversationDefaultValues() {
+  return {
+    model: $('#conversationDefaultModel').value,
+    effort: $('#conversationDefaultEffort').value,
+    serviceTier: $('#conversationDefaultSpeed').value,
+    permission: $('#conversationDefaultPermission').value,
+  };
+}
+
+async function loadConversationDefaults(reload = false) {
   const environment = activeEnvironment;
+  const provider = $('#conversationDefaultProvider').value;
+  const draftKey = JSON.stringify([environment, provider]);
   const revision = ++conversationDefaultsRevision;
   conversationDefaultsEnvironment = environment;
   conversationDefaultsLoading = true;
+  $('#conversationDefaultProvider').disabled = false;
   $('#conversationDefaultsFields').disabled = true;
   $('#conversationDefaultsReload').disabled = true;
   $('#conversationDefaultsError').hidden = true;
-  $('#conversationDefaultsStatus').textContent = '';
+  $('#conversationDefaultsStatus').textContent = uiText('正在读取…');
   try {
-    const result = await api('/api/settings/conversation-defaults', {environment});
+    const result = await api(conversationDefaultsPath(provider, reload), {environment});
     if (environment !== activeEnvironment || revision !== conversationDefaultsRevision) return;
-    const model = result.settings.model || '';
-    const models = result.models || [];
-    const options = [new Option(uiText('沿用 Codex 默认模型'), '')];
-    if (model && !models.some(m => m.model === model)) options.push(new Option(uiText(result.models_error ? '{0}（未核对）' : '{0}（当前不可用）', model), model));
-    for (const candidate of models) options.push(new Option(candidate.displayName || candidate.model, candidate.model));
-    $('#conversationDefaultModel').replaceChildren(...options);
-    $('#conversationDefaultModel').value = model;
-    $('#conversationDefaultPermission').value = result.settings.permission || '';
-    $('#conversationDefaultsStatus').textContent = result.models_error || '';
-    $('#conversationDefaultsFields').disabled = false;
+    conversationDefaultModels = result.models || [];
+    const unavailableLabel = result.models_error ? '{0}（未核对）' : '{0}（当前不可用）';
+    const settings = conversationDefaultsDrafts.get(draftKey) || result.settings;
+    const models = conversationDefaultModels.map(model => new Option(model.displayName || model.model, model.model));
+    setConversationDefaultOptions($('#conversationDefaultModel'), provider === 'agy' ? uiText('沿用 Antigravity 默认模型') : uiText('沿用 Codex 默认模型'), models, settings.model || '', unavailableLabel);
+    renderConversationModelOptions(provider, settings.effort || '', settings.serviceTier || '', unavailableLabel);
+    const permissions = window.WorkHubUI.permissionChoices(provider).map(choice => new Option(choice.label, choice.value));
+    setConversationDefaultOptions($('#conversationDefaultPermission'), provider === 'agy' ? uiText('沿用 Antigravity 默认权限') : uiText('沿用 Codex 默认权限'), permissions, settings.permission || '', unavailableLabel);
+    $('#conversationDefaultPermissionHelp').textContent = provider === 'agy' ? uiText('选择「跳过权限检查」后，Antigravity 会自动批准操作。') : [
+      uiText('按目录授权的对话使用其目录访问权限。'),
+      uiText('完全访问权限允许读取和修改电脑上的文件并执行命令。'),
+    ].join(' ');
+    $('#conversationDefaultsStatus').textContent = result.models_error ? uiText(result.models_error) : '';
+    $('#conversationDefaultsFields').disabled = result.available === false;
   } catch (error) {
     if (environment !== activeEnvironment || revision !== conversationDefaultsRevision) return;
+    $('#conversationDefaultsStatus').textContent = '';
     $('#conversationDefaultsError').textContent = error.message;
     $('#conversationDefaultsError').hidden = false;
   } finally {
@@ -268,32 +315,47 @@ async function loadConversationDefaults() {
   }
 }
 
-$('#conversationDefaultsReload').addEventListener('click', () => { if (state.loaded && !conversationDefaultsLoading) loadConversationDefaults(); });
+$('#conversationDefaultProvider').addEventListener('change', () => { if (state.loaded) loadConversationDefaults(); });
+$('#conversationDefaultModel').addEventListener('change', () => {
+  renderConversationModelOptions($('#conversationDefaultProvider').value, $('#conversationDefaultEffort').value, $('#conversationDefaultSpeed').value);
+});
+$('#conversationDefaultsForm').addEventListener('change', event => {
+  if ($('#conversationDefaultsFields').contains(event.target) && !$('#conversationDefaultsFields').disabled) {
+    conversationDefaultsDrafts.set(JSON.stringify([activeEnvironment, $('#conversationDefaultProvider').value]), conversationDefaultValues());
+  }
+});
+$('#conversationDefaultsReload').addEventListener('click', () => { if (state.loaded && !conversationDefaultsLoading) loadConversationDefaults(true); });
 $('#conversationDefaultsForm').addEventListener('submit', event => {
   event.preventDefault();
   if ($('#conversationDefaultsFields').disabled) return;
   const environment = activeEnvironment;
+  const provider = $('#conversationDefaultProvider').value;
+  const draftKey = JSON.stringify([environment, provider]);
+  const draft = conversationDefaultsDrafts.get(draftKey);
   const revision = conversationDefaultsRevision;
-  const settings = {model:$('#conversationDefaultModel').value, permission:$('#conversationDefaultPermission').value};
+  const settings = conversationDefaultValues();
   mutation(uiText('正在保存新对话设置'), async () => {
+    $('#conversationDefaultProvider').disabled = true;
     $('#conversationDefaultsFields').disabled = true;
     $('#conversationDefaultsReload').disabled = true;
     try {
-      await api('/api/settings/conversation-defaults', {method:'PUT', environment, body:JSON.stringify(settings)});
+      await api(conversationDefaultsPath(provider), {method:'PUT', environment, body:JSON.stringify(settings)});
+      if (conversationDefaultsDrafts.get(draftKey) === draft) conversationDefaultsDrafts.delete(draftKey);
       if (environment === activeEnvironment && revision === conversationDefaultsRevision) {
         $('#conversationDefaultsStatus').textContent = uiText('新对话设置已保存');
       }
       const host = window.top;
       for (const page of [host, ...[...host.document.querySelectorAll('iframe')].map(frame => frame.contentWindow).filter(Boolean)]) {
-        page.dispatchEvent(new page.CustomEvent('workhub:conversation-defaults', {detail:{environment}}));
+        page.dispatchEvent(new page.CustomEvent('workhub:conversation-defaults', {detail:{environment, provider}}));
       }
     } finally {
       if (environment === activeEnvironment && revision === conversationDefaultsRevision) {
+        $('#conversationDefaultProvider').disabled = !state.loaded;
         $('#conversationDefaultsFields').disabled = !state.loaded;
         $('#conversationDefaultsReload').disabled = !state.loaded;
       }
     }
-  }, $('#conversationDefaultsError'), {environment, key:'conversation-defaults', isCurrent:() => environment === activeEnvironment && revision === conversationDefaultsRevision});
+  }, $('#conversationDefaultsError'), {environment, key:'conversation-defaults:' + provider, isCurrent:() => environment === activeEnvironment && revision === conversationDefaultsRevision});
 });
 
 function renderSettings() {
@@ -315,6 +377,7 @@ function renderSettings() {
     conversationDefaultsEnvironment = null;
     conversationDefaultsRevision++;
     conversationDefaultsLoading = false;
+    $('#conversationDefaultProvider').disabled = true;
     $('#conversationDefaultsFields').disabled = true;
     $('#conversationDefaultsReload').disabled = true;
     $('#sessionTitleFields').disabled = true;

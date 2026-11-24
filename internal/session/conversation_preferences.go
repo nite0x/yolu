@@ -17,8 +17,14 @@ import (
 // Empty fields inherit provider configuration. Preferences belong to this execution
 // environment and are applied only when creating a conversation.
 type conversationPreferences struct {
-	Model      string `json:"model,omitempty"`
-	Permission string `json:"permission,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Effort      string `json:"effort,omitempty"`
+	Permission  string `json:"permission,omitempty"`
+	ServiceTier string `json:"serviceTier,omitempty"`
+}
+
+func (p conversationPreferences) turnSettings() TurnSettings {
+	return TurnSettings{Model: p.Model, Effort: p.Effort, Permission: p.Permission, ServiceTier: p.ServiceTier}
 }
 
 func conversationPreferencesKey(provider string) string {
@@ -45,7 +51,7 @@ func (a *Service) conversationPreferencesForProvider(ctx context.Context, provid
 	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
 		return settings, err
 	}
-	return settings, (TurnSettings{Model: settings.Model, Permission: settings.Permission}).validate()
+	return settings, settings.turnSettings().validate()
 }
 
 func (a *Service) conversationModels(ctx context.Context) ([]chatModel, error) {
@@ -57,13 +63,13 @@ func (a *Service) conversationModels(ctx context.Context) ([]chatModel, error) {
 	return codex.ListModels(c.Call)
 }
 
-func availableConversationModel(models []chatModel, model string) bool {
-	for _, candidate := range models {
-		if candidate.Model == model {
-			return true
+func findConversationModel(models []chatModel, model string) *chatModel {
+	for i := range models {
+		if model == "" && models[i].Default || model != "" && models[i].Model == model {
+			return &models[i]
 		}
 	}
-	return false
+	return nil
 }
 
 func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.Request) {
@@ -81,8 +87,12 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 			return
 		}
 		if provider == model.ProviderAgy {
-			opts := a.agyChatOptions(r.Context())
-			httpx.WriteJSON(w, http.StatusOK, map[string]any{"provider": provider, "settings": settings, "models": opts["models"]})
+			catalog, err := a.agyOptionsCatalog(r.Context(), r.URL.Query().Get("refresh") == "1")
+			result := map[string]any{"provider": provider, "settings": settings, "models": catalog.Models, "available": a.Execution.Remote == nil}
+			if err != nil {
+				result["models_error"] = err.Error()
+			}
+			httpx.WriteJSON(w, http.StatusOK, result)
 			return
 		}
 		models, err := a.conversationModels(r.Context())
@@ -101,18 +111,46 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 		return
 	}
 	settings.Model = strings.TrimSpace(settings.Model)
-	if err := (TurnSettings{Model: settings.Model, Permission: settings.Permission}).validate(); err != nil {
+	turn := settings.turnSettings()
+	if err := turn.validate(); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if settings.Model != "" && provider == model.ProviderCodex {
+	if provider == model.ProviderAgy {
+		if turn.ServiceTier != "" {
+			httpx.WriteError(w, http.StatusBadRequest, "所选对话引擎不支持设置响应速度")
+			return
+		}
+		if turn.Effort != "" {
+			catalog, err := a.agyOptionsCatalog(r.Context(), false)
+			if err != nil {
+				httpx.WriteError(w, http.StatusServiceUnavailable, "暂时无法读取可用模型。")
+				return
+			}
+			selected := findConversationModel(catalog.Models, turn.Model)
+			if selected == nil {
+				httpx.WriteError(w, http.StatusBadRequest, "当前模型不可用，请重新选择模型")
+				return
+			}
+			if err := turn.validateForModel(selected); err != nil {
+				httpx.WriteError(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+	}
+	if provider == model.ProviderCodex && (turn.Model != "" || turn.Effort != "" || turn.ServiceTier != "") {
 		models, err := a.conversationModels(r.Context())
 		if err != nil {
 			httpx.WriteError(w, http.StatusServiceUnavailable, "无法核对默认模型："+err.Error())
 			return
 		}
-		if !availableConversationModel(models, settings.Model) {
+		selected := findConversationModel(models, turn.Model)
+		if selected == nil {
 			httpx.WriteError(w, http.StatusBadRequest, "请选择当前 Codex 可用的模型，或沿用 Codex 默认模型")
+			return
+		}
+		if err := turn.validateForModel(selected); err != nil {
+			httpx.WriteError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}

@@ -101,6 +101,20 @@ func (a *Service) ChatContextHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// Reading a context must never resume or mutate a thread owned by another client.
 	result := ChatContext{Model: s.Model, Effort: s.Effort, Cwd: s.Cwd, AdditionalDirectories: record.AdditionalDirectories}
+	switch record.Permission {
+	case "full":
+		result.ApprovalPolicy = "never"
+		result.ApprovalsReviewer = "user"
+		result.Sandbox = map[string]any{"type": "dangerFullAccess"}
+	case "auto":
+		result.ApprovalPolicy = "on-request"
+		result.ApprovalsReviewer = "auto_review"
+		result.Sandbox = map[string]any{"type": "workspaceWrite"}
+	case "ask":
+		result.ApprovalPolicy = "on-request"
+		result.ApprovalsReviewer = "user"
+		result.Sandbox = map[string]any{"type": "workspaceWrite"}
+	}
 	if run := a.ChatFor(record.ID); run != nil {
 		state := run.snapshot()
 		if state.Context != nil && state.Busy {
@@ -129,42 +143,16 @@ func (a *Service) applyTurnSettings(ctx context.Context, c codex.LiveClient, par
 	if model == "" {
 		model = currentModel
 	}
-	if model == "" {
-		for _, m := range models {
-			if m.Default {
-				model = m.Model
-				break
-			}
-		}
-	}
-	var selected *chatModel
-	for i := range models {
-		if models[i].Model == model {
-			selected = &models[i]
-			break
-		}
-	}
+	selected := findConversationModel(models, model)
 	if selected == nil {
 		return fmt.Errorf("当前模型不可用，请重新选择模型")
 	}
-	if settings.ServiceTier != "" {
-		supported := false
-		for _, tier := range selected.ServiceTiers {
-			supported = supported || tier.ID == settings.ServiceTier
-		}
-		if !supported {
-			return fmt.Errorf("所选模型不支持该响应速度")
-		}
-		params["serviceTierForTurn"] = settings.ServiceTier
+	model = selected.Model
+	if err := settings.validateForModel(selected); err != nil {
+		return err
 	}
-	if settings.Effort != "" {
-		valid := false
-		for _, e := range selected.Efforts {
-			valid = valid || e.Effort == settings.Effort
-		}
-		if !valid {
-			return fmt.Errorf("所选模型不支持该思考强度")
-		}
+	if settings.ServiceTier != "" {
+		params["serviceTierForTurn"] = settings.ServiceTier
 	}
 	if settings.Model != "" {
 		params["model"] = model

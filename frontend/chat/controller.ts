@@ -50,7 +50,9 @@ export class ChatController {
  private forkRequest?: {id:string;turn:string};
  private pageHide = () => this.persist();
   private defaultsChanged = (event: Event) => {
-    if (!this.options.readOnly && !this.snapshot.session && (event as CustomEvent<{environment:string}>).detail?.environment === this.options.environment) {
+    const detail = (event as CustomEvent<{environment:string; provider?:AgentProvider}>).detail;
+    if (!this.options.readOnly && !this.snapshot.session && detail?.environment === this.options.environment &&
+      (!detail.provider || detail.provider === this.snapshot.provider)) {
       this.defaultsRefreshPending = true;
       void this.loadOptions();
     }

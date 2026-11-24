@@ -87,6 +87,7 @@ type ChatRun struct {
 	configured             map[string]configuredDirectory
 	directoryError         string
 	managedBindings        bool
+	permission             string
 	pendingDirectoryGrants map[string]model.SessionProjectBinding
 }
 
@@ -365,6 +366,13 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		} `json:"thread"`
 		Sandbox map[string]any `json:"sandbox"`
 	}
+	effectivePermission := run.settings.Permission
+	if effectivePermission == "" && plan.ManagedBindings {
+		effectivePermission = plan.Permission
+	}
+	run.mu.Lock()
+	run.permission = effectivePermission
+	run.mu.Unlock()
 	var profile string
 	configurationFailure := func(err error) {
 		run.mu.Lock()
@@ -382,7 +390,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		}
 	} else {
 		resumeParams := map[string]any{"threadId": run.session, "excludeTurns": true, "config": chatQuestionConfig()}
-		if err := a.configureCodexThread(ctx, c, resumeParams, plan); err != nil {
+		if err := a.configureCodexThread(ctx, c, resumeParams, plan, effectivePermission); err != nil {
 			configurationFailure(err)
 			return
 		}
@@ -396,7 +404,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		}
 		profile, _ = resumeParams["permissions"].(string)
 	}
-	if plan.ManagedBindings && profile == "" {
+	if plan.ManagedBindings && effectivePermission != "full" && profile == "" {
 		configurationFailure(fmt.Errorf("Codex 没有核实对话目录权限"))
 		return
 	}
@@ -451,16 +459,22 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	}
 	if plan.ManagedBindings {
 		addCodexDirectoryContext(params, plan.Bindings)
-		params["permissions"] = profile
-		params["approvalPolicy"] = "on-request"
-		params["approvalsReviewer"] = "user"
 		params["runtimeWorkspaceRoots"] = uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
-		resumed.ChatContext.ApprovalPolicy = "on-request"
-		resumed.ChatContext.ApprovalsReviewer = "user"
-		if run.settings.Permission == "full" || run.settings.Permission == "auto" {
-			run.change(func(state *ChatState) {
-				state.Notice = "对话继续按已关联目录授权。扩大访问范围需要你的明确确认。"
-			})
+		if effectivePermission == "full" {
+			setTurnPermissions(params, "full", writableRoots(plan))
+			resumed.ChatContext.ApprovalPolicy = params["approvalPolicy"]
+			resumed.ChatContext.ApprovalsReviewer = params["approvalsReviewer"].(string)
+			resumed.ChatContext.Sandbox = params["sandboxPolicy"]
+		} else {
+			reviewer := "user"
+			if effectivePermission == "auto" {
+				reviewer = "auto_review"
+			}
+			params["permissions"] = profile
+			params["approvalPolicy"] = "on-request"
+			params["approvalsReviewer"] = reviewer
+			resumed.ChatContext.ApprovalPolicy = "on-request"
+			resumed.ChatContext.ApprovalsReviewer = reviewer
 		}
 	} else {
 		if resumed.Sandbox["type"] == "workspaceWrite" && len(plan.AdditionalDirectories) > 0 {
@@ -511,6 +525,9 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	if plan.ManagedBindings && !platform.SameWorkspacePath(s.Cwd, plan.Cwd) {
 		s.Cwd = plan.Cwd
 		_ = a.SaveSession(s, "codex", titleObservedAt)
+	}
+	if run.settings.Permission != "" && run.settings.Permission != plan.Permission {
+		_ = a.Execution.Store.SetSessionPermission(run.session, run.settings.Permission)
 	}
 	a.startSessionTitle(run, text)
 	if run.asyncRequest != "" {

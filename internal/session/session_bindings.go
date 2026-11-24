@@ -313,7 +313,7 @@ func (a *Service) resolveCreation(ctx context.Context, target SessionTarget, key
 // savedSessionPlan revalidates every grant on every run. The provider's original
 // cwd is metadata and may lag an explicit context switch until the next turn.
 func (a *Service) savedSessionPlan(ctx context.Context, record model.Session, allowShared bool) (model.LaunchPlan, error) {
-	plan := model.LaunchPlan{Cwd: record.Cwd, AdditionalDirectories: []string{}, AllowShared: allowShared}
+	plan := model.LaunchPlan{Cwd: record.Cwd, AdditionalDirectories: []string{}, Permission: record.Permission, AllowShared: allowShared}
 	var err error
 	plan.ManagedBindings, err = a.Execution.Store.SessionBindingsManaged(record.ID)
 	if err != nil {

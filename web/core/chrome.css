@@ -230,8 +230,98 @@ html[data-workspace-navigation] .sidebar .session-browser-item { padding: 7px 8p
 html[data-workspace-navigation] .sidebar .session-browser-item-title { font-size: var(--yolu-font-size-row); font-weight: 450; }
 html[data-workspace-navigation] .sidebar .session-browser-item-time { font-size: 10px; opacity: .8; }
 html[data-workspace-navigation] .sidebar .session-workspace-more { width: calc(100% - 31px); margin-left: 31px; padding-block: 7px; font-size: 11px; }
-.issues-page { max-width: 920px; padding: 24px; }
-.issues-page p { color: var(--yolu-muted-ink); }
+/* Shared 44px flush desktop pane header matching .conversation-surface-header. */
+html[data-workhub-desktop] main:has(> #settingsPage:not([hidden]), > #issuesPage:not([hidden])) {
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.desktop-pane-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--yolu-border, #e2e8e4) 70%, transparent);
+  background: var(--yolu-surface, #fff);
+}
+.desktop-pane-header :is(h1, h2) {
+  margin: 0;
+  color: var(--yolu-foreground);
+  font-size: var(--yolu-font-size-row);
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -.01em;
+}
+
+.issues-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--yolu-surface);
+}
+.issues-empty-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px 24px 64px;
+}
+.issues-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  max-width: 360px;
+}
+.issues-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background: var(--yolu-subtle);
+  color: var(--yolu-muted-ink);
+}
+.issues-empty-icon svg { width: 20px; height: 20px; }
+.issues-empty-content h2 {
+  margin: 0;
+  color: var(--yolu-foreground);
+  font-size: var(--yolu-font-size-body);
+  font-weight: 600;
+}
+.issues-empty-content p {
+  margin: 0 0 8px;
+  color: var(--yolu-muted-ink);
+  font-size: var(--yolu-font-size-compact);
+  line-height: 1.6;
+}
+.issues-open-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--yolu-border-strong);
+  border-radius: 8px;
+  background: var(--yolu-surface);
+  color: var(--yolu-foreground);
+  font-size: var(--yolu-font-size-compact);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color .12s, border-color .12s;
+}
+.issues-open-button:hover { background: var(--yolu-subtle); border-color: var(--yolu-border-strong); }
+.issues-open-button:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: 2px; }
+.issues-open-button svg { width: 14px; height: 14px; flex: none; color: var(--yolu-muted-ink); }
 @media (max-width: 760px) {
   html[data-workspace-navigation] .sidebar { width: 100%; }
 }

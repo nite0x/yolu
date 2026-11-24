@@ -1,102 +1,129 @@
 import { uiText } from "../i18n";
 import { Fragment, type ReactNode } from "react"
+import { Activity, MessageSquare, SlidersHorizontal, Terminal } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Check, Feedback, Field, ModalFooter, ModalHeader, NativeSelect, Option, StatusBadge } from "./shared"
 
 function Heading({ id, title, children, actions }: { id: string; title: string; children: ReactNode; actions?: ReactNode }) {
-  return <div className="settings-card-heading"><div><h3 id={id} className="m-0 text-lg font-semibold">{title}</h3><p className="text-sm leading-relaxed text-muted-foreground">{children}</p></div>{actions}</div>
+  return <div className="settings-card-heading"><div><h3 id={id} className="m-0 text-sm font-semibold">{title}</h3><p className="text-xs leading-relaxed text-muted-foreground">{children}</p></div>{actions}</div>
 }
 function Help({ children }: { children: ReactNode }) {
-  return <p className="settings-help text-sm leading-relaxed text-muted-foreground">{children}</p>
+  return <p className="settings-help text-xs leading-relaxed text-muted-foreground">{children}</p>
 }
 export function SettingsPage() {
   const groups = [
-    {id:"settings-general",label:uiText("通用"),cards:["appearanceTitle", "languageTitle"]},
-    {id:"settings-conversation",label:uiText("对话"),cards:["conversationDefaultsHeading", "chatInputHeading", "sessionTitleHeading"]},
-    {id:"settings-environment",label:uiText("执行环境"),cards:["environmentSettingsTitle", "terminalTitle", "mcpSettingsTitle", "browserAccessTitle"]},
-    {id:"settings-diagnostics",label:uiText("诊断"),cards:["codexDiagnosticsTitle", "agyDiagnosticsTitle"]}
+    {id:"settings-general",label:uiText("通用"),Icon:SlidersHorizontal,cards:["appearanceTitle", "languageTitle"]},
+    {id:"settings-conversation",label:uiText("对话"),Icon:MessageSquare,cards:["conversationDefaultsHeading", "chatInputHeading", "sessionTitleHeading"]},
+    {id:"settings-environment",label:uiText("执行环境"),Icon:Terminal,cards:["environmentSettingsTitle", "terminalTitle", "mcpSettingsTitle", "browserAccessTitle"]},
+    {id:"settings-diagnostics",label:uiText("诊断"),Icon:Activity,cards:["codexDiagnosticsTitle", "agyDiagnosticsTitle"]}
   ];
   const cards: Record<string, ReactNode> = {
-    "appearanceTitle": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="appearanceTitle"><form id="appearanceForm">
-      <Heading id="appearanceTitle" title={uiText("界面配色")}>{uiText("选择配色后点击保存，立即应用到整个工作台，无需重新加载。")}</Heading>
-      <Field id="colorThemeSelect" label={uiText("配色方案")}><NativeSelect id="colorThemeSelect" name="color_theme"><Option value="mint">{uiText("Yolu 薄荷")}</Option><Option value="classic">{uiText("经典蓝紫")}</Option><Option value="light">{uiText("浅色")}</Option><Option value="dark">{uiText("深色")}</Option><Option value="system">{uiText("跟随系统")}</Option></NativeSelect></Field>
-      <div className="appearance-swatches" data-theme-preview="mint" aria-hidden="true"><span className="appearance-swatch-paper" /><span className="appearance-swatch-teal" /><span className="appearance-swatch-mint" /><small>{uiText("暖白 · 深青 · 薄荷绿")}</small></div>
-      <div className="appearance-swatches" data-theme-preview="classic" aria-hidden="true" hidden><span className="appearance-swatch-cool" /><span className="appearance-swatch-indigo" /><span className="appearance-swatch-lavender" /><small>{uiText("冷白 · 蓝紫 · 淡紫")}</small></div>
-      <div className="appearance-swatches" data-theme-preview="light" aria-hidden="true" hidden><span className="appearance-swatch-white" /><span className="appearance-swatch-gray" /><span className="appearance-swatch-blue" /><small>{uiText("纯白 · 中性灰 · 蓝色")}</small></div>
-      <div className="appearance-swatches" data-theme-preview="dark" aria-hidden="true" hidden><span className="appearance-swatch-night" /><span className="appearance-swatch-slate" /><span className="appearance-swatch-sky" /><small>{uiText("深灰 · 石板 · 天蓝")}</small></div>
-      <div className="appearance-swatches" data-theme-preview="system" aria-hidden="true" hidden><span className="appearance-swatch-white" /><span className="appearance-swatch-night" /><span className="appearance-swatch-blue" /><small>{uiText("随系统外观在浅色与深色之间自动切换")}</small></div>
-      <div className="settings-actions"><Button type="submit" id="saveAppearance">{uiText("保存并应用配色")}</Button></div>
+    "appearanceTitle": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="appearanceTitle"><form id="appearanceForm">
+      <div className="settings-row">
+        <div className="settings-row-info">
+          <h3 id="appearanceTitle">{uiText("界面配色")}</h3>
+          <p>{uiText("选择配色后点击保存，立即应用到整个工作台，无需重新加载。")}</p>
+          <div className="appearance-swatches" data-theme-preview="mint" aria-hidden="true"><span className="appearance-swatch-paper" /><span className="appearance-swatch-teal" /><span className="appearance-swatch-mint" /><small>{uiText("暖白 · 深青 · 薄荷绿")}</small></div>
+          <div className="appearance-swatches" data-theme-preview="classic" aria-hidden="true" hidden><span className="appearance-swatch-cool" /><span className="appearance-swatch-indigo" /><span className="appearance-swatch-lavender" /><small>{uiText("冷白 · 蓝紫 · 淡紫")}</small></div>
+          <div className="appearance-swatches" data-theme-preview="light" aria-hidden="true" hidden><span className="appearance-swatch-white" /><span className="appearance-swatch-gray" /><span className="appearance-swatch-blue" /><small>{uiText("纯白 · 中性灰 · 蓝色")}</small></div>
+          <div className="appearance-swatches" data-theme-preview="dark" aria-hidden="true" hidden><span className="appearance-swatch-night" /><span className="appearance-swatch-slate" /><span className="appearance-swatch-sky" /><small>{uiText("深灰 · 石板 · 天蓝")}</small></div>
+          <div className="appearance-swatches" data-theme-preview="system" aria-hidden="true" hidden><span className="appearance-swatch-white" /><span className="appearance-swatch-night" /><span className="appearance-swatch-blue" /><small>{uiText("随系统外观在浅色与深色之间自动切换")}</small></div>
+        </div>
+        <div className="settings-row-control">
+          <Field id="colorThemeSelect" label={uiText("配色方案")} className="settings-inline-field"><NativeSelect id="colorThemeSelect" name="color_theme" size="sm"><Option value="mint">{uiText("Yolu 薄荷")}</Option><Option value="classic">{uiText("经典蓝紫")}</Option><Option value="light">{uiText("浅色")}</Option><Option value="dark">{uiText("深色")}</Option><Option value="system">{uiText("跟随系统")}</Option></NativeSelect></Field>
+          <Button type="submit" variant="outline" size="sm" id="saveAppearance">{uiText("保存并应用配色")}</Button>
+        </div>
+      </div>
       <p id="appearanceStatus" role="status" className="settings-help" />
     </form></Card>),
-    "languageTitle": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="languageTitle"><form id="languageForm">
-      <Heading id="languageTitle" title={uiText("界面语言")}>{uiText("语言设置应用于所有项目和执行环境。应用时会重新加载界面，后台工作继续。")}</Heading>
-      <Field id="languageSelect" label={uiText("界面语言")}><NativeSelect id="languageSelect" name="language"><Option value="system">{uiText("跟随系统")}</Option><Option value="en">English</Option><Option value="zh-CN">简体中文</Option></NativeSelect></Field>
-      <div className="settings-actions"><Button type="submit" id="saveLanguage">{uiText("保存并应用语言")}</Button></div>
+    "languageTitle": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="languageTitle"><form id="languageForm">
+      <div className="settings-row">
+        <div className="settings-row-info">
+          <h3 id="languageTitle">{uiText("界面语言")}</h3>
+          <p>{uiText("语言设置应用于所有项目和执行环境。应用时会重新加载界面，后台工作继续。")}</p>
+        </div>
+        <div className="settings-row-control">
+          <Field id="languageSelect" label={uiText("界面语言")} className="settings-inline-field"><NativeSelect id="languageSelect" name="language" size="sm"><Option value="system">{uiText("跟随系统")}</Option><Option value="en">English</Option><Option value="zh-CN">简体中文</Option></NativeSelect></Field>
+          <Button type="submit" variant="outline" size="sm" id="saveLanguage">{uiText("保存并应用语言")}</Button>
+        </div>
+      </div>
       <p id="languageStatus" role="status" className="settings-help" />
     </form></Card>),
-    "conversationDefaultsHeading": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="conversationDefaultsHeading"><form id="conversationDefaultsForm">
-      <Heading id="conversationDefaultsHeading" title={uiText("新对话默认设置")}>{uiText("默认沿用当前环境的 Codex 配置。可为新对话指定模型与权限，单次对话可覆盖。")}</Heading>
+    "conversationDefaultsHeading": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="conversationDefaultsHeading"><form id="conversationDefaultsForm">
+      <Heading id="conversationDefaultsHeading" title={uiText("新对话默认设置")} actions={<Button type="button" id="conversationDefaultsReload" variant="ghost" size="sm">{uiText("刷新可用模型")}</Button>}>{uiText("为当前执行环境中的各个引擎分别设置新对话默认选项。你也可以在对话中单独调整。")}</Heading>
+      <Field id="conversationDefaultProvider" label={uiText("对话引擎")}><NativeSelect id="conversationDefaultProvider" size="sm" disabled><Option value="codex">Codex</Option><Option value="agy">Antigravity (AGY)</Option></NativeSelect></Field>
       <fieldset id="conversationDefaultsFields" disabled>
-        <Field id="conversationDefaultModel" label={uiText("默认模型")}><NativeSelect id="conversationDefaultModel"><Option value="">{uiText("沿用 Codex 默认模型")}</Option></NativeSelect></Field>
-        <Field id="conversationDefaultPermission" label={uiText("默认权限")}><NativeSelect id="conversationDefaultPermission"><Option value="">{uiText("沿用 Codex 默认权限")}</Option><Option value="ask">{uiText("请求批准")}</Option><Option value="auto">{uiText("帮我批准")}</Option><Option value="full">{uiText("完全访问权限")}</Option></NativeSelect></Field>
-        <Help>{uiText("设置按执行环境保存，仅用于之后创建的对话。思考强度默认沿用 Codex，可在对话中调整。")}</Help>
-        <Help>{uiText("完全访问权限允许读取和修改电脑上的文件并执行命令；沿用 Codex 时使用该环境已有的权限配置。")}</Help>
-        <div className="settings-actions"><Button type="submit">{uiText("保存新对话设置")}</Button></div>
+        <div className="settings-field-grid">
+          <Field id="conversationDefaultModel" label={uiText("默认模型")}><NativeSelect id="conversationDefaultModel" size="sm"><Option value="">{uiText("沿用 Codex 默认模型")}</Option></NativeSelect></Field>
+          <Field id="conversationDefaultSpeed" label={uiText("默认响应速度")}><NativeSelect id="conversationDefaultSpeed" size="sm"><Option value="">{uiText("沿用 Codex 默认速度")}</Option></NativeSelect></Field>
+          <Field id="conversationDefaultEffort" label={uiText("默认思考强度")}><NativeSelect id="conversationDefaultEffort" size="sm"><Option value="">{uiText("使用模型默认强度")}</Option></NativeSelect></Field>
+          <Field id="conversationDefaultPermission" label={uiText("默认权限")}><NativeSelect id="conversationDefaultPermission" size="sm" aria-describedby="conversationDefaultPermissionHelp"><Option value="">{uiText("沿用 Codex 默认权限")}</Option></NativeSelect></Field>
+        </div>
+        <p id="conversationDefaultPermissionHelp" className="settings-help text-xs leading-relaxed text-muted-foreground" />
+        <div className="settings-actions"><Button type="submit" variant="outline" size="sm">{uiText("保存新对话设置")}</Button></div>
       </fieldset>
-      <Feedback id="conversationDefaultsError" variant="destructive" className="mt-4" hidden />
+      <Feedback id="conversationDefaultsError" variant="destructive" className="mt-3" hidden />
       <p id="conversationDefaultsStatus" role="status" className="settings-help" />
-      <Button type="button" id="conversationDefaultsReload" variant="outline" size="sm" className="mt-3">{uiText("刷新可用模型")}</Button>
     </form></Card>),
-    "chatInputHeading": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="chatInputHeading"><form id="chatInputForm">
-      <Heading id="chatInputHeading" title={uiText("对话输入")}>{uiText("选择发送消息的快捷键，保存后立即应用到所有对话。")}</Heading>
-      <Field id="sendShortcutSelect" label={uiText("发送快捷键")}><NativeSelect id="sendShortcutSelect" name="send_shortcut"><Option value="enter">{uiText("Enter 发送")}</Option><Option value="ctrlEnter">{uiText("Ctrl + Enter / ⌘ + Enter 发送")}</Option></NativeSelect></Field>
-      <Help>{uiText("Enter 发送时，使用 Shift + Enter 换行。Ctrl + Enter 发送时，使用 Enter 换行。")}</Help>
-      <div className="settings-actions"><Button type="submit" id="saveChatInput">{uiText("保存对话输入设置")}</Button></div>
+    "chatInputHeading": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="chatInputHeading"><form id="chatInputForm">
+      <div className="settings-row">
+        <div className="settings-row-info">
+          <h3 id="chatInputHeading">{uiText("对话输入")}</h3>
+          <p>{uiText("Enter 发送时，使用 Shift + Enter 换行。Ctrl + Enter 发送时，使用 Enter 换行。")}</p>
+        </div>
+        <div className="settings-row-control">
+          <Field id="sendShortcutSelect" label={uiText("发送快捷键")} className="settings-inline-field"><NativeSelect id="sendShortcutSelect" name="send_shortcut" size="sm"><Option value="enter">{uiText("Enter 发送")}</Option><Option value="ctrlEnter">{uiText("Ctrl + Enter / ⌘ + Enter 发送")}</Option></NativeSelect></Field>
+          <Button type="submit" variant="outline" size="sm" id="saveChatInput">{uiText("保存对话输入设置")}</Button>
+        </div>
+      </div>
       <p id="chatInputStatus" role="status" className="settings-help" />
     </form></Card>),
-    "sessionTitleHeading": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="sessionTitleHeading"><form id="sessionTitleForm">
-      <Heading id="sessionTitleHeading" title={uiText("对话标题")}>{uiText("发送首条消息后，根据首次输入在后台生成一次主题标题。手动名称优先保留。")}</Heading>
+    "sessionTitleHeading": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="sessionTitleHeading"><form id="sessionTitleForm">
+      <Heading id="sessionTitleHeading" title={uiText("对话标题")} actions={<Button type="button" id="sessionTitleReload" variant="ghost" size="sm">{uiText("刷新可用模型")}</Button>}>{uiText("发送首条消息后，根据首次输入在后台生成一次主题标题。手动名称优先保留。")}</Heading>
       <fieldset id="sessionTitleFields" disabled>
-        <Field id="sessionTitleModel" label={uiText("标题模型")}><NativeSelect id="sessionTitleModel"><Option value="">{uiText("跟随正文模型")}</Option></NativeSelect></Field>
+        <div className="settings-inline-submit">
+          <Field id="sessionTitleModel" label={uiText("标题模型")}><NativeSelect id="sessionTitleModel" size="sm"><Option value="">{uiText("跟随正文模型")}</Option></NativeSelect></Field>
+          <Button type="submit" variant="outline" size="sm">{uiText("保存标题设置")}</Button>
+        </div>
         <details className="settings-help-details"><summary>{uiText("标题生成说明")}</summary><Help>{uiText("仅影响当前环境的新对话标题。沿用 Codex 登录，额外消耗一次模型请求；生成失败保留初始标题。")}</Help></details>
-        <div className="settings-actions"><Button type="submit">{uiText("保存标题设置")}</Button></div>
       </fieldset>
-      <Feedback id="sessionTitleError" variant="destructive" className="mt-4" hidden />
-      <Button type="button" id="sessionTitleReload" variant="outline" size="sm" className="mt-3">{uiText("刷新可用模型")}</Button>
+      <Feedback id="sessionTitleError" variant="destructive" className="mt-3" hidden />
     </form></Card>),
-    "environmentSettingsTitle": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="environmentSettingsTitle">
-      <Heading id="environmentSettingsTitle" title={uiText("执行环境与目录")} actions={<div className="detail-actions"><Button type="button" variant="outline" size="sm" id="reconnectEnvironment" hidden>{uiText("重新连接")}</Button><Button type="button" size="sm" id="addEnvironment">{uiText("连接 WSL")}</Button></div>}>{uiText("为当前环境配置工作目录与工具。")}</Heading>
-      <Field id="environmentSelect" label={uiText("配置环境")}><NativeSelect id="environmentSelect" aria-label={uiText("配置环境")}><Option value="local">{uiText("本机")}</Option></NativeSelect><small id="environmentStatus" role="status" className="text-muted-foreground" /></Field>
+    "environmentSettingsTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="environmentSettingsTitle">
+      <Heading id="environmentSettingsTitle" title={uiText("执行环境与目录")} actions={<div className="detail-actions"><Button type="button" variant="outline" size="sm" id="reconnectEnvironment" hidden>{uiText("重新连接")}</Button><Button type="button" variant="outline" size="sm" id="addEnvironment">{uiText("连接 WSL")}</Button></div>}>{uiText("为当前环境配置工作目录与工具。")}</Heading>
+      <Field id="environmentSelect" label={uiText("配置环境")}><NativeSelect id="environmentSelect" size="sm" aria-label={uiText("配置环境")}><Option value="local">{uiText("本机")}</Option></NativeSelect><small id="environmentStatus" role="status" className="text-muted-foreground" /></Field>
       <span id="settingsEnvironment" hidden />
       <dl className="settings-facts"><div><dt>{uiText("新 Worktree 根目录")}</dt><dd><code id="settingsRoot">{uiText("正在读取…")}</code></dd></div></dl>
     </Card>),
-    "terminalTitle": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="terminalTitle"><form id="terminalForm">
+    "terminalTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="terminalTitle"><form id="terminalForm">
       <Heading id="terminalTitle" title={uiText("终端工具")}>{uiText("Codex、Git 终端和在终端获取分支共用此设置，保存后立即生效。")}</Heading>
       <fieldset id="terminalSettingsFields" disabled>
-        <Field id="terminalKind" label={uiText("终端工具")}><NativeSelect id="terminalKind" name="kind"><Option value="auto">{uiText("系统终端")}</Option></NativeSelect></Field>
-        <div id="terminalCustomFields" hidden><Field id="terminalPath" label={uiText("终端程序路径")} required help={uiText("填写终端可执行文件的完整路径，无需引号或参数。")}><Input id="terminalPath" name="path" autoComplete="off" spellCheck={false} /></Field><Field id="terminalStyle" label={uiText("启动方式")}><NativeSelect id="terminalStyle" name="style"><Option value="otty">Otty</Option><Option value="windows-terminal">Windows Terminal</Option><Option value="command">{uiText("其他终端（支持 -e 程序 参数）")}</Option></NativeSelect></Field></div>
+        <div className="settings-inline-submit">
+          <Field id="terminalKind" label={uiText("终端工具")}><NativeSelect id="terminalKind" name="kind" size="sm"><Option value="auto">{uiText("系统终端")}</Option></NativeSelect></Field>
+          <Button type="submit" variant="outline" size="sm">{uiText("保存终端设置")}</Button>
+        </div>
+        <div id="terminalCustomFields" hidden><Field id="terminalPath" label={uiText("终端程序路径")} required help={uiText("填写终端可执行文件的完整路径，无需引号或参数。")}><Input id="terminalPath" name="path" autoComplete="off" spellCheck={false} /></Field><Field id="terminalStyle" label={uiText("启动方式")}><NativeSelect id="terminalStyle" name="style" size="sm"><Option value="otty">Otty</Option><Option value="windows-terminal">Windows Terminal</Option><Option value="command">{uiText("其他终端（支持 -e 程序 参数）")}</Option></NativeSelect></Field></div>
         <p id="terminalHint" className="settings-help text-muted-foreground" />
-        <Feedback id="terminalStatus" role="status" className="mt-4 bg-muted text-muted-foreground" />
-        <Feedback id="terminalError" variant="destructive" className="mt-4" hidden />
-        <div className="settings-actions"><Button type="submit">{uiText("保存终端设置")}</Button></div>
+        <Feedback id="terminalStatus" role="status" className="mt-3 bg-muted text-muted-foreground" />
+        <Feedback id="terminalError" variant="destructive" className="mt-3" hidden />
       </fieldset>
     </form></Card>),
-    "mcpSettingsTitle": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="mcpSettingsTitle">
-      <Heading id="mcpSettingsTitle" title={uiText("MCP 接入")} actions={<Button type="button" variant="outline" size="sm" id="mcpSettingsReload" disabled>{uiText("刷新状态")}</Button>}>
+    "mcpSettingsTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="mcpSettingsTitle">
+      <Heading id="mcpSettingsTitle" title={uiText("MCP 接入")} actions={<Button type="button" variant="ghost" size="sm" id="mcpSettingsReload" disabled>{uiText("刷新状态")}</Button>}>
         {uiText("安装到本机 Agent，让它只读查询 Yolu 的项目、对话和 Git 状态。")}
       </Heading>
       <ul id="mcpAgentRows" className="m-0 list-none divide-y divide-border p-0">
-        {[{id:"codex",name:"Codex"},{id:"claude",name:"Claude Code"}].map(agent => <li key={agent.id} data-mcp-agent={agent.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
-          <div><p className="m-0 text-sm font-medium">{agent.name}</p><p className="m-0 mt-1 text-sm text-muted-foreground" id={`mcp-agent-${agent.id}-status`} data-mcp-status /></div>
-          <Button type="button" size="sm" data-mcp-install aria-describedby={`mcp-agent-${agent.id}-status`} disabled>{uiText("安装到 {0}", agent.name)}</Button>
+        {[{id:"codex",name:"Codex"},{id:"claude",name:"Claude Code"}].map(agent => <li key={agent.id} data-mcp-agent={agent.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2.5 first:pt-0 last:pb-0">
+          <div><p className="m-0 text-sm font-medium">{agent.name}</p><p className="m-0 mt-0.5 text-xs text-muted-foreground" id={`mcp-agent-${agent.id}-status`} data-mcp-status /></div>
+          <Button type="button" variant="outline" size="sm" data-mcp-install aria-describedby={`mcp-agent-${agent.id}-status`} disabled>{uiText("安装到 {0}", agent.name)}</Button>
         </li>)}
       </ul>
-      <Feedback id="mcpSettingsError" variant="destructive" className="mt-4" hidden />
+      <Feedback id="mcpSettingsError" variant="destructive" className="mt-3" hidden />
       <p id="mcpSettingsStatus" className="settings-help" role="status" />
     </Card>),
-    "browserAccessTitle": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="browserAccessTitle">
+    "browserAccessTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="browserAccessTitle">
       <form id="browserAccessForm">
         <Heading id="browserAccessTitle" title={uiText("浏览器访问")}>
           {uiText("桌面端与浏览器共用后台、项目和对话。开启后，可从局域网内的其他设备登录。")}
@@ -119,48 +146,55 @@ export function SettingsPage() {
           </div>
           <Help>{uiText("浏览器连接使用 HTTP，请在可信的局域网内使用。Git、终端和对话在主机的执行环境中运行。")}</Help>
           <div className="settings-actions">
-            <Button type="submit" id="saveBrowserAccess">{uiText("保存浏览器访问设置")}</Button>
+            <Button type="submit" variant="outline" size="sm" id="saveBrowserAccess">{uiText("保存浏览器访问设置")}</Button>
           </div>
         </fieldset>
         <p id="browserAccessStatus" role="status" className="settings-help" />
       </form>
       <form id="browserAccessLogout" action="/browser-logout" method="post" target="_top" hidden>
         <Help>{uiText("请在主机上的 Yolu 中配置浏览器访问")}</Help>
-        <Button type="submit" variant="outline" className="mt-3">{uiText("退出浏览器登录")}</Button>
+        <Button type="submit" variant="outline" size="sm" className="mt-3">{uiText("退出浏览器登录")}</Button>
       </form>
     </Card>),
-    "codexDiagnosticsTitle": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="codexDiagnosticsTitle">
+    "codexDiagnosticsTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="codexDiagnosticsTitle">
       <Heading id="codexDiagnosticsTitle" title={uiText("Codex 安装检测")}>{uiText("安装或升级 Codex CLI 后，Yolu 会自动启动共享后台并重新检测当前环境。")}</Heading>
-      <div className="detail-actions codex-diagnostic-actions"><Button type="button" id="checkCodex">{uiText("检测当前环境")}</Button><Button type="button" variant="outline" id="checkAllCodex">{uiText("检测全部已登记环境")}</Button><Button type="button" variant="outline" id="copyCodexDiagnostics" disabled>{uiText("复制检测报告")}</Button></div>
+      <div className="detail-actions codex-diagnostic-actions"><Button type="button" variant="outline" size="sm" id="checkCodex">{uiText("检测当前环境")}</Button><Button type="button" size="sm" variant="ghost" id="checkAllCodex">{uiText("检测全部已登记环境")}</Button><Button type="button" size="sm" variant="ghost" id="copyCodexDiagnostics" disabled>{uiText("复制检测报告")}</Button></div>
       <p id="codexDiagnosticsStatus" className="settings-help" role="status">{uiText("尚未检测")}</p>
       <p id="codexUnregistered" className="settings-help" hidden />
       <div id="codexDiagnosticsResults" />
       <textarea id="codexDiagnosticsCopy" className="codex-report-copy" aria-label={uiText("检测报告（可全选复制）")} readOnly hidden />
       <Help>{uiText("检测不会发送模型请求。升级后，如有对话仍在使用旧版本，请在相关操作结束后退出并停止 Yolu 后台，再重新打开。")}</Help>
     </Card>),
-    "agyDiagnosticsTitle": (<Card className="settings-card gap-0 p-6 shadow-none" aria-labelledby="agyDiagnosticsTitle">
+    "agyDiagnosticsTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="agyDiagnosticsTitle">
       <Heading id="agyDiagnosticsTitle" title={uiText("Antigravity (AGY) 检测")}>{uiText("检测当前环境的 agy CLI 与 ACP 协议握手状态。新建对话时可选择 Antigravity 引擎。")}</Heading>
-      <div className="detail-actions codex-diagnostic-actions"><Button type="button" id="checkAgy">{uiText("检测 Antigravity")}</Button></div>
+      <div className="detail-actions codex-diagnostic-actions"><Button type="button" variant="outline" size="sm" id="checkAgy">{uiText("检测 Antigravity")}</Button></div>
       <p id="agyDiagnosticsStatus" className="settings-help" role="status">{uiText("尚未检测")}</p>
       <div id="agyDiagnosticsResults" />
       <Help>{uiText("检测仅执行 ACP 初始化与只读列表探活，不会发送模型请求。如提示未登录，请在终端执行 agy 或 agy acp --login。")}</Help>
     </Card>)
   };
-  return <div className="settings-layout">
-    <nav className="settings-index" aria-label={uiText("设置分类")}>
-      {groups.map((group,index) => <button key={group.id} type="button" aria-controls={group.id} aria-current={index === 0 ? "location" : undefined} data-settings-section={group.id}>{group.label}</button>)}
-    </nav>
-    <div className="settings-sections">{groups.map(group => <section id={group.id} className="settings-section" key={group.id} aria-labelledby={group.id + "-title"}>
-      <h2 id={group.id + "-title"} tabIndex={-1}>{group.label}</h2>
-      {group.cards.map(id => <Fragment key={id}>{cards[id]}</Fragment>)}
-    </section>)}</div>
+  return <div className="settings-shell">
+    <header className="desktop-pane-header">
+      <h1>{uiText("设置")}</h1>
+    </header>
+    <div className="settings-layout">
+      <nav className="settings-index" aria-label={uiText("设置分类")}>
+        {groups.map((group,index) => <button key={group.id} type="button" aria-controls={group.id} aria-current={index === 0 ? "location" : undefined} data-settings-section={group.id}><group.Icon aria-hidden="true" /><span>{group.label}</span></button>)}
+      </nav>
+      <div className="settings-sections">
+        <div className="settings-sections-inner">{groups.map(group => <section id={group.id} className="settings-section" key={group.id} aria-labelledby={group.id + "-title"}>
+          <h2 id={group.id + "-title"} tabIndex={-1}>{group.label}</h2>
+          {group.cards.map(id => <Fragment key={id}>{cards[id]}</Fragment>)}
+        </section>)}</div>
+      </div>
+    </div>
   </div>
 }
 
 // Settings forms are static boundaries owned by the legacy controllers.
 export function setupSettingsNavigation() {
   const page = document.getElementById("settingsPage");
-  const scroller = page?.closest("main");
+  const scroller = page?.querySelector<HTMLElement>(".settings-sections") || page?.closest("main");
   let frame = 0;
   const mark = (id: string) => page?.querySelectorAll<HTMLElement>("[data-settings-section]").forEach(button => {
     if (button.dataset.settingsSection === id) button.setAttribute("aria-current","location");

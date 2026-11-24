@@ -22,6 +22,8 @@
     root.dataset.colorScheme = palette === 'dark' ? 'dark' : 'light';
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = palettes[palette];
+    const scheme = document.querySelector('meta[name="color-scheme"]');
+    if (scheme) scheme.content = palette === 'dark' ? 'dark' : 'light';
     window.dispatchEvent(new CustomEvent('yolu:appearance', {detail: {colorTheme:choice, palette}}));
   }
   function apply(choice) {

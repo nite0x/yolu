@@ -88,6 +88,12 @@ func (a *Service) handleDirectoryPermission(ctx context.Context, run *ChatRun, e
 	if !run.managedBindings {
 		return false
 	}
+	run.mu.Lock()
+	permission := run.permission
+	run.mu.Unlock()
+	if permission == "full" {
+		return false
+	}
 	switch event.Method {
 	case "serverRequest/resolved":
 		var p struct {
@@ -119,6 +125,9 @@ func (a *Service) handleDirectoryPermission(ctx context.Context, run *ChatRun, e
 		return false
 	}
 	if event.Method != "item/permissions/requestApproval" {
+		if permission != "" {
+			return false
+		}
 		_ = run.client.Reply(event.ID, map[string]any{"decision": "decline"})
 		run.change(func(state *ChatState) {
 			state.Notice = "已拒绝跳过对话目录权限的操作。Agent 可单独申请其他目录。"

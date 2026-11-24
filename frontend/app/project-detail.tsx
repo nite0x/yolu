@@ -62,18 +62,18 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
   const allExpanded = visible.every(({state}) => state.expanded)
 
   return <div className="resource-detail-content project-detail-content" data-project-id={project.id}>
-    <div className="project-breadcrumb">
-      <a href="#/projects" className="resource-breadcrumb-link" data-action="project-list" data-detail-focus="project-list" aria-label={uiText("返回项目列表")}>{uiText("项目")}</a>
-      <ChevronRight aria-hidden="true" /><span title={project.name}>{project.name}</span><ResourceSwitcherTrigger kind="project" />
-    </div>
-    <header className="project-detail-heading">
-      <div className="project-detail-identity"><ResourceIcon kind="project" id={project.id} name={project.name} environment="" editable />
-        <div><h2 tabIndex={-1} data-detail-focus="project-title">{project.name}</h2><DirectoryPath path={project.path} project /></div>
+    <header className="project-detail-heading desktop-pane-header">
+      <div className="project-detail-identity">
+        <a href="#/projects" className="resource-breadcrumb-link" data-action="project-list" data-detail-focus="project-list" aria-label={uiText("返回项目列表")}>{uiText("项目")}</a>
+        <ChevronRight className="project-breadcrumb-sep" aria-hidden="true" />
+        <ResourceIcon kind="project" id={project.id} name={project.name} environment="" editable />
+        <h2 tabIndex={-1} data-detail-focus="project-title" title={project.name}>{project.name}</h2>
+        <ResourceSwitcherTrigger kind="project" />
       </div>
       <div className="project-detail-actions">
         <Action action="project-conversation-new" id={project.id} data-path={project.path} variant="default" disabled={!!project.error || !directoryUsable(main?.tree) || readOnly}><Plus aria-hidden="true" />{uiText("新建对话")}</Action>
-        <Action action="project-conversations" id={project.id}>{uiText("相关对话")}</Action>
-        <Action action="new-worktree" id={project.id} disabled={!!project.error}><Plus aria-hidden="true" />{uiText("创建 Worktree")}</Action>
+        <Action action="project-conversations" id={project.id} variant="ghost">{uiText("相关对话")}</Action>
+        <Action action="new-worktree" id={project.id} variant="ghost" disabled={!!project.error}><Plus aria-hidden="true" />{uiText("创建 Worktree")}</Action>
         <details className="workspace-project-details project-more"><summary aria-label={uiText("更多项目操作")}><MoreHorizontal aria-hidden="true" /></summary>
           <div className="workspace-project-details-body">
             <Action action="project-refresh" id={project.id} variant="ghost"><RefreshCw aria-hidden="true" />{uiText("刷新 Git 状态")}</Action>
@@ -84,49 +84,52 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
         </details>
       </div>
     </header>
-    {project.error ? <Feedback variant="destructive"><p className="m-0">{uiText("项目读取失败：")}{project.error}</p><Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action></Feedback> : <>
-      <ul className="project-detail-summary" aria-label={uiText("项目摘要")}>
-        <li><Folder aria-hidden="true" /><strong>{project.refreshing && !items.length ? "…" : items.length}</strong>{uiText("个工作目录")}</li>
-        <li title={unknownStatus ? uiText("部分工作目录的 Git 状态暂不可用") : undefined}><Pencil aria-hidden="true" /><strong>{unknownStatus ? items.some(({tree}) => directoryUsable(tree)) ? `${totalChanges}+` : "—" : totalChanges}</strong>{uiText("项本地变更")}</li>
-        <li><MessageSquare aria-hidden="true" /><strong>{unknownSessions ? "—" : sessions.length}</strong>{uiText("条项目对话")}</li>
-        <li><Activity aria-hidden="true" /><strong>{unknownSessions ? "—" : totalRunning}</strong>{uiText("个运行中 Agent")}</li>
-      </ul>
-      {items.length > 1 ? <div className="project-worktree-banner"><strong>{uiText("多 Worktree 工作目录")}</strong>
-        <Action action="project-directory-expand-all" id={project.id} data-expand={String(!allExpanded)} data-detail-focus="expand-all" disabled={!visible.length}>{allExpanded && visible.length ? uiText("全部收起") : uiText("全部展开")}</Action>
-      </div> : null}
-      <section aria-labelledby="projectDirectoriesTitle">
-        <div className="resource-section-heading project-directories-heading">
-          <h3 id="projectDirectoriesTitle">{uiText("工作目录")} <span className="resource-section-count">{visible.length}</span></h3>
-          {items.length > 1 ? <div className="project-directory-controls">
-            <NativeSelect size="sm" defaultValue={filter} data-project-directory-filter data-detail-focus="directory-filter" aria-label={uiText("筛选工作目录")}>
-              <NativeSelectOption value="all">{uiText("全部目录")}</NativeSelectOption>
-              <NativeSelectOption value="dirty">{uiText("有改动")}</NativeSelectOption>
-              <NativeSelectOption value="active">{uiText("有对话")}</NativeSelectOption>
-              <NativeSelectOption value="clean">{uiText("干净")}</NativeSelectOption>
-              {issueCount || filter === "issues" ? <NativeSelectOption value="issues">{uiText("需要处理 ·")} {issueCount}</NativeSelectOption> : null}
-            </NativeSelect>
-            <NativeSelect size="sm" defaultValue={sort} data-project-directory-sort data-detail-focus="directory-sort" aria-label={uiText("排序工作目录")}>
-              <NativeSelectOption value="recent">{uiText("最近使用")}</NativeSelectOption>
-              <NativeSelectOption value="name">{uiText("名称")}</NativeSelectOption>
-              <NativeSelectOption value="changes">{uiText("改动数量")}</NativeSelectOption>
-            </NativeSelect>
-          </div> : null}
-        </div>
-        {visible.length ? <div className="working-directory-cards" aria-label={uiText("项目工作目录")}>{visible.map(({tree, name, primary, state, related}) =>
-          <WorkingDirectoryCard key={tree.path} project={project.id} tree={tree} name={name} tool={tool} primary={primary} state={state} sessions={related} conversations={conversations} readOnly={readOnly} />)}</div>
-          : <div className="project-detail-empty" role="status">{items.length ? <>
-            {filter === "active" && unknownSessions ? <ProjectConversationFeedback conversations={conversations} project={project.id} /> : uiText("没有符合筛选条件的工作目录")}
-            <Action action="project-directory-reset" id={project.id} data-detail-focus="directory-filter">{uiText("查看全部目录")}</Action>
-          </> : <>{project.refreshing ? uiText("正在发现工作目录…") : uiText("尚未发现工作目录，请检查项目路径后重新扫描。")}
-            {!project.refreshing ? <Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action> : null}</>}
-          </div>}
-      </section>
-      <section className="project-activity" aria-labelledby="projectActivityTitle">
-        <div className="resource-section-heading"><h3 id="projectActivityTitle">{uiText("最近开发活动")}</h3><Action action="project-conversations" id={project.id} variant="ghost">{uiText("查看全部")}<ChevronRight aria-hidden="true" /></Action></div>
-        <ProjectConversationRows project={project.id} sessions={sessions.slice(0, 3)} directoryLabels={labels} />
-        <ProjectConversationFeedback conversations={conversations} project={project.id} empty={sessions.length ? undefined : uiText("暂无项目对话")} />
-      </section>
-    </>}
+    <div className="project-detail-body">
+      <div className="project-detail-overview">
+        <DirectoryPath path={project.path} project />
+        {!project.error ? <ul className="project-detail-summary" aria-label={uiText("项目摘要")}>
+          <li><Folder aria-hidden="true" /><strong>{project.refreshing && !items.length ? "…" : items.length}</strong>{uiText("个工作目录")}</li>
+          <li title={unknownStatus ? uiText("部分工作目录的 Git 状态暂不可用") : undefined}><Pencil aria-hidden="true" /><strong>{unknownStatus ? items.some(({tree}) => directoryUsable(tree)) ? `${totalChanges}+` : "—" : totalChanges}</strong>{uiText("项本地变更")}</li>
+          <li><MessageSquare aria-hidden="true" /><strong>{unknownSessions ? "—" : sessions.length}</strong>{uiText("条项目对话")}</li>
+          <li><Activity aria-hidden="true" /><strong>{unknownSessions ? "—" : totalRunning}</strong>{uiText("个运行中 Agent")}</li>
+        </ul> : null}
+      </div>
+      {project.error ? <Feedback variant="destructive"><p className="m-0">{uiText("项目读取失败：")}{project.error}</p><Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action></Feedback> : <>
+        <section className="project-directories-section" aria-labelledby="projectDirectoriesTitle">
+          <div className="resource-section-heading project-directories-heading">
+            <h3 id="projectDirectoriesTitle">{uiText("工作目录")} <span className="resource-section-count">{visible.length}</span></h3>
+            {items.length > 1 ? <div className="project-directory-controls">
+              <Action action="project-directory-expand-all" id={project.id} data-expand={String(!allExpanded)} data-detail-focus="expand-all" variant="ghost" disabled={!visible.length}>{allExpanded && visible.length ? uiText("全部收起") : uiText("全部展开")}</Action>
+              <span className="project-directory-select"><NativeSelect size="sm" defaultValue={filter} data-project-directory-filter data-detail-focus="directory-filter" aria-label={uiText("筛选工作目录")}>
+                <NativeSelectOption value="all">{uiText("全部目录")}</NativeSelectOption>
+                <NativeSelectOption value="dirty">{uiText("有改动")}</NativeSelectOption>
+                <NativeSelectOption value="active">{uiText("有对话")}</NativeSelectOption>
+                <NativeSelectOption value="clean">{uiText("干净")}</NativeSelectOption>
+                {issueCount || filter === "issues" ? <NativeSelectOption value="issues">{uiText("需要处理 ·")} {issueCount}</NativeSelectOption> : null}
+              </NativeSelect></span>
+              <span className="project-directory-select"><NativeSelect size="sm" defaultValue={sort} data-project-directory-sort data-detail-focus="directory-sort" aria-label={uiText("排序工作目录")}>
+                <NativeSelectOption value="recent">{uiText("最近使用")}</NativeSelectOption>
+                <NativeSelectOption value="name">{uiText("名称")}</NativeSelectOption>
+                <NativeSelectOption value="changes">{uiText("改动数量")}</NativeSelectOption>
+              </NativeSelect></span>
+            </div> : null}
+          </div>
+          {visible.length ? <div className="working-directory-cards" aria-label={uiText("项目工作目录")}>{visible.map(({tree, name, primary, state, related}) =>
+            <WorkingDirectoryCard key={tree.path} project={project.id} tree={tree} name={name} tool={tool} primary={primary} state={state} sessions={related} conversations={conversations} readOnly={readOnly} />)}</div>
+            : <div className="project-detail-empty" role="status">{items.length ? <>
+              {filter === "active" && unknownSessions ? <ProjectConversationFeedback conversations={conversations} project={project.id} /> : uiText("没有符合筛选条件的工作目录")}
+              <Action action="project-directory-reset" id={project.id} data-detail-focus="directory-filter">{uiText("查看全部目录")}</Action>
+            </> : <>{project.refreshing ? uiText("正在发现工作目录…") : uiText("尚未发现工作目录，请检查项目路径后重新扫描。")}
+              {!project.refreshing ? <Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action> : null}</>}
+            </div>}
+        </section>
+        <section className="project-activity" aria-labelledby="projectActivityTitle">
+          <div className="resource-section-heading"><h3 id="projectActivityTitle">{uiText("最近开发活动")}</h3><Action action="project-conversations" id={project.id} variant="ghost">{uiText("查看全部")}<ChevronRight aria-hidden="true" /></Action></div>
+          <ProjectConversationRows project={project.id} sessions={sessions.slice(0, 3)} directoryLabels={labels} />
+          <ProjectConversationFeedback conversations={conversations} project={project.id} empty={sessions.length ? undefined : uiText("暂无项目对话")} />
+        </section>
+      </>}
+    </div>
   </div>
 }
 

@@ -59,7 +59,10 @@ func TestNewConversationInheritsNativeModelEffortWithManagedDirectoryPermissions
 func preferencesCatalog(a *App) {
 	a.openSessions = func(context.Context) (codex.SessionClient, error) {
 		return &fakeSessionClient{request: func(method string, _ map[string]any) (any, error) {
-			return map[string]any{"data": []any{map[string]any{"model": "gpt-6.1-sol"}, map[string]any{"model": "model"}}}, nil
+			return map[string]any{"data": []any{
+				map[string]any{"model": "gpt-6.1-sol"},
+				map[string]any{"model": "model", "isDefault": true, "supportedReasoningEfforts": []map[string]string{{"reasoningEffort": "high"}}, "serviceTiers": []codex.ModelServiceTier{{ID: "fast"}}},
+			}}, nil
 		}}, nil
 	}
 }
@@ -68,21 +71,24 @@ func TestConversationPreferencesPersistValidateAndResetOffline(t *testing.T) {
 	a := testApp(t)
 	preferencesCatalog(a)
 	endpoint := "/api/settings/conversation-defaults"
-	desired := map[string]string{"model": "model", "permission": "ask"}
+	desired := map[string]string{"effort": "high", "serviceTier": "fast", "permission": "ask"}
 	if code, raw := call(t, a, "PUT", endpoint, desired); code != 200 {
 		t.Fatalf("%d %s", code, raw)
 	}
 	restored := New(a.Execution)
 	t.Cleanup(restored.Close)
 	got, err := restored.conversationPreferences(context.Background())
-	if err != nil || got.Model != "model" || got.Permission != "ask" {
+	if err != nil || got != (conversationPreferences{Effort: "high", ServiceTier: "fast", Permission: "ask"}) {
 		t.Fatal(got, err)
 	}
 	other := testApp(t)
 	if got, err := other.conversationPreferences(context.Background()); err != nil || got != (conversationPreferences{}) {
 		t.Fatal("preferences leaked to another environment", got, err)
 	}
-	for _, bad := range []map[string]string{{"model": "missing"}, {"permission": "unsafe"}, {"model": strings.Repeat("m", 201)}} {
+	for _, bad := range []map[string]string{
+		{"model": "missing"}, {"permission": "unsafe"}, {"model": strings.Repeat("m", 201)},
+		{"effort": "low"}, {"serviceTier": "unknown"}, {"model": "gpt-6.1-sol", "serviceTier": "fast"},
+	} {
 		if code, raw := call(t, a, "PUT", endpoint, bad); code != 400 {
 			t.Fatalf("invalid preferences accepted: %d %s", code, raw)
 		}
@@ -107,10 +113,13 @@ func TestConversationPreferencesPersistValidateAndResetOffline(t *testing.T) {
 }
 
 func TestNewConversationPreferencesPreserveExplicitChoices(t *testing.T) {
-	defaults := conversationPreferences{Model: "gpt-6.1-sol", Permission: "full"}
-	custom := TurnSettings{Model: "model", Effort: "high", Permission: "ask", Mode: "plan"}
+	defaults := conversationPreferences{Model: "model", Effort: "high", ServiceTier: "fast", Permission: "full"}
+	custom := TurnSettings{Model: "gpt-6.1-sol", Effort: "high", Permission: "ask", Mode: "plan"}
 	if got := newConversationSettings(custom, defaults); got != custom {
 		t.Fatal(got)
+	}
+	if got := newConversationSettings(TurnSettings{UseModelEffort: true, UseDefaultSpeed: true, UseDefaultPermission: true}, defaults); got.Model != "model" || got.Effort != "" || got.ServiceTier != "" || got.Permission != "" {
+		t.Fatal("explicit use of provider defaults was ignored", got)
 	}
 	for _, explicit := range []bool{false, true} {
 		t.Run(fmt.Sprintf("explicit-%t", explicit), func(t *testing.T) {
@@ -123,22 +132,34 @@ func TestNewConversationPreferencesPreserveExplicitChoices(t *testing.T) {
 			a.openLive = func(context.Context) (codex.LiveClient, error) { return c, nil }
 			body := map[string]any{"text": "Check preferences", "request_id": "stored-defaults"}
 			if explicit {
-				body["settings"] = TurnSettings{Model: "model", Permission: "ask", Effort: "high"}
+				body["settings"] = TurnSettings{Model: "gpt-6.1-sol", Permission: "auto", Effort: "high"}
 			}
 			if code, raw := call(t, a, "POST", "/api/sessions/new", body); code != 202 {
 				t.Fatalf("%d %s", code, raw)
 			}
 			state := awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
 			base.mu.Lock()
-			defer base.mu.Unlock()
 			start, turn := base.threadParams["thread/start"], base.startParams
+			base.mu.Unlock()
 			if explicit {
-				if start["model"] != "model" || start["approvalPolicy"] != "on-request" || turn["effort"] != "high" {
+				if start["model"] != "gpt-6.1-sol" || start["permissions"] == nil || start["permissions"] != turn["permissions"] || start["approvalPolicy"] != "on-request" || start["approvalsReviewer"] != "auto_review" || turn["approvalsReviewer"] != "auto_review" || turn["effort"] != "high" || turn["serviceTierForTurn"] != nil {
 					t.Fatal(start, turn)
 				}
 			} else {
-				if start["model"] != "gpt-6.1-sol" || start["permissions"] == nil || start["permissions"] != turn["permissions"] || turn["effort"] != "medium" || state.Context.ApprovalPolicy != "on-request" {
+				if start["model"] != "model" || start["sandbox"] != "danger-full-access" || start["approvalPolicy"] != "never" || start["permissions"] != nil || turn["permissions"] != nil || turn["approvalPolicy"] != "never" || turn["sandboxPolicy"].(map[string]any)["type"] != "dangerFullAccess" || turn["effort"] != "high" || turn["serviceTierForTurn"] != "fast" || state.Context.ServiceTier != "fast" || state.Context.ApprovalPolicy != "never" {
 					t.Fatal(start, turn, state.Context)
+				}
+				finishFakeTurn(t, a, base)
+				// A subsequent turn without an explicit override preserves the session's full permission.
+				if code, raw := call(t, a, "POST", "/api/sessions/session/chat", map[string]any{"text": "Second turn", "request_id": "second-turn"}); code != 202 {
+					t.Fatalf("%d %s", code, raw)
+				}
+				awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
+				base.mu.Lock()
+				resume, secondTurn := base.threadParams["thread/resume"], base.startParams
+				base.mu.Unlock()
+				if resume["sandbox"] != "danger-full-access" || resume["approvalPolicy"] != "never" || resume["permissions"] != nil || secondTurn["approvalPolicy"] != "never" || secondTurn["sandboxPolicy"].(map[string]any)["type"] != "dangerFullAccess" {
+					t.Fatal("subsequent turn lost full permission", resume, secondTurn)
 				}
 			}
 		})
@@ -147,13 +168,13 @@ func TestNewConversationPreferencesPreserveExplicitChoices(t *testing.T) {
 
 func TestConversationDefaultsNeverOverrideExistingSession(t *testing.T) {
 	a, _, base, endpoint := chatFixture(t)
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('conversation_defaults:v1','{"model":"missing","permission":"full"}')`); err != nil {
+	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('conversation_defaults:v1','{"model":"missing","permission":"full","effort":"high","serviceTier":"fast"}')`); err != nil {
 		t.Fatal(err)
 	}
 	startFakeChat(t, a, endpoint)
 	base.mu.Lock()
 	defer base.mu.Unlock()
-	for _, key := range []string{"model", "approvalPolicy", "approvalsReviewer"} {
+	for _, key := range []string{"model", "effort", "serviceTierForTurn", "approvalPolicy", "approvalsReviewer"} {
 		if _, ok := base.startParams[key]; ok {
 			t.Errorf("existing session overridden: %s", key)
 		}

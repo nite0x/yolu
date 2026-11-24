@@ -17,14 +17,27 @@
 #gitContent { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .git-loading { display: grid; min-height: 240px; place-items: center; padding: 24px; color: var(--muted-foreground); }
 .git-workspace { display: flex; flex-direction: column; min-height: 0; flex: 1; }
-.git-workspace-context { flex-shrink: 0; padding: 16px 24px 12px; background: var(--background); }
-.git-workspace-directory { display: flex; align-items: flex-end; gap: 12px; }
+.git-workspace-context { flex-shrink: 0; padding: 14px 24px 12px; background: var(--background); }
+.git-workspace-directory { display: flex; align-items: flex-end; gap: 10px; }
 .git-workspace-directory > .field { flex: 1; min-width: 0; margin: 0; }
-.git-workspace-directory > button { margin-bottom: 0; flex-shrink: 0; }
-.git-workspace-context .git-context-summary { margin-top: 10px; border: 0; padding: 0; background: transparent; color: var(--muted-foreground); font-size: 12px; line-height: 1.7; }
-.git-operation-section { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px 24px 22px; }
-.git-dialog .git-operation-section > .git-section { margin: 0 0 16px; border: 1px solid var(--border); padding: 16px; }
-.git-dialog .git-operation-section > .git-section:last-child { margin-bottom: 0; }
+.git-workspace-directory > button { margin-bottom: 0; flex-shrink: 0; height: 36px; }
+.git-workspace-context .git-context-summary {
+  margin-top: 10px;
+  border: 1px solid var(--yolu-border);
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: var(--yolu-subtle);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.git-operation-section { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 12px 24px 20px; }
+.git-dialog .git-operation-section > .git-section {
+  margin: 0;
+  padding: 16px 0;
+  background: transparent;
+}
+.git-dialog .git-operation-section:last-child > .git-section:last-child { border-bottom-width: 0 !important; }
 .git-section-title { align-items: flex-start; }
 .git-section-title > span { line-height: 1.6; text-align: right; }
 .git-help { margin: 0; font-size: 12px; line-height: 1.7; }
@@ -55,14 +68,103 @@
   .git-section-title > span { text-align: left; }
 }
 
-.git-section-navigation{display:flex;gap:16px;padding:8px 24px;border-bottom:1px solid var(--border)}
-.git-section-navigation a{color:var(--primary);font-size:13px;text-decoration:none}
-.git-section-navigation a:hover{text-decoration:underline}
-.git-section-navigation a[aria-current="location"]{font-weight:600;text-decoration:underline;text-underline-offset:4px}
-.git-sections{min-height:0;overflow:auto;overscroll-behavior:contain}
-.git-operation-section{overflow:visible;scroll-margin-top:12px}
-body.project-tool-page main > :not(#gitDialog):not(#worktreeDialog){display:none!important}
-body.project-tool-page main{padding:16px;overflow:auto}
-body.project-tool-page main > dialog[open]{position:static;inset:auto;width:100%;max-width:none;max-height:none;margin:0;border:0;box-shadow:none}
-body.project-tool-page main > #gitDialog[open]{height:100%;min-height:400px}
-body.project-tool-page .git-dialog > .dialog-header{padding-top:8px}
+.git-section-navigation {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 24px 12px;
+  padding: 2px;
+  width: fit-content;
+  border: 0;
+  border-radius: 8px;
+  background: var(--yolu-subtle);
+}
+.git-section-navigation a {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--yolu-muted-ink);
+  font-size: var(--yolu-font-size-label);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color .12s, color .12s;
+}
+.git-section-navigation a:hover { color: var(--yolu-foreground); text-decoration: none; }
+.git-section-navigation a[aria-current="location"] {
+  background: var(--yolu-surface);
+  color: var(--yolu-foreground);
+  font-weight: 600;
+  box-shadow: var(--yolu-elevation-sm);
+  text-decoration: none;
+}
+.git-sections { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.git-operation-section { overflow: visible; scroll-margin-top: 12px; }
+body.project-tool-page main > :not(#gitDialog):not(#worktreeDialog) { display: none !important; }
+body.project-tool-page main { padding: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--yolu-surface); }
+body.project-tool-page main > dialog[open] {
+  position: static;
+  inset: auto;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+body.project-tool-page main > #gitDialog[open] { height: 100%; min-height: 0; }
+body.project-tool-page main > dialog[open] > .dialog-header {
+  flex: none;
+  margin: 0 !important;
+  min-height: 44px;
+  padding: 6px 16px;
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--yolu-border) 70%, transparent);
+}
+body.project-tool-page main > dialog[open] > .dialog-header h2 {
+  font-size: var(--yolu-font-size-row);
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -.01em;
+}
+body.project-tool-page main > #gitDialog[open] > .dialog-footer { display: none; }
+body.project-tool-page .git-workspace-context {
+  padding: 14px 28px 10px;
+  width: min(100%, 840px);
+}
+body.project-tool-page .git-section-navigation { margin: 2px 28px 10px; }
+body.project-tool-page .git-sections { flex: 1; min-height: 0; padding: 0 28px 48px; }
+body.project-tool-page .git-operation-section { padding: 0; width: min(100%, 840px); }
+body.project-tool-page .git-dialog .git-operation-section > .git-section {
+  margin: 0;
+  border-top-width: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+  border-radius: 0;
+  padding: 18px 0;
+  background: transparent;
+}
+body.project-tool-page .git-dialog > #gitError,
+body.project-tool-page .git-dialog > #gitAuthHelp,
+body.project-tool-page .git-dialog > #gitProgress,
+body.project-tool-page .git-dialog > #gitResult { margin: 10px 28px 0 !important; max-width: 784px; }
+body.project-tool-page main > #worktreeDialog[open] > :not(.dialog-header) {
+  width: min(100%, 640px);
+  padding-inline: 28px;
+}
+body.project-tool-page main > #worktreeDialog[open] > #worktreeProject { margin: 14px 0 12px; font-family: var(--font-mono, monospace); font-size: 12px; }
+body.project-tool-page main > #worktreeDialog[open] > #worktreeForm { flex: 1; overflow: auto; padding-bottom: 40px; }
+body.project-tool-page main > #worktreeDialog[open] .dialog-footer { border-top: 1px solid var(--yolu-border); padding-top: 14px; margin-top: 18px; }
+@media (max-width: 760px) {
+  body.project-tool-page .git-workspace-context,
+  body.project-tool-page .git-sections { padding-inline: 16px; }
+  body.project-tool-page .git-section-navigation { margin-inline: 16px; }
+  body.project-tool-page main > #worktreeDialog[open] > :not(.dialog-header) { padding-inline: 16px; }
+}

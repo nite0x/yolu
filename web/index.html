@@ -78,9 +78,22 @@
     <main>
       <div id="offlineFeedback" class="shadcn-scope"></div>
       <section id="issuesPage" class="issues-page shadcn-scope" aria-labelledby="issuesHeading" hidden>
-        <h1 id="issuesHeading" tabindex="-1" data-i18n="任务">任务</h1>
-        <p data-i18n="在 Linear 查看分配给你的任务。">在 Linear 查看分配给你的任务。</p>
-        <a class="resource-breadcrumb-link" id="openLinear" href="https://linear.app/" target="_blank" rel="noopener noreferrer" data-i18n="打开 Linear">打开 Linear</a>
+        <header class="desktop-pane-header">
+          <h1 id="issuesHeading" tabindex="-1" data-i18n="任务">任务</h1>
+        </header>
+        <div class="issues-empty-stage">
+          <div class="issues-empty-content">
+            <div class="issues-empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+            </div>
+            <h2>Linear</h2>
+            <p data-i18n="在 Linear 查看分配给你的任务。">在 Linear 查看分配给你的任务。</p>
+            <a class="issues-open-button" id="openLinear" href="https://linear.app/" target="_blank" rel="noopener noreferrer">
+              <span data-i18n="打开 Linear">打开 Linear</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+            </a>
+          </div>
+        </div>
       </section>
       <section id="settingsPage" class="settings-page shadcn-scope" aria-label="设置" hidden data-i18n-aria-label="设置"></section>
       <section class="content-panel" id="workContent">

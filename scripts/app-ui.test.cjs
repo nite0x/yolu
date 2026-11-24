@@ -62,9 +62,19 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
     else if (url === '/api/settings/terminal' && options.method === 'PUT') result = data.terminal = { ...data.terminal, settings: body, launcher: body.path || '/usr/bin/terminal', message: '终端已就绪' };
     else if (url === '/api/settings/browser-access') result = {enabled:false,port:4318,code:'',running:false,error:'',can_manage:true,addresses:[]};
     else if (url === '/api/settings/codex') result = {platform:'linux',user:'tester',codex_home:'/home/tester/.codex',cli_path:'/usr/bin/codex',candidates:['/usr/bin/codex'],version:'codex-cli test',checked_at:'2026-11-04T12:00:00Z',status:'ok',checks:[{id:'cli',name:'CLI 安装与版本',status:'ok',message:'codex-cli test'}]};
+    else if (url.startsWith('/api/settings/conversation-defaults?provider=agy')) {
+      if (options.method === 'PUT') data.agy_conversation_defaults = body;
+      result = {settings:data.agy_conversation_defaults || {}, models:[
+        {model:'gemini',displayName:'Gemini',isDefault:true,supportedReasoningEfforts:[{reasoningEffort:'high'}]},
+        {model:'claude',displayName:'Claude',supportedReasoningEfforts:[{reasoningEffort:'low'}]},
+      ]};
+    }
     else if (url === '/api/settings/conversation-defaults') {
       if (options.method === 'PUT') data.conversation_defaults = body;
-      result = {settings:data.conversation_defaults || {}, models:[{model:'body-model',displayName:'正文模型'}, {model:'other-model',displayName:'另一个模型'}]};
+      result = {settings:data.conversation_defaults || {}, models:[
+        {model:'body-model',displayName:'正文模型',isDefault:true,supportedReasoningEfforts:[{reasoningEffort:'high'}],serviceTiers:[{id:'fast',name:'Fast'}]},
+        {model:'other-model',displayName:'另一个模型',supportedReasoningEfforts:[{reasoningEffort:'low'}]},
+      ]};
     }
     else if (url === '/api/settings/session-title') {
       if (options.method === 'PUT') data.title_settings = body;
@@ -638,20 +648,46 @@ test('conversation defaults save and reset per environment while polling preserv
   assert.equal(h.$('#conversationDefaultModel').value, '');
   assert.equal(h.$('#conversationDefaultPermission').value, '');
   h.change('#conversationDefaultModel', 'body-model');
+  h.change('#conversationDefaultSpeed', 'fast');
+  h.change('#conversationDefaultEffort', 'high');
   h.change('#conversationDefaultPermission', 'ask');
   await h.window.refresh(true); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
   assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
   await h.submit('#conversationDefaultsForm');
   const saved = h.requests.find(r => r.url === '/api/settings/conversation-defaults' && r.options.method === 'PUT');
-  assert.deepEqual(saved.body, {model:'body-model',permission:'ask'});
+  assert.deepEqual(saved.body, {model:'body-model',effort:'high',serviceTier:'fast',permission:'ask'});
   assert.equal(saved.options.headers['X-Environment-ID'], 'local');
   assert.match(h.$('#conversationDefaultsStatus').textContent, /已保存/);
+  h.change('#conversationDefaultProvider', 'agy'); await settle();
+  assert.equal(h.$('#conversationDefaultModel').value, '');
+  assert.equal(h.$('#conversationDefaultPermission').options[1].text, '启用沙箱');
+  assert.equal(h.$('#conversationDefaultSpeed').disabled, true);
+  h.change('#conversationDefaultModel', 'claude');
+  h.change('#conversationDefaultEffort', 'low');
+  h.change('#conversationDefaultPermission', 'ask');
+  h.change('#conversationDefaultProvider', 'codex'); await settle();
+  assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
+  assert.equal(h.$('#conversationDefaultEffort').value, 'high');
+  h.change('#conversationDefaultProvider', 'agy'); await settle();
+  assert.equal(h.$('#conversationDefaultModel').value, 'claude');
+  assert.equal(h.$('#conversationDefaultEffort').value, 'low');
+  await h.submit('#conversationDefaultsForm');
+  assert.deepEqual(h.data.agy_conversation_defaults, {model:'claude',effort:'low',serviceTier:'',permission:'ask'});
+  h.click('#conversationDefaultsReload'); await settle();
+  assert.equal(h.$('#conversationDefaultEffort').value, 'low');
+  h.change('#conversationDefaultProvider', 'codex'); await settle();
   h.click('#conversationDefaultsReload'); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
+  assert.equal(h.$('#conversationDefaultEffort').value, 'high');
+  assert.equal(h.$('#conversationDefaultSpeed').value, 'fast');
+  h.change('#conversationDefaultModel', 'other-model');
+  assert.equal(h.$('#conversationDefaultEffort').value, '');
+  assert.equal(h.$('#conversationDefaultSpeed').value, '');
+  assert.equal(h.$('#conversationDefaultSpeed').disabled, true);
   h.change('#conversationDefaultModel', ''); h.change('#conversationDefaultPermission', '');
   await h.submit('#conversationDefaultsForm');
-  assert.deepEqual(h.data.conversation_defaults, {model:'',permission:''});
+  assert.deepEqual(h.data.conversation_defaults, {model:'',effort:'',serviceTier:'',permission:''});
   h.setIntercept((url, options) => url === '/api/settings/conversation-defaults' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'模型已不可用'})} : undefined);
   h.change('#conversationDefaultModel', 'body-model');
   await h.submit('#conversationDefaultsForm');

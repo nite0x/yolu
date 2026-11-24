@@ -130,6 +130,8 @@ Standalone Codex visualization references in assistant messages render as expand
 
 Settings retain independent forms and their scoped save actions. Group the page into General, Conversation, Execution environment and Diagnostics, with an in-page category index. Keep common appearance and conversation preferences ahead of diagnostics. Category jumps scroll and focus the heading without changing the application route or remounting forms. Project management stays in resource navigation.
 
+The new-conversation settings form saves model, response speed, reasoning effort and permissions separately for each agent and execution environment. Show the available speeds and efforts for the selected model. Antigravity determines speed through its model and exposes its sandbox permissions. The defaults apply at creation, and the composer allows a draft to override them. Managed Codex conversations enforce their directory access grants unless full access is explicitly selected.
+
 ## Accessibility and localization
 
 Use semantic buttons, headings, lists, forms and labelled regions. Icon-only actions need accessible names and tooltips. Keep keyboard focus visible with the shared ring, expose selection and pending states, and respect reduced-motion preferences. Long titles and paths need safe truncation with the full value available where relevant. Error feedback uses an alert and loading/progress feedback uses a status region.

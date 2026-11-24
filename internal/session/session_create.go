@@ -185,8 +185,12 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 		if err != nil {
 			return nil, 503, fmt.Errorf("无法核对默认模型：%w", err)
 		}
-		if !availableConversationModel(models, input.Settings.Model) {
+		selected := findConversationModel(models, input.Settings.Model)
+		if selected == nil {
 			return nil, 400, errors.New("所选模型不可用，请更换模型或在设置中沿用 Codex 默认模型")
+		}
+		if err := input.Settings.validateForModel(selected); err != nil {
+			return nil, 400, err
 		}
 	}
 	var result struct {
@@ -200,7 +204,7 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 	if input.Settings.Effort != "" {
 		params["config"].(map[string]any)["model_reasoning_effort"] = input.Settings.Effort
 	}
-	if err := a.configureCodexThread(startup, c, params, plan); err != nil {
+	if err := a.configureCodexThread(startup, c, params, plan, input.Settings.Permission); err != nil {
 		return nil, 409, err
 	}
 	if execution.instructions != "" {
@@ -247,7 +251,7 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 	}
 	s.UpdatedAt = s.CreatedAt
 	err = a.Execution.Store.SaveSessionWithBindings(model.Session{
-		ID: s.ID, Name: s.Name, Cwd: s.Cwd, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Source: "workbench",
+		ID: s.ID, Name: s.Name, Cwd: s.Cwd, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Source: "workbench", Permission: input.Settings.Permission,
 	}, execution.bindings)
 	if err != nil {
 		return nil, 500, err
@@ -270,6 +274,7 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 	run.writeRoots = writableRoots(plan)
 	run.directoryRoots = uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
 	run.managedBindings = plan.ManagedBindings
+	plan.Permission = input.Settings.Permission
 	a.chatMu.Lock()
 	a.chats[s.ID] = run
 	a.chatMu.Unlock()

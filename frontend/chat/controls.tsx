@@ -7,6 +7,7 @@ import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {NativeSelect, NativeSelectOption} from "@/components/ui/native-select";
 import {convertEntries, mergeEntries, newConversationSettings, type AgentProvider, type ChatContext, type PermissionMode} from "./model";
+import {effortLabel, findChatModel, isFastTier, permissionChoices, serviceTierLabel} from "./settings";
 import {ChatController} from "./controller";
 import {useChatState} from './use-chat-state';
 import {isGeneralConversationDirectory} from '../app/conversation-context';
@@ -15,7 +16,6 @@ import {ConversationStatusBadge} from '../app/conversation-surface';
 const providerLabel = (provider?: AgentProvider) => provider === "agy" ? "Antigravity" : "Codex";
 const providerIcons = {codex: SquareTerminalIcon, agy: OrbitIcon};
 const permissionIcons = {ask: ShieldQuestionMarkIcon, auto: ShieldCheckIcon, full: ShieldAlertIcon};
-const isFastTier = (id?: string) => id === "fast" || id === "priority";
 const modeLabel = (mode?: string) => mode === "plan" ? uiText("规划") : mode === "default" ? uiText("执行") : mode === "accept-edits" ? uiText("自动编辑") : mode === "auto" ? uiText("自动") : mode || uiText("未获取工作模式");
 const approvalLabel = (policy: unknown, provider?: AgentProvider) => typeof policy === "string" ? ({"on-request": uiText("按需审批"), untrusted: uiText("非受信任操作需审批"), "on-failure": uiText("失败后审批"), never: uiText("无需审批")}[policy] || policy) : provider === "agy" ? uiText("由 Antigravity 管理") : uiText("由 Codex 管理");
 type ControlsProps = {controller: ChatController; portal: RefObject<HTMLElement | null>};
@@ -36,26 +36,13 @@ function ChatStatusView({controller}: {controller: ChatController}) {
 
 type SettingChoice = {value: string; label: string; description?: string; danger?: boolean; icon?: LucideIcon};
 
-function permissionChoices(provider: AgentProvider): (SettingChoice & {value: PermissionMode})[] {
-  if (provider === "agy") return [
-    {value: "ask", label: uiText("启用沙箱"), description: uiText("在 Antigravity 的沙箱限制内运行。")},
-    {value: "full", label: uiText("跳过权限检查"), description: uiText("Antigravity 将跳过操作权限检查。"), danger: true},
-  ];
-  return [
-    {value: "ask", label: uiText("请求批准"), description: uiText("编辑已授权目录外的文件或访问网络时请求批准")},
-    {value: "auto", label: uiText("帮我批准"), description: uiText("自动审查批准请求，风险操作仍需确认")},
-    {value: "full", label: uiText("完全访问权限"), description: uiText("可不受沙箱限制地访问互联网和电脑上的文件"), danger: true},
-  ];
-}
-
 function contextPermission(context?: ChatContext): PermissionMode | undefined {
   if (context?.sandbox?.type === "dangerFullAccess" && context.approvalPolicy === "never") return "full";
-  if (context?.sandbox?.type !== "workspaceWrite" || context.approvalPolicy !== "on-request") return undefined;
+  if (context?.approvalPolicy !== "on-request") return undefined;
   if (context.approvalsReviewer === "auto_review" || context.approvalsReviewer === "guardian_subagent") return "auto";
-  return context.approvalsReviewer === "user" ? "ask" : undefined;
+  if (context.sandbox?.type === "workspaceWrite" && context.approvalsReviewer === "user") return "ask";
+  return undefined;
 }
-
-const effortLabel = (effort?: string) => effort ? ({none: uiText("无"), minimal: uiText("最低"), low: uiText("低"), medium: uiText("中"), high: uiText("高"), xhigh: uiText("超高"), max: uiText("最高"), ultra: uiText("极高")}[effort] || effort) : "";
 
 type ChoiceProps = {label: string; options: SettingChoice[]; value: string; disabled?: boolean; onChange: (value: string) => void};
 function SettingChoices({label, options, value, disabled, onChange}: ChoiceProps) {
@@ -101,22 +88,27 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
   const model = context?.model || s.session?.model;
   const effort = context?.reasoningEffort || s.session?.reasoningEffort;
   const settings = s.session ? s.settings : newConversationSettings(s.settings, s.defaults);
+  const usesSavedModel = !s.session && (!s.settings.model || s.settings.model === s.defaults.model);
   const nextModel = settings.model || model;
-  const selectedModel = s.models.find(m => m.model === nextModel) || (!nextModel ? s.models.find(m => m.isDefault) : undefined);
+  const selectedModel = findChatModel(s.models, nextModel);
   const modelName = selectedModel?.displayName || nextModel || selectedModel?.model;
   const inheritedEffort = !s.session || nextModel !== model ? selectedModel?.defaultReasoningEffort : effort;
-  const nextEffort = s.settings.effort || inheritedEffort;
+  const nextEffort = settings.effort || inheritedEffort;
   const nextMode = s.settings.mode || context?.mode;
   const defaultLabel = uiText("默认");
   const scoped = managedDirectories && s.provider === "codex";
-  const permissions = scoped ? [] : permissionChoices(s.provider);
-  const permission = permissions.find(p => p.value === s.settings.permission);
-  const effectivePermission = permission || permissions.find(p => p.value === (s.session ? contextPermission(context) : s.defaults.permission));
-  const permissionLabel = scoped ? uiText("按目录授权") : effectivePermission?.label || defaultLabel;
+  const permissions = permissionChoices(s.provider);
+  const permission = permissions.find(p => p.value === (s.session ? s.settings.permission : settings.permission));
+  const effectivePermission = permission || permissions.find(p => p.value === (s.session ? contextPermission(context) : undefined));
+  const defaultPermissionLabel = scoped ? uiText("按目录授权") : defaultLabel;
+  const permissionLabel = effectivePermission?.label || defaultPermissionLabel;
+  const defaultPermissionOption: SettingChoice = scoped && !s.session
+    ? {value: "", label: uiText("按目录授权"), description: uiText("在对话顶部查看或更改目录访问权限。")}
+    : {value: "", label: defaultLabel};
+  const selectedPermissionValue = s.session ? (effectivePermission?.value || "") : (settings.permission || "");
   const tierOptions = s.provider === "codex" ? selectedModel?.serviceTiers || [] : [];
-  const selectedTier = tierOptions.find(tier => tier.id === s.settings.serviceTier);
+  const selectedTier = tierOptions.find(tier => tier.id === settings.serviceTier);
   const tiers = tierOptions.filter((tier, index, all) => tier.id && all.findIndex(item => item.id === tier.id) === index);
-  const tierLabel = (tier: typeof tiers[number]) => isFastTier(tier.id) ? uiText("快速") : tier.name || tier.id;
   const unreported = s.provider === "agy" ? uiText("Antigravity 未报告") : uiText("Codex 未报告");
   const changed = Object.values(s.settings).some(Boolean);
   const nextTurnChanged = nextModel !== model || nextEffort !== effort || nextMode !== context?.mode ||
@@ -131,7 +123,7 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
   modes.unshift({value: "", label: uiText("默认")});
   const summaryModel = modelName || defaultLabel;
   const summaryEffort = effortLabel(nextEffort);
-  const speedLabel = selectedTier ? tierLabel(selectedTier) : tiers.length ? defaultLabel : uiText("由模型决定");
+  const speedLabel = selectedTier ? serviceTierLabel(selectedTier) : tiers.length ? defaultLabel : uiText("由模型决定");
   const ProviderIcon = providerIcons[s.provider];
   const PermissionIcon = effectivePermission ? permissionIcons[effectivePermission.value] : ShieldIcon;
   const SpeedIcon = isFastTier(selectedTier?.id) ? ZapIcon : GaugeIcon;
@@ -159,14 +151,26 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
       <header className="chat-setting-header"><h3 id={title}>{uiText("对话设置")}</h3><Popover.Close asChild><Button type="button" variant="ghost" size="icon" aria-label={uiText("关闭设置")}><XIcon aria-hidden="true" /></Button></Popover.Close></header>
       <div className="chat-setting-body">
         {!readOnly && <>
-          <SettingPicker portal={portal} summary={uiText("模型")} display={summaryModel} label={uiText("下轮模型")} options={modelOptions} value={s.session ? nextModel || "" : s.settings.model || ""} disabled={disabled || s.optionsLoading} onChange={value => controller.setSettings({...s.settings, model: value && (!s.session || value !== model) ? value : undefined, effort: undefined, serviceTier: undefined})} />
+          <SettingPicker portal={portal} summary={uiText("模型")} display={summaryModel} label={uiText("下轮模型")} options={modelOptions} value={s.session ? nextModel || "" : s.settings.model || ""} disabled={disabled || s.optionsLoading} onChange={value => controller.setSettings({...s.settings, model: value && (!s.session || value !== model) ? value : undefined, effort: undefined, serviceTier: undefined, useModelEffort: undefined, useDefaultSpeed: undefined})} />
           <div className="chat-setting-line"><strong>{uiText("思考强度")}</strong>{s.provider === "agy" && !selectedModel?.supportedReasoningEfforts?.length
             ? <span className="chat-setting-unavailable">{uiText("由模型决定")}</span>
-            : <SettingChoices label={uiText("下轮思考强度")} options={efforts} value={s.session ? nextEffort || "" : s.settings.effort || ""} disabled={disabled || s.optionsLoading || !selectedModel} onChange={value => controller.setSettings({...s.settings, effort: value && (!s.session || value !== inheritedEffort) ? value : undefined})} />}</div>
+            : <SettingChoices label={uiText("下轮思考强度")} options={efforts} value={(s.session ? nextEffort : settings.effort) || ""} disabled={disabled || s.optionsLoading || !selectedModel} onChange={value => controller.setSettings({
+              ...s.settings,
+              effort: value && (!s.session || value !== inheritedEffort) ? value : undefined,
+              useModelEffort: !value && usesSavedModel && s.defaults.effort ? true : undefined,
+            })} />}</div>
           <div className="chat-setting-line"><strong>{uiText("响应速度")}</strong>{tiers.length
-            ? <SettingChoices label={uiText("响应速度")} options={[{value: "", label: uiText("默认")}, ...tiers.map(tier => ({value: tier.id, label: tierLabel(tier)}))]} value={selectedTier?.id || ""} disabled={disabled || s.optionsLoading} onChange={value => controller.setSettings({...s.settings, serviceTier: value || undefined})} />
+            ? <SettingChoices label={uiText("响应速度")} options={[{value: "", label: uiText("默认")}, ...tiers.map(tier => ({value: tier.id, label: serviceTierLabel(tier)}))]} value={selectedTier?.id || ""} disabled={disabled || s.optionsLoading} onChange={value => controller.setSettings({
+              ...s.settings,
+              serviceTier: value || undefined,
+              useDefaultSpeed: !value && usesSavedModel && s.defaults.serviceTier ? true : undefined,
+            })} />
             : <span className="chat-setting-unavailable">{uiText("由模型决定")}</span>}</div>
-          {scoped ? <div className="chat-setting-line"><strong>{uiText("权限")}</strong><span className="chat-setting-unavailable">{uiText("按目录授权")}</span><p className="chat-setting-unavailable">{uiText("在对话顶部查看或更改目录访问权限。")}</p></div> : <SettingPicker portal={portal} summary={uiText("权限")} display={permissionLabel} danger={effectivePermission?.danger} label={uiText("权限设置")} options={[{value: "", label: defaultLabel}, ...permissions]} value={permission?.value || ""} disabled={disabled} onChange={value => controller.setSettings({...s.settings, permission: (value || undefined) as PermissionMode | undefined})} />}
+          <SettingPicker portal={portal} summary={uiText("权限")} display={permissionLabel} danger={effectivePermission?.danger} label={uiText("权限设置")} options={[defaultPermissionOption, ...permissions]} value={selectedPermissionValue} disabled={disabled} onChange={value => controller.setSettings({
+            ...s.settings,
+            permission: value && (!s.session || value !== contextPermission(context)) ? (value as PermissionMode) : undefined,
+            useDefaultPermission: !value && !s.session && s.defaults.permission ? true : undefined,
+          })} />
           <details className="chat-setting-more"><summary>{uiText("工作模式")}</summary><SettingChoices label={uiText("下轮工作模式")} options={modes} value={nextMode || ""} disabled={disabled || s.optionsLoading} onChange={value => controller.setSettings({...s.settings, mode: value && value !== context?.mode ? value : undefined})} /></details>
         </>}
         {(readOnly || s.session) && <Collapsible.Root className="chat-setting-more"><Collapsible.Trigger className="chat-context-disclosure flex w-full items-center justify-between text-xs">{uiText("当前上下文与权限")}<ChevronDownIcon aria-hidden="true" /></Collapsible.Trigger><Collapsible.Content>

@@ -33,41 +33,41 @@ func (a *Service) AgyDiagnosticsHandler(w http.ResponseWriter, r *http.Request) 
 	httpx.WriteJSON(w, 200, a.diagnoseAgy(ctx))
 }
 
-func (a *Service) cacheAgyCatalog(setup acp.SessionSetupResult) {
-	cat := agy.CatalogFromSetup(setup)
-	if len(cat.Models) == 0 && len(cat.Modes) == 0 {
-		return
+func (a *Service) agyOptionsCatalog(ctx context.Context, refresh bool) (agy.OptionCatalog, error) {
+	fallback := agy.OptionCatalog{Models: []codex.ChatModel{}, Modes: agy.DefaultModes}
+	if a.Execution.Remote != nil {
+		return fallback, fmt.Errorf("暂不支持在远端 WSL 环境运行 Antigravity 对话")
 	}
 	a.agyCatalogMu.Lock()
-	a.agyCatalog = &cat
+	cached := a.agyCatalog
 	a.agyCatalogMu.Unlock()
+	if cached != nil && !refresh {
+		return *cached, nil
+	}
+	catalog, err := agy.DiscoverCatalog(ctx, a.openAgy)
+	if err == nil && len(catalog.Models) > 0 {
+		a.agyCatalogMu.Lock()
+		a.agyCatalog = &catalog
+		a.agyCatalogMu.Unlock()
+		return catalog, nil
+	}
+	if cached != nil {
+		return *cached, err
+	}
+	if models := agy.ListCLIModels(ctx); len(models) > 0 {
+		fallback.Models = models
+		return fallback, nil
+	}
+	return fallback, err
 }
 
 func (a *Service) agyChatOptions(ctx context.Context) map[string]any {
 	defaults, _ := a.conversationPreferencesForProvider(ctx, model.ProviderAgy)
-	a.agyCatalogMu.Lock()
-	cached := a.agyCatalog
-	a.agyCatalogMu.Unlock()
-
-	models := []codex.ChatModel{}
-	modes := append([]string(nil), agy.DefaultModes...)
-	if cached != nil {
-		if len(cached.Models) > 0 {
-			models = append(models, cached.Models...)
-		}
-		if len(cached.Modes) > 0 {
-			modes = append([]string(nil), cached.Modes...)
-		}
-	}
-	if len(models) == 0 && a.Execution.Remote == nil {
-		if cliModels := agy.ListCLIModels(ctx); len(cliModels) > 0 {
-			models = cliModels
-		}
-	}
+	catalog, _ := a.agyOptionsCatalog(ctx, false)
 	return map[string]any{
 		"provider":     model.ProviderAgy,
-		"models":       models,
-		"modes":        modes,
+		"models":       catalog.Models,
+		"modes":        catalog.Modes,
 		"defaults":     defaults,
 		"capabilities": model.CapabilitiesForProvider(model.ProviderAgy),
 	}
@@ -193,8 +193,6 @@ func (a *Service) createAgySession(w http.ResponseWriter, r *http.Request, key, 
 		httpx.WriteError(w, 503, msg)
 		return
 	}
-	a.cacheAgyCatalog(setup)
-
 	releaseSession := a.lockControlKey("session:" + setup.SessionID)
 	defer releaseSession()
 
@@ -282,7 +280,6 @@ func (a *Service) readAgySessionHistory(ctx context.Context, record model.Sessio
 	if err != nil {
 		return history, err
 	}
-	a.cacheAgyCatalog(setup)
 	cat := agy.CatalogFromSetup(setup)
 	history.Session.Model = cat.CurrentModel
 	history.Session.Effort = cat.CurrentEffort
@@ -425,7 +422,6 @@ func (a *Service) DriveAgyChat(ctx context.Context, run *ChatRun, plan model.Lau
 			c.Close()
 			return
 		}
-		a.cacheAgyCatalog(setup)
 	}
 	defer func() {
 		closeCtx, end := context.WithTimeout(context.Background(), 2*time.Second)
@@ -435,7 +431,7 @@ func (a *Service) DriveAgyChat(ctx context.Context, run *ChatRun, plan model.Lau
 	}()
 
 	cat := agy.CatalogFromSetup(setup)
-	if err := applyAgyTurnSettings(ctx, c, run.session, cat, run.settings); err != nil {
+	if err := applyAgyTurnSettings(ctx, c, run.session, &cat, run.settings); err != nil {
 		fail(err.Error())
 		return
 	}
@@ -578,17 +574,21 @@ func (run *ChatRun) interruptAgy() error {
 	return client.Notify("session/cancel", map[string]any{"sessionId": run.session})
 }
 
-func applyAgyTurnSettings(ctx context.Context, c acp.Client, sessionID string, cat agy.OptionCatalog, settings TurnSettings) error {
+func applyAgyTurnSettings(ctx context.Context, c acp.Client, sessionID string, cat *agy.OptionCatalog, settings TurnSettings) error {
 	callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if settings.Model != "" && settings.Model != cat.CurrentModel {
 		if cat.ModelConfigID != "" {
+			var updated acp.SessionSetupResult
 			if err := c.Call(callCtx, "session/set_config_option", map[string]any{
 				"sessionId": sessionID,
 				"configId":  cat.ModelConfigID,
 				"value":     settings.Model,
-			}, nil); err != nil {
+			}, &updated); err != nil {
 				return fmt.Errorf("切换 Antigravity 模型失败：%w", err)
+			}
+			if len(updated.ConfigOptions) > 0 {
+				*cat = agy.CatalogFromSetup(updated)
 			}
 		} else {
 			if err := c.Call(callCtx, "session/set_model", map[string]any{
@@ -599,7 +599,10 @@ func applyAgyTurnSettings(ctx context.Context, c acp.Client, sessionID string, c
 			}
 		}
 	}
-	if settings.Effort != "" && settings.Effort != cat.CurrentEffort && cat.EffortConfigID != "" {
+	if settings.Effort != "" && cat.EffortConfigID == "" {
+		return fmt.Errorf("所选模型不支持该思考强度")
+	}
+	if settings.Effort != "" && settings.Effort != cat.CurrentEffort {
 		if err := c.Call(callCtx, "session/set_config_option", map[string]any{
 			"sessionId": sessionID,
 			"configId":  cat.EffortConfigID,

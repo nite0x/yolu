@@ -22,7 +22,7 @@ export function StatusBadge({ kind, children }: { kind: string; children?: React
   return <Badge variant="outline" className={cn("shrink-0 rounded-md px-2 py-1 text-xs", tones[kind] || "border-border bg-secondary text-muted-foreground")}>{children || statusLabels[kind] || kind}</Badge>
 }
 export function Branch({ children }: { children?: ReactNode }) {
-  return <Badge variant="secondary" className="branch rounded-md font-mono text-xs font-normal">{children || "detached HEAD"}</Badge>
+  return <Badge variant="outline" className="branch rounded-md border-border bg-muted font-mono text-xs font-normal text-foreground">{children || "detached HEAD"}</Badge>
 }
 export function TreeStatus({ tree: t, pending = false, compact = false }: { tree?: Worktree; pending?: boolean; compact?: boolean }) {
   if (!t) return <StatusBadge kind={pending ? "neutral" : "failed"}>{pending ? uiText("正在发现目录") : uiText("目录未发现")}</StatusBadge>

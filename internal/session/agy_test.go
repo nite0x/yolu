@@ -22,6 +22,7 @@ type fakeACPClient struct {
 	calls         []string
 	newParams     map[string]any
 	promptParams  map[string]any
+	configChanges []map[string]any
 	replies       []map[string]any
 	notifications []string
 	events        chan acp.Message
@@ -71,7 +72,13 @@ func (f *fakeACPClient) Call(ctx context.Context, method string, params any, out
 					ID:           "model",
 					Category:     "model",
 					CurrentValue: "gemini-3-pro",
-					Options:      json.RawMessage(`[{"value":"gemini-3-pro","name":"Gemini 3 Pro"}]`),
+					Options:      json.RawMessage(`[{"value":"gemini-3-pro","name":"Gemini 3 Pro"},{"value":"gemini-flash","name":"Gemini Flash"}]`),
+				},
+				{
+					ID:           "thought_level",
+					Category:     "thought_level",
+					CurrentValue: "low",
+					Options:      json.RawMessage(`[{"value":"low","name":"Low"},{"value":"xhigh","name":"Extra high"}]`),
 				},
 				{
 					ID:           "mode",
@@ -106,7 +113,18 @@ func (f *fakeACPClient) Call(ctx context.Context, method string, params any, out
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-	case "session/set_config_option", "session/set_model", "session/set_mode", "session/close":
+	case "session/set_config_option":
+		f.mu.Lock()
+		f.configChanges = append(f.configChanges, m)
+		f.mu.Unlock()
+		result = map[string]any{}
+		if m["configId"] == "model" && m["value"] == "gemini-flash" {
+			result = acp.SessionSetupResult{ConfigOptions: []acp.ConfigOption{
+				{ID: "model", Category: "model", CurrentValue: "gemini-flash", Options: json.RawMessage(`[{"value":"gemini-flash"}]`)},
+				{ID: "thought_level", Category: "thought_level", CurrentValue: "medium", Options: json.RawMessage(`[{"value":"low"},{"value":"medium"}]`)},
+			}}
+		}
+	case "session/set_model", "session/set_mode", "session/close":
 		result = map[string]any{}
 	default:
 		return fmt.Errorf("unexpected method %s", method)
@@ -158,7 +176,9 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	a, q, _, _ := chatFixture(t)
 	const prompt = "帮我检查测试并修复问题"
 	fakeACP := newFakeACPClient(q.Path)
-	a.openAgy = func(context.Context, ...string) (acp.Client, acp.InitializeResult, error) {
+	var openFlags []string
+	a.openAgy = func(_ context.Context, flags ...string) (acp.Client, acp.InitializeResult, error) {
+		openFlags = flags
 		return fakeACP, acp.InitializeResult{AgentInfo: acp.AgentInfo{Name: "Antigravity ACP Server", Version: "1.5.12"}}, nil
 	}
 	a.diagnoseAgy = func(context.Context) agy.Diagnostics {
@@ -173,6 +193,25 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	code, raw = call(t, a, "GET", "/api/agents/chat-options?provider=agy", nil)
 	if code != 200 || !strings.Contains(string(raw), `"provider":"agy"`) || !strings.Contains(string(raw), `"steer":false`) {
 		t.Fatalf("agy chat options failed: %d %s", code, raw)
+	}
+	endpoint := "/api/settings/conversation-defaults?provider=agy"
+	desired := conversationPreferences{Model: "gemini-flash", Effort: "low", Permission: "ask"}
+	for _, invalid := range []conversationPreferences{
+		{Model: desired.Model, Effort: "xhigh"},
+		{Model: desired.Model, ServiceTier: "fast"},
+	} {
+		if code, raw := call(t, a, "PUT", endpoint, invalid); code != 400 {
+			t.Fatalf("unsupported Antigravity defaults accepted: %d %s", code, raw)
+		}
+	}
+	if code, raw := call(t, a, "PUT", endpoint, desired); code != 200 {
+		t.Fatalf("could not save Antigravity settings: %d %s", code, raw)
+	}
+	if got, err := a.conversationPreferences(context.Background()); err != nil || got != (conversationPreferences{}) {
+		t.Fatal("Antigravity preferences changed Codex defaults", got, err)
+	}
+	if code, raw := call(t, a, "GET", endpoint, nil); code != 200 || !strings.Contains(string(raw), `"settings":{"model":"gemini-flash","effort":"low","permission":"ask"}`) {
+		t.Fatalf("could not reload Antigravity defaults: %d %s", code, raw)
 	}
 
 	// 2. Create AGY session
@@ -208,11 +247,18 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	if run == nil || run.snapshot().Status != "running" {
 		t.Fatalf("agy chat did not enter running state: %+v", run)
 	}
+	if context := run.snapshot().Context; context == nil || context.Model != desired.Model || context.Effort != desired.Effort || context.ApprovalPolicy != "on-request" || len(openFlags) != 1 || openFlags[0] != "--sandbox" {
+		t.Fatalf("defaults did not reach AGY: context=%+v flags=%v", context, openFlags)
+	}
 
 	// Verify systemPrompt append metadata was passed
 	fakeACP.mu.Lock()
 	meta, _ := fakeACP.newParams["_meta"].(map[string]any)
+	lastConfigChange := fakeACP.configChanges[len(fakeACP.configChanges)-1]
 	fakeACP.mu.Unlock()
+	if lastConfigChange["configId"] != "thought_level" || lastConfigChange["value"] != desired.Effort {
+		t.Fatalf("effort was not applied after switching models: %v", lastConfigChange)
+	}
 	if meta == nil || meta["antigravity"] == nil {
 		t.Fatalf("expected antigravity systemPrompt metadata in session/new: %+v", fakeACP.newParams)
 	}

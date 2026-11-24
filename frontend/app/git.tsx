@@ -9,7 +9,7 @@ import { Action, Branch, Check, DataTable, Feedback, Field, NativeSelect, Option
 import type { GitOverview } from "./types"
 
 function Section({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return <Card className="git-section gap-4 rounded-lg p-4 shadow-none"><div className="git-section-title mb-0"><h3 className="m-0 text-sm font-semibold">{title}</h3><span className="text-xs text-muted-foreground">{description}</span></div>{children}</Card>
+  return <Card className="git-section gap-3 rounded-none border-0 border-b border-border bg-transparent px-0 py-4 shadow-none"><div className="git-section-title mb-0"><h3 className="m-0 text-sm font-semibold">{title}</h3><span className="text-xs text-muted-foreground">{description}</span></div>{children}</Card>
 }
 
 // Native fields stay mounted while the controller refreshes repository state.

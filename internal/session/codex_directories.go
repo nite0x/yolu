@@ -19,8 +19,15 @@ type codexPermissionProfile struct {
 	ID string `json:"id"`
 }
 
-func (a *Service) configureCodexThread(ctx context.Context, client codex.LiveClient, params map[string]any, plan model.LaunchPlan) error {
+func (a *Service) configureCodexThread(ctx context.Context, client codex.LiveClient, params map[string]any, plan model.LaunchPlan, permission string) error {
 	if !plan.ManagedBindings {
+		setThreadPermissions(params, permission)
+		return nil
+	}
+	if permission == "full" {
+		params["cwd"] = plan.Cwd
+		params["runtimeWorkspaceRoots"] = uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
+		setThreadPermissions(params, permission)
 		return nil
 	}
 	fileCtx := execution.WithClient(ctx, a.Execution.Remote)
@@ -115,7 +122,11 @@ func (a *Service) configureCodexThread(ctx context.Context, client codex.LiveCli
 	params["runtimeWorkspaceRoots"] = uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
 	params["permissions"] = profile
 	params["approvalPolicy"] = "on-request"
-	params["approvalsReviewer"] = "user"
+	if permission == "auto" {
+		params["approvalsReviewer"] = "auto_review"
+	} else {
+		params["approvalsReviewer"] = "user"
+	}
 	return nil
 }
 

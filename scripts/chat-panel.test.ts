@@ -219,22 +219,38 @@ test("new chat inherits native settings and sends only explicitly selected model
   }finally{h.dispose();}
 });
 
-test("managed Codex conversations keep model defaults and show scoped directory access", async () => {
+test("new Codex conversations expose permission choices and allow overriding saved defaults", async () => {
   const h=mount(false,[],{request:async(path,init)=>{
-    if(path.endsWith('/chat-options'))return {defaults:{model:'available',permission:'full'},models:[{id:'available',model:'available',displayName:'Available model',defaultReasoningEffort:'low',supportedReasoningEfforts:[{reasoningEffort:'low'}]}],modes:[]} as any;
+    if(path.endsWith('/chat-options'))return {
+      defaults:{model:'available',effort:'high',serviceTier:'fast',permission:'full'},
+      models:[{id:'available',model:'available',displayName:'Available model',defaultReasoningEffort:'low',supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'high'}],serviceTiers:[{id:'fast',name:'Fast'}]}],
+      modes:[],
+    } as any;
     if(path.endsWith('/sessions/new')){h.calls.push({path,body:JSON.parse(String(init?.body))});return {session,chat:idleChat()} as any;}
     return idleChat() as any;
   }});
   try {
     await until(()=>h.w.document.querySelector('[aria-label="上下文与设置"]')?.textContent?.includes('Available model'));
     const trigger=h.w.document.querySelector<HTMLButtonElement>('[aria-label="上下文与设置"]')!;
-    assert(trigger.title.includes("按目录授权"));
+    assert(trigger.title.includes("完全访问权限"));
+    assert.ok(trigger.querySelector(".chat-settings-state-icons [data-danger]"));
     trigger.click();
-    await until(() => h.w.document.body.textContent?.includes("在对话顶部查看或更改目录访问权限。"));
+    const permissionMenu = await openSettingMenu(h, "权限");
+    assert.equal(permissionMenu.querySelector<HTMLElement>('[aria-checked="true"]')?.dataset.value, "full");
+    await chooseMenuSetting(h, permissionMenu, "auto");
+    await until(() => trigger.title.includes("帮我批准"));
     assert.equal(trigger.querySelector(".chat-settings-state-icons [data-danger]"), null);
-    h.type('Use the saved model with manual approvals');await tick();h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
+    await chooseMenuSetting(h, await openSettingMenu(h, "权限"), "");
+    await until(() => trigger.title.includes("按目录授权"));
+    assert.equal(selectedSetting(h, "下轮思考强度"), "high");
+    assert.equal(selectedSetting(h, "响应速度"), "fast");
+    chooseSetting(h, "下轮思考强度", "");
+    await until(() => selectedSetting(h, "下轮思考强度") === "");
+    chooseSetting(h, "响应速度", "");
+    await until(() => selectedSetting(h, "响应速度") === "");
+    h.type('Use default effort, speed and permission for this conversation');await tick();h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
     await until(()=>h.calls.some(c=>c.path.endsWith('/sessions/new')));
-    assert.deepEqual(h.calls.find(c=>c.path.endsWith('/sessions/new'))!.body.settings,{});
+    assert.deepEqual(h.calls.find(c=>c.path.endsWith('/sessions/new'))!.body.settings,{useModelEffort:true,useDefaultSpeed:true,useDefaultPermission:true});
   } finally {h.dispose();}
 });
 

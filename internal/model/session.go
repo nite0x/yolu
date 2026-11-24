@@ -48,6 +48,7 @@ type Session struct {
 	Archived              bool     `json:"archived"`
 	ID                    string   `json:"id"`
 	Provider              string   `json:"provider,omitempty"`
+	Permission            string   `json:"permission,omitempty"`
 	Name                  string   `json:"name"`
 	TitleSource           string   `json:"title_source,omitempty"`
 	TitleChangedAt        int64    `json:"-"`

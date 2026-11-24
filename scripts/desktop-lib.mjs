@@ -31,7 +31,7 @@ export function desktopVersion(directory = root) {
 }
 
 export function packagePlan(args, host, env = process.env) {
-  let target, debug = false, requireSigning = false, dryRun = false, preview = false;
+  let target, debug = false, requireSigning = false, dryRun = false, preview = false, previewLabel = '';
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--target': target = args[++i]; if (!target) throw new Error('--target requires a triple'); break;
@@ -39,6 +39,7 @@ export function packagePlan(args, host, env = process.env) {
       case '--require-signing': requireSigning = true; break;
       case '--dry-run': dryRun = true; break;
       case '--preview': preview = true; break;
+      case '--preview-label': preview = true; previewLabel = args[++i] || ''; if (!/^[a-z0-9][a-z0-9-]{0,23}$/i.test(previewLabel)) throw new Error('--preview-label requires an alphanumeric slug'); break;
       default: throw new Error(`Unknown packaging argument: ${args[i]}`);
     }
   }
@@ -48,10 +49,12 @@ export function packagePlan(args, host, env = process.env) {
   if (targets[host]?.platform !== definition.platform) throw new Error('Build installers on the corresponding operating system');
   if (env.CARGO_TARGET_DIR) throw new Error('desktop:package uses src-tauri/target; unset CARGO_TARGET_DIR');
   const config = {};
+  const normalizedLabel = previewLabel.toLowerCase();
   if (preview) {
     if (definition.platform !== 'darwin') throw new Error('--preview currently supports macOS only');
-    config.productName = 'Yolu Preview';
-    config.identifier = 'dev.work-hub.desktop.preview';
+    const displayLabel = normalizedLabel ? normalizedLabel.toUpperCase() : '';
+    config.productName = displayLabel ? `Yolu Preview ${displayLabel}` : 'Yolu Preview';
+    config.identifier = normalizedLabel ? `dev.work-hub.desktop.preview.${normalizedLabel.replaceAll('-', '.')}` : 'dev.work-hub.desktop.preview';
   }
   if (definition.platform === 'darwin' && requireSigning) {
     if (!env.APPLE_SIGNING_IDENTITY || env.APPLE_SIGNING_IDENTITY === '-') throw new Error('A Developer ID APPLE_SIGNING_IDENTITY is required');
@@ -66,7 +69,7 @@ export function packagePlan(args, host, env = process.env) {
     } else if (requireSigning) throw new Error('YOLU_WINDOWS_CERTIFICATE_THUMBPRINT is required');
   }
   if (definition.platform === 'linux' && requireSigning) throw new Error('--require-signing applies to macOS and Windows; Linux artifacts use SHA256SUMS');
-  return { target, ...definition, debug, requireSigning, dryRun, preview, config };
+  return { target, ...definition, debug, requireSigning, dryRun, preview, previewLabel: normalizedLabel, config };
 }
 
 export function bundleFiles(bundleDirectory, plan) {

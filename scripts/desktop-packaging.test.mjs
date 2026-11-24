@@ -69,8 +69,14 @@ test('macOS preview gets a separate application identity without changing normal
   assert.equal(preview.preview, true);
   assert.equal(preview.config.productName, 'Yolu Preview');
   assert.equal(preview.config.identifier, 'dev.work-hub.desktop.preview');
+  const labeled = packagePlan(['--preview-label', 'agy'], 'aarch64-apple-darwin', {});
+  assert.equal(labeled.preview, true);
+  assert.equal(labeled.previewLabel, 'agy');
+  assert.equal(labeled.config.productName, 'Yolu Preview AGY');
+  assert.equal(labeled.config.identifier, 'dev.work-hub.desktop.preview.agy');
   assert.deepEqual(packagePlan([], 'aarch64-apple-darwin', {}).config, {});
   assert.throws(() => packagePlan(['--preview'], 'x86_64-pc-windows-msvc', {}), /macOS only/);
+  assert.throws(() => packagePlan(['--preview-label', 'bad/name'], 'aarch64-apple-darwin', {}), /alphanumeric/);
 });
 
 test('version drift is rejected and every exported installer has integrity metadata', () => {

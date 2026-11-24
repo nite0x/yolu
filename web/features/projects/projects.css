@@ -11,69 +11,103 @@
 .project-filters > button { flex: 1; padding: 0 7px !important; font-size: 12px !important; }
 .project-filters > button span { font-size: 12px; opacity: .75; font-variant-numeric: tabular-nums; }
 .project-list-scroll .project-list-item {
-  display: grid; grid-template-columns: minmax(0,1fr) auto 16px; grid-template-rows: auto auto;
-  height: auto; width: 100%; min-width: 0; gap: 4px 16px; padding: 12px;
-  border-radius: 10px; text-align: left; font-weight: 400;
+  display: grid; grid-template-columns: 30px minmax(0,1fr) auto 14px; grid-template-rows: auto auto;
+  align-items: center; height: auto; width: 100%; min-width: 0; gap: 1px 12px; padding: 9px 12px;
+  border-radius: 8px; text-align: left; font-weight: 400;
 }
+.project-list-scroll .project-list-item:hover { background: var(--yolu-subtle); }
 .project-list-item[aria-pressed="true"] { background: var(--yolu-selected); color: var(--yolu-foreground); }
-.project-list-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.project-list-name strong { overflow-wrap: anywhere; font-size: 14px; font-weight: 600; }
-.project-list-name > svg:first-child { color: var(--muted-foreground); }
-.project-list-name.has-issue > svg:first-child { color: var(--destructive); }
-.project-list-path { grid-column: 1; grid-row: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.6 var(--font-mono, monospace); color: var(--muted-foreground); }
-.project-list-meta { grid-column: 2; grid-row: 1 / span 2; justify-content: flex-end; white-space: normal; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: var(--muted-foreground); }
-.project-list-meta [data-slot="badge"] { padding: 1px 5px !important; font-size: 12px !important; }
-.project-list-enter { grid-column: 3; grid-row: 1 / span 2; color: var(--yolu-muted-ink); }
-.project-change-indicator { display: inline-flex; align-items: center; gap: 4px; color: var(--yolu-warning,#94651f); }
+.project-list-avatar { grid-column: 1; grid-row: 1 / span 2; display: flex; align-items: center; justify-content: center; }
+.project-list-avatar .shortcut-badge { width: 28px; height: 28px; border-radius: 7px; font-size: 11px; }
+.project-list-name { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.project-list-name strong { overflow-wrap: anywhere; font-size: 13.5px; font-weight: 600; color: var(--yolu-foreground); line-height: 1.35; }
+.project-list-name.has-issue > svg { color: var(--destructive); }
+.project-list-path { grid-column: 2; grid-row: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11.5px/1.45 var(--font-mono, monospace); color: var(--muted-foreground); }
+.project-list-meta { grid-column: 3; grid-row: 1 / span 2; justify-content: flex-end; white-space: normal; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; font-size: 12px; color: var(--muted-foreground); }
+.project-list-meta [data-slot="badge"] { padding: 1px 6px !important; font-size: 11px !important; }
+.project-list-enter { grid-column: 4; grid-row: 1 / span 2; color: var(--yolu-faint-ink); opacity: .65; transition: transform .12s, opacity .12s, color .12s; }
+.project-list-item:hover .project-list-enter { color: var(--yolu-foreground); opacity: 1; transform: translateX(2px); }
+.project-change-indicator { display: inline-flex; align-items: center; gap: 5px; color: var(--yolu-warning,#94651f); font-weight: 500; }
 .project-change-indicator .project-change-dot { width: 5px; height: 5px; fill: currentColor; }
-.project-list-empty, .project-detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px 16px; text-align: center; font-size: 13px; color: var(--muted-foreground); }
+.project-list-empty, .project-detail-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 16px; text-align: center; font-size: 13px; color: var(--muted-foreground); }
 .project-list-empty > span { font-size: 12px; }
-.project-detail { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 24px 32px 56px; container: project-detail / inline-size; }
-.project-breadcrumb { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; margin-bottom: 9px; color: var(--yolu-muted-ink); font-size: var(--yolu-font-size-label); }
-.project-breadcrumb > svg { width: 13px; height: 13px; flex: none; }
-.project-breadcrumb > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-detail-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
-.project-detail-identity { display: flex; align-items: center; flex: 1 1 230px; min-width: 0; gap: 11px; }
-.project-detail-identity > div { min-width: 0; }
-.project-detail-identity .resource-icon-edit { flex: none; }
-.project-detail-identity .resource-icon-edit .shortcut-badge { width: 43px; height: 43px; border-radius: 12px; font-size: var(--yolu-font-size-list-title); }
-.project-detail-heading h2 { margin: 0; font-size: 23px; font-weight: var(--yolu-font-weight-title); line-height: 1.2; letter-spacing: -.025em; overflow-wrap: anywhere; }
-.project-detail-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.project-detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; padding: 0; container: project-detail / inline-size; }
+.project-detail-content { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.project-detail-heading {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+.project-detail-identity { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 6px; }
+.project-detail-identity .resource-breadcrumb-link { font-size: var(--yolu-font-size-compact); font-weight: 500; color: var(--yolu-muted-ink); flex: none; }
+.project-detail-identity .project-breadcrumb-sep { width: 13px; height: 13px; flex: none; color: var(--yolu-faint-ink); }
+.project-detail-identity .resource-icon-edit { flex: none; padding: 2px; border-radius: 7px; }
+.project-detail-identity .resource-icon-edit .shortcut-badge { width: 22px; height: 22px; border-radius: 6px; font-size: 10px; }
+.project-detail-heading h2 { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--yolu-font-size-row); font-weight: 600; line-height: 20px; letter-spacing: -.01em; color: var(--yolu-foreground); }
+.project-detail-actions { display: flex; align-items: center; flex-wrap: nowrap; flex: none; gap: 4px; min-width: 0; }
+.project-detail-actions > button { height: 28px; padding-inline: 9px; font-size: var(--yolu-font-size-label); border-radius: 7px; }
 .project-more { margin: 0; }
-.project-more > summary { display: flex; align-items: center; justify-content: center; list-style: none; border: 1px solid var(--border); border-radius: 6px; height: 32px; width: 32px; padding: 0; }
+.project-more > summary { display: flex; align-items: center; justify-content: center; list-style: none; border: 0; border-radius: 7px; height: 28px; width: 28px; padding: 0; cursor: pointer; background: transparent; color: var(--yolu-muted-ink); transition: background-color .12s, color .12s; }
+.project-more > summary:hover { background: var(--yolu-subtle); color: var(--yolu-foreground); }
 .project-more > summary::-webkit-details-marker { display: none; }
-.project-more > summary svg { width: 16px; height: 16px; }
-.project-more .workspace-project-details-body { position: fixed; z-index: 20; padding: 5px; gap: 2px; width: max-content; min-width: 180px; max-width: min(300px, 80vw); border: 1px solid var(--border); border-radius: 8px; background: var(--background); box-shadow: var(--yolu-elevation-float); }
+.project-more > summary svg { width: 15px; height: 15px; }
+.project-more .workspace-project-details-body { position: fixed; z-index: 20; padding: 5px; gap: 2px; width: max-content; min-width: 184px; max-width: min(300px, 80vw); border: 1px solid var(--border); border-radius: 10px; background: var(--background); box-shadow: var(--yolu-elevation-float); }
 .project-more .workspace-project-details-body > button { justify-content: flex-start; }
 .project-more hr { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
-.project-detail-summary { display: flex; flex-wrap: wrap; gap: 8px 19px; margin: 22px 0; padding: 0; list-style: none; color: var(--yolu-muted-ink); font-size: var(--yolu-font-size-label); }
-.project-detail-summary li { display: flex; align-items: center; gap: 5px; }
-.project-detail-summary li > svg { width: 15px; height: 15px; margin-inline-end: 2px; }
-.project-detail-summary strong { color: var(--yolu-foreground); font-variant-numeric: tabular-nums; }
-.project-worktree-banner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 19px; padding: 9px 12px; border: 1px solid var(--yolu-border); border-radius: 10px; background: color-mix(in srgb, var(--yolu-selected) 52%, var(--yolu-surface)); color: var(--yolu-primary-ink); font-size: var(--yolu-font-size-compact); }
-.project-worktree-banner > strong { font-weight: var(--yolu-font-weight-row); }
-.project-directories-heading { margin-bottom: 11px; }
-.project-directory-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(100%, 244px); gap: 6px; }
-.project-directory-controls select { font-size: var(--yolu-font-size-label); }
-.project-activity { margin-top: 24px; }
-.project-activity > .resource-section-heading { padding-bottom: 5px; border-bottom: 1px solid var(--yolu-border); }
-.project-activity > .directory-muted, .project-activity > .project-conversation-feedback { padding-top: 9px; }
+.project-detail-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 14px 24px 56px; scrollbar-gutter: stable; }
+.project-detail-body > * { width: min(100%, var(--resource-detail-width)); }
+.project-detail-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--yolu-border);
+}
+.project-detail-overview .directory-path { margin-top: 0; }
+.project-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  list-style: none;
+  color: var(--yolu-muted-ink);
+  font-size: var(--yolu-font-size-label);
+}
+.project-detail-summary li { display: inline-flex; align-items: center; gap: 4px; }
+.project-detail-summary li > svg { width: 13px; height: 13px; color: var(--yolu-faint-ink); }
+.project-detail-summary strong { color: var(--yolu-foreground); font-size: var(--yolu-font-size-label); font-weight: 600; font-variant-numeric: tabular-nums; }
+.project-directories-heading { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--yolu-border); }
+.project-directory-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.project-directory-controls > button { height: 26px; padding-inline: 8px; font-size: var(--yolu-font-size-label); color: var(--yolu-muted-ink); }
+.project-directory-select { display: block; width: 112px; flex: none; }
+.project-directory-select select { height: 26px !important; padding-block: 0 !important; font-size: var(--yolu-font-size-label) !important; border-color: transparent !important; background: var(--yolu-subtle) !important; }
+.project-directory-select select:hover { background: var(--yolu-hover) !important; }
+.project-activity { margin-top: 28px; }
+.project-activity > .resource-section-heading { padding-bottom: 8px; border-bottom: 1px solid var(--yolu-border); }
+.project-activity > .directory-muted, .project-activity > .project-conversation-feedback { padding-top: 10px; }
 .project-commit-plan { flex: 1; padding: 18px; border: 1px solid var(--yolu-border); border-radius: 10px; }
 .project-commit-plan > h3 { font-size: var(--yolu-font-size-list-title); }
 .project-commit-plan > p { color: var(--yolu-muted-ink); }
 
-@media (max-width: 1250px) {
-  .project-detail { padding: 18px; }
-}
 @media (max-width: 760px) {
   .projects-page #projectEnvironmentWrap { font-size: 12px; }
-  .project-detail { padding: 14px; }
-  .project-detail-heading { gap: 12px; }
+  .project-detail-heading { flex-wrap: wrap; padding-block: 8px; }
+  .project-detail-body { padding: 14px 16px 40px; }
 }
 @media (max-width: 520px) {
-  .project-list-scroll .project-list-item { grid-template-columns: minmax(0, 1fr) 16px; }
-  .project-list-meta { grid-column: 1; grid-row: 3; justify-content: flex-start; }
-  .project-list-enter { grid-column: 2; grid-row: 1 / span 3; }
+  .project-list-scroll .project-list-item { grid-template-columns: 28px minmax(0, 1fr) 14px; }
+  .project-list-meta { grid-column: 2; grid-row: 3; justify-content: flex-start; }
+  .project-list-enter { grid-column: 3; grid-row: 1 / span 3; }
 }
 
 #removalReferences { max-height: min(35dvh, 280px); overflow: auto; overflow-wrap: anywhere; }
