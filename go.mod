@@ -4,7 +4,7 @@ go 1.26.11
 
 require (
 	github.com/aymanbagabas/go-pty v0.2.2
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
@@ -27,6 +27,7 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/exp v0.0.0-20230315142452-642cacee5cc0 // indirect
+	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
