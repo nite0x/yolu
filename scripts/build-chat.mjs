@@ -6,11 +6,15 @@ import {build as buildCSS} from "vite";
 import tailwindcss from "@tailwindcss/vite";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 await mkdir(path.join(root, "web/chat"), {recursive: true});
-const result = await build({absWorkingDir: root, entryPoints: ["frontend/chat/main.tsx"], outfile: "web/chat/assistant.js", bundle: true, minify: true, format: "esm", target: ["es2022"], jsx: "automatic", define: {"process.env.NODE_ENV": '"production"'}, legalComments: "linked", metafile: true,
+const bundle = {absWorkingDir: root, bundle: true, minify: true, format: "esm", target: ["es2022"], jsx: "automatic", define: {"process.env.NODE_ENV": '"production"'}, legalComments: "linked", metafile: true,
   plugins: [{name: "css-built-by-vite", setup(builder) {
     builder.onLoad({filter: /\.css$/}, () => ({contents: "", loader: "css"}));
   }}],
-});
+};
+const [result, mermaidResult] = await Promise.all([
+  build({...bundle, entryPoints: ["frontend/chat/main.tsx"], outfile: "web/chat/assistant.js"}),
+  build({...bundle, entryPoints: ["frontend/components/assistant-ui/elements/mermaid-renderer.ts"], outfile: "web/chat/mermaid.js"}),
+]);
 // Official registry components ship Tailwind classes. Compile their stylesheet
 // independently so chat:build doesn't depend on a preceding application UI build.
 await buildCSS({
@@ -20,7 +24,7 @@ await buildCSS({
   }},
 });
 const packages = new Map();
-for (const input of [...Object.keys(result.metafile.inputs), "node_modules/tw-shimmer/package.json", "node_modules/tw-animate-css/package.json"]) {
+for (const input of [...Object.keys(result.metafile.inputs), ...Object.keys(mermaidResult.metafile.inputs), "node_modules/tw-shimmer/package.json", "node_modules/tw-animate-css/package.json"]) {
   const match = input.match(/^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//);
   if (!match || packages.has(match[1])) continue;
   const directory = path.join(root, match[1]);
