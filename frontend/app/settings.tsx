@@ -26,7 +26,6 @@ export function SettingsPage() {
       id:"settings-conversation",
       label:uiText("对话"),
       Icon:MessageSquare,
-      headerMeta:<span id="settingsConversationEnv" className="settings-env-badge" />,
       headerAction:<Button type="button" id="conversationDefaultsReload" variant="ghost" size="sm" className="settings-reload-button" disabled><RefreshCw className="size-3.5" aria-hidden="true" /><span>{uiText("刷新可用模型")}</span></Button>,
       cards:["conversationDefaultsHeading", "chatInputHeading", "sessionTitleHeading"]
     },
@@ -67,8 +66,11 @@ export function SettingsPage() {
     </form></Card>),
     "conversationDefaultsHeading": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="conversationDefaultsHeading"><form id="conversationDefaultsForm">
       <Heading id="conversationDefaultsHeading" title={uiText("新对话默认设置")} actions={<span id="conversationDefaultsStatus" role="status" className="settings-inline-status" />}>
-        {uiText("为当前执行环境中的各个引擎分别设置新对话默认选项，修改后自动保存。")}
+        {uiText("按执行环境和引擎分别保存，仅用于新建对话。已有对话可单独调整。")}
       </Heading>
+      <div className="settings-context-grid">
+      <Field id="environmentSelect" label={uiText("执行环境")} className="settings-environment-field"><NativeSelect id="environmentSelect" size="sm"><Option value="local">{uiText("本机")}</Option></NativeSelect><small id="environmentStatus" role="status" className="sr-only" /></Field>
+      <div className="settings-agent-field"><span id="conversationDefaultProvider-label" className="settings-field-label">{uiText("对话引擎")}</span>
       <fieldset id="conversationDefaultProviderGroup" className="settings-segments settings-provider-tabs" aria-label={uiText("对话引擎")} disabled>
         <label>
           <input type="radio" className="sr-only" name="conversation_default_provider" value="codex" defaultChecked />
@@ -81,14 +83,18 @@ export function SettingsPage() {
           <span>Antigravity (AGY)</span>
         </label>
       </fieldset>
+      </div>
+      </div>
       <fieldset id="conversationDefaultsFields" disabled>
-        <div className="settings-field-grid">
+        <div className="settings-field-grid settings-model-fields">
           <Field id="conversationDefaultModel" label={uiText("默认模型")}><NativeSelect id="conversationDefaultModel" size="sm"><Option value="">{uiText("沿用 Codex 默认模型")}</Option></NativeSelect></Field>
           <Field id="conversationDefaultSpeed" label={uiText("默认响应速度")}><NativeSelect id="conversationDefaultSpeed" size="sm"><Option value="">{uiText("沿用 Codex 默认速度")}</Option></NativeSelect></Field>
         </div>
         <div className="field grid gap-2 settings-segment-field">
           <span id="conversationDefaultEffort-label" className="settings-field-label">{uiText("默认思考强度")}</span>
           <div id="conversationDefaultEffort" className="settings-segments" role="radiogroup" aria-labelledby="conversationDefaultEffort-label" />
+          <div id="conversationDefaultEffortDropdown" hidden><NativeSelect id="conversationDefaultEffortSelect" size="sm" aria-labelledby="conversationDefaultEffort-label" aria-describedby="conversationDefaultEffortHelp" /></div>
+          <p id="conversationDefaultEffortHelp" className="settings-help">{uiText("更高的思考强度通常需要更多时间。默认值由所选模型决定。")}</p>
         </div>
         <div className="field grid gap-2 settings-segment-field">
           <span id="conversationDefaultPermission-label" className="settings-field-label">{uiText("默认权限")}</span>
@@ -97,12 +103,14 @@ export function SettingsPage() {
         </div>
       </fieldset>
       <Feedback id="conversationDefaultsError" variant="destructive" className="mt-3" hidden />
+      <Button type="button" id="conversationDefaultsRetry" variant="outline" size="sm" className="mt-2" hidden>{uiText("重试保存")}</Button>
     </form></Card>),
     "chatInputHeading": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="chatInputHeading"><form id="chatInputForm">
       <div className="settings-row">
         <div className="settings-row-info">
-          <h3 id="chatInputHeading">{uiText("对话输入")}</h3>
-          <p>{uiText("Enter 发送时，使用 Shift + Enter 换行。Ctrl + Enter 发送时，使用 Enter 换行。")}</p>
+          <h3 id="chatInputHeading">{uiText("发送快捷键")}</h3>
+          <p id="sendShortcutHelp" />
+          <p className="settings-scope">{uiText("应用于所有项目和执行环境，包括已打开的对话。")}</p>
         </div>
         <div className="settings-row-control">
           <fieldset id="sendShortcutGroup" className="settings-segments settings-compact-segments" aria-label={uiText("发送快捷键")}>
@@ -123,8 +131,9 @@ export function SettingsPage() {
     "sessionTitleHeading": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="sessionTitleHeading"><form id="sessionTitleForm">
       <div className="settings-row">
         <div className="settings-row-info">
-          <h3 id="sessionTitleHeading">{uiText("对话标题")}</h3>
-          <p>{uiText("发送首条消息后，根据首次输入在后台生成一次主题标题。手动名称优先保留。")}</p>
+          <h3 id="sessionTitleHeading">{uiText("自动生成标题")}</h3>
+          <p>{uiText("首条消息发送后生成标题，保留手动名称。")}</p>
+          <p id="settingsTitleEnv" className="settings-scope" />
           <details className="settings-help-details"><summary>{uiText("标题生成说明")}</summary><Help>{uiText("仅影响当前环境的新对话标题。沿用 Codex 登录，额外消耗一次模型请求；生成失败保留初始标题。")}</Help></details>
         </div>
         <div className="settings-row-control">
@@ -137,10 +146,8 @@ export function SettingsPage() {
       <Feedback id="sessionTitleError" variant="destructive" className="mt-3" hidden />
     </form></Card>),
     "environmentSettingsTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="environmentSettingsTitle">
-      <Heading id="environmentSettingsTitle" title={uiText("执行环境与目录")} actions={<div className="detail-actions"><Button type="button" variant="outline" size="sm" id="reconnectEnvironment" hidden>{uiText("重新连接")}</Button><Button type="button" variant="outline" size="sm" id="addEnvironment">{uiText("连接 WSL")}</Button></div>}>{uiText("为当前环境配置工作目录与工具。")}</Heading>
-      <Field id="environmentSelect" label={uiText("配置环境")}><NativeSelect id="environmentSelect" size="sm" aria-label={uiText("配置环境")}><Option value="local">{uiText("本机")}</Option></NativeSelect><small id="environmentStatus" role="status" className="text-muted-foreground" /></Field>
-      <span id="settingsEnvironment" hidden />
-      <dl className="settings-facts"><div><dt>{uiText("新 Worktree 根目录")}</dt><dd><code id="settingsRoot">{uiText("正在读取…")}</code></dd></div></dl>
+      <Heading id="environmentSettingsTitle" title={uiText("执行环境与目录")} actions={<div className="detail-actions"><Button type="button" variant="outline" size="sm" id="reconnectEnvironment" hidden>{uiText("重新连接")}</Button><Button type="button" variant="outline" size="sm" id="addEnvironment">{uiText("连接 WSL")}</Button></div>}>{uiText("目录与终端使用上方选择的执行环境；MCP 接入和浏览器访问由本机管理。")}</Heading>
+      <dl className="settings-facts"><div><dt>{uiText("当前执行环境")}</dt><dd><span id="settingsEnvironment" /></dd></div><div><dt>{uiText("新 Worktree 根目录")}</dt><dd><code id="settingsRoot">{uiText("正在读取…")}</code></dd></div></dl>
     </Card>),
     "terminalTitle": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="terminalTitle"><form id="terminalForm">
       <fieldset id="terminalSettingsFields" disabled>

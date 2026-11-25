@@ -67,7 +67,7 @@ async function autoSavePresetTerminal() {
   $('#terminalError').hidden = true;
   if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = uiText('保存中…');
   try {
-    const result = await api('/api/settings/terminal', { method: 'PUT', environment, body: JSON.stringify({ kind, path: '', style: kind }) });
+    const result = await enqueueSettingsSave(JSON.stringify([environment, 'terminal']), () => api('/api/settings/terminal', { method: 'PUT', environment, body: JSON.stringify({ kind, path: '', style: kind }) }));
     if (environment !== activeEnvironment || revision !== terminalSaveRevision) return;
     state.terminal = result;
     $('#terminalStatus').textContent = state.terminal.message + (state.terminal.launcher ? uiText("\n程序：") + state.terminal.launcher : '');
@@ -84,6 +84,7 @@ async function autoSavePresetTerminal() {
 $('#terminalKind').addEventListener('change', () => {
   updateTerminalFields();
   if ($('#terminalKind').value === 'custom') {
+    terminalSaveRevision++;
     if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = '';
     return;
   }
@@ -92,10 +93,11 @@ $('#terminalKind').addEventListener('change', () => {
 $('#terminalForm').addEventListener('submit', event => {
   event.preventDefault();
   const kind = $('#terminalKind').value;
+  const environment = activeEnvironment;
   const body = { kind, path: kind === 'custom' ? $('#terminalPath').value.trim() : '', style: kind === 'custom' ? $('#terminalStyle').value : kind };
   if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = '';
   mutation(uiText("正在保存终端设置"), async () => {
-    state.terminal = await api('/api/settings/terminal', { method: 'PUT', body: JSON.stringify(body) });
+    state.terminal = await enqueueSettingsSave(JSON.stringify([environment, 'terminal']), () => api('/api/settings/terminal', { method: 'PUT', environment, body: JSON.stringify(body) }));
     $('#terminalStatus').textContent = state.terminal.message + (state.terminal.launcher ? uiText("\n程序：") + state.terminal.launcher : '');
     if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = uiText('已保存');
     updateTerminalFields();

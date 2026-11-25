@@ -294,6 +294,16 @@
   width: fit-content;
   max-width: 100%;
 }
+.settings-provider-tabs label > span { white-space: nowrap; }
+.settings-context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; align-items: end; }
+.settings-card .settings-context-grid > .field { max-width: none; margin-bottom: 0; }
+.settings-agent-field { display: grid; gap: 8px; min-width: 0; }
+.settings-agent-field .settings-provider-tabs label { flex: 1 1 0; }
+.settings-card .settings-agent-field .settings-provider-tabs { width: 100%; margin-bottom: 0; }
+.settings-environment-field > small:empty { display: none; }
+.settings-model-fields { margin-top: 16px; }
+.settings-card .settings-scope { margin-top: 5px; font-size: var(--yolu-font-size-label); }
+#conversationDefaultEffortSelect { width: 100%; }
 .settings-provider-tabs label {
   flex: 0 1 auto;
   padding: 5px 14px;
@@ -439,10 +449,12 @@
   .settings-row { flex-direction: column; gap: 10px; }
   .settings-row-info { flex: 0 1 auto; width: 100%; }
   .settings-row-control { width: 100%; justify-content: flex-start; }
-  .settings-inline-field { width: min(100%, 280px); }
-  .settings-provider-tabs { width: 100%; }
+  .settings-inline-field { width: 100%; }
+  .settings-inline-fieldset { width: 100%; }
+  .settings-card .settings-provider-tabs { width: 100%; }
   .settings-provider-tabs label { flex: 1 1 0; }
   .settings-field-grid { grid-template-columns: minmax(0, 1fr); }
+  .settings-context-grid { grid-template-columns: minmax(0, 1fr); }
   .settings-card .field { max-width: none; }
   .settings-facts > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
 }

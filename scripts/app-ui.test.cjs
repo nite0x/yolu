@@ -696,7 +696,8 @@ test('conversation defaults save automatically per agent and environment with se
   assert.equal(h.$('#conversationDefaultsFields').disabled, false);
   assert.equal(h.$('#conversationDefaultModel').value, '');
   assert.equal(permissionValue(), '');
-  assert.match(h.$('#settingsConversationEnv').textContent, /本机/);
+  assert.equal(h.$('#environmentSelect').closest('form').id, 'conversationDefaultsForm');
+  assert.match(h.$('#settingsTitleEnv').textContent, /本机.*仅用于新对话/);
   h.change('#conversationDefaultModel', 'body-model'); await settle();
   h.change('#conversationDefaultSpeed', 'fast'); await settle();
   h.click('#conversationDefaultEffort input[value="high"]'); await settle();
@@ -764,6 +765,64 @@ test('late conversation defaults cannot overwrite another environment and offlin
   assert.match(h.$('#conversationDefaultsStatus').textContent, /CLI offline/);
   resolveLocal(); await settle();
   assert.equal(h.$('#conversationDefaultPermission input[name="conversation_default_permission"]:checked')?.value, 'ask');
+});
+
+test('large reasoning catalogs retain every choice and save the visible dropdown value', async t => {
+  const efforts = ['low','medium','high','xhigh','max','ultra'];
+  const h = await harness(t, true, {route:'/settings', intercept:(url, options) => {
+    if (url === '/api/settings/conversation-defaults' && options.method !== 'PUT') return {ok:true,json:async()=>({settings:{effort:'ultra'},models:[{model:'large',isDefault:true,supportedReasoningEfforts:efforts.map(reasoningEffort=>({reasoningEffort}))}]})};
+  }});
+  assert.equal(h.$('#conversationDefaultEffort').hidden, true);
+  assert.equal(h.$('#conversationDefaultEffortDropdown').hidden, false);
+  assert.equal(h.$('#conversationDefaultEffortSelect').value, 'ultra');
+  assert.deepEqual([...h.$('#conversationDefaultEffortSelect').options].map(o=>o.value), ['',...efforts]);
+  h.change('#conversationDefaultEffortSelect', 'max'); await settle();
+  assert.equal(h.requests.findLast(r=>r.url === '/api/settings/conversation-defaults' && r.options.method === 'PUT').body.effort, 'max');
+});
+
+test('rapid default changes serialize writes and retain the final persisted selection', async t => {
+  const h = await harness(t, true, {route:'/settings'});
+  let completeFirst;
+  let writes = 0;
+  h.setIntercept((url, options, body) => {
+    if (url !== '/api/settings/conversation-defaults' || options.method !== 'PUT') return;
+    writes++;
+    if (writes === 1) return new Promise(resolve => {completeFirst = () => {h.data.conversation_defaults = body; resolve({ok:true,json:async()=>({})});};});
+  });
+  h.click('#conversationDefaultPermission input[value="ask"]'); await settle();
+  h.click('#conversationDefaultPermission input[value="auto"]'); await settle();
+  assert.equal(writes, 1, 'the second request waits for the first write');
+  assert.match(h.$('#conversationDefaultsStatus').textContent, /保存中/);
+  completeFirst(); await settle();
+  assert.equal(writes, 2);
+  assert.equal(h.data.conversation_defaults.permission, 'auto');
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, 'auto');
+  assert.match(h.$('#conversationDefaultsStatus').textContent, /已保存/);
+});
+
+test('failed default drafts survive refresh and scope changes and can be retried', async t => {
+  const h = await harness(t, true, {route:'/settings'});
+  h.environments.environments.push({id:'wsl-test',name:'WSL test'});
+  await h.window.loadEnvironments();
+  h.setIntercept((url, options) => url === '/api/settings/conversation-defaults' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'Write failed'})} : undefined);
+  h.click('#conversationDefaultPermission input[value="auto"]'); await settle();
+  assert.equal(h.$('#conversationDefaultsRetry').hidden, false);
+  h.click('#conversationDefaultProviderGroup input[value="agy"]'); await settle();
+  h.click('#conversationDefaultProviderGroup input[value="codex"]'); await settle();
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, 'auto');
+  h.click('#conversationDefaultsReload'); await settle();
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, 'auto');
+  await h.window.selectEnvironment('wsl-test','/settings'); await settle();
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, '');
+  await h.window.selectEnvironment('local','/settings'); await settle();
+  assert.equal(h.$('#conversationDefaultPermission input:checked').value, 'auto');
+  assert.match(h.$('#conversationDefaultsError').textContent, /Write failed/);
+  assert.equal(h.$('#conversationDefaultsRetry').hidden, false);
+  h.setIntercept(undefined);
+  h.click('#conversationDefaultsRetry'); await settle();
+  assert.equal(h.$('#conversationDefaultsRetry').hidden, true);
+  assert.equal(h.$('#conversationDefaultsError').hidden, true);
+  assert.equal(h.data.conversation_defaults.permission, 'auto');
 });
 
 test('failed terminal saves keep the draft and show an accessible error', async t => {

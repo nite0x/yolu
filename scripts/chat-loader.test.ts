@@ -68,3 +68,23 @@ test("lazy loader exposes the mounted draft preview to the page snapshot", async
     assert.equal(h.loader.draftTitle(), "");
   } finally {h.dom.window.close();}
 });
+
+test("language reload can flush before chat mounts and respects mounted draft failures", async () => {
+  const h = mount();
+  try {
+    assert.equal(await h.loader.flushDraft(), true);
+    let finish: (saved: boolean) => void = () => {};
+    (h.dom.window as any).testBridge.flushDraft = () => new Promise<boolean>(resolve => {finish = resolve;});
+    await h.loader.open({overview: {projects: []}});
+    let completed = false;
+    const saving = h.loader.flushDraft().then((saved: boolean) => {completed = true; return saved;});
+    await Promise.resolve();
+    assert.equal(completed, false, "reload waits for the mounted draft");
+    finish(false);
+    assert.equal(await saving, false, "a failed draft prevents reload");
+    (h.dom.window as any).testBridge.flushDraft = async () => true;
+    assert.equal(await h.loader.flushDraft(), true);
+    (h.dom.window as any).testBridge.flushDraft = async () => {throw new Error("Draft write failed");};
+    await assert.rejects(h.loader.flushDraft(), /Draft write failed/);
+  } finally {h.dom.window.close();}
+});

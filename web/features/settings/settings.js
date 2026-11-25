@@ -17,6 +17,18 @@ let conversationDefaultsRevision = 0;
 let conversationDefaultsLoading = false;
 let conversationDefaultModels = [];
 const conversationDefaultsSaveRevisions = new Map();
+const conversationDefaultsDrafts = new Map();
+const settingsSaveQueues = new Map();
+
+// Serialize writes within each setting scope, including retries after failure.
+function enqueueSettingsSave(key, operation) {
+  const previous = settingsSaveQueues.get(key) || Promise.resolve();
+  const pending = previous.catch(() => {}).then(operation);
+  settingsSaveQueues.set(key, pending);
+  const cleanup = () => { if (settingsSaveQueues.get(key) === pending) settingsSaveQueues.delete(key); };
+  pending.then(cleanup, cleanup);
+  return pending;
+}
 let appearanceSaveRevision = 0;
 let chatInputSaveRevision = 0;
 const codexDiagnostics = new Map();
@@ -216,6 +228,7 @@ async function loadSessionTitleSettings() {
   $('#sessionTitleError').hidden = true;
   if ($('#sessionTitleStatus')) $('#sessionTitleStatus').textContent = '';
   try {
+    await settingsSaveQueues.get(JSON.stringify([environment, 'title']))?.catch(() => {});
     const result = await api('/api/settings/session-title', { environment });
     if (environment !== activeEnvironment || revision !== titleSettingsRevision) return;
     const model = result.settings.model || '';
@@ -246,7 +259,7 @@ async function saveSessionTitleModel() {
   $('#sessionTitleError').hidden = true;
   if ($('#sessionTitleStatus')) $('#sessionTitleStatus').textContent = uiText('保存中…');
   try {
-    await api('/api/settings/session-title', { method: 'PUT', environment, body: JSON.stringify({ model }) });
+    await enqueueSettingsSave(JSON.stringify([environment, 'title']), () => api('/api/settings/session-title', { method: 'PUT', environment, body: JSON.stringify({ model }) }));
     if (environment !== activeEnvironment || revision !== titleSaveRevision || loadRev !== titleSettingsRevision) return;
     if ($('#sessionTitleStatus')) $('#sessionTitleStatus').textContent = uiText('已保存');
   } catch (error) {
@@ -276,6 +289,12 @@ function selectedProvider() {
 
 function selectedSegmentValue(containerId, inputName) {
   return $(`#${containerId} input[name="${inputName}"]:checked`)?.value ?? '';
+}
+
+function selectedEffort() {
+  return $('#conversationDefaultEffortDropdown').hidden
+    ? selectedSegmentValue('conversationDefaultEffort', 'conversation_default_effort')
+    : $('#conversationDefaultEffortSelect').value;
 }
 
 function renderSegmentOptions(container, inputName, items, value, unavailableLabel) {
@@ -309,10 +328,8 @@ function renderSegmentOptions(container, inputName, items, value, unavailableLab
 function updatePermissionHelp(provider, permission) {
   const help = $('#conversationDefaultPermissionHelp');
   if (!help) return;
-  help.textContent = provider === 'agy' ? uiText('选择「跳过权限检查」后，Antigravity 会自动批准操作。') : [
-    uiText('按目录授权的对话使用其目录访问权限。'),
-    uiText('完全访问权限允许读取和修改电脑上的文件并执行命令。'),
-  ].join(' ');
+  const choice = window.WorkHubUI.permissionChoices(provider).find(choice => choice.value === permission);
+  help.textContent = choice?.description || uiText('创建对话时由引擎配置和目录授权决定，可在对话中查看实际权限。');
   help.dataset.danger = permission === 'full' ? 'true' : 'false';
 }
 
@@ -327,6 +344,15 @@ function renderConversationModelOptions(provider, effort, speed, unavailableLabe
     ? [{ value: '', label: uiText('默认') }, ...effortOptions.map(value => ({ value, label: effortLabel(value) }))]
     : [{ value: '', label: uiText('使用模型默认强度') }];
   renderSegmentOptions(effortContainer, 'conversation_default_effort', effortItems, effort, unavailableLabel);
+  const effortSelect = $('#conversationDefaultEffortSelect');
+  const dropdown = effortContainer.querySelectorAll('input').length > 5;
+  effortContainer.hidden = dropdown;
+  $('#conversationDefaultEffortDropdown').hidden = !dropdown;
+  effortSelect.disabled = !dropdown;
+  if (dropdown) {
+    effortSelect.replaceChildren(...[...effortContainer.querySelectorAll('input')].map(input => new Option(input.parentElement.textContent, input.value)));
+    effortSelect.value = selectedSegmentValue('conversationDefaultEffort', 'conversation_default_effort');
+  }
   if (provider === 'agy') {
     speedSelect.replaceChildren(new Option(uiText('Antigravity 由模型决定响应速度'), ''));
   } else {
@@ -342,7 +368,7 @@ function conversationDefaultsPath(provider, reload = false) {
 function conversationDefaultValues() {
   return {
     model: $('#conversationDefaultModel').value,
-    effort: selectedSegmentValue('conversationDefaultEffort', 'conversation_default_effort'),
+    effort: selectedEffort(),
     serviceTier: $('#conversationDefaultSpeed').value,
     permission: selectedSegmentValue('conversationDefaultPermission', 'conversation_default_permission'),
   };
@@ -365,13 +391,18 @@ async function loadConversationDefaults(reload = false) {
   $('#conversationDefaultsFields').disabled = true;
   syncModelsReloadButton();
   $('#conversationDefaultsError').hidden = true;
+  $('#conversationDefaultsRetry').hidden = true;
   setConversationDefaultsStatus(uiText('正在读取…'), true);
   try {
+    const key = JSON.stringify([environment, provider]);
+    await settingsSaveQueues.get(key)?.catch(() => {});
+    if (environment !== activeEnvironment || revision !== conversationDefaultsRevision) return;
     const result = await api(conversationDefaultsPath(provider, reload), {environment});
     if (environment !== activeEnvironment || revision !== conversationDefaultsRevision) return;
     conversationDefaultModels = result.models || [];
     const unavailableLabel = result.models_error ? '{0}（未核对）' : '{0}（当前不可用）';
-    const settings = result.settings || {};
+    const draft = conversationDefaultsDrafts.get(key);
+    const settings = draft?.settings || result.settings || {};
     const models = conversationDefaultModels.map(model => new Option(model.displayName || model.model, model.model));
     setConversationDefaultOptions($('#conversationDefaultModel'), provider === 'agy' ? uiText('沿用 Antigravity 默认模型') : uiText('沿用 Codex 默认模型'), models, settings.model || '', unavailableLabel);
     renderConversationModelOptions(provider, settings.effort || '', settings.serviceTier || '', unavailableLabel);
@@ -382,6 +413,11 @@ async function loadConversationDefaults(reload = false) {
     renderSegmentOptions($('#conversationDefaultPermission'), 'conversation_default_permission', permissions, settings.permission || '', unavailableLabel);
     updatePermissionHelp(provider, selectedSegmentValue('conversationDefaultPermission', 'conversation_default_permission'));
     setConversationDefaultsStatus(result.models_error ? uiText(result.models_error) : '', true);
+    if (draft?.error) {
+      $('#conversationDefaultsError').textContent = draft.error;
+      $('#conversationDefaultsError').hidden = false;
+      $('#conversationDefaultsRetry').hidden = false;
+    }
     $('#conversationDefaultsFields').disabled = result.available === false;
   } catch (error) {
     if (environment !== activeEnvironment || revision !== conversationDefaultsRevision) return;
@@ -405,10 +441,14 @@ async function saveConversationDefaults() {
   conversationDefaultsSaveRevisions.set(key, saveRev);
   const loadRev = conversationDefaultsRevision;
   const settings = conversationDefaultValues();
+  const draft = {settings};
+  conversationDefaultsDrafts.set(key, draft);
   $('#conversationDefaultsError').hidden = true;
+  $('#conversationDefaultsRetry').hidden = true;
   setConversationDefaultsStatus(uiText('保存中…'), true);
   try {
-    await api(conversationDefaultsPath(provider), {method:'PUT', environment, body:JSON.stringify(settings)});
+    await enqueueSettingsSave(key, () => api(conversationDefaultsPath(provider), {method:'PUT', environment, body:JSON.stringify(settings)}));
+    if (conversationDefaultsDrafts.get(key) === draft) conversationDefaultsDrafts.delete(key);
     if (environment === activeEnvironment && provider === selectedProvider() && loadRev === conversationDefaultsRevision && conversationDefaultsSaveRevisions.get(key) === saveRev) {
       setConversationDefaultsStatus(uiText('已保存'));
     }
@@ -417,18 +457,21 @@ async function saveConversationDefaults() {
       page.dispatchEvent(new page.CustomEvent('workhub:conversation-defaults', {detail:{environment, provider}}));
     }
   } catch (error) {
+    draft.error = error.message;
     if (environment !== activeEnvironment || provider !== selectedProvider() || loadRev !== conversationDefaultsRevision || conversationDefaultsSaveRevisions.get(key) !== saveRev) return;
     setConversationDefaultsStatus('');
     $('#conversationDefaultsError').textContent = error.message;
     $('#conversationDefaultsError').hidden = false;
+    $('#conversationDefaultsRetry').hidden = false;
   }
 }
 
 $('#conversationDefaultProviderGroup').addEventListener('change', () => { if (state.loaded) void loadConversationDefaults(); });
 $('#conversationDefaultModel').addEventListener('change', () => {
   const provider = selectedProvider();
-  renderConversationModelOptions(provider, selectedSegmentValue('conversationDefaultEffort', 'conversation_default_effort'), $('#conversationDefaultSpeed').value);
+  renderConversationModelOptions(provider, selectedEffort(), $('#conversationDefaultSpeed').value);
 });
+$('#conversationDefaultsRetry').addEventListener('click', () => { void saveConversationDefaults(); });
 $('#conversationDefaultsFields').addEventListener('change', () => {
   if ($('#conversationDefaultsFields').disabled) return;
   const provider = selectedProvider();
@@ -455,7 +498,7 @@ function renderSettings() {
   const environment = environmentInventory.find(e => e.id === activeEnvironment);
   const envLabel = environment?.name || (activeEnvironment === 'local' ? uiText("本机") : activeEnvironment);
   $('#settingsEnvironment').textContent = envLabel;
-  if ($('#settingsConversationEnv')) $('#settingsConversationEnv').textContent = uiText('当前环境：{0}', envLabel);
+  $('#settingsTitleEnv').textContent = uiText('执行环境：{0} · 仅用于新对话', envLabel);
   $('#settingsRoot').textContent = state.root || uiText("等待执行环境连接后读取");
   $('#terminalSettingsFields').disabled = !state.loaded || !state.terminal.settings;
   if (!state.loaded) {
@@ -494,26 +537,27 @@ function syncThemeSelection(choice) {
   }
 }
 syncThemeSelection(window.YoluTheme.current());
+let savedTheme = window.YoluTheme.current();
 $('#colorThemeGroup').addEventListener('change', async event => {
   const input = event.target.closest('input[name="color_theme"]');
   if (!input) return;
   const choice = input.value;
-  const previous = window.YoluTheme.current();
   const revision = ++appearanceSaveRevision;
   window.YoluTheme.apply(choice);
   $('#appearanceError').hidden = true;
   $('#appearanceStatus').textContent = uiText('保存中…');
   $('#appearanceStatus').dataset.state = 'muted';
   try {
-    const result = await api('/api/settings/appearance', {method:'PUT', environment:'local', body:JSON.stringify({color_theme:choice})});
+    const result = await enqueueSettingsSave('appearance', () => api('/api/settings/appearance', {method:'PUT', environment:'local', body:JSON.stringify({color_theme:choice})}));
+    savedTheme = result.color_theme;
     if (revision !== appearanceSaveRevision) return;
     window.YoluTheme.apply(result.color_theme);
     $('#appearanceStatus').textContent = uiText('已保存');
     $('#appearanceStatus').dataset.state = '';
   } catch (error) {
     if (revision !== appearanceSaveRevision) return;
-    window.YoluTheme.apply(previous);
-    syncThemeSelection(previous);
+    window.YoluTheme.apply(savedTheme);
+    syncThemeSelection(savedTheme);
     $('#appearanceStatus').textContent = '';
     $('#appearanceError').textContent = error.message || uiText('保存配色失败，请重试。');
     $('#appearanceError').hidden = false;
@@ -670,8 +714,10 @@ function syncSendShortcut(value) {
   for (const input of document.querySelectorAll('#sendShortcutGroup input[name="send_shortcut"]')) {
     input.checked = input.value === value;
   }
+  $('#sendShortcutHelp').textContent = value === 'ctrlEnter' ? uiText('Enter 换行。') : uiText('Shift + Enter 换行。');
 }
 syncSendShortcut(window.YoluChatInput.current());
+let savedSendShortcut = window.YoluChatInput.current();
 window.addEventListener('yolu:chat-input', () => { syncSendShortcut(window.YoluChatInput.current()); });
 $('#sendShortcutGroup').addEventListener('change', async event => {
   const input = event.target.closest('input[name="send_shortcut"]');
@@ -681,14 +727,16 @@ $('#sendShortcutGroup').addEventListener('change', async event => {
   $('#chatInputError').hidden = true;
   $('#chatInputStatus').textContent = uiText('保存中…');
   try {
-    const result = await api('/api/settings/chat-input', {method:'PUT', environment:'local', body:JSON.stringify({send_shortcut:choice})});
+    const result = await enqueueSettingsSave('chat-input', () => api('/api/settings/chat-input', {method:'PUT', environment:'local', body:JSON.stringify({send_shortcut:choice})}));
+    savedSendShortcut = result.send_shortcut;
     if (revision !== chatInputSaveRevision) return;
     window.YoluChatInput.apply(result.send_shortcut);
     syncSendShortcut(result.send_shortcut);
     $('#chatInputStatus').textContent = uiText('已保存并应用');
   } catch (error) {
     if (revision !== chatInputSaveRevision) return;
-    syncSendShortcut(window.YoluChatInput.current());
+    window.YoluChatInput.apply(savedSendShortcut);
+    syncSendShortcut(savedSendShortcut);
     $('#chatInputStatus').textContent = '';
     $('#chatInputError').textContent = error.message || uiText('保存对话输入设置失败，请重试。');
     $('#chatInputError').hidden = false;
