@@ -474,16 +474,15 @@ test('settings preserve unsaved edits during polling and keep the terminal reque
   assert.equal(h.$('#terminalError').hidden, true);
 });
 
-test('send shortcut settings retain edits, apply after saving and retain the saved shortcut after failures', async t => {
+test('send shortcut settings save immediately on selection and revert on failure', async t => {
   const h = await harness(t, true, {route:'/settings', intercept:(url, options, body) => {
     if (url === '/api/settings/chat-input') return {ok:true,json:async()=>body};
   }});
-  assert.equal(h.$('#sendShortcutSelect').value, 'enter');
-  h.change('#sendShortcutSelect', 'ctrlEnter');
-  await h.window.refresh();
-  assert.equal(h.$('#sendShortcutSelect').value, 'ctrlEnter');
-  assert.equal(h.window.YoluChatInput.current(), 'enter');
-  await h.submit('#chatInputForm');
+  const selectedShortcut = () => h.$('#sendShortcutGroup input[name="send_shortcut"]:checked')?.value;
+  assert.equal(selectedShortcut(), 'enter');
+  h.click('#sendShortcutGroup input[value="ctrlEnter"]');
+  await settle();
+  assert.equal(selectedShortcut(), 'ctrlEnter');
   assert.equal(h.window.YoluChatInput.current(), 'ctrlEnter');
   assert.match(h.$('#chatInputStatus').textContent, /已保存并应用/);
   const save = h.requests.find(r => r.url === '/api/settings/chat-input');
@@ -491,14 +490,61 @@ test('send shortcut settings retain edits, apply after saving and retain the sav
   assert.equal(save.options.headers['X-Environment-ID'], 'local');
   await h.navigate('/sessions');
   await h.navigate('/settings');
-  assert.equal(h.$('#sendShortcutSelect').value, 'ctrlEnter');
+  assert.equal(selectedShortcut(), 'ctrlEnter');
   h.setIntercept(url => url === '/api/settings/chat-input' ? {ok:false,json:async()=>({error:'Save failed'})} : undefined);
-  h.change('#sendShortcutSelect', 'enter');
-  await h.submit('#chatInputForm');
+  h.click('#sendShortcutGroup input[value="enter"]');
+  await settle();
   assert.equal(h.window.YoluChatInput.current(), 'ctrlEnter');
-  assert.equal(h.$('#sendShortcutSelect').value, 'enter');
-  assert.equal(h.$('#saveChatInput').disabled, false);
-  assert.match(h.$('#chatInputStatus').textContent, /Save failed/);
+  assert.equal(selectedShortcut(), 'ctrlEnter');
+  assert.equal(h.$('#chatInputError').hidden, false);
+  assert.match(h.$('#chatInputError').textContent, /Save failed/);
+});
+
+test('appearance palettes apply immediately with rollback on failure, and language actions appear only when dirty', async t => {
+  const h = await harness(t, true, {route:'/settings', intercept:(url, options, body) => {
+    if (url === '/api/settings/appearance') return {ok:true,json:async()=>body};
+  }});
+  const selectedTheme = () => h.$('#colorThemeGroup input[name="color_theme"]:checked')?.value;
+  assert.equal(selectedTheme(), 'mint');
+  assert.equal(h.$('#saveLanguage').hidden, true);
+  assert.equal(h.$('#cancelLanguage').hidden, true);
+  h.click('#colorThemeGroup input[value="dark"]');
+  await settle();
+  assert.equal(selectedTheme(), 'dark');
+  assert.equal(h.window.YoluTheme.current(), 'dark');
+  assert.match(h.$('#appearanceStatus').textContent, /已保存/);
+  assert.deepEqual(h.requests.findLast(r => r.url === '/api/settings/appearance').body, {color_theme:'dark'});
+  h.setIntercept(url => url === '/api/settings/appearance' ? {ok:false,json:async()=>({error:'Palette write failed'})} : undefined);
+  h.click('#colorThemeGroup input[value="light"]');
+  await settle();
+  assert.equal(h.window.YoluTheme.current(), 'dark');
+  assert.equal(selectedTheme(), 'dark');
+  assert.equal(h.$('#appearanceError').hidden, false);
+  assert.match(h.$('#appearanceError').textContent, /Palette write failed/);
+  h.change('#languageSelect', 'en');
+  assert.equal(h.$('#saveLanguage').hidden, false);
+  assert.equal(h.$('#cancelLanguage').hidden, false);
+  h.click('#cancelLanguage');
+  assert.equal(h.$('#languageSelect').value, 'zh-CN');
+  assert.equal(h.$('#saveLanguage').hidden, true);
+  assert.equal(h.$('#cancelLanguage').hidden, true);
+});
+
+test('preset terminal changes save immediately while custom terminal waits for explicit submit', async t => {
+  const h = await harness(t);
+  h.data.terminal.supported_kinds = ['auto', 'otty', 'custom'];
+  await h.window.refresh();
+  await h.navigate('/settings');
+  h.change('#terminalKind', 'otty');
+  await settle();
+  const put = h.requests.findLast(r => r.url === '/api/settings/terminal' && r.options.method === 'PUT');
+  assert.deepEqual(put.body, {kind:'otty', path:'', style:'otty'});
+  assert.match(h.$('#terminalSaveStatus').textContent, /已保存/);
+  const beforeCustom = h.requests.filter(r => r.url === '/api/settings/terminal' && r.options.method === 'PUT').length;
+  h.change('#terminalKind', 'custom');
+  await settle();
+  assert.equal(h.requests.filter(r => r.url === '/api/settings/terminal' && r.options.method === 'PUT').length, beforeCustom);
+  assert.equal(h.$('#terminalCustomFields').hidden, false);
 });
 
 test('Codex diagnostics stay read-only, retain report details during polling and provide a copy fallback', async t => {
@@ -622,77 +668,83 @@ test('Codex installation uses the selected report environment and refreshes it a
   assert.equal(h.requests.filter(r => r.url === '/api/settings/codex/install' && r.options.method === 'POST').length, 1);
 });
 
-test('title settings select a separate Codex model and retain unsaved edits during polling', async t => {
+test('title settings save immediately on selection and report failures accessibly', async t => {
   const h = await harness(t);
   await h.navigate('/settings');
   assert.equal(h.$('#sessionTitleFields').disabled, false);
   assert.equal(h.$('#sessionTitleModel').value, '');
   h.change('#sessionTitleModel', 'title-model');
-  await h.window.refresh(true); await settle();
+  await settle();
   assert.equal(h.$('#sessionTitleModel').value, 'title-model');
-  await h.submit('#sessionTitleForm');
-  assert.deepEqual(h.requests.find(r => r.url === '/api/settings/session-title' && r.options.method === 'PUT').body, {model:'title-model'});
+  assert.deepEqual(h.requests.findLast(r => r.url === '/api/settings/session-title' && r.options.method === 'PUT').body, {model:'title-model'});
   assert.equal(h.$('#sessionTitleError').hidden, true);
+  assert.match(h.$('#sessionTitleStatus').textContent, /已保存/);
   h.setIntercept((url, options) => url === '/api/settings/session-title' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'模型已不可用'})} : undefined);
   h.change('#sessionTitleModel', 'body-model');
-  await h.submit('#sessionTitleForm');
+  await settle();
   assert.equal(h.$('#sessionTitleModel').value, 'body-model');
   assert.equal(h.$('#sessionTitleError').getAttribute('role'), 'alert');
+  assert.equal(h.$('#sessionTitleError').hidden, false);
   assert.match(h.$('#sessionTitleError').textContent, /模型已不可用/);
 });
 
-test('conversation defaults save and reset per environment while polling preserves unsaved choices', async t => {
+test('conversation defaults save automatically per agent and environment with segmented controls', async t => {
   const h = await harness(t);
   await h.navigate('/settings');
+  const effortValue = () => h.$('#conversationDefaultEffort input[name="conversation_default_effort"]:checked')?.value ?? '';
+  const permissionValue = () => h.$('#conversationDefaultPermission input[name="conversation_default_permission"]:checked')?.value ?? '';
   assert.equal(h.$('#conversationDefaultsFields').disabled, false);
   assert.equal(h.$('#conversationDefaultModel').value, '');
-  assert.equal(h.$('#conversationDefaultPermission').value, '');
-  h.change('#conversationDefaultModel', 'body-model');
-  h.change('#conversationDefaultSpeed', 'fast');
-  h.change('#conversationDefaultEffort', 'high');
-  h.change('#conversationDefaultPermission', 'ask');
+  assert.equal(permissionValue(), '');
+  assert.match(h.$('#settingsConversationEnv').textContent, /本机/);
+  h.change('#conversationDefaultModel', 'body-model'); await settle();
+  h.change('#conversationDefaultSpeed', 'fast'); await settle();
+  h.click('#conversationDefaultEffort input[value="high"]'); await settle();
+  h.click('#conversationDefaultPermission input[value="ask"]'); await settle();
   await h.window.refresh(true); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
-  assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
-  await h.submit('#conversationDefaultsForm');
-  const saved = h.requests.find(r => r.url === '/api/settings/conversation-defaults' && r.options.method === 'PUT');
+  assert.equal(permissionValue(), 'ask');
+  const saved = h.requests.findLast(r => r.url === '/api/settings/conversation-defaults' && r.options.method === 'PUT');
   assert.deepEqual(saved.body, {model:'body-model',effort:'high',serviceTier:'fast',permission:'ask'});
   assert.equal(saved.options.headers['X-Environment-ID'], 'local');
   assert.match(h.$('#conversationDefaultsStatus').textContent, /已保存/);
-  h.change('#conversationDefaultProvider', 'agy'); await settle();
+  h.click('#conversationDefaultPermission input[value="full"]'); await settle();
+  assert.equal(h.$('#conversationDefaultPermissionHelp').dataset.danger, 'true');
+  h.click('#conversationDefaultPermission input[value="ask"]'); await settle();
+  assert.equal(h.$('#conversationDefaultPermissionHelp').dataset.danger, 'false');
+  h.click('#conversationDefaultProviderGroup input[value="agy"]'); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, '');
-  assert.equal(h.$('#conversationDefaultPermission').options[1].text, '启用沙箱');
+  assert.match(h.$('#conversationDefaultPermission').textContent, /启用沙箱/);
   assert.equal(h.$('#conversationDefaultSpeed').disabled, true);
-  h.change('#conversationDefaultModel', 'claude');
-  h.change('#conversationDefaultEffort', 'low');
-  h.change('#conversationDefaultPermission', 'ask');
-  h.change('#conversationDefaultProvider', 'codex'); await settle();
-  assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
-  assert.equal(h.$('#conversationDefaultEffort').value, 'high');
-  h.change('#conversationDefaultProvider', 'agy'); await settle();
-  assert.equal(h.$('#conversationDefaultModel').value, 'claude');
-  assert.equal(h.$('#conversationDefaultEffort').value, 'low');
-  await h.submit('#conversationDefaultsForm');
+  h.change('#conversationDefaultModel', 'claude'); await settle();
+  h.click('#conversationDefaultEffort input[value="low"]'); await settle();
+  h.click('#conversationDefaultPermission input[value="ask"]'); await settle();
   assert.deepEqual(h.data.agy_conversation_defaults, {model:'claude',effort:'low',serviceTier:'',permission:'ask'});
+  h.click('#conversationDefaultProviderGroup input[value="codex"]'); await settle();
+  assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
+  assert.equal(effortValue(), 'high');
+  h.click('#conversationDefaultProviderGroup input[value="agy"]'); await settle();
+  assert.equal(h.$('#conversationDefaultModel').value, 'claude');
+  assert.equal(effortValue(), 'low');
   h.click('#conversationDefaultsReload'); await settle();
-  assert.equal(h.$('#conversationDefaultEffort').value, 'low');
-  h.change('#conversationDefaultProvider', 'codex'); await settle();
+  assert.equal(effortValue(), 'low');
+  h.click('#conversationDefaultProviderGroup input[value="codex"]'); await settle();
   h.click('#conversationDefaultsReload'); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
-  assert.equal(h.$('#conversationDefaultEffort').value, 'high');
+  assert.equal(effortValue(), 'high');
   assert.equal(h.$('#conversationDefaultSpeed').value, 'fast');
-  h.change('#conversationDefaultModel', 'other-model');
-  assert.equal(h.$('#conversationDefaultEffort').value, '');
+  h.change('#conversationDefaultModel', 'other-model'); await settle();
+  assert.equal(effortValue(), '');
   assert.equal(h.$('#conversationDefaultSpeed').value, '');
   assert.equal(h.$('#conversationDefaultSpeed').disabled, true);
-  h.change('#conversationDefaultModel', ''); h.change('#conversationDefaultPermission', '');
-  await h.submit('#conversationDefaultsForm');
+  h.change('#conversationDefaultModel', ''); await settle();
+  h.click('#conversationDefaultPermission input[value=""]'); await settle();
   assert.deepEqual(h.data.conversation_defaults, {model:'',effort:'',serviceTier:'',permission:''});
   h.setIntercept((url, options) => url === '/api/settings/conversation-defaults' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'模型已不可用'})} : undefined);
-  h.change('#conversationDefaultModel', 'body-model');
-  await h.submit('#conversationDefaultsForm');
+  h.change('#conversationDefaultModel', 'body-model'); await settle();
   assert.equal(h.$('#conversationDefaultModel').value, 'body-model');
   assert.equal(h.$('#conversationDefaultsFields').disabled, false);
+  assert.equal(h.$('#conversationDefaultsError').hidden, false);
   assert.match(h.$('#conversationDefaultsError').textContent, /模型已不可用/);
 });
 
@@ -707,11 +759,11 @@ test('late conversation defaults cannot overwrite another environment and offlin
   });
   await h.window.loadEnvironments(); await h.navigate('/settings');
   await h.window.selectEnvironment('wsl-test','/settings'); await settle();
-  assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
+  assert.equal(h.$('#conversationDefaultPermission input[name="conversation_default_permission"]:checked')?.value, 'ask');
   assert.equal(h.$('#conversationDefaultsFields').disabled, false);
   assert.match(h.$('#conversationDefaultsStatus').textContent, /CLI offline/);
   resolveLocal(); await settle();
-  assert.equal(h.$('#conversationDefaultPermission').value, 'ask');
+  assert.equal(h.$('#conversationDefaultPermission input[name="conversation_default_permission"]:checked')?.value, 'ask');
 });
 
 test('failed terminal saves keep the draft and show an accessible error', async t => {
@@ -2404,8 +2456,8 @@ for (const scope of [{kind:'directory',cwd:'/workspace/workspace/app',environmen
  post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope,directory:'/workspace/workspace/app',pane:'list'}}});
  await settle();await settle();
  post(nav,{type:'workhub:conversation-group',canSplit:true,sessions:[],selected:'',split:false});
- assert.equal(nav.$('#newBrowserSplitSession').disabled,false);
- nav.click('#newBrowserSplitSession');await settle();
+ assert(nav.$('#newBrowserSession').hidden);
+ nav.window.WorkHubPage.createConversation('split','local');await settle();
  const opened = host.messages.findLast(message=>message.type==='workhub:page-open').snapshot;
  assert.equal(opened.conversation.creating,true);
  assert.equal(opened.conversation.selected,null);
@@ -2436,13 +2488,14 @@ test('grouped navigation expands by project name, saves display preferences and 
   const projectHeading = () => nav.$(projectAction + '[data-id="app"]').closest('.session-workspace-heading');
   const toggle = () => projectHeading().querySelector('[data-conversation-group-toggle]');
   assert(toggle().querySelector('.session-workspace-name'));
-  assert.equal(toggle().querySelector('.lucide-chevron-down, .lucide-chevron-right'),null);
+  assert.equal(toggle().querySelector('.session-workspace-chevron, .lucide-chevron-down, .lucide-chevron-right'),null);
   assert.equal(projectHeading().querySelector('.session-workspace-count').textContent,'1');
   assert.equal(toggle().getAttribute('aria-expanded'),'true');
   toggle().querySelector('.session-workspace-name').click();
   assert.equal(projectHeading().closest('section').querySelector('[data-conversation-session]'),null);
   assert.equal(projectHeading().querySelector('.session-workspace-count').textContent,'1');
   assert.equal(toggle().getAttribute('aria-expanded'),'false');
+  assert.equal(toggle().querySelector('.session-workspace-chevron, .lucide-chevron-down, .lucide-chevron-right'),null);
   toggle().querySelector('.session-workspace-name').click();
   assert(projectHeading().closest('section').querySelector('[data-conversation-session]'));
   assert.equal(host.messages.some(message=>message.type==='workhub:page-open'),false);
@@ -2469,13 +2522,16 @@ test('grouped navigation expands by project name, saves display preferences and 
   const opened = () => host.messages.findLast(message=>message.type==='workhub:page-open').snapshot;
   assert.equal(opened().route,'/projects/app');
   assert.equal(opened().environment,'local');
+  toggle().click();
+  assert.equal(toggle().getAttribute('aria-expanded'),'false');
   nav.click(projectAction + '[data-id="app"]'); await settle();
   assert.equal(opened().conversation.scope.id,'app');
   assert.equal(opened().conversation.creationDirectory,'/repo/app');
+  assert.equal(toggle().getAttribute('aria-expanded'),'true');
 
   post(nav,{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'project',id:'app'},directory:'/repo/app',search:'existing search',statusFilter:'waiting',pane:'list'}}});
   await settle(); await settle();
-  nav.click('#newBrowserSession'); await settle();
+  nav.window.WorkHubPage.createConversation('current','local'); await settle();
   const independent = opened();
   assert.equal(independent.conversation.scope.kind,'all');
   assert.equal(independent.conversation.directory,'');
@@ -2504,6 +2560,66 @@ test('grouped navigation expands by project name, saves display preferences and 
   assert.equal(nav.$('[data-conversation-session="new-session"]'),null);
 });
 
+test('grouped navigation expands in five-row steps, resets the preview and shares one list with independent conversations', async t => {
+  const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
+  const post = data => nav.window.dispatchEvent(new nav.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  nav.sessions.splice(0, 1, ...Array.from({length: 9}, (_, index) => ({
+    id: 'project-' + index, name: 'Project ' + index, cwd: '/workspace/workspace/app', updated_at: 100 - index,
+    primary_project_id: 'app', chat_status: index === 8 ? 'running' : '',
+  })), {id:'outside', name:'Outside', cwd:'/other/worktree', updated_at:90});
+  post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+  await settle();
+  const project = () => nav.$('[data-collection="project"]');
+  const independent = () => nav.$('[data-collection="independent"]');
+  const projectRows = () => [...project().querySelectorAll('[data-conversation-session]')];
+  const toggle = () => project().querySelector('[data-conversation-group-toggle]');
+  const more = () => project().querySelector('[data-conversation-group-more]');
+  const less = () => project().querySelector('[data-conversation-group-less]');
+  assert.deepEqual(projectRows().map(row => row.dataset.conversationSession), ['project-0','project-8']);
+  assert.equal(projectRows()[0].querySelector('.session-browser-item-project'),null);
+  assert.equal(projectRows()[0].querySelector('.session-browser-item-branch').textContent,'feature/workspace');
+  assert.equal(less(),null);
+  more().click();
+  assert.equal(projectRows().length,7);
+  assert.equal(more().parentNode,less().parentNode);
+  more().click();
+  assert.equal(projectRows().length,9);
+  assert.equal(more(),null);
+  assert.equal(less().textContent,'收起对话');
+  less().click();
+  assert.equal(projectRows().length,2);
+  assert.equal(nav.document.activeElement,toggle());
+  more().click();
+  toggle().click();
+  assert.equal(projectRows().length,0);
+  assert(toggle().querySelector('.session-workspace-running'));
+  toggle().click();
+  assert.equal(projectRows().length,2);
+
+  const standalone = independent().querySelector('[data-conversation-session]');
+  assert.equal(standalone.querySelector('.session-browser-item-location').textContent,'worktree');
+  assert.equal(standalone.closest('#sessionBrowserList'),project().closest('#sessionBrowserList'));
+  assert.equal(nav.$('#sessionBrowserList h2, #sessionBrowserList hr'),null);
+  assert.equal(nav.$('#sessionBrowserList .session-workspace-chevron'),null);
+  const unboundToggle = () => independent().querySelector('[data-conversation-group-toggle="independent"]');
+  assert.equal(unboundToggle().querySelector('.session-workspace-name').textContent,'未绑定项目');
+  assert.equal(independent().querySelector('.session-collection-details'),null);
+  unboundToggle().click();
+  assert.equal(independent().querySelector('[data-conversation-session]'),null);
+  independent().querySelector('[data-conversation-standalone="true"]').click();
+  assert.equal(unboundToggle().getAttribute('aria-expanded'),'true');
+  assert(independent().querySelector('[data-conversation-session="outside"]'));
+
+  const created = {id:'new-in-app', name:'New conversation', cwd:'/repo/app', primary_project_id:'app', updated_at:110};
+  toggle().click();
+  project().querySelector('[data-action="project-conversation-new"]').click();
+  nav.sessions.push(created);
+  post({type:'workhub:conversation-group',selected:created.id,split:false,createdConversation:true,target:{environment:'local',conversation:{selected:created.id,session:created}}});
+  await settle();
+  assert.equal(project().querySelector('[data-conversation-session="new-in-app"]')?.getAttribute('aria-pressed'),'true');
+});
+
 test('search group overrides preserve saved expansion, explain matches and support keyboard browsing', async t => {
   const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
   nav.sessions.push({id:'backend-session', name:'Service review', cwd:'/repo/backend', primary_project_id:'backend'});
@@ -2517,10 +2633,20 @@ test('search group overrides preserve saved expansion, explain matches and suppo
   const session = () => nav.$('[data-conversation-session="session-1"]');
   const search = query => nav.input('#sessionBrowserSearch',query);
   const move = key => nav.document.activeElement.dispatchEvent(new nav.window.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));
+  const toggleAll = nav.$('#sessionToggleAllGroups');
+  toggleAll.focus();
+  toggleAll.click();
+  assert.equal(nav.document.activeElement,toggleAll);
+  assert.equal(toggleAll.getAttribute('aria-label'),'全部展开');
+  assert(group('App').hasAttribute('data-current-conversation'));
+  assert.equal(group('Backend').getAttribute('aria-expanded'),'false');
+  toggleAll.click();
+  assert.equal(group('App').getAttribute('aria-expanded'),'true');
+  assert.equal(group('Backend').getAttribute('aria-expanded'),'true');
   group('Backend').click();
   search('feature/workspace');
   assert.equal(session().querySelector('.session-browser-item-search-match').textContent,'分支 · feature/workspace');
-  group('App').click();
+  toggleAll.click();
   assert.equal(group('App').getAttribute('aria-expanded'),'false');
   assert.equal(group('App').getAttribute('aria-description'),'当前对话所在项目');
   assert.equal(session(),null);
@@ -2674,7 +2800,7 @@ test('resizing a shared list with 738 conversations does not regenerate its rows
  await settle(); await settle();
  const group = {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:false,full:false,listWidth:280,targetTitle:'当前对话'};
  post(group);
- assert(h.document.querySelectorAll('[data-conversation-session]').length >= 3);
+ assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,2);
  const row = h.$('[data-conversation-session="session-1"]'), ui = h.window.WorkHubUI;
  let renders = 0;
  h.window.WorkHubUI = {...ui,conversationList:props=>{renders++; return ui.conversationList(props);}};
@@ -2705,7 +2831,7 @@ test('dedicated conversation panes do not generate hidden lists and ordinary bro
  assert.equal(h.$('#sessionChatInput').value,'保留对话草稿');
  post({type:'workhub:page-pane',split:false,shared:false});
  h.click('[data-conversation-action="back"]'); await settle();
- assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,3,'leaving host-managed conversation mode restores project previews');
+ assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,2,'leaving host-managed conversation mode restores project previews');
  assert(renders>0);
  assert(!h.requests.some(request=>request.url.endsWith('/chat/stop')));
 });
@@ -2766,7 +2892,7 @@ test('conversation lists automatically append twenty rows at the bottom and keep
  assert(spacer);
  assert(parseFloat(spacer.style.height)>0,'virtual rows retain their measured space');
  for(let i=0;i<33;i++) {await scroll('bottom');assert(rows().length<=60);}
- assert.equal(list.dataset.loadedCount,'739');
+ assert.equal(list.dataset.loadedCount,'740'); // Conversations, project heading, and preview footer.
  assert.equal(list.querySelector('[data-list-spacer="after"]'),null);
  await scroll(0);assert.equal(rows()[0].dataset.conversationSession,'session-1','scrolling up restores previous rows');
  assert.equal(h.currentSession().session,session);
@@ -2796,7 +2922,7 @@ test('automatic list windows survive refresh and restoration, support keyboard n
  assert.equal(h.document.activeElement.dataset.conversationSession,'session-1');
  assert.equal(h.window.WorkHubPage.snapshot().conversation.loadedCount,120);
  h.sessions.splice(30);await h.window.refreshConversations(true);await settle();await settle();
- assert.equal(list.dataset.loadedCount,'31');assert(Number(list.dataset.windowEnd)<=31);
+ assert.equal(list.dataset.loadedCount,'32');assert(Number(list.dataset.windowEnd)<=32);
  assert(h.document.querySelectorAll('[data-conversation-session]').length<=30);
 });
 
@@ -2984,16 +3110,19 @@ test('directory scan invalidates results on input changes and retains failed sca
 });
 
 test('resource icons edit only the active detail, persist without browser storage and retain failed drafts', async t => {
-  const saved = {local:{icons:{'project:app':{icon:'code',color:'blue'}}}};
+  const saved = {local:{icons:{'project:app':{icon:'code',color:'theme'}}}};
   const h = await harness(t, false, {pins:saved, storageUnavailable:true});
   assert.equal(h.$('#conversationShortcuts, #shortcutIconSettings, #openYoluAssistant'), null);
   const trigger = h.$('.project-detail-title [data-resource-icon-edit]') || h.$('.project-detail-heading [data-resource-icon-edit]');
   trigger.focus();trigger.click();await settle();
   assert(h.$('.shortcut-icon-dialog').open);
   assert.equal(h.$('#shortcutIconEntry'),null);
-  h.click('.shortcut-icon-dialog [aria-label="火箭"]');await settle();h.click('.shortcut-icon-dialog [aria-label="玫红"]');await settle();
+  assert.equal(h.$('.shortcut-icon-dialog .shortcut-color-swatch'),null);
+  assert.equal(h.$('.shortcut-icon-dialog [aria-label="名称缩写"]'),null);
+  h.click('.shortcut-icon-dialog .shortcut-icon-random');await settle();
+  h.click('.shortcut-icon-dialog [aria-label="火箭"]');await settle();
   await h.submit('.shortcut-icon-dialog form');
-  assert.deepEqual(saved.local.icons['project:app'],{icon:'rocket',color:'rose'});
+  assert.deepEqual(saved.local.icons['project:app'],{icon:'rocket',color:'theme'});
   assert.equal(h.$('.shortcut-icon-dialog').open,false);
   assert.equal(h.document.activeElement,trigger);
   await h.navigate('/projects/backend');
@@ -3008,6 +3137,49 @@ test('resource icons edit only the active detail, persist without browser storag
   assert.equal(h.$('.shortcut-icon-dialog [aria-label="问题修复"]').getAttribute('aria-pressed'),'true');
   h.setIntercept(null);await h.submit('.shortcut-icon-dialog form');
   assert.equal(saved.local.icons['project:backend'].icon,'bug');
+  assert.equal(saved.local.icons['project:backend'].color,'theme');
   assert.equal(h.document.activeElement,h.$('#projectDetail [data-resource-icon-edit]'));
   assert.equal(saved.local.icons['project:app'].icon,'rocket');
+});
+
+test('creation directory choices omit redundant local environment, disambiguate duplicate detached worktrees and filter when many exist', async t => {
+  const host = pageHost(t);
+  const projects = [
+    {
+      id: 'agent', name: 'noah-mind-agent', path: '/repos/agent',
+      worktrees: [
+        {path: '/repos/agent', branch: 'feature/v2.1'},
+        {path: '/workspaces/wt-alpha', branch: '', detached: true, head: '1234567890'},
+        {path: '/workspaces/wt-beta', branch: '', detached: true, head: '1234567890'},
+        {path: '/workspaces/wt-gamma', branch: 'codex/feature-a'},
+      ],
+    },
+    {id: 'yolu', name: 'yolu', path: '/repos/yolu', worktrees: [{path: '/repos/yolu', branch: 'main'}]},
+    {id: 'mcp', name: 'noah-mind-mcp', path: '/repos/mcp', worktrees: [{path: '/repos/mcp', branch: 'main'}]},
+    {id: 'svc', name: 'noah-mind-svc', path: '/repos/svc', worktrees: [{path: '/repos/svc', branch: 'main'}]},
+  ];
+  const draft = await harness(t, false, {pageHost: host.window, intercept: (url) => {
+    if (url === '/api/state' || url.startsWith('/api/state?')) {
+      return {ok: true, json: async () => ({root: '/workspace', projects, terminal: {platform: 'linux', available: true, settings: {kind: 'auto'}, supported_kinds: ['auto', 'custom'], supported_styles: ['command', 'otty'], launcher: '/usr/bin/terminal', message: '终端已就绪'}})};
+    }
+    return null;
+  }});
+  const post = data => draft.window.dispatchEvent(new draft.window.MessageEvent('message', {source: host.window, origin: 'http://localhost:4317', data}));
+  post({type: 'workhub:page-restore', active: true, snapshot: {route: '/sessions', environment: 'local', conversation: {scope: {kind: 'all'}, creating: true, creationDirectory: '', pane: 'detail'}}});
+  await settle(); await settle();
+  const buttons = () => [...draft.document.querySelectorAll('#sessionBrowserDirectoryChoices button[data-creation-choice]')];
+  const labels = buttons().map(b => b.textContent);
+  assert.equal(labels[0], '默认目录（无需项目）');
+  assert.ok(labels.every(label => !label.includes('· 本机')), `redundant local suffix found: ${labels.join(' | ')}`);
+  assert.equal(new Set(labels).size, labels.length, `duplicate labels found: ${labels.join(' | ')}`);
+  assert.ok(labels.some(label => label.includes('detached @ 1234567 (wt-alpha)')));
+  assert.ok(labels.some(label => label.includes('detached @ 1234567 (wt-beta)')));
+  // Primary project directories appear ahead of secondary worktrees.
+  assert.ok(labels.indexOf('yolu · main') < labels.findIndex(label => label.includes('wt-alpha')));
+  const filter = draft.$('#sessionBrowserNewDirectoryField .creation-choices-filter');
+  assert.ok(filter, 'filter input should appear when more than 6 directories exist');
+  filter.value = 'yolu';
+  filter.dispatchEvent(new draft.window.Event('input', {bubbles: true}));
+  const visible = buttons().filter(b => !b.hidden).map(b => b.textContent);
+  assert.deepEqual(visible, ['yolu · main']);
 });

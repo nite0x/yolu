@@ -11,11 +11,14 @@ let mcpAgentSettings = null;
 let titleSettingsEnvironment = null;
 let titleSettingsLoading = false;
 let titleSettingsRevision = 0;
+let titleSaveRevision = 0;
 let conversationDefaultsEnvironment = null;
 let conversationDefaultsRevision = 0;
 let conversationDefaultsLoading = false;
 let conversationDefaultModels = [];
-const conversationDefaultsDrafts = new Map();
+const conversationDefaultsSaveRevisions = new Map();
+let appearanceSaveRevision = 0;
+let chatInputSaveRevision = 0;
 const codexDiagnostics = new Map();
 const agyDiagnostics = new Map();
 const codexInstallationMonitors = new Set();
@@ -195,14 +198,23 @@ $('#copyCodexDiagnostics').addEventListener('click', async () => {
   }
 });
 
+function syncModelsReloadButton() {
+  const button = $('#conversationDefaultsReload');
+  if (!button) return;
+  const loading = conversationDefaultsLoading || titleSettingsLoading;
+  button.disabled = !state.loaded || loading;
+  button.dataset.loading = loading ? 'true' : 'false';
+}
+
 async function loadSessionTitleSettings() {
   const environment = activeEnvironment;
   const revision = ++titleSettingsRevision;
   titleSettingsEnvironment = environment;
   titleSettingsLoading = true;
   $('#sessionTitleFields').disabled = true;
-  $('#sessionTitleReload').disabled = true;
+  syncModelsReloadButton();
   $('#sessionTitleError').hidden = true;
+  if ($('#sessionTitleStatus')) $('#sessionTitleStatus').textContent = '';
   try {
     const result = await api('/api/settings/session-title', { environment });
     if (environment !== activeEnvironment || revision !== titleSettingsRevision) return;
@@ -220,20 +232,35 @@ async function loadSessionTitleSettings() {
   } finally {
     if (environment === activeEnvironment && revision === titleSettingsRevision) {
       titleSettingsLoading = false;
-      $('#sessionTitleReload').disabled = !state.loaded;
+      syncModelsReloadButton();
     }
   }
 }
 
-$('#sessionTitleReload').addEventListener('click', () => { if (state.loaded && !titleSettingsLoading) loadSessionTitleSettings(); });
-$('#sessionTitleForm').addEventListener('submit', event => {
-  event.preventDefault();
+async function saveSessionTitleModel() {
+  if ($('#sessionTitleFields').disabled) return;
   const environment = activeEnvironment;
   const model = $('#sessionTitleModel').value;
-  mutation(uiText("正在保存标题设置"), async () => {
-    await api('/api/settings/session-title', { method: 'PUT', body: JSON.stringify({ model }) });
-    if (environment === activeEnvironment) toast(uiText("标题设置已保存，将用于新对话的标题生成"));
-  }, $('#sessionTitleError'));
+  const revision = ++titleSaveRevision;
+  const loadRev = titleSettingsRevision;
+  $('#sessionTitleError').hidden = true;
+  if ($('#sessionTitleStatus')) $('#sessionTitleStatus').textContent = uiText('保存中…');
+  try {
+    await api('/api/settings/session-title', { method: 'PUT', environment, body: JSON.stringify({ model }) });
+    if (environment !== activeEnvironment || revision !== titleSaveRevision || loadRev !== titleSettingsRevision) return;
+    if ($('#sessionTitleStatus')) $('#sessionTitleStatus').textContent = uiText('已保存');
+  } catch (error) {
+    if (environment !== activeEnvironment || revision !== titleSaveRevision || loadRev !== titleSettingsRevision) return;
+    if ($('#sessionTitleStatus')) $('#sessionTitleStatus').textContent = '';
+    $('#sessionTitleError').textContent = error.message;
+    $('#sessionTitleError').hidden = false;
+  }
+}
+
+$('#sessionTitleModel').addEventListener('change', () => { void saveSessionTitleModel(); });
+$('#sessionTitleForm').addEventListener('submit', event => {
+  event.preventDefault();
+  void saveSessionTitleModel();
 });
 
 function setConversationDefaultOptions(select, defaultLabel, options, value, unavailableLabel) {
@@ -243,20 +270,68 @@ function setConversationDefaultOptions(select, defaultLabel, options, value, una
   select.value = selected || unavailableLabel ? value : '';
 }
 
+function selectedProvider() {
+  return $('#conversationDefaultProviderGroup input[name="conversation_default_provider"]:checked')?.value || 'codex';
+}
+
+function selectedSegmentValue(containerId, inputName) {
+  return $(`#${containerId} input[name="${inputName}"]:checked`)?.value ?? '';
+}
+
+function renderSegmentOptions(container, inputName, items, value, unavailableLabel) {
+  const list = [...items];
+  const matched = list.some(item => item.value === value);
+  if (value && !matched && unavailableLabel) {
+    list.splice(1, 0, { value, label: uiText(unavailableLabel, value), unavailable: true });
+  }
+  const activeValue = matched || (value && unavailableLabel) ? value : '';
+  const onlyDefault = list.length <= 1;
+  container.dataset.disabled = onlyDefault ? 'true' : 'false';
+  const nodes = list.map(item => {
+    const label = document.createElement('label');
+    if (item.danger) label.dataset.danger = 'true';
+    if (item.unavailable) label.dataset.unavailable = 'true';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.className = 'sr-only';
+    input.name = inputName;
+    input.value = item.value;
+    input.checked = item.value === activeValue;
+    if (onlyDefault) input.disabled = true;
+    const text = document.createElement('span');
+    text.textContent = item.label;
+    label.append(input, text);
+    return label;
+  });
+  container.replaceChildren(...nodes);
+}
+
+function updatePermissionHelp(provider, permission) {
+  const help = $('#conversationDefaultPermissionHelp');
+  if (!help) return;
+  help.textContent = provider === 'agy' ? uiText('选择「跳过权限检查」后，Antigravity 会自动批准操作。') : [
+    uiText('按目录授权的对话使用其目录访问权限。'),
+    uiText('完全访问权限允许读取和修改电脑上的文件并执行命令。'),
+  ].join(' ');
+  help.dataset.danger = permission === 'full' ? 'true' : 'false';
+}
+
 function renderConversationModelOptions(provider, effort, speed, unavailableLabel) {
   const {findChatModel, effortLabel, serviceTierLabel} = window.WorkHubUI;
   const model = findChatModel(conversationDefaultModels, $('#conversationDefaultModel').value);
   const effortOptions = [...new Set(model?.supportedReasoningEfforts?.map(item => item.reasoningEffort).filter(Boolean))];
   const tiers = new Map((model?.serviceTiers || []).filter(tier => tier.id).map(tier => [tier.id, tier]));
-  const effortSelect = $('#conversationDefaultEffort');
+  const effortContainer = $('#conversationDefaultEffort');
   const speedSelect = $('#conversationDefaultSpeed');
-  setConversationDefaultOptions(effortSelect, uiText('使用模型默认强度'), effortOptions.map(value => new Option(effortLabel(value), value)), effort, unavailableLabel);
+  const effortItems = effortOptions.length
+    ? [{ value: '', label: uiText('默认') }, ...effortOptions.map(value => ({ value, label: effortLabel(value) }))]
+    : [{ value: '', label: uiText('使用模型默认强度') }];
+  renderSegmentOptions(effortContainer, 'conversation_default_effort', effortItems, effort, unavailableLabel);
   if (provider === 'agy') {
     speedSelect.replaceChildren(new Option(uiText('Antigravity 由模型决定响应速度'), ''));
   } else {
     setConversationDefaultOptions(speedSelect, uiText('沿用 Codex 默认速度'), [...tiers.values()].map(tier => new Option(serviceTierLabel(tier), tier.id)), speed, unavailableLabel);
   }
-  effortSelect.disabled = effortSelect.options.length === 1;
   speedSelect.disabled = speedSelect.options.length === 1;
 }
 
@@ -267,95 +342,107 @@ function conversationDefaultsPath(provider, reload = false) {
 function conversationDefaultValues() {
   return {
     model: $('#conversationDefaultModel').value,
-    effort: $('#conversationDefaultEffort').value,
+    effort: selectedSegmentValue('conversationDefaultEffort', 'conversation_default_effort'),
     serviceTier: $('#conversationDefaultSpeed').value,
-    permission: $('#conversationDefaultPermission').value,
+    permission: selectedSegmentValue('conversationDefaultPermission', 'conversation_default_permission'),
   };
+}
+
+function setConversationDefaultsStatus(text, muted = false) {
+  const status = $('#conversationDefaultsStatus');
+  if (!status) return;
+  status.textContent = text;
+  status.dataset.state = muted ? 'muted' : '';
 }
 
 async function loadConversationDefaults(reload = false) {
   const environment = activeEnvironment;
-  const provider = $('#conversationDefaultProvider').value;
-  const draftKey = JSON.stringify([environment, provider]);
+  const provider = selectedProvider();
   const revision = ++conversationDefaultsRevision;
   conversationDefaultsEnvironment = environment;
   conversationDefaultsLoading = true;
-  $('#conversationDefaultProvider').disabled = false;
+  $('#conversationDefaultProviderGroup').disabled = false;
   $('#conversationDefaultsFields').disabled = true;
-  $('#conversationDefaultsReload').disabled = true;
+  syncModelsReloadButton();
   $('#conversationDefaultsError').hidden = true;
-  $('#conversationDefaultsStatus').textContent = uiText('正在读取…');
+  setConversationDefaultsStatus(uiText('正在读取…'), true);
   try {
     const result = await api(conversationDefaultsPath(provider, reload), {environment});
     if (environment !== activeEnvironment || revision !== conversationDefaultsRevision) return;
     conversationDefaultModels = result.models || [];
     const unavailableLabel = result.models_error ? '{0}（未核对）' : '{0}（当前不可用）';
-    const settings = conversationDefaultsDrafts.get(draftKey) || result.settings;
+    const settings = result.settings || {};
     const models = conversationDefaultModels.map(model => new Option(model.displayName || model.model, model.model));
     setConversationDefaultOptions($('#conversationDefaultModel'), provider === 'agy' ? uiText('沿用 Antigravity 默认模型') : uiText('沿用 Codex 默认模型'), models, settings.model || '', unavailableLabel);
     renderConversationModelOptions(provider, settings.effort || '', settings.serviceTier || '', unavailableLabel);
-    const permissions = window.WorkHubUI.permissionChoices(provider).map(choice => new Option(choice.label, choice.value));
-    setConversationDefaultOptions($('#conversationDefaultPermission'), provider === 'agy' ? uiText('沿用 Antigravity 默认权限') : uiText('沿用 Codex 默认权限'), permissions, settings.permission || '', unavailableLabel);
-    $('#conversationDefaultPermissionHelp').textContent = provider === 'agy' ? uiText('选择「跳过权限检查」后，Antigravity 会自动批准操作。') : [
-      uiText('按目录授权的对话使用其目录访问权限。'),
-      uiText('完全访问权限允许读取和修改电脑上的文件并执行命令。'),
-    ].join(' ');
-    $('#conversationDefaultsStatus').textContent = result.models_error ? uiText(result.models_error) : '';
+    const permissions = [
+      { value: '', label: uiText('沿用默认') },
+      ...window.WorkHubUI.permissionChoices(provider).map(choice => ({ value: choice.value, label: choice.label, danger: !!choice.danger })),
+    ];
+    renderSegmentOptions($('#conversationDefaultPermission'), 'conversation_default_permission', permissions, settings.permission || '', unavailableLabel);
+    updatePermissionHelp(provider, selectedSegmentValue('conversationDefaultPermission', 'conversation_default_permission'));
+    setConversationDefaultsStatus(result.models_error ? uiText(result.models_error) : '', true);
     $('#conversationDefaultsFields').disabled = result.available === false;
   } catch (error) {
     if (environment !== activeEnvironment || revision !== conversationDefaultsRevision) return;
-    $('#conversationDefaultsStatus').textContent = '';
+    setConversationDefaultsStatus('');
     $('#conversationDefaultsError').textContent = error.message;
     $('#conversationDefaultsError').hidden = false;
   } finally {
     if (environment === activeEnvironment && revision === conversationDefaultsRevision) {
       conversationDefaultsLoading = false;
-      $('#conversationDefaultsReload').disabled = !state.loaded;
+      syncModelsReloadButton();
     }
   }
 }
 
-$('#conversationDefaultProvider').addEventListener('change', () => { if (state.loaded) loadConversationDefaults(); });
-$('#conversationDefaultModel').addEventListener('change', () => {
-  renderConversationModelOptions($('#conversationDefaultProvider').value, $('#conversationDefaultEffort').value, $('#conversationDefaultSpeed').value);
-});
-$('#conversationDefaultsForm').addEventListener('change', event => {
-  if ($('#conversationDefaultsFields').contains(event.target) && !$('#conversationDefaultsFields').disabled) {
-    conversationDefaultsDrafts.set(JSON.stringify([activeEnvironment, $('#conversationDefaultProvider').value]), conversationDefaultValues());
-  }
-});
-$('#conversationDefaultsReload').addEventListener('click', () => { if (state.loaded && !conversationDefaultsLoading) loadConversationDefaults(true); });
-$('#conversationDefaultsForm').addEventListener('submit', event => {
-  event.preventDefault();
+async function saveConversationDefaults() {
   if ($('#conversationDefaultsFields').disabled) return;
   const environment = activeEnvironment;
-  const provider = $('#conversationDefaultProvider').value;
-  const draftKey = JSON.stringify([environment, provider]);
-  const draft = conversationDefaultsDrafts.get(draftKey);
-  const revision = conversationDefaultsRevision;
+  const provider = selectedProvider();
+  const key = JSON.stringify([environment, provider]);
+  const saveRev = (conversationDefaultsSaveRevisions.get(key) || 0) + 1;
+  conversationDefaultsSaveRevisions.set(key, saveRev);
+  const loadRev = conversationDefaultsRevision;
   const settings = conversationDefaultValues();
-  mutation(uiText('正在保存新对话设置'), async () => {
-    $('#conversationDefaultProvider').disabled = true;
-    $('#conversationDefaultsFields').disabled = true;
-    $('#conversationDefaultsReload').disabled = true;
-    try {
-      await api(conversationDefaultsPath(provider), {method:'PUT', environment, body:JSON.stringify(settings)});
-      if (conversationDefaultsDrafts.get(draftKey) === draft) conversationDefaultsDrafts.delete(draftKey);
-      if (environment === activeEnvironment && revision === conversationDefaultsRevision) {
-        $('#conversationDefaultsStatus').textContent = uiText('新对话设置已保存');
-      }
-      const host = window.top;
-      for (const page of [host, ...[...host.document.querySelectorAll('iframe')].map(frame => frame.contentWindow).filter(Boolean)]) {
-        page.dispatchEvent(new page.CustomEvent('workhub:conversation-defaults', {detail:{environment, provider}}));
-      }
-    } finally {
-      if (environment === activeEnvironment && revision === conversationDefaultsRevision) {
-        $('#conversationDefaultProvider').disabled = !state.loaded;
-        $('#conversationDefaultsFields').disabled = !state.loaded;
-        $('#conversationDefaultsReload').disabled = !state.loaded;
-      }
+  $('#conversationDefaultsError').hidden = true;
+  setConversationDefaultsStatus(uiText('保存中…'), true);
+  try {
+    await api(conversationDefaultsPath(provider), {method:'PUT', environment, body:JSON.stringify(settings)});
+    if (environment === activeEnvironment && provider === selectedProvider() && loadRev === conversationDefaultsRevision && conversationDefaultsSaveRevisions.get(key) === saveRev) {
+      setConversationDefaultsStatus(uiText('已保存'));
     }
-  }, $('#conversationDefaultsError'), {environment, key:'conversation-defaults:' + provider, isCurrent:() => environment === activeEnvironment && revision === conversationDefaultsRevision});
+    const host = window.top;
+    for (const page of [host, ...[...host.document.querySelectorAll('iframe')].map(frame => frame.contentWindow).filter(Boolean)]) {
+      page.dispatchEvent(new page.CustomEvent('workhub:conversation-defaults', {detail:{environment, provider}}));
+    }
+  } catch (error) {
+    if (environment !== activeEnvironment || provider !== selectedProvider() || loadRev !== conversationDefaultsRevision || conversationDefaultsSaveRevisions.get(key) !== saveRev) return;
+    setConversationDefaultsStatus('');
+    $('#conversationDefaultsError').textContent = error.message;
+    $('#conversationDefaultsError').hidden = false;
+  }
+}
+
+$('#conversationDefaultProviderGroup').addEventListener('change', () => { if (state.loaded) void loadConversationDefaults(); });
+$('#conversationDefaultModel').addEventListener('change', () => {
+  const provider = selectedProvider();
+  renderConversationModelOptions(provider, selectedSegmentValue('conversationDefaultEffort', 'conversation_default_effort'), $('#conversationDefaultSpeed').value);
+});
+$('#conversationDefaultsFields').addEventListener('change', () => {
+  if ($('#conversationDefaultsFields').disabled) return;
+  const provider = selectedProvider();
+  updatePermissionHelp(provider, selectedSegmentValue('conversationDefaultPermission', 'conversation_default_permission'));
+  void saveConversationDefaults();
+});
+$('#conversationDefaultsReload').addEventListener('click', () => {
+  if (!state.loaded) return;
+  if (!conversationDefaultsLoading) void loadConversationDefaults(true);
+  if (!titleSettingsLoading) void loadSessionTitleSettings();
+});
+$('#conversationDefaultsForm').addEventListener('submit', event => {
+  event.preventDefault();
+  void saveConversationDefaults();
 });
 
 function renderSettings() {
@@ -366,7 +453,9 @@ function renderSettings() {
   if (state.view === 'settings' && !codexDiagnosticsBatch && !codexDiagnostics.has(activeEnvironment)) void checkCodexEnvironment(activeEnvironment);
   if (state.view === 'settings' && !agyDiagnostics.has(activeEnvironment)) void checkAgyEnvironment(activeEnvironment);
   const environment = environmentInventory.find(e => e.id === activeEnvironment);
-  $('#settingsEnvironment').textContent = environment?.name || (activeEnvironment === 'local' ? uiText("本机") : activeEnvironment);
+  const envLabel = environment?.name || (activeEnvironment === 'local' ? uiText("本机") : activeEnvironment);
+  $('#settingsEnvironment').textContent = envLabel;
+  if ($('#settingsConversationEnv')) $('#settingsConversationEnv').textContent = uiText('当前环境：{0}', envLabel);
   $('#settingsRoot').textContent = state.root || uiText("等待执行环境连接后读取");
   $('#terminalSettingsFields').disabled = !state.loaded || !state.terminal.settings;
   if (!state.loaded) {
@@ -377,11 +466,10 @@ function renderSettings() {
     conversationDefaultsEnvironment = null;
     conversationDefaultsRevision++;
     conversationDefaultsLoading = false;
-    $('#conversationDefaultProvider').disabled = true;
+    $('#conversationDefaultProviderGroup').disabled = true;
     $('#conversationDefaultsFields').disabled = true;
-    $('#conversationDefaultsReload').disabled = true;
     $('#sessionTitleFields').disabled = true;
-    $('#sessionTitleReload').disabled = true;
+    syncModelsReloadButton();
     $('#terminalStatus').textContent = uiText("等待执行环境连接后读取终端配置");
     return;
   }
@@ -400,28 +488,38 @@ function renderSettings() {
 }
 
 // This preference belongs to the local application, not the selected WSL user.
-function showThemePreview() {
-  const choice = $('#colorThemeSelect').value;
-  document.querySelectorAll('[data-theme-preview]').forEach(node => { node.hidden = node.dataset.themePreview !== choice; });
+function syncThemeSelection(choice) {
+  for (const input of document.querySelectorAll('#colorThemeGroup input[name="color_theme"]')) {
+    input.checked = input.value === choice;
+  }
 }
-$('#colorThemeSelect').value = window.YoluTheme.current();
-showThemePreview();
-$('#colorThemeSelect').addEventListener('change', showThemePreview);
-$('#appearanceForm').addEventListener('submit', async event => {
-  event.preventDefault();
-  const button = $('#saveAppearance');
-  button.disabled = true;
-  $('#appearanceStatus').textContent = '';
+syncThemeSelection(window.YoluTheme.current());
+$('#colorThemeGroup').addEventListener('change', async event => {
+  const input = event.target.closest('input[name="color_theme"]');
+  if (!input) return;
+  const choice = input.value;
+  const previous = window.YoluTheme.current();
+  const revision = ++appearanceSaveRevision;
+  window.YoluTheme.apply(choice);
+  $('#appearanceError').hidden = true;
+  $('#appearanceStatus').textContent = uiText('保存中…');
+  $('#appearanceStatus').dataset.state = 'muted';
   try {
-    const result = await api('/api/settings/appearance', {method:'PUT', environment:'local', body:JSON.stringify({color_theme:$('#colorThemeSelect').value})});
+    const result = await api('/api/settings/appearance', {method:'PUT', environment:'local', body:JSON.stringify({color_theme:choice})});
+    if (revision !== appearanceSaveRevision) return;
     window.YoluTheme.apply(result.color_theme);
-    $('#appearanceStatus').textContent = uiText('配色已保存并应用');
+    $('#appearanceStatus').textContent = uiText('已保存');
+    $('#appearanceStatus').dataset.state = '';
   } catch (error) {
-    $('#appearanceStatus').textContent = error.message || uiText('保存配色失败，请重试。');
-  } finally {
-    button.disabled = false;
+    if (revision !== appearanceSaveRevision) return;
+    window.YoluTheme.apply(previous);
+    syncThemeSelection(previous);
+    $('#appearanceStatus').textContent = '';
+    $('#appearanceError').textContent = error.message || uiText('保存配色失败，请重试。');
+    $('#appearanceError').hidden = false;
   }
 });
+$('#appearanceForm').addEventListener('submit', event => { event.preventDefault(); });
 
 const mcpStatusText = {
   available: '可安装',
@@ -496,6 +594,13 @@ $('#mcpAgentRows').addEventListener('click', async event => {
   }
 });
 
+function updateBrowserAccessDirty() {
+  const button = $('#saveBrowserAccess');
+  if (!button || !browserAccessState) return;
+  const dirty = $('#browserAccessEnabled').checked !== !!browserAccessState.enabled || Number($('#browserAccessPort').value) !== Number(browserAccessState.port);
+  button.dataset.dirty = dirty ? 'true' : 'false';
+}
+
 function renderBrowserAccess(result) {
   browserAccessState = result;
   $('#browserAccessFields').hidden = !result.can_manage;
@@ -506,6 +611,7 @@ function renderBrowserAccess(result) {
   $('#browserAccessCode').value = result.code;
   $('#browserAccessConnection').hidden = !result.running;
   $('#browserAccessStatus').textContent = result.error ? uiText(result.error) : result.running ? uiText('浏览器访问已开启') : uiText('浏览器访问已关闭');
+  updateBrowserAccessDirty();
   const addresses = $('#browserAccessAddresses');
   addresses.replaceChildren();
   if (!result.can_manage) return;
@@ -550,37 +656,66 @@ async function saveBrowserAccess(regenerate = false) {
   }
 }
 
+$('#browserAccessEnabled').addEventListener('change', updateBrowserAccessDirty);
+$('#browserAccessPort').addEventListener('input', updateBrowserAccessDirty);
 $('#browserAccessForm').addEventListener('submit', event => {
   event.preventDefault();
   void saveBrowserAccess();
 });
 $('#copyBrowserAccessCode').addEventListener('click', () => copy($('#browserAccessCode').value));
 $('#resetBrowserAccessCode').addEventListener('click', () => { void saveBrowserAccess(true); });
-window.addEventListener('yolu:appearance', () => { $('#colorThemeSelect').value = window.YoluTheme.current(); showThemePreview(); });
+window.addEventListener('yolu:appearance', () => { syncThemeSelection(window.YoluTheme.current()); });
 
-$('#sendShortcutSelect').value = window.YoluChatInput.current();
-window.addEventListener('yolu:chat-input', () => { $('#sendShortcutSelect').value = window.YoluChatInput.current(); });
-$('#chatInputForm').addEventListener('submit', async event => {
-  event.preventDefault();
-  const button = $('#saveChatInput');
-  button.disabled = true;
-  $('#chatInputStatus').textContent = '';
+function syncSendShortcut(value) {
+  for (const input of document.querySelectorAll('#sendShortcutGroup input[name="send_shortcut"]')) {
+    input.checked = input.value === value;
+  }
+}
+syncSendShortcut(window.YoluChatInput.current());
+window.addEventListener('yolu:chat-input', () => { syncSendShortcut(window.YoluChatInput.current()); });
+$('#sendShortcutGroup').addEventListener('change', async event => {
+  const input = event.target.closest('input[name="send_shortcut"]');
+  if (!input) return;
+  const choice = input.value;
+  const revision = ++chatInputSaveRevision;
+  $('#chatInputError').hidden = true;
+  $('#chatInputStatus').textContent = uiText('保存中…');
   try {
-    const result = await api('/api/settings/chat-input', {method:'PUT', environment:'local', body:JSON.stringify({send_shortcut:$('#sendShortcutSelect').value})});
+    const result = await api('/api/settings/chat-input', {method:'PUT', environment:'local', body:JSON.stringify({send_shortcut:choice})});
+    if (revision !== chatInputSaveRevision) return;
     window.YoluChatInput.apply(result.send_shortcut);
-    $('#chatInputStatus').textContent = uiText('对话输入设置已保存并应用');
+    syncSendShortcut(result.send_shortcut);
+    $('#chatInputStatus').textContent = uiText('已保存并应用');
   } catch (error) {
-    $('#chatInputStatus').textContent = error.message || uiText('保存对话输入设置失败，请重试。');
-  } finally {
-    button.disabled = false;
+    if (revision !== chatInputSaveRevision) return;
+    syncSendShortcut(window.YoluChatInput.current());
+    $('#chatInputStatus').textContent = '';
+    $('#chatInputError').textContent = error.message || uiText('保存对话输入设置失败，请重试。');
+    $('#chatInputError').hidden = false;
   }
 });
+$('#chatInputForm').addEventListener('submit', event => { event.preventDefault(); });
 
-$('#languageSelect').value = window.YoluI18n?.language || 'system';
+const savedLanguage = window.YoluI18n?.language || 'system';
+$('#languageSelect').value = savedLanguage;
+function updateLanguageActions() {
+  const dirty = $('#languageSelect').value !== savedLanguage;
+  $('#saveLanguage').hidden = !dirty;
+  $('#cancelLanguage').hidden = !dirty;
+  if (!dirty) $('#languageStatus').textContent = '';
+}
+updateLanguageActions();
+$('#languageSelect').addEventListener('change', updateLanguageActions);
+$('#cancelLanguage').addEventListener('click', () => {
+  $('#languageSelect').value = savedLanguage;
+  updateLanguageActions();
+});
 $('#languageForm').addEventListener('submit', async event => {
   event.preventDefault();
   const button = $('#saveLanguage');
+  const cancel = $('#cancelLanguage');
   button.disabled = true;
+  cancel.disabled = true;
   try {
     const host = window.top;
     const pages = [host, ...[...host.document.querySelectorAll('iframe')].map(frame => frame.contentWindow).filter(Boolean)];
@@ -591,5 +726,6 @@ $('#languageForm').addEventListener('submit', async event => {
   } catch (error) {
     $('#languageStatus').textContent = error.message || uiText('保存语言失败，请重试。');
     button.disabled = false;
+    cancel.disabled = false;
   }
 });

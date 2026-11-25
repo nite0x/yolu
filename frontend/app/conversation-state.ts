@@ -1,7 +1,7 @@
 import type {Session} from "./sessions"
 import type {Project} from "./types"
 import type {SessionTarget} from "../chat/controller-types"
-import type {ConversationTreeRow} from "./conversation-tree"
+import {projectConversationPreview, type ConversationTreeRow} from "./conversation-tree"
 
 export interface ConversationScope {
   kind: "all" | "project" | "directory"
@@ -91,8 +91,9 @@ export function createConversationState({storage, scopeKey, sessionKey}: {
         let saved: Partial<ConversationView> | null = null
         try { saved = JSON.parse(storage().getItem("workhub:conversation-view:v1:" + key) || "null") } catch { /* Optional cache. */ }
         view = {key, environment, environmentFilter: "", scope, directory: typeof saved?.directory === "string" ? saved.directory : "", selected: typeof saved?.selected === "string" ? saved.selected : undefined, archived: !!saved?.archived, search: "", statusFilter: "all", pane: "list", sessions: [], loading: false, error: "", checkedAt: 0, scrollTop: 0, creating: false, groupLimits: {}, collapsedGroups: [], loadedCount: Number.isSafeInteger(saved?.loadedCount) && saved!.loadedCount! >= 20 ? saved!.loadedCount! : 20, windowStart: Number.isSafeInteger(saved?.windowStart) && saved!.windowStart! >= 0 ? saved!.windowStart! : 0}
-        view.groupLimits = Object.fromEntries(Object.entries(saved?.groupLimits || {}).filter(([, count]) => Number.isSafeInteger(count) && count >= 3))
-        view.collapsedGroups = Array.isArray(saved?.collapsedGroups) ? saved.collapsedGroups.filter(key => typeof key === "string") : []
+        const collapsedGroups = Array.isArray(saved?.collapsedGroups) ? saved.collapsedGroups.filter(key => typeof key === "string") : []
+        view.collapsedGroups = collapsedGroups
+        view.groupLimits = Object.fromEntries(Object.entries(saved?.groupLimits || {}).filter(([group, count]) => Number.isSafeInteger(count) && count > projectConversationPreview && !collapsedGroups.includes(group)))
         views.set(key, view)
       }
       return view

@@ -26,6 +26,8 @@
 .assistant-chat-scope :where(button) { background: transparent; }
 .assistant-chat-scope :where(textarea) { background: transparent; padding: 0; border-radius: 0; box-shadow: none; }
 .assistant-chat-scope :where(pre, code) { font-family: var(--font-mono); }
+.assistant-chat-scope .aui-md-preview :not(pre) > code { border-radius: 4px; padding: 2px 6px; background: var(--muted); font-size: .85em; }
+.assistant-chat-scope .aui-md-preview img { max-width: 100%; }
 .assistant-chat-scope [data-chat-message-id] { content-visibility: visible; }
 .assistant-chat-scope [data-slot="aui_thread-viewport"] { overflow-anchor: none; scroll-behavior: auto; }
 
@@ -57,6 +59,7 @@
   .conversation-surface-header .aui-button-icon:hover { color: var(--yolu-foreground, var(--foreground)); }
   .chat-file-toggle-slot #toggleConversationFiles { width: 32px !important; min-width: 32px !important; height: 32px !important; gap: 0 !important; padding: 6px !important; border-radius: 8px !important; font-size: 0 !important; color: var(--yolu-secondary-ink, var(--foreground)); }
   .chat-file-toggle-slot #toggleConversationFiles:hover { color: var(--yolu-foreground, var(--foreground)); }
+  .chat-file-toggle-slot #toggleConversationFiles:disabled { opacity: 0.32; pointer-events: none; }
   .chat-file-toggle-slot #toggleConversationFiles[aria-expanded="true"] { background: var(--accent) !important; color: var(--primary) !important; }
   @container chat-panel (max-width: 620px) {
     .chat-panel-actions > .chat-status[data-compact-idle="true"] { display: none !important; }
@@ -153,7 +156,8 @@
 .chat-setting-segments label:has(input:focus-visible), .chat-setting-picker-trigger:focus-visible, .chat-coding-settings summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .chat-coding-settings fieldset:disabled { opacity: .55; }
 .chat-coding-settings fieldset:disabled label { cursor: default; }
-.chat-coding-settings [data-danger], .chat-setting-options [data-danger], .chat-settings-trigger [data-danger] { color: var(--destructive); }
+.chat-coding-settings [data-danger], .chat-setting-options [data-danger] { color: var(--destructive); }
+.chat-settings-trigger [data-danger] { color: var(--yolu-warning, #b45309); }
 .chat-setting-unavailable { justify-self: end; color: var(--muted-foreground); }
 .chat-setting-more { padding: 6px 4px; color: var(--muted-foreground); font-size: var(--yolu-font-size-label); }
 .chat-setting-more summary { cursor: pointer; }
@@ -187,7 +191,12 @@
 .chat-file-toggle-slot { display: inline-flex; align-items: center; flex-shrink: 0; }
 .chat-file-toggle-slot:empty { display: none; }
 
-.chat-file-reference { display: inline; margin: 0; padding: 0; border: 0; background: transparent; color: var(--primary); font: inherit; text-align: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.chat-directive-note { display: inline-flex; align-items: center; gap: 6px; margin-block: 6px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--muted); color: var(--muted-foreground); font-size: 12px; line-height: 1.45; max-width: 100%; }
+.chat-directive-note svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--yolu-success, #287555); }
+.chat-directive-note span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.chat-file-reference { display: inline; margin: 0; padding: 0; border: 0; background: transparent; color: var(--primary); font: inherit; text-align: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; cursor: pointer; transition: color .12s, text-decoration-color .12s; }
+.chat-file-reference:hover { text-decoration-color: currentColor; }
 .chat-file-reference:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 2px; }
 
 /* Turn-local edit summary stays visible outside collapsed execution records. */

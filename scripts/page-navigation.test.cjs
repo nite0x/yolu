@@ -410,6 +410,19 @@ for (const desktop of [false,true]) test(`header destinations, search and refres
     assert.equal(h.w.location.search,'?environment=remote');
     assert.equal(h.chrome.at(-1).props.activeView,view);
   }
+  const drafts = [];
+  Object.assign(h.nav().contentWindow.WorkHubPage,{
+    canCreateConversation:true,
+    createConversation: (...args) => drafts.push(args),
+  });
+  Object.defineProperty(h.w,'innerWidth',{value:760,configurable:true});
+  h.w.dispatchEvent(new h.w.Event('resize'));
+  h.chrome.at(-1).props.navigate('settings');
+  assert(h.nav().parentElement.hidden);
+  assert(h.chrome.at(-1).props.canCreateConversation);
+  h.chrome.at(-1).props.createConversation('current');
+  h.chrome.at(-1).props.createConversation('split');
+  assert.deepEqual(drafts,[['current','remote'],['split','remote']]);
 });
 
 const traverse = (h, action) => new Promise((resolve, reject) => {

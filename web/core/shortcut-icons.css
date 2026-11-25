@@ -1,25 +1,31 @@
-.shortcut-badge { display:inline-flex; align-items:center; justify-content:center; flex:none; width:30px; height:30px; border-radius:8px; font-size:11px; font-weight:600; line-height:1; background:#e0e7ff; color:#3730a3; }
-.shortcut-badge svg { width:17px; height:17px; }
-.shortcut-badge[data-color="blue"] { background:#dbeafe; color:#1e40af; }
-.shortcut-badge[data-color="teal"] { background:#ccfbf1; color:#115e59; }
-.shortcut-badge[data-color="green"] { background:#dcfce7; color:#166534; }
-.shortcut-badge[data-color="amber"] { background:#fef3c7; color:#92400e; }
-.shortcut-badge[data-color="rose"] { background:#ffe4e6; color:#9f1239; }
-.shortcut-badge[data-color="violet"] { background:#ede9fe; color:#5b21b6; }
-.shortcut-badge[data-color="slate"] { background:var(--yolu-border,#e2e8f0); color:var(--yolu-foreground,#334155); }
-:root[data-color-scheme="dark"] .shortcut-badge:not([data-color="slate"]) { background:color-mix(in srgb, currentColor 18%, transparent); color:#a5b4fc; }
-:root[data-color-scheme="dark"] .shortcut-badge[data-color="blue"] { color:#93c5fd; }
-:root[data-color-scheme="dark"] .shortcut-badge[data-color="teal"] { color:#5eead4; }
-:root[data-color-scheme="dark"] .shortcut-badge[data-color="green"] { color:#86efac; }
-:root[data-color-scheme="dark"] .shortcut-badge[data-color="amber"] { color:#fcd34d; }
-:root[data-color-scheme="dark"] .shortcut-badge[data-color="rose"] { color:#fda4af; }
-:root[data-color-scheme="dark"] .shortcut-badge[data-color="violet"] { color:#c4b5fd; }
+.shortcut-badge {
+  display:inline-flex; align-items:center; justify-content:center; flex:none;
+  width:24px; height:24px; border:0; border-radius:0; box-shadow:none; line-height:1;
+  background:transparent;
+  color:var(--yolu-secondary-ink, #435856);
+}
+.shortcut-badge[data-tone="neutral"] {
+  background:transparent;
+  color:var(--yolu-muted-ink, #667a76);
+}
+.shortcut-badge svg { width:18px; height:18px; stroke-width:1.85; }
+:root[data-color-scheme="dark"] .shortcut-badge {
+  background:transparent;
+  color:var(--yolu-secondary-ink, #c2cad3);
+}
+:root[data-color-scheme="dark"] .shortcut-badge[data-tone="neutral"] {
+  background:transparent;
+  color:var(--yolu-muted-ink, #9198a1);
+}
 .shortcut-icon-dialog { width:min(420px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; padding:22px; border:1px solid var(--yolu-border,#d9e1f0); border-radius:12px; color:var(--yolu-foreground,#334155); background:var(--yolu-surface,#fff); box-shadow:0 15px 60px #17243b33; }
 .shortcut-icon-dialog::backdrop { background:var(--yolu-backdrop,#17243b55); }
 .shortcut-icon-dialog h2 { margin:0 0 18px; font-size:17px; }
 .shortcut-icon-dialog label,.shortcut-icon-dialog legend { font-size:12px; font-weight:600; }
 .shortcut-icon-dialog select { display:block; width:100%; min-width:0; margin-top:7px; padding:7px; border:1px solid var(--yolu-border,#d9e1f0); border-radius:6px; font:inherit; }
 .shortcut-icon-preview { display:flex; align-items:center; gap:10px; margin:16px 0; overflow-wrap:anywhere; }
+.shortcut-icon-preview > span:not(.shortcut-badge) { flex:1; min-width:0; font-weight:500; }
+.shortcut-icon-dialog .shortcut-icon-random { display:inline-flex; align-items:center; gap:5px; flex:none; font-size:12px; padding:5px 9px; }
+.shortcut-icon-dialog .shortcut-icon-random svg { width:13px; height:13px; }
 .shortcut-icon-dialog fieldset { border:0; padding:0; margin:16px 0; min-width:0; }
 .shortcut-icon-options { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
 .shortcut-icon-dialog button { font:inherit; cursor:pointer; border:1px solid var(--yolu-border,#d9e1f0); border-radius:6px; background:var(--yolu-surface,#fff); color:var(--yolu-secondary-ink,#475569); padding:7px 10px; }
@@ -35,6 +41,6 @@
 .resource-icon-edit { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 3px; border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; }
 .resource-icon-edit:hover { border-color: var(--yolu-border); background: var(--yolu-hover); }
 .resource-icon-edit:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: 2px; }
-.resource-icon-edit .shortcut-badge { width: 28px; height: 28px; font-size: 12px; }
+.resource-icon-edit .shortcut-badge { width: 22px; height: 22px; }
 .shortcut-icon-dialog fieldset:disabled, .shortcut-icon-dialog button:disabled { opacity: .6; }
 .shortcut-icon-dialog [role="alert"] { color: var(--yolu-danger); font-size: 12px; }

@@ -198,11 +198,11 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       {state.capabilities.handoff && state.chat.can_handoff && !state.chat.busy && <Button type="button" size="sm" variant="outline" disabled={state.submitting} onClick={() => void controller.handoff()}>{uiText("在这里继续（等终端本轮结束）")}</Button>}
     </ConversationFeedback>;
   const terminal = state.terminal;
-  const contextSummary = (context.project || context.branch) && <>
+  const contextSummary = (context.project || context.branch) ? <>
     <span className="chat-workspace-project" title={context.project}><span>{context.project || uiText("工作目录")}</span></span>
     {context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><span>{context.branch}</span></span>}
-  </>;
-  const contextTitle = [context.project || (context.branch ? uiText("工作目录") : ""), context.branch].filter(Boolean).join(" · ");
+  </> : (!state.session ? <span className="chat-workspace-project" title={uiText("默认目录（无需项目）")}><span>{uiText("默认目录")}</span></span> : undefined);
+  const contextTitle = [context.project || (context.branch ? uiText("工作目录") : ""), context.branch].filter(Boolean).join(" · ") || (!state.session ? uiText("默认目录") : "");
   return <ChatMediaProvider controller={controller} entries={entries}><ChatChangePathsProvider value={changePaths}>
     <ConversationPanel runtime={runtime} panelRef={panel} reading={reading}
       header={<ConversationHeader title={state.session ? state.session.name || uiText("未命名对话") : <ConversationDraftTitle controller={controller} />} titleID="assistantChatTitle" titleHint={state.session?.name}

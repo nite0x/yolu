@@ -1,10 +1,48 @@
 import {createContext, useContext, useEffect, useId, useRef, useState, type ComponentProps} from "react";
 import type {Root} from "mdast";
-import {ChartNoAxesCombinedIcon, ChevronDownIcon} from "lucide-react";
+import {ChartNoAxesCombinedIcon, CheckCircle2Icon, ChevronDownIcon} from "lucide-react";
 import {uiText} from "../i18n";
 import {Button} from "@/components/ui/button";
 
 export const VisualizationContext = createContext<{session?: string; refs: ReadonlyMap<string, string>} | null>(null);
+
+function parseDirectiveAttributes(raw: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  const pattern = /([a-zA-Z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s}]+))/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(raw))) {
+    attrs[match[1]] = match[2] ?? match[3] ?? match[4] ?? "";
+  }
+  return attrs;
+}
+
+export function remarkDirectiveMarkers() {
+  return (tree: Root, file: {toString(): string}) => {
+    const source = file.toString();
+    if (!source.includes("::")) return;
+    const next: typeof tree.children = [];
+    for (const node of tree.children) {
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      if (node.type === "paragraph" && start !== undefined && end !== undefined) {
+        const raw = source.slice(start, end).trim();
+        const marker = /^::([a-z][a-z0-9-]*)\{([^\r\n]{0,2048})\}$/.exec(raw);
+        if (marker) {
+          const attrs = parseDirectiveAttributes(marker[2]);
+          const title = (attrs.title || "").trim().slice(0, 160);
+          if (title) {
+            node.data = {hName: "div", hProperties: {"data-directive": marker[1], "data-directive-title": title}};
+            node.children = [];
+            next.push(node);
+          }
+          continue;
+        }
+      }
+      next.push(node);
+    }
+    tree.children = next;
+  };
+}
 
 export function remarkVisualization() {
   return (tree: Root, file: {toString(): string}) => {
@@ -26,7 +64,13 @@ export function remarkVisualization() {
   };
 }
 
-export function VisualizationBlock({node: _node, ...props}: ComponentProps<"div"> & {node?: unknown; "data-visualization"?: string; "data-visualization-title"?: string}) {
+export function VisualizationBlock({node: _node, ...props}: ComponentProps<"div"> & {node?: unknown; "data-visualization"?: string; "data-visualization-title"?: string; "data-directive"?: string; "data-directive-title"?: string}) {
+  const directive = props["data-directive"];
+  if (directive) {
+    const title = props["data-directive-title"];
+    if (!title) return null;
+    return <div className="chat-directive-note" data-directive={directive}><CheckCircle2Icon aria-hidden="true" /><span>{title}</span></div>;
+  }
   const path = props["data-visualization"];
   if (!path) return <div {...props} />;
   return <VisualizationCard key={path} path={path} title={props["data-visualization-title"]} />;

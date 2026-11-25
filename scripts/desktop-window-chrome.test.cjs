@@ -120,8 +120,10 @@ test('the production React header replaces the Windows fallback and opens the na
     const controls = doc.getElementById('workhubWindowControls');
     const actions = doc.querySelector('.workhub-window-actions');
     const navigated = [];
+    const drafts = [];
     const render = ready => dom.window.WorkHubLayout.renderChrome(controls, {
       ready, activeView:'projects', navigate:view => navigated.push(view),
+      canCreateConversation:ready, canSplitConversation:ready, createConversation:placement => drafts.push(placement),
       appMenu:trigger => dom.window.WorkHubDesktopWindow.showMenu(ready, trigger),
     });
     render(false);
@@ -143,6 +145,11 @@ test('the production React header replaces the Windows fallback and opens the na
     const navigation = controls.querySelector('.window-header-leading').firstElementChild;
     const destinations = [...navigation.querySelectorAll('button')];
     assert.equal(navigation.nextElementSibling, doc.querySelector('.window-history'));
+    const creation = doc.querySelector('.window-conversation-actions');
+    assert.equal(creation.previousElementSibling,doc.querySelector('.window-history'));
+    assert.deepEqual([...creation.querySelectorAll('button')].map(button => button.getAttribute('aria-label')),['新建对话','在右侧分栏新建']);
+    for (const button of creation.querySelectorAll('button')) button.click();
+    assert.deepEqual(drafts,['current','split']);
     assert.deepEqual(destinations.map(button => button.dataset.view), ['sessions','projects','issues','settings']);
     assert(destinations.every(button => button.querySelector('svg') && button.getAttribute('aria-label') && !button.textContent));
     assert.equal(navigation.querySelector('[aria-current="page"]').dataset.view, 'projects');

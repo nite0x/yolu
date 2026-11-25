@@ -84,6 +84,42 @@ test("draft previews use the first task line without creating or renaming a sess
   } finally {h.dispose();}
 });
 
+test("Markdown fences preview GFM and retain copyable source", async () => {
+  const source = ["# Endpoint", "", "| Field | Value |", "| --- | --- |", "| `id` | **Required**<br>Unique identifier |", "", "```json", '{"id": 1}', "```", "", "<div>raw HTML</div>"].join("\n");
+  const entries: Entry[] = [
+    {id:"md",turn_id:"turn",kind:"assistant",text:`\`\`\`\`md\n${source}\n\`\`\`\``},
+    {id:"markdown",turn_id:"turn",kind:"assistant",text:"```markdown\n## Another document\n```"},
+    {id:"ordinary",turn_id:"turn",kind:"assistant",text:"```text\n# Plain text\n```"},
+  ];
+  const h = mount(true, entries);
+  try {
+    const doc = h.w.document;
+    let copied = "";
+    Object.defineProperty(h.w.navigator, "clipboard", {value:{writeText:async (value:string) => {copied = value;}}});
+    await until(() => doc.querySelectorAll(".aui-md-preview").length === 2);
+    const preview = doc.querySelector<HTMLElement>(".aui-md-preview")!;
+    const header = preview.previousElementSibling!;
+    const button = (name:string) => [...header.querySelectorAll("button")].find(button => button.textContent === name)!;
+    assert.equal(preview.querySelector("h1")?.textContent, "Endpoint");
+    assert.equal(preview.querySelector("td code")?.textContent, "id");
+    assert.equal(preview.querySelector("td strong")?.textContent, "Required");
+    assert(preview.querySelector("td br"));
+    assert.equal(preview.querySelector("pre code")?.textContent?.trim(), '{"id": 1}');
+    assert(!preview.textContent?.includes("raw HTML"));
+    button("复制").click();
+    await until(() => copied === source || copied === `${source}\n`);
+    button("源码").click();
+    await until(() => header.nextElementSibling?.matches("pre"));
+    assert.equal(header.nextElementSibling?.textContent?.trimEnd(), source);
+    assert.equal(button("源码").getAttribute("aria-pressed"), "true");
+    button("预览").click();
+    await until(() => header.nextElementSibling?.matches(".aui-md-preview"));
+    assert.equal(button("预览").getAttribute("aria-pressed"), "true");
+    assert.equal(doc.querySelector(".language-text")?.textContent?.trim(), "# Plain text");
+    assert.deepEqual(h.errors, []);
+  } finally {h.dispose();}
+});
+
 function setting(h: ReturnType<typeof mount>, label: string) {
   return h.w.document.querySelector<HTMLFieldSetElement>(`fieldset[aria-label="${label}"]`)!;
 }
@@ -666,27 +702,41 @@ for (const existing of [false, true]) test(`a slow ${existing ? "send" : "creati
   } finally {h.dispose();}
 });
 
+function mockScrollableHistory(w: ReturnType<typeof mount>["w"]) {
+  const positions = new WeakMap<HTMLElement, number>();
+  Object.defineProperties(w.HTMLElement.prototype, {
+    scrollHeight: {get:()=>2400},
+    clientHeight: {get:()=>400},
+    scrollTop: {
+      get(this: HTMLElement) { return positions.get(this) || 0; },
+      set(this: HTMLElement, value: number) {
+        const top = Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight));
+        if (top === this.scrollTop) return;
+        positions.set(this, top);
+        w.requestAnimationFrame(() => this.dispatchEvent(new w.Event("scroll")));
+      },
+    },
+  });
+}
+
 for (const readOnly of [false, true]) test(`jump to bottom works without new messages and stays scoped to the current conversation (readOnly=${readOnly})`, async () => {
   const h = mount(true, [{id:"reply",turn_id:"turn",kind:"assistant",text:"需要翻阅的历史记录"}], {readOnly});
   try {
-    Object.defineProperties(h.w.HTMLElement.prototype, {scrollHeight:{get:()=>2400},clientHeight:{get:()=>400}});
+    mockScrollableHistory(h.w);
     const viewport = () => h.w.document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
-    const button = () => h.w.document.querySelector<HTMLButtonElement>('[aria-label="回到对话底部"]');
-    await until(() => viewport()?.scrollTop === 2400);
-    assert.equal(button(), null);
-    viewport().scrollTop = 360; viewport().dispatchEvent(new h.w.Event('scroll'));
+    const button = () => h.w.document.querySelector<HTMLButtonElement>('.aui-thread-scroll-to-bottom:not(:disabled)');
+    await until(() => viewport()?.scrollTop === 2000 && !button());
+    viewport().scrollTop = 360;
     await until(() => !!button());
-    assert.match(button()!.textContent || '', /回到底部/);
+    assert.match(button()!.textContent || '', /滚动到底部/);
     const second = {...h.options, session:{...session,id:'second'}};
-    h.bridge.open(second); await until(() => viewport()?.scrollTop === 2400);
-    assert.equal(button(), null);
-    h.bridge.open(h.options); await until(() => viewport()?.scrollTop === 360);
-    await until(() => !!button());
+    h.bridge.open(second); await until(() => viewport()?.scrollTop === 2000 && !button());
+    h.bridge.open(h.options); await until(() => viewport()?.scrollTop === 360 && !!button());
     button()!.click();
-    await until(() => viewport().scrollTop === 2400 && !button());
-    viewport().scrollTop = 350; viewport().dispatchEvent(new h.w.Event('scroll'));
+    await until(() => viewport().scrollTop === 2000 && !button());
+    viewport().scrollTop = 350;
     await until(() => !!button());
-    viewport().scrollTop = 2000; viewport().dispatchEvent(new h.w.Event('scroll'));
+    viewport().scrollTop = 2000;
     await until(() => !button());
     assert.deepEqual(h.errors, []);
     assert(!h.calls.some(call => call.body));
@@ -696,9 +746,9 @@ for (const readOnly of [false, true]) test(`jump to bottom works without new mes
 test("jump to bottom bypasses smooth scrolling before intermediate events can restore an old anchor", async () => {
   const h = mount(true, [{id:"reply",turn_id:"turn",kind:"assistant",text:"真实浏览器中会被滚动动画打断的长对话"}]);
   try {
-    Object.defineProperties(h.w.HTMLElement.prototype, {scrollHeight:{get:()=>2400},clientHeight:{get:()=>400}});
+    mockScrollableHistory(h.w);
     const viewport = () => h.w.document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
-    await until(() => viewport()?.scrollTop === 2400);
+    await until(() => viewport()?.scrollTop === 2000);
     const view = viewport();
     let top = 360, animated = 0, instant = 0;
     Object.defineProperty(view, 'scrollTop', {get:()=>top,set(value:number) {const target = Math.min(value, view.scrollHeight - view.clientHeight); if (target !== top) animated++; top += Math.sign(target - top);}});
@@ -709,7 +759,7 @@ test("jump to bottom bypasses smooth scrolling before intermediate events can re
       view.dispatchEvent(new h.w.Event('scroll'));
     };
     view.dispatchEvent(new h.w.Event('scroll'));
-    const button = () => h.w.document.querySelector<HTMLButtonElement>('[aria-label="回到对话底部"]');
+    const button = () => h.w.document.querySelector<HTMLButtonElement>('.aui-thread-scroll-to-bottom:not(:disabled)');
     await until(() => !!button());
     button()!.click();
     await until(() => !button());
@@ -781,7 +831,6 @@ for (const unread of [false, true]) test(`delayed history and draft loading ${un
     await until(() => h.w.document.body.textContent?.includes("延迟加载的最新消息"));
     await until(() => h.w.document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')?.scrollTop === (unread ? 3200 : 360));
     assert.match(h.w.document.body.textContent || "", /延迟加载的最新消息/);
-    assert(!h.w.document.body.textContent?.includes("有新消息 · 回到最新"));
     assert.deepEqual(h.errors, []);
   } finally { h.dispose(); }
 });
@@ -799,7 +848,7 @@ for (const change of ["new-message", "streaming", "already-unread"]) test(`reope
       openSessionMenu(h);
       await until(() => h.w.document.querySelector('[role="menuitem"]'));
       [...h.w.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === "刷新历史")!.click();
-      await until(() => h.w.document.body.textContent?.includes("有新消息 · 回到最新"));
+      await until(() => h.w.document.body.textContent?.includes("尚未阅读的新消息"));
       assert.equal(viewport().scrollTop, 360);
     }
     h.bridge.open({...h.options, session: {...session, id: "other"}});
@@ -808,7 +857,6 @@ for (const change of ["new-message", "streaming", "already-unread"]) test(`reope
     if (change === "new-message") entries.push({id: "unread", turn_id: "next", kind: "assistant", text: "离开后收到的新消息"});
     h.bridge.open(h.options);
     await until(() => viewport()?.scrollTop === 2400);
-    assert(!h.w.document.body.textContent?.includes("有新消息 · 回到最新"));
     assert.deepEqual(h.errors, []);
   } finally { h.dispose(); }
 });
@@ -1502,7 +1550,7 @@ test("file change record names open at the first changed line and preserve diff 
  } finally {h.dispose();}
 });
 
-test("each reply shows its edited files outside execution records and can expand diffs", async () => {
+test("each reply keeps its edited file list collapsed by default and can expand diffs", async () => {
  const entries:Entry[]=[
   {id:'u1',turn_id:'first',kind:'user',text:'第一次修改'},
   {id:'c1',turn_id:'first',kind:'change',status:'completed',text:'src/a.ts\n@@ -1 +1 @@\n-old\n+<script>inert</script>\n',file_changes:[{path:'src/a.ts',additions:1,deletions:1}]},
@@ -1527,15 +1575,14 @@ test("each reply shows its edited files outside execution records and can expand
   const toggle=summaries[0].querySelector<HTMLButtonElement>('.chat-change-toggle')!;
   const files=summaries[0].querySelector<HTMLUListElement>('.chat-change-files')!;
   assert.equal(toggle.getAttribute('aria-controls'),files.id);
-  toggle.click();
-  await until(()=>files.hidden);
+  assert.equal(files.hidden,true);
   assert.equal(toggle.getAttribute('aria-expanded'),'false');
   assert.match(toggle.textContent||'',/已编辑 2 个文件/);
   assert.match(toggle.textContent||'',/\+3-2/);
-  assert.equal(summaries[1].querySelector<HTMLUListElement>('.chat-change-files')!.hidden,false);
   toggle.click();
   await until(()=>!files.hidden);
   assert.equal(toggle.getAttribute('aria-expanded'),'true');
+  assert.equal(summaries[1].querySelector<HTMLUListElement>('.chat-change-files')!.hidden,true);
   summaries[0].querySelector<HTMLButtonElement>('.chat-change-view')!.click();
   await until(()=>summaries[0].querySelectorAll('.chat-change-preview').length===2);
   assert.match(summaries[0].querySelector('pre')!.textContent||'',/<script>inert/);
@@ -1922,6 +1969,30 @@ test("working details lists associated directories vertically with diff stats, c
     assert.deepEqual(h.errors, []);
   } finally {
     h.w.removeEventListener("workhub:binding-files", onFiles);
+    h.dispose();
+  }
+});
+
+test("standalone directive markers render as compact status notes and untitled markers are omitted", async () => {
+  const entries: Entry[] = [
+    {id: "u1", turn_id: "t1", kind: "user", text: "打开安装包"},
+    {
+      id: "a1", turn_id: "t1", kind: "assistant",
+      text: '::browser-complete{title="Opened the Yolu installer"}\n\n::internal-marker{status="ok"}\n\n已在访达中打开安装包。',
+    },
+  ];
+  const h = mount(true, entries, {readOnly: true});
+  try {
+    await until(() => h.w.document.querySelector(".chat-directive-note"));
+    const note = h.w.document.querySelector(".chat-directive-note")!;
+    assert.equal(note.getAttribute("data-directive"), "browser-complete");
+    assert.equal(note.textContent, "Opened the Yolu installer");
+    const content = h.w.document.querySelector('[data-slot="aui_assistant-message-content"]')!.textContent || "";
+    assert.ok(!content.includes("::browser-complete"), "raw directive syntax must not leak");
+    assert.ok(!content.includes("::internal-marker"), "untitled directive must be omitted");
+    assert.ok(content.includes("已在访达中打开安装包。"));
+    assert.deepEqual(h.errors, []);
+  } finally {
     h.dispose();
   }
 });

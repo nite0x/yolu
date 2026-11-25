@@ -1,7 +1,7 @@
 import { uiText, uiLocale } from "../i18n";
 import { ConversationKindSwitch } from "./conversation-surface"
 import { ShortcutBadge } from "./shortcut-icons"
-import { Plus, Search, ArrowLeft, X, ChevronDown, ChevronRight, Pin, PinOff, GitBranch, RotateCw, Check, Folder, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, ListFilter as ListFilterIcon, type LucideIcon } from "lucide-react"
+import { Plus, Search, ArrowLeft, X, ChevronUp, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, GitBranch, RotateCw, Check, Folder, FolderOpen, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, SquareTerminal, Orbit, ListFilter as ListFilterIcon, type LucideIcon } from "lucide-react"
 import { ListCreateButton, ListFilter, ListSearch } from "./list-controls"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,30 @@ import { isGeneralConversationDirectory } from "./conversation-context"
 import { conversationPathKey } from "./conversation-runtime"
 
 type SidebarMode = "recent" | "grouped"
+
+function splitMiddleTruncate(text: string): [string, string] | null {
+  const chars = Array.from(text)
+  if (chars.length <= 5) return null
+  const width = (char: string) => (char.codePointAt(0) || 0) > 0xff ? 2 : 1
+  const total = chars.reduce((sum, char) => sum + width(char), 0)
+  const targetTail = Math.min(8, Math.floor(total / 2))
+  let tailWidth = 0
+  let split = chars.length
+  while (split > 2 && tailWidth < targetTail) {
+    const next = width(chars[split - 1])
+    if (tailWidth > 0 && tailWidth + next > targetTail) break
+    tailWidth += next
+    split--
+  }
+  if (split <= 1 || split >= chars.length) return null
+  return [chars.slice(0, split).join(""), chars.slice(split).join("")]
+}
+
+function MiddleTruncate({ text }: { text: string }) {
+  const parts = splitMiddleTruncate(text)
+  if (!parts) return <span>{text}</span>
+  return <span className="session-middle-truncate"><span className="session-middle-truncate-start">{parts[0]}</span><span className="session-middle-truncate-end">{parts[1]}</span></span>
+}
 
 export interface ConversationScope { kind: string; id?: string; name: string; cwd?: string; environment?: string; environmentName?: string }
 export function SessionBrowser() {
@@ -43,7 +67,10 @@ export function SessionBrowser() {
           </div>
           </ListFilter>
         } actions={<>
-          <ListCreateButton id="newBrowserSplitSession" data-conversation-action="new" data-conversation-placement="split" label={uiText("在右侧分栏新建")} icon={<Columns2 aria-hidden="true" />} />
+          <Button type="button" variant="ghost" size="icon-sm" className="list-create-button size-[28px] rounded-[5px]"
+            id="sessionToggleAllGroups" aria-controls="sessionBrowserList" aria-label={uiText("全部收起")} title={uiText("全部收起")} hidden>
+            <ChevronsDownUp aria-hidden="true" /><ChevronsUpDown aria-hidden="true" />
+          </Button>
           <ListCreateButton id="newBrowserSession" data-conversation-action="new" label={uiText("新建对话")} icon={<SquarePen aria-hidden="true" />} />
         </>} />
         <div id="sessionActiveFilterLabel" className="session-active-filter-label" hidden><span id="sessionActiveFilterText" /><button type="button" data-conversation-action="clear-scope-filters" aria-label={uiText("清除范围与筛选")} title={uiText("清除范围与筛选")}><X aria-hidden="true" /></button></div>
@@ -99,14 +126,19 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
       attached: {label: uiText("已打开"), icon: CircleCheck},
     } as Record<string, {label: string; icon: LucideIcon}>)[state]
     const StatusIcon = status?.icon
-    const showProject = directoryContext && !!s.context?.project
-    const showPath = showDirectory && directoryContext && !s.context?.project
+    const antigravity = s.provider === "agy"
+    const AgentIcon = antigravity ? Orbit : SquareTerminal
+    const collection = row?.group.collection
+    const showProject = !collection && directoryContext && !!s.context?.project
+    const showProjectDirectory = collection === "project" && !!s.cwd && conversationPathKey(s.cwd) !== conversationPathKey(row?.group.projectPath || "")
+    const showPath = collection === "independent" || showProjectDirectory || !collection && showDirectory && directoryContext && !s.context?.project
     const environmentName = sidebarMode && s.environment_id === "local" ? undefined : s.environment_name
     const showEnvironment = !!environmentName && !row?.group.environmentName
     const isParallel = parallel && parallelSessions.includes(s.browser_key || s.id)
     const general = isGeneralConversationDirectory(s.cwd)
     const directory = general ? uiText("普通对话") : s.cwd.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() || s.cwd
     const branch = s.context?.branch || ""
+    const showBranch = collection === "project" && !!branch
     const branchMatch = search ? branch.toLowerCase().indexOf(search) : -1
     const pathMatch = search ? s.cwd.toLowerCase().indexOf(search) : -1
     const matchValue = branchMatch >= 0 ? branch : s.cwd
@@ -119,25 +151,28 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
       <span className="session-browser-item-heading">
         {s.terminal && <span className="sr-only">{uiText("终端")}</span>}
         <span className="session-browser-item-title" title={s.name || uiText("未命名对话")}>{s.name || uiText("未命名对话")}</span>
-        {s.provider === "agy" && <span className="session-browser-environment" title="Antigravity (AGY)">AGY</span>}
         <span className="session-browser-item-status" data-session-indicators={s.terminal ? undefined : s.id} data-environment={s.environment_id}
           data-state={rowError ? "failed" : state} role="img" aria-label={status?.label} title={status?.label} hidden={!status}>
           {StatusIcon && <StatusIcon aria-hidden="true" />}
         </span>
         {s.unread && !status && <span className="session-browser-unread-dot" role="img" aria-label={uiText("有新消息")} title={uiText("有新消息")} />}
+        {!s.terminal && <span className="session-browser-item-agent" role="img" aria-label={antigravity ? "Antigravity" : "Codex"}><AgentIcon aria-hidden="true" /></span>}
         <time className="session-browser-item-time" title={date?.toLocaleString(uiLocale(), {hour12: false})} dateTime={date?.toISOString()}>{dateLabel}</time>
       </span>
       {branchMatch >= 0 || pathMatch >= 0 ? <span className="session-browser-item-meta">
         <span className="session-browser-item-directory session-browser-item-search-match" title={uiText(matchLabel, matchValue)}>{uiText(matchLabel, (matchStart ? "…" : "") + matchValue.slice(matchStart))}</span>
         {showEnvironment && <span className="session-browser-environment" title={environmentName}>{environmentName}</span>}
       </span> : sidebarMode === "recent" ? <span className="session-browser-item-meta">
-        <span className="session-browser-item-directory" title={!general && s.cwd || undefined}>{row?.projectName || directory || uiText("未选择项目")}</span>
+        <span className="session-browser-item-directory" title={!general && s.cwd || undefined}><MiddleTruncate text={row?.projectName || directory || uiText("未选择项目")} /></span>
         {showEnvironment && <span className="session-browser-environment" title={environmentName}>{environmentName}</span>}
-      </span> : (showProject || showPath || showEnvironment) && <span className="session-browser-item-meta">
+      </span> : (showProject || showPath || showBranch || showEnvironment) && <span className="session-browser-item-meta">
+        {showBranch && <span className="session-browser-item-branch" title={branch}><GitBranch aria-hidden="true" /><MiddleTruncate text={branch} /></span>}
         {showProject && <span className="session-browser-item-project" title={`${s.cwd}${s.context?.branch ? `\n${s.context.branch}` : ""}`}>
-          <span>{s.context?.project}</span>{s.context?.branch && <span className="session-browser-item-branch"><GitBranch aria-hidden="true" /><span>{s.context.branch}</span></span>}
+          <span>{s.context?.project}</span>{s.context?.branch && <span className="session-browser-item-branch"><GitBranch aria-hidden="true" /><MiddleTruncate text={s.context.branch} /></span>}
         </span>}
-        {showPath && <span className="session-browser-item-directory" title={general ? undefined : s.cwd}>{directory}</span>}
+        {showPath && (collection && !general
+          ? <span className="session-browser-item-directory session-browser-item-location" title={s.cwd}><Folder aria-hidden="true" /><MiddleTruncate text={directory} /></span>
+          : <span className={collection && general ? "session-browser-item-kind" : "session-browser-item-directory"} title={general ? undefined : s.cwd}>{general ? directory : <MiddleTruncate text={directory} />}</span>)}
         {showEnvironment && <span className="session-browser-environment" title={environmentName}>{environmentName}</span>}
       </span>}
       {s.error && !rowError ? <span className="table-message">{s.error}</span> : null}
@@ -153,38 +188,51 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
       if (!section) { section = {group: row.group, rows: []}; sections.set(row.group.key, section) }
       section.rows.push(row)
     }
-    const labels = {project: uiText("项目"), independent: uiText("独立对话")}
     return <div className="session-browser-groups session-browser-workspaces">{[...sections.values()].map(({group, rows}) => {
       const environmentName = sidebarMode && group.environment === "local" ? undefined : group.environmentName
-      const count = <span className={group.href ? "session-workspace-count session-collection-count" : "session-workspace-count"} title={uiText("{0} 个对话", group.total)}>{group.total}</span>
-      return <section className="session-browser-group" key={group.key} data-conversation-group={group.key} aria-label={[group.name, environmentName].filter(Boolean).join(" · ")}>
-      {rows.filter(row => row.kind === "section").map(row => <h2 className="session-collection-section-heading" key={row.key} data-conversation-list-row={row.key} data-divided={row.divided || undefined}>{labels[row.section]}</h2>)}
-      {rows.filter(row => row.kind === "group").map(row => <h3 className={group.href ? "session-workspace-heading session-collection-heading" : "session-workspace-heading"} key={row.key}>
+      const collection = !!group.collection
+      const description = group.collapsed && [
+        group.containsSelection && uiText("当前对话所在项目"),
+        group.running && uiText("有对话正在运行"),
+      ].filter(Boolean).join(" · ")
+      const count = <span className={collection ? "session-workspace-count session-collection-count" : "session-workspace-count"} title={uiText("{0} 个对话", group.total)}>{group.total}</span>
+      return <section className="session-browser-group" key={group.key} data-conversation-group={group.key} data-collection={group.collection} aria-label={[group.name, environmentName].filter(Boolean).join(" · ") || undefined}>
+      {rows.filter(row => row.kind === "group").map(row => <h3 className={collection ? "session-workspace-heading session-collection-heading" : "session-workspace-heading"} key={row.key}>
         <button type="button" data-conversation-group-toggle={group.key} data-conversation-list-row={row.key} aria-expanded={!group.collapsed}
           data-current-conversation={group.collapsed && group.containsSelection || undefined}
-          aria-description={group.collapsed && group.containsSelection ? uiText("当前对话所在项目") : undefined}
-          aria-label={group.href ? uiText("展开或折叠 {0} 的对话", group.name) : undefined} className={group.href ? "session-collection-toggle" : undefined}
+          aria-description={description || undefined}
+          aria-label={collection ? uiText("展开或折叠 {0} 的对话", group.name) : undefined} className={collection ? "session-collection-toggle" : undefined}
           title={group.name}>
-          {group.href && (group.identity ? <ShortcutBadge name={group.iconName || group.name} identity={group.identity} appearance={group.icon} /> : <Folder className="session-collection-fallback-icon" aria-hidden="true" />)}
+          {collection && (group.identity ? <ShortcutBadge name={group.iconName || group.name} identity={group.identity} appearance={group.icon} /> : <Folder className="session-collection-fallback-icon" aria-hidden="true" />)}
           <span className="session-workspace-name">{group.name}</span>
+          {group.collapsed && group.running && <span className="session-workspace-running session-browser-item-status" data-state="running" aria-hidden="true" title={uiText("有对话正在运行")}><LoaderCircle /></span>}
           {environmentName && <small>{environmentName}</small>}
-          {!group.href && <>{count}{group.collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}</>}
+          {!collection && count}
         </button>
-        {group.href && <span className="session-collection-actions">
+        {collection && <span className="session-collection-actions">
           {count}
-          <Button asChild variant="ghost" size="icon-sm" className="session-collection-details w-full transition-colors">
+          {group.href && <Button asChild variant="ghost" size="icon-sm" className="session-collection-details w-full transition-colors">
             <a href={group.href} data-collection-href={group.href} data-collection-environment={group.environment} data-collection-name={group.name}
-              aria-label={uiText("打开项目详情：{0}", group.name)} title={uiText("打开项目详情：{0}", group.name)}><Folder aria-hidden="true" /></a>
-          </Button>
+              aria-label={uiText("打开项目详情：{0}", group.name)} title={uiText("打开项目详情：{0}", group.name)}><FolderOpen aria-hidden="true" /></a>
+          </Button>}
           <Button type="button" variant="ghost" size="icon-sm" className="session-collection-create w-full transition-colors"
-            data-action="project-conversation-new" data-id={group.projectID} data-path={group.projectPath} data-environment={group.environment}
+            data-action={group.href ? "project-conversation-new" : undefined}
+            data-conversation-action={group.href ? undefined : "new"}
+            data-conversation-standalone={group.href ? undefined : "true"}
+            data-id={group.projectID} data-path={group.projectPath} data-environment={group.environment || undefined}
             disabled={!canCreate} aria-label={uiText("为 {0} 新建对话", group.name)} title={uiText("为 {0} 新建对话", group.name)}>
             <SquarePen aria-hidden="true" />
           </Button>
         </span>}
       </h3>)}
-      <ul className={group.collection === "independent" ? "session-browser-items session-browser-items-flat" : "session-browser-items"}>{rows.filter(row => row.kind === "session").map(row => renderSession(row.session, row))}</ul>
-      {rows.filter(row => row.kind === "more").map(row => <button type="button" className="session-workspace-more" key={row.key} data-conversation-group-more={group.key} data-conversation-list-row={row.key}>{uiText("更多对话（{0}）", group.total - group.shown)}</button>)}
+      {rows.some(row => row.kind === "session") && <ul className="session-browser-items">{rows.filter(row => row.kind === "session").map(row => renderSession(row.session, row))}</ul>}
+      {rows.filter(row => row.kind === "more").map(row => {
+        const remaining = group.total - group.shown
+        return <div className="session-workspace-preview" key={row.key}>
+          {remaining > 0 && <button type="button" data-conversation-group-more={group.key} data-conversation-list-row={row.key}>{uiText("更多对话（{0}）", remaining)}</button>}
+          {row.showLess && <button type="button" data-conversation-group-less={group.key} data-conversation-list-row={remaining ? undefined : row.key}>{remaining ? uiText("收起") : uiText("收起对话")}<ChevronUp aria-hidden="true" /></button>}
+        </div>
+      })}
       </section>
     })}</div>
   }

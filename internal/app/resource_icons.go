@@ -67,8 +67,8 @@ func (a *App) resourceIconsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		kind, id, ok := strings.Cut(input.ID, ":")
 		if !ok || id == "" || len(input.ID) > 8192 || kind != "project" ||
-			!slices.Contains([]string{"auto", "folder", "code", "terminal", "rocket", "bug", "sparkles", "database", "globe", "layers", "briefcase", "flask"}, input.Appearance.Icon) ||
-			!slices.Contains([]string{"indigo", "blue", "teal", "green", "amber", "rose", "violet", "slate"}, input.Appearance.Color) {
+			!slices.Contains([]string{"auto", "folder", "code", "terminal", "rocket", "bug", "sparkles", "database", "globe", "layers", "briefcase", "flask", "box", "cpu", "server", "bot", "wrench", "shield", "book", "compass", "puzzle"}, input.Appearance.Icon) ||
+			!slices.Contains([]string{"", "theme", "indigo", "blue", "teal", "green", "amber", "rose", "violet", "slate"}, input.Appearance.Color) {
 			httpx.WriteError(w, 400, "资源图标无效")
 			return
 		}

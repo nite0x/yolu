@@ -3,6 +3,30 @@ import {uiText} from "../i18n"
 // Keep the existing form controllers as the source of truth while exposing
 // every choice directly, without a dropdown-opening step.
 const signatures = new WeakMap<HTMLElement, string>()
+const filterInputs = new WeakMap<HTMLElement, HTMLInputElement>()
+
+function applyFilter(container: HTMLElement, query: string) {
+  const needle = query.trim().toLowerCase()
+  let visible = 0
+  for (const button of container.querySelectorAll<HTMLButtonElement>('button[data-creation-choice]')) {
+    const haystack = `${button.textContent || ''} ${button.title || ''}`.toLowerCase()
+    const match = !needle || haystack.includes(needle)
+    button.hidden = !match
+    if (match) visible++
+  }
+  let empty = container.querySelector<HTMLElement>('.creation-choices-empty')
+  if (needle && visible === 0) {
+    if (!empty) {
+      empty = container.ownerDocument.createElement('span')
+      empty.className = 'creation-choices-empty'
+      empty.setAttribute('role', 'status')
+      container.append(empty)
+    }
+    empty.textContent = uiText("无匹配目录")
+  } else {
+    empty?.remove()
+  }
+}
 
 export function renderCreationChoices(source: HTMLSelectElement, container: HTMLElement, activate?: (value: string) => void, {actions = false}: {actions?: boolean} = {}) {
   container.classList.toggle('creation-actions', actions)
@@ -21,6 +45,29 @@ export function renderCreationChoices(source: HTMLSelectElement, container: HTML
     container.replaceChildren(...buttons)
     signatures.set(container, signature)
     if (focused !== undefined) buttons.find(button => button.dataset.creationChoice === focused)?.focus({preventScroll:true})
+  }
+  const showFilter = !actions && options.length > 6 && !!container.parentElement
+  let filter = filterInputs.get(container)
+  if (showFilter) {
+    if (!filter) {
+      filter = source.ownerDocument.createElement('input')
+      filter.type = 'search'
+      filter.className = 'creation-choices-filter'
+      filter.setAttribute('aria-label', uiText("筛选工作目录"))
+      filter.addEventListener('input', () => applyFilter(container, filter!.value))
+      filterInputs.set(container, filter)
+    }
+    filter.placeholder = uiText("筛选工作目录")
+    filter.disabled = source.disabled
+    if (filter.parentElement !== container.parentElement || filter.nextElementSibling !== container) {
+      container.parentElement!.insertBefore(filter, container)
+    }
+    applyFilter(container, filter.value)
+  } else if (filter) {
+    filter.value = ''
+    filter.remove()
+    filterInputs.delete(container)
+    applyFilter(container, '')
   }
   for (const button of container.querySelectorAll<HTMLButtonElement>('button[data-creation-choice]')) {
     const option = options.find(option => option.value === button.dataset.creationChoice)

@@ -2,7 +2,7 @@ import { uiText } from "../i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { flushSync } from "react-dom"
-import { ArrowLeft, ArrowRight, Ellipsis, FolderGit2, MessageSquare, Search, RefreshCw, Settings, Ticket } from "lucide-react"
+import { ArrowLeft, ArrowRight, Ellipsis, FolderGit2, MessageSquare, Search, RefreshCw, Settings, SquarePen, SquareSplitHorizontal, Ticket } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { CodexUsage } from "./codex-usage"
 import { setupSplitResize } from "./split-resize"
@@ -49,6 +49,9 @@ interface WindowChromeProps {
   back?: () => void
   forward?: () => void
   navigate: (view: Destination) => void
+  createConversation?: (placement: "current" | "split") => void
+  canCreateConversation?: boolean
+  canSplitConversation?: boolean
   search?: (trigger: HTMLButtonElement) => void
   appMenu?: (trigger: HTMLButtonElement) => void
   refresh?: () => Promise<RefreshResult>
@@ -91,6 +94,17 @@ function WindowChrome(props: WindowChromeProps) {
         <button type="button" className="window-utility-button" aria-label={uiText("后退")} title={uiText("后退")} aria-keyshortcuts="Alt+ArrowLeft Meta+[" disabled={!props.canGoBack} onClick={props.back}><ArrowLeft aria-hidden="true" /></button>
         <button type="button" className="window-utility-button" aria-label={uiText("前进")} title={uiText("前进")} aria-keyshortcuts="Alt+ArrowRight Meta+]" disabled={!props.canGoForward} onClick={props.forward}><ArrowRight aria-hidden="true" /></button>
       </div>
+      {props.createConversation && <div className="window-conversation-actions" role="group" aria-label={uiText("对话创建")}>
+        <button type="button" className="window-utility-button" aria-label={uiText("新建对话")}
+          title={uiText("在当前栏新建对话")} disabled={!props.canCreateConversation} onClick={() => props.createConversation?.("current")}>
+          <SquarePen aria-hidden="true" />
+        </button>
+        <button type="button" className="window-utility-button" aria-label={uiText("在右侧分栏新建")}
+          title={props.canCreateConversation && !props.canSplitConversation ? uiText("最多支持三栏，请先打开对话并留出空栏") : uiText("在右侧分栏新建")}
+          disabled={!props.canCreateConversation || !props.canSplitConversation} onClick={() => props.createConversation?.("split")}>
+          <SquareSplitHorizontal aria-hidden="true" />
+        </button>
+      </div>}
     </div>
     {props.search && <Tooltip>
       <TooltipTrigger asChild><button type="button" className="window-search-trigger" aria-label={uiText("全局搜索")} aria-haspopup="dialog" aria-controls="globalSearch"

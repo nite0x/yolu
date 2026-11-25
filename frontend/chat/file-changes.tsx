@@ -20,7 +20,7 @@ export function ChatChangeSummary() {
   const paths = useContext(ChangePathsContext);
   const files = useMemo(() => summarizeFileChanges(content), [content]);
   const [expanded, setExpanded] = useState<string[]>([]);
-  const [filesOpen, setFilesOpen] = useState(true);
+  const [filesOpen, setFilesOpen] = useState(false);
   const filesID = useId();
   if (!files.length) return null;
   const allOpen = filesOpen && files.every(file => expanded.includes(file.path));

@@ -34,7 +34,7 @@ export function ChatMarkdownLink({href, children, title}: AnchorHTMLAttributes<H
   const links = useContext(LinkContext);
   if (!href) return <span>{children}</span>;
   const file = fileReference(href);
-  return <a href={file ? "#file-preview" : href} title={title || (file ? `${file.path}:${file.line}` : undefined)} className="aui-md-a text-primary hover:text-primary/80 underline underline-offset-2" target={file ? undefined : "_blank"} rel="noopener noreferrer" onClick={event => {
+  return <a href={file ? "#file-preview" : href} title={title || (file ? `${file.path}:${file.line}` : undefined)} className="aui-md-a text-primary hover:text-primary/80 underline decoration-primary/40 hover:decoration-primary underline-offset-3 transition-colors" target={file ? undefined : "_blank"} rel="noopener noreferrer" onClick={event => {
     event.preventDefault();
     if (!links) return;
     if (file) links.open(file);

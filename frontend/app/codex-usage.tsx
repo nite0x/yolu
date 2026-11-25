@@ -79,7 +79,7 @@ export function CodexUsage({ portal, placement = "sidebar" }: { portal: HTMLElem
   const remaining = main.flatMap(w => w.remaining === null ? [] : [w.remaining])
   const minimum = remaining.length ? Math.min(...remaining) : null
   const summary = error ? data ? uiText("待更新") : uiText("暂不可用") : minimum !== null ? uiText("剩余 {0}", percent(minimum)) : loading || !data ? uiText("读取中…") : uiText("未提供额度")
-  const triggerSummary = placement === "sidebar" ? summary : !error && minimum !== null ? percent(minimum) : uiText("Codex 额度")
+  const triggerSummary = placement === "sidebar" ? summary : !error && minimum !== null ? uiText("余 {0}", percent(minimum)) : uiText("Codex 额度")
   const environmentName = environments.find(e => e.id === environment)?.name || environment
   const tone = error ? "unknown" : minimum !== null && minimum <= 20 ? "low" : "normal"
   const cards = availableResetCards(data)

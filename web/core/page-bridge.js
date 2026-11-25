@@ -23,7 +23,23 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('workhub:conversation-list-ready',selectInitialConversation);
   if (navigationOnly) document.documentElement.setAttribute('data-workspace-navigation','');
   document.documentElement.setAttribute('data-workspace-page', '');
+  $('#newBrowserSession').hidden = true;
   const post = (type, detail = {}) => host.postMessage({type, ...detail}, location.origin);
+  function openConversationDraft({placement, projectCreate, globalCreate, environment = activeEnvironment}) {
+    const view = !globalCreate && window.WorkHubConversations.current;
+    const scope = projectCreate ? {kind:'project',id:projectCreate.dataset.id,environment} : view?.scope || {kind:'all'};
+    const directory = projectCreate ? {
+      key:conversationEnvironmentKey(environment,conversationPathKey(projectCreate.dataset.path)),
+      environment, cwd:projectCreate.dataset.path, target:{project_id:projectCreate.dataset.id},
+    } : view ? defaultConversationDirectory({...view,creationDirectory:view.directory || ''}) : null;
+    const keepFilters = view && !projectCreate;
+    post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:directory?.environment || environment,title:uiText("新建对话"),terminal:{projectID:directory?.target?.project_id,cwd:directory?.cwd},conversation:{scope,directory:keepFilters ? view.directory || '' : '',creationDirectory:directory?.key || '',environmentFilter:keepFilters ? view.environmentFilter || '' : '',selected:null,creating:true,pane:'detail'}}});
+  }
+  function createConversation(placement, environment) {
+    if (disposed || restoring || sessionReadOnly || state.busy || placement === 'split' && !canSplit) return;
+    $('#sessionScopePicker').open = false;
+    openConversationDraft({placement,environment,globalCreate:placement === 'current' || environment !== activeEnvironment});
+  }
   let chromeSignature = '';
   function publishChrome() {
     if (!active || disposed) return;
@@ -206,16 +222,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (placement === 'split' && !canSplit) return;
       event.preventDefault(); event.stopImmediatePropagation();
       $('#sessionScopePicker').open = false;
-      const view = window.WorkHubConversations.current;
-      const environment = projectCreate?.dataset.environment || activeEnvironment;
-      const globalCreate = create.id === 'newBrowserSession';
-      const scope = projectCreate ? {kind:'project',id:projectCreate.dataset.id,environment} : !globalCreate && view?.scope || {kind:'all'};
-      const directory = projectCreate ? {
-        key:conversationEnvironmentKey(environment,conversationPathKey(projectCreate.dataset.path)),
-        environment, cwd:projectCreate.dataset.path, target:{project_id:projectCreate.dataset.id},
-      } : view && !globalCreate ? defaultConversationDirectory({...view,creationDirectory:view.directory || ''}) : null;
-      const keepFilters = !projectCreate && !globalCreate;
-      post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:directory?.environment || environment,title:uiText("新建对话"),terminal:{projectID:directory?.target?.project_id,cwd:directory?.cwd},conversation:{scope,directory:keepFilters ? view?.directory || '' : '',creationDirectory:directory?.key || '',environmentFilter:keepFilters ? view?.environmentFilter || '' : '',selected:null,creating:true,pane:'detail'}}});
+      const standaloneCreate = create.dataset.conversationStandalone === 'true';
+      if (navigationOnly && (projectCreate || standaloneCreate)) revealConversationCreationGroup(create);
+      const globalCreate = create.id === 'newBrowserSession' || standaloneCreate;
+      openConversationDraft({placement,projectCreate,globalCreate,environment:projectCreate?.dataset.environment});
       return;
     }
     if (event.target.closest('.brand[href="/"]') && !(event.metaKey || event.ctrlKey)) {
@@ -277,7 +287,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       const focusChanged = (message.selected || '') !== parallelSelected;
       groupSignature = signature;
       parallelSessions = sessions; parallelFull = !!message.full; parallelSelected = message.selected || '';
-      canSplit = !!message.canSplit; updateConversationCreationActions();
+      canSplit = !!message.canSplit;
       document.documentElement.toggleAttribute('data-workspace-single',message.split === false);
       document.documentElement.style.setProperty('--workspace-shared-list-width',Math.max(220,Math.min(520,message.listWidth || 280)) + 'px');
       const listPane = document.getElementById('sessionBrowserListPane');
@@ -291,12 +301,17 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         else {
           view.selected = parallelSelected;
           if (focusChanged) {
-            view.locateSelection = null;
+            view.locateSelection = message.createdConversation ? parallelSelected : null;
             view.requestedSession = null;
             view.followTarget = null;
           }
           renderConversationList();
-          if (message.createdConversation) void refreshConversations(true);
+          if (message.createdConversation) {
+            const selected = parallelSelected;
+            void refreshConversations(true).then(() => {
+              if (!view.loading && view.locateSelection === selected) view.locateSelection = null;
+            });
+          }
         }
       }
       selectInitialConversation();
@@ -314,7 +329,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     else if (message?.type === 'workhub:page-navigation') {navigationOnly = true; document.documentElement.setAttribute('data-workspace-navigation','');}
     else if (message?.type === 'workhub:page-restore') { visibility(!!message.active); void restore(message.snapshot); }
     else if (message?.type === 'workhub:parallel-layout') {
-      canSplit = !!message.canSplit; updateConversationCreationActions();
+      canSplit = !!message.canSplit;
       const root = document.documentElement;
       const attributes = {'data-workspace-focused':!!message.focused,'data-workspace-zoomed':!!message.zoomed,'data-workspace-can-zoom':!!message.canZoom};
       const changed = Object.entries(attributes).some(([name,value]) => root.hasAttribute(name) !== value);
@@ -372,7 +387,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       window.addEventListener('workhub:page-visibility', visibilityChanged);
     });
   }
-  window.WorkHubPage = {snapshot,canClose,dispose,environmentName,refresh:refreshFromHeader,get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
+  window.WorkHubPage = {snapshot,canClose,dispose,environmentName,refresh:refreshFromHeader,createConversation,get canCreateConversation() {return !sessionReadOnly;},get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
   visibility(false);
   window.addEventListener('workhub:app-ready', () => post('workhub:page-ready'), {once:true});
 })();

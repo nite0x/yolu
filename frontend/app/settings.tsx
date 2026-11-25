@@ -1,6 +1,6 @@
 import { uiText } from "../i18n";
 import { Fragment, type ReactNode } from "react"
-import { Activity, MessageSquare, SlidersHorizontal, Terminal } from "lucide-react"
+import { Activity, MessageSquare, Orbit, RefreshCw, SlidersHorizontal, SquareTerminal, Terminal } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,30 +13,43 @@ function Help({ children }: { children: ReactNode }) {
   return <p className="settings-help text-xs leading-relaxed text-muted-foreground">{children}</p>
 }
 export function SettingsPage() {
-  const groups = [
+  const themeChoices = [
+    { value: "mint", label: uiText("Yolu 薄荷"), desc: uiText("暖白 · 深青 · 薄荷绿"), swatches: ["appearance-swatch-paper", "appearance-swatch-teal", "appearance-swatch-mint"] },
+    { value: "classic", label: uiText("经典蓝紫"), desc: uiText("冷白 · 蓝紫 · 淡紫"), swatches: ["appearance-swatch-cool", "appearance-swatch-indigo", "appearance-swatch-lavender"] },
+    { value: "light", label: uiText("浅色"), desc: uiText("纯白 · 中性灰 · 蓝色"), swatches: ["appearance-swatch-white", "appearance-swatch-gray", "appearance-swatch-blue"] },
+    { value: "dark", label: uiText("深色"), desc: uiText("深灰 · 石板 · 天蓝"), swatches: ["appearance-swatch-night", "appearance-swatch-slate", "appearance-swatch-sky"] },
+    { value: "system", label: uiText("跟随系统"), desc: uiText("自动切换浅色/深色"), swatches: ["appearance-swatch-white", "appearance-swatch-night", "appearance-swatch-blue"] },
+  ];
+  const groups: { id: string; label: string; Icon: typeof SlidersHorizontal; cards: string[]; headerMeta?: ReactNode; headerAction?: ReactNode }[] = [
     {id:"settings-general",label:uiText("通用"),Icon:SlidersHorizontal,cards:["appearanceTitle", "languageTitle"]},
-    {id:"settings-conversation",label:uiText("对话"),Icon:MessageSquare,cards:["conversationDefaultsHeading", "chatInputHeading", "sessionTitleHeading"]},
+    {
+      id:"settings-conversation",
+      label:uiText("对话"),
+      Icon:MessageSquare,
+      headerMeta:<span id="settingsConversationEnv" className="settings-env-badge" />,
+      headerAction:<Button type="button" id="conversationDefaultsReload" variant="ghost" size="sm" className="settings-reload-button" disabled><RefreshCw className="size-3.5" aria-hidden="true" /><span>{uiText("刷新可用模型")}</span></Button>,
+      cards:["conversationDefaultsHeading", "chatInputHeading", "sessionTitleHeading"]
+    },
     {id:"settings-environment",label:uiText("执行环境"),Icon:Terminal,cards:["environmentSettingsTitle", "terminalTitle", "mcpSettingsTitle", "browserAccessTitle"]},
     {id:"settings-diagnostics",label:uiText("诊断"),Icon:Activity,cards:["codexDiagnosticsTitle", "agyDiagnosticsTitle"]}
   ];
   const cards: Record<string, ReactNode> = {
-    "appearanceTitle": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="appearanceTitle"><form id="appearanceForm">
-      <div className="settings-row">
-        <div className="settings-row-info">
-          <h3 id="appearanceTitle">{uiText("界面配色")}</h3>
-          <p>{uiText("选择配色后点击保存，立即应用到整个工作台，无需重新加载。")}</p>
-          <div className="appearance-swatches" data-theme-preview="mint" aria-hidden="true"><span className="appearance-swatch-paper" /><span className="appearance-swatch-teal" /><span className="appearance-swatch-mint" /><small>{uiText("暖白 · 深青 · 薄荷绿")}</small></div>
-          <div className="appearance-swatches" data-theme-preview="classic" aria-hidden="true" hidden><span className="appearance-swatch-cool" /><span className="appearance-swatch-indigo" /><span className="appearance-swatch-lavender" /><small>{uiText("冷白 · 蓝紫 · 淡紫")}</small></div>
-          <div className="appearance-swatches" data-theme-preview="light" aria-hidden="true" hidden><span className="appearance-swatch-white" /><span className="appearance-swatch-gray" /><span className="appearance-swatch-blue" /><small>{uiText("纯白 · 中性灰 · 蓝色")}</small></div>
-          <div className="appearance-swatches" data-theme-preview="dark" aria-hidden="true" hidden><span className="appearance-swatch-night" /><span className="appearance-swatch-slate" /><span className="appearance-swatch-sky" /><small>{uiText("深灰 · 石板 · 天蓝")}</small></div>
-          <div className="appearance-swatches" data-theme-preview="system" aria-hidden="true" hidden><span className="appearance-swatch-white" /><span className="appearance-swatch-night" /><span className="appearance-swatch-blue" /><small>{uiText("随系统外观在浅色与深色之间自动切换")}</small></div>
-        </div>
-        <div className="settings-row-control">
-          <Field id="colorThemeSelect" label={uiText("配色方案")} className="settings-inline-field"><NativeSelect id="colorThemeSelect" name="color_theme" size="sm"><Option value="mint">{uiText("Yolu 薄荷")}</Option><Option value="classic">{uiText("经典蓝紫")}</Option><Option value="light">{uiText("浅色")}</Option><Option value="dark">{uiText("深色")}</Option><Option value="system">{uiText("跟随系统")}</Option></NativeSelect></Field>
-          <Button type="submit" variant="outline" size="sm" id="saveAppearance">{uiText("保存并应用配色")}</Button>
-        </div>
-      </div>
-      <p id="appearanceStatus" role="status" className="settings-help" />
+    "appearanceTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="appearanceTitle"><form id="appearanceForm">
+      <Heading id="appearanceTitle" title={uiText("界面配色")} actions={<span id="appearanceStatus" role="status" className="settings-inline-status" />}>
+        {uiText("立即应用到整个工作台，无需重新加载。")}
+      </Heading>
+      <fieldset id="colorThemeGroup" className="settings-theme-grid" aria-label={uiText("配色方案")}>
+        {themeChoices.map(theme => (
+          <label key={theme.value} className="settings-theme-option" title={theme.desc}>
+            <input type="radio" className="sr-only" name="color_theme" value={theme.value} />
+            <span className="settings-theme-swatches" aria-hidden="true">
+              {theme.swatches.map(cls => <span key={cls} className={cls} />)}
+            </span>
+            <span className="settings-theme-name">{theme.label}</span>
+          </label>
+        ))}
+      </fieldset>
+      <Feedback id="appearanceError" variant="destructive" className="mt-3" hidden />
     </form></Card>),
     "languageTitle": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="languageTitle"><form id="languageForm">
       <div className="settings-row">
@@ -46,26 +59,44 @@ export function SettingsPage() {
         </div>
         <div className="settings-row-control">
           <Field id="languageSelect" label={uiText("界面语言")} className="settings-inline-field"><NativeSelect id="languageSelect" name="language" size="sm"><Option value="system">{uiText("跟随系统")}</Option><Option value="en">English</Option><Option value="zh-CN">简体中文</Option></NativeSelect></Field>
-          <Button type="submit" variant="outline" size="sm" id="saveLanguage">{uiText("保存并应用语言")}</Button>
+          <Button type="button" variant="ghost" size="sm" id="cancelLanguage" hidden>{uiText("取消")}</Button>
+          <Button type="submit" variant="default" size="sm" id="saveLanguage" hidden>{uiText("应用并重新加载")}</Button>
         </div>
       </div>
       <p id="languageStatus" role="status" className="settings-help" />
     </form></Card>),
     "conversationDefaultsHeading": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="conversationDefaultsHeading"><form id="conversationDefaultsForm">
-      <Heading id="conversationDefaultsHeading" title={uiText("新对话默认设置")} actions={<Button type="button" id="conversationDefaultsReload" variant="ghost" size="sm">{uiText("刷新可用模型")}</Button>}>{uiText("为当前执行环境中的各个引擎分别设置新对话默认选项。你也可以在对话中单独调整。")}</Heading>
-      <Field id="conversationDefaultProvider" label={uiText("对话引擎")}><NativeSelect id="conversationDefaultProvider" size="sm" disabled><Option value="codex">Codex</Option><Option value="agy">Antigravity (AGY)</Option></NativeSelect></Field>
+      <Heading id="conversationDefaultsHeading" title={uiText("新对话默认设置")} actions={<span id="conversationDefaultsStatus" role="status" className="settings-inline-status" />}>
+        {uiText("为当前执行环境中的各个引擎分别设置新对话默认选项，修改后自动保存。")}
+      </Heading>
+      <fieldset id="conversationDefaultProviderGroup" className="settings-segments settings-provider-tabs" aria-label={uiText("对话引擎")} disabled>
+        <label>
+          <input type="radio" className="sr-only" name="conversation_default_provider" value="codex" defaultChecked />
+          <SquareTerminal aria-hidden="true" />
+          <span>Codex</span>
+        </label>
+        <label>
+          <input type="radio" className="sr-only" name="conversation_default_provider" value="agy" />
+          <Orbit aria-hidden="true" />
+          <span>Antigravity (AGY)</span>
+        </label>
+      </fieldset>
       <fieldset id="conversationDefaultsFields" disabled>
         <div className="settings-field-grid">
           <Field id="conversationDefaultModel" label={uiText("默认模型")}><NativeSelect id="conversationDefaultModel" size="sm"><Option value="">{uiText("沿用 Codex 默认模型")}</Option></NativeSelect></Field>
           <Field id="conversationDefaultSpeed" label={uiText("默认响应速度")}><NativeSelect id="conversationDefaultSpeed" size="sm"><Option value="">{uiText("沿用 Codex 默认速度")}</Option></NativeSelect></Field>
-          <Field id="conversationDefaultEffort" label={uiText("默认思考强度")}><NativeSelect id="conversationDefaultEffort" size="sm"><Option value="">{uiText("使用模型默认强度")}</Option></NativeSelect></Field>
-          <Field id="conversationDefaultPermission" label={uiText("默认权限")}><NativeSelect id="conversationDefaultPermission" size="sm" aria-describedby="conversationDefaultPermissionHelp"><Option value="">{uiText("沿用 Codex 默认权限")}</Option></NativeSelect></Field>
         </div>
-        <p id="conversationDefaultPermissionHelp" className="settings-help text-xs leading-relaxed text-muted-foreground" />
-        <div className="settings-actions"><Button type="submit" variant="outline" size="sm">{uiText("保存新对话设置")}</Button></div>
+        <div className="field grid gap-2 settings-segment-field">
+          <span id="conversationDefaultEffort-label" className="settings-field-label">{uiText("默认思考强度")}</span>
+          <div id="conversationDefaultEffort" className="settings-segments" role="radiogroup" aria-labelledby="conversationDefaultEffort-label" />
+        </div>
+        <div className="field grid gap-2 settings-segment-field">
+          <span id="conversationDefaultPermission-label" className="settings-field-label">{uiText("默认权限")}</span>
+          <div id="conversationDefaultPermission" className="settings-segments" role="radiogroup" aria-labelledby="conversationDefaultPermission-label" aria-describedby="conversationDefaultPermissionHelp" />
+          <p id="conversationDefaultPermissionHelp" className="settings-help settings-permission-help" />
+        </div>
       </fieldset>
       <Feedback id="conversationDefaultsError" variant="destructive" className="mt-3" hidden />
-      <p id="conversationDefaultsStatus" role="status" className="settings-help" />
     </form></Card>),
     "chatInputHeading": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="chatInputHeading"><form id="chatInputForm">
       <div className="settings-row">
@@ -74,21 +105,35 @@ export function SettingsPage() {
           <p>{uiText("Enter 发送时，使用 Shift + Enter 换行。Ctrl + Enter 发送时，使用 Enter 换行。")}</p>
         </div>
         <div className="settings-row-control">
-          <Field id="sendShortcutSelect" label={uiText("发送快捷键")} className="settings-inline-field"><NativeSelect id="sendShortcutSelect" name="send_shortcut" size="sm"><Option value="enter">{uiText("Enter 发送")}</Option><Option value="ctrlEnter">{uiText("Ctrl + Enter / ⌘ + Enter 发送")}</Option></NativeSelect></Field>
-          <Button type="submit" variant="outline" size="sm" id="saveChatInput">{uiText("保存对话输入设置")}</Button>
+          <fieldset id="sendShortcutGroup" className="settings-segments settings-compact-segments" aria-label={uiText("发送快捷键")}>
+            <label>
+              <input type="radio" className="sr-only" name="send_shortcut" value="enter" defaultChecked />
+              <span>{uiText("Enter 发送")}</span>
+            </label>
+            <label>
+              <input type="radio" className="sr-only" name="send_shortcut" value="ctrlEnter" />
+              <span>Ctrl / ⌘ + Enter</span>
+            </label>
+          </fieldset>
         </div>
       </div>
       <p id="chatInputStatus" role="status" className="settings-help" />
+      <Feedback id="chatInputError" variant="destructive" className="mt-3" hidden />
     </form></Card>),
-    "sessionTitleHeading": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="sessionTitleHeading"><form id="sessionTitleForm">
-      <Heading id="sessionTitleHeading" title={uiText("对话标题")} actions={<Button type="button" id="sessionTitleReload" variant="ghost" size="sm">{uiText("刷新可用模型")}</Button>}>{uiText("发送首条消息后，根据首次输入在后台生成一次主题标题。手动名称优先保留。")}</Heading>
-      <fieldset id="sessionTitleFields" disabled>
-        <div className="settings-inline-submit">
-          <Field id="sessionTitleModel" label={uiText("标题模型")}><NativeSelect id="sessionTitleModel" size="sm"><Option value="">{uiText("跟随正文模型")}</Option></NativeSelect></Field>
-          <Button type="submit" variant="outline" size="sm">{uiText("保存标题设置")}</Button>
+    "sessionTitleHeading": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="sessionTitleHeading"><form id="sessionTitleForm">
+      <div className="settings-row">
+        <div className="settings-row-info">
+          <h3 id="sessionTitleHeading">{uiText("对话标题")}</h3>
+          <p>{uiText("发送首条消息后，根据首次输入在后台生成一次主题标题。手动名称优先保留。")}</p>
+          <details className="settings-help-details"><summary>{uiText("标题生成说明")}</summary><Help>{uiText("仅影响当前环境的新对话标题。沿用 Codex 登录，额外消耗一次模型请求；生成失败保留初始标题。")}</Help></details>
         </div>
-        <details className="settings-help-details"><summary>{uiText("标题生成说明")}</summary><Help>{uiText("仅影响当前环境的新对话标题。沿用 Codex 登录，额外消耗一次模型请求；生成失败保留初始标题。")}</Help></details>
-      </fieldset>
+        <div className="settings-row-control">
+          <fieldset id="sessionTitleFields" className="settings-inline-fieldset" disabled>
+            <Field id="sessionTitleModel" label={uiText("标题模型")} className="settings-inline-field"><NativeSelect id="sessionTitleModel" size="sm"><Option value="">{uiText("跟随正文模型")}</Option></NativeSelect></Field>
+          </fieldset>
+        </div>
+      </div>
+      <p id="sessionTitleStatus" role="status" className="settings-help" />
       <Feedback id="sessionTitleError" variant="destructive" className="mt-3" hidden />
     </form></Card>),
     "environmentSettingsTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="environmentSettingsTitle">
@@ -97,15 +142,26 @@ export function SettingsPage() {
       <span id="settingsEnvironment" hidden />
       <dl className="settings-facts"><div><dt>{uiText("新 Worktree 根目录")}</dt><dd><code id="settingsRoot">{uiText("正在读取…")}</code></dd></div></dl>
     </Card>),
-    "terminalTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="terminalTitle"><form id="terminalForm">
-      <Heading id="terminalTitle" title={uiText("终端工具")}>{uiText("Codex、Git 终端和在终端获取分支共用此设置，保存后立即生效。")}</Heading>
+    "terminalTitle": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="terminalTitle"><form id="terminalForm">
       <fieldset id="terminalSettingsFields" disabled>
-        <div className="settings-inline-submit">
-          <Field id="terminalKind" label={uiText("终端工具")}><NativeSelect id="terminalKind" name="kind" size="sm"><Option value="auto">{uiText("系统终端")}</Option></NativeSelect></Field>
-          <Button type="submit" variant="outline" size="sm">{uiText("保存终端设置")}</Button>
+        <div className="settings-row">
+          <div className="settings-row-info">
+            <h3 id="terminalTitle">{uiText("终端工具")}</h3>
+            <p>{uiText("Codex、Git 终端和在终端获取分支共用此设置，切换后立即生效。")}</p>
+          </div>
+          <div className="settings-row-control">
+            <Field id="terminalKind" label={uiText("终端工具")} className="settings-inline-field"><NativeSelect id="terminalKind" name="kind" size="sm"><Option value="auto">{uiText("系统终端")}</Option></NativeSelect></Field>
+          </div>
         </div>
-        <div id="terminalCustomFields" hidden><Field id="terminalPath" label={uiText("终端程序路径")} required help={uiText("填写终端可执行文件的完整路径，无需引号或参数。")}><Input id="terminalPath" name="path" autoComplete="off" spellCheck={false} /></Field><Field id="terminalStyle" label={uiText("启动方式")}><NativeSelect id="terminalStyle" name="style" size="sm"><Option value="otty">Otty</Option><Option value="windows-terminal">Windows Terminal</Option><Option value="command">{uiText("其他终端（支持 -e 程序 参数）")}</Option></NativeSelect></Field></div>
+        <div id="terminalCustomFields" className="settings-subpanel" hidden>
+          <div className="settings-field-grid">
+            <Field id="terminalPath" label={uiText("终端程序路径")} required help={uiText("填写终端可执行文件的完整路径，无需引号或参数。")}><Input id="terminalPath" name="path" autoComplete="off" spellCheck={false} /></Field>
+            <Field id="terminalStyle" label={uiText("启动方式")}><NativeSelect id="terminalStyle" name="style" size="sm"><Option value="otty">Otty</Option><Option value="windows-terminal">Windows Terminal</Option><Option value="command">{uiText("其他终端（支持 -e 程序 参数）")}</Option></NativeSelect></Field>
+          </div>
+          <div className="settings-actions"><Button type="submit" variant="default" size="sm" id="saveTerminal">{uiText("保存终端设置")}</Button></div>
+        </div>
         <p id="terminalHint" className="settings-help text-muted-foreground" />
+        <p id="terminalSaveStatus" role="status" className="settings-help" />
         <Feedback id="terminalStatus" role="status" className="mt-3 bg-muted text-muted-foreground" />
         <Feedback id="terminalError" variant="destructive" className="mt-3" hidden />
       </fieldset>
@@ -183,8 +239,16 @@ export function SettingsPage() {
       </nav>
       <div className="settings-sections">
         <div className="settings-sections-inner">{groups.map(group => <section id={group.id} className="settings-section" key={group.id} aria-labelledby={group.id + "-title"}>
-          <h2 id={group.id + "-title"} tabIndex={-1}>{group.label}</h2>
-          {group.cards.map(id => <Fragment key={id}>{cards[id]}</Fragment>)}
+          <div className="settings-section-header">
+            <div className="settings-section-title-group">
+              <h2 id={group.id + "-title"} tabIndex={-1}>{group.label}</h2>
+              {group.headerMeta}
+            </div>
+            {group.headerAction}
+          </div>
+          <div className="settings-group">
+            {group.cards.map(id => <Fragment key={id}>{cards[id]}</Fragment>)}
+          </div>
         </section>)}</div>
       </div>
     </div>
@@ -204,7 +268,12 @@ export function setupSettingsNavigation() {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       const sections = [...(page?.querySelectorAll<HTMLElement>(".settings-section") || [])];
-      const edge = (scroller?.getBoundingClientRect().top || 0) + 80;
+      if (!sections.length) return;
+      if (scroller && scroller.scrollHeight > scroller.clientHeight + 24 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 24) {
+        mark(sections.at(-1)!.id);
+        return;
+      }
+      const edge = (scroller?.getBoundingClientRect().top || 0) + 96;
       const current = sections.filter(section => section.getBoundingClientRect().top <= edge).at(-1) || sections[0];
       if (current) mark(current.id);
     });

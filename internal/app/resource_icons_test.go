@@ -25,8 +25,14 @@ func TestResourceIconsRetainLegacyAppearanceAndMergeDetailEdits(t *testing.T) {
 	if got := read(a, "local"); got.Icons["project:legacy"].Color != "blue" || len(got.Icons) != 1 {
 		t.Fatalf("legacy icons lost: %+v", got)
 	}
-	for _, id := range []string{"project:app", "project:other"} {
-		if code, raw := call(t, a, "PUT", "/api/resource-icons", map[string]any{"id": id, "appearance": resourceIcon{Icon: "bug", Color: "teal"}}); code != 200 {
+	for _, item := range []struct {
+		id   string
+		icon resourceIcon
+	}{
+		{id: "project:app", icon: resourceIcon{Icon: "bug", Color: "teal"}},
+		{id: "project:other", icon: resourceIcon{Icon: "bot", Color: "theme"}},
+	} {
+		if code, raw := call(t, a, "PUT", "/api/resource-icons", map[string]any{"id": item.id, "appearance": item.icon}); code != 200 {
 			t.Fatalf("save: %d %s", code, raw)
 		}
 	}

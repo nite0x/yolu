@@ -206,17 +206,55 @@ function rememberConversationView() {
 function conversationDirectories(scope = conversationState.current?.scope, environmentFilter = conversationState.current?.environmentFilter || '') {
   if (!scope) return [];
   const result = [];
+  const multipleEnvironments = conversationEnvironments().length > 1;
   let environment = conversationScopeEnvironment(scope);
-  const add = (cwd, label, target, disabled = false) => {
+  const add = (cwd, label, target, disabled = false, priority = 1) => {
     if (!cwd) return;
     const key = conversationEnvironmentKey(environment, conversationPathKey(cwd));
+    const fullLabel = multipleEnvironments || environment !== 'local' ? label + ' · ' + environmentName(environment) : label;
     const existing = result.find(d => d.key === key);
-    if (!existing) result.push({ cwd, key, environment, label: label + ' · ' + environmentName(environment), target, disabled });
-    else if (existing.disabled && !disabled) Object.assign(existing, { target, disabled });
+    if (!existing) result.push({ cwd, key, environment, label: fullLabel, target, disabled, priority });
+    else if (existing.disabled && !disabled) Object.assign(existing, { target, disabled, priority: Math.min(existing.priority, priority) });
+  };
+  const worktreeSegments = path => String(path || '').split(/[\\/]/).filter(Boolean);
+  const disambiguatedLeaves = (trees, mainKey) => {
+    const entries = trees.map(tree => {
+      const segments = worktreeSegments(tree.path);
+      return { key: conversationPathKey(tree.path), primary: conversationPathKey(tree.path) === mainKey, segments, name: segments.at(-1) || tree.path };
+    });
+    const counts = new Map();
+    for (const entry of entries) if (!entry.primary) counts.set(entry.name, (counts.get(entry.name) || 0) + 1);
+    for (let depth = 2; depth <= 3; depth++) {
+      const colliding = new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name));
+      if (!colliding.size) break;
+      counts.clear();
+      for (const entry of entries) {
+        if (!entry.primary && colliding.has(entry.name) && entry.segments.length >= depth) entry.name = entry.segments.slice(-depth).join('/');
+        if (!entry.primary) counts.set(entry.name, (counts.get(entry.name) || 0) + 1);
+      }
+    }
+    return new Map(entries.map(entry => [entry.key, entry.name]));
   };
   const projectDirs = project => {
-    for (const tree of project.worktrees || []) add(tree.path, project.name + ' · ' + (tree.branch || 'detached HEAD'), { project_id: project.id, cwd: tree.path }, !!(project.error || tree.bare || tree.missing || tree.prunable || tree.error));
-    if (!(project.worktrees || []).some(t => conversationPathKey(t.path) === conversationPathKey(project.path))) add(project.path, project.name, { project_id: project.id, cwd: project.path }, !!project.error);
+    const mainKey = conversationPathKey(project.path);
+    const trees = project.worktrees || [];
+    const branchLabel = tree => tree.branch || (tree.head ? 'detached @ ' + String(tree.head).slice(0, 7) : 'detached HEAD');
+    const branchCounts = new Map();
+    for (const tree of trees) {
+      const b = branchLabel(tree);
+      branchCounts.set(b, (branchCounts.get(b) || 0) + 1);
+    }
+    const leaves = disambiguatedLeaves(trees, mainKey);
+    for (const tree of trees) {
+      const key = conversationPathKey(tree.path);
+      const isMain = key === mainKey;
+      const branch = branchLabel(tree);
+      const needsLeaf = !isMain && ((branchCounts.get(branch) || 0) > 1 || !tree.branch);
+      const leaf = needsLeaf ? leaves.get(key) : '';
+      const suffix = leaf ? `${branch} (${leaf})` : branch;
+      add(tree.path, project.name + ' · ' + suffix, { project_id: project.id, cwd: tree.path }, !!(project.error || tree.bare || tree.missing || tree.prunable || tree.error), isMain ? 0 : 1);
+    }
+    if (!trees.some(t => conversationPathKey(t.path) === mainKey)) add(project.path, project.name, { project_id: project.id, cwd: project.path }, !!project.error, 0);
   };
   const overview = conversationOverview(environment);
   if (environmentFilter && environment && environment !== environmentFilter) return [];
@@ -230,13 +268,14 @@ function conversationDirectories(scope = conversationState.current?.scope, envir
       const data = conversationOverview(environment);
       data.projects.forEach(projectDirs);
       for (const session of conversationItems(environment)) {
-        if (!window.WorkHubUI.isGeneralConversationDirectory(session.cwd)) add(session.cwd, session.cwd, {cwd:session.cwd});
+        if (!window.WorkHubUI.isGeneralConversationDirectory(session.cwd)) add(session.cwd, session.cwd, {cwd:session.cwd}, false, 2);
       }
     }
     if (scope.kind === 'directory') {
       const matching = result.filter(d => conversationPathKey(d.cwd) === conversationPathKey(scope.cwd));
       return matching.length ? matching : [{ cwd: scope.cwd, key: conversationEnvironmentKey(scope.environment, conversationPathKey(scope.cwd)), environment: scope.environment, label: scope.cwd, target: {cwd:scope.cwd}, disabled: false }];
     }
+    result.sort((a, b) => a.priority - b.priority);
   }
   return result;
 }
@@ -295,7 +334,9 @@ function syncConversationListScroll() {
   if (!conversationVisible() || document.documentElement.hasAttribute('data-workspace-conversation')) return;
   conversationList.sync(conversationState.current);
 }
-function focusConversationListIndex(index) { conversationList.focus(conversationState.current, index); }
+function focusConversationListIndex(index, behavior) {
+  if (index >= 0) conversationList.focus(conversationState.current, index, behavior);
+}
 $('#sessionBrowserList').addEventListener('scroll', scheduleConversationListScroll, {passive:true});
 if (typeof ResizeObserver !== 'undefined') {
   const listResize = new ResizeObserver(scheduleConversationListScroll);
@@ -358,6 +399,14 @@ function renderConversationList() {
     reveal: view.locateSelection, limits: view.groupLimits, collapsed: groupState.collapsedGroups, filtered,
   });
   if (view.locateSelection) groupState.collapsedGroups = groupState.collapsedGroups.filter(key => !view.listRows.some(row => row.kind === 'session' && row.group.key === key && conversationSessionKey(row.session) === view.locateSelection));
+  const groupToggle = $('#sessionToggleAllGroups');
+  const groups = sidebarMode === 'grouped' ? view.listRows.filter(row => row.kind === 'group') : [];
+  const expand = groups.length > 0 && groups.every(row => row.group.collapsed);
+  const toggleLabel = expand ? uiText("全部展开") : uiText("全部收起");
+  groupToggle.hidden = !groups.length;
+  groupToggle.dataset.expand = String(expand);
+  groupToggle.setAttribute('aria-label', toggleLabel);
+  groupToggle.title = toggleLabel;
   const {loaded, start, end, before, after, scrollTarget} = conversationList.range(view);
   for (const button of document.querySelectorAll('[data-conversation-status]')) {
     const status = button.dataset.conversationStatus;
@@ -408,7 +457,7 @@ function renderConversationList() {
       // Measure only the mounted rows. Offscreen batches are represented by two
       // spacers, keeping resize layout work bounded even after long browsing.
       for (const row of list.querySelectorAll('[data-conversation-list-row]')) {
-        const item = row.closest('li, h3') || row;
+        const item = row.closest('li, .session-workspace-heading, .session-workspace-preview') || row;
         const height = item?.getBoundingClientRect().height || 0;
         if (height) view.listHeights.set(row.dataset.conversationListRow, height + (row.hasAttribute('data-conversation-session') ? 2 : 0));
       }
@@ -495,7 +544,6 @@ function renderConversationBrowser() {
   const creationDirectories = view.creating ? conversationCreationDirectories(view) : [];
   $('#newBrowserSession').disabled = sessionReadOnly;
   $('#newBrowserSession').title = sessionReadOnly ? uiText("当前为只读模式，请在终端新建对话") : uiText("在当前栏新建对话");
-  updateConversationCreationActions();
   $('#conversationCreationKind').hidden = !view.creating || !window.WorkHubPage || window.WorkHubPage.navigationOnly;
   const terminalKind = $('[data-conversation-kind="terminal"]');
   terminalKind.disabled = (view.targetEnvironment || activeEnvironment) !== 'local' || !view.target?.cwd || !!sessionHistoryState?.submitting;
@@ -703,12 +751,6 @@ function syncConversations() {
   updateConversationNavigation();
   refreshConversationCatalog();
 }
-function updateConversationCreationActions() {
-  const primary = $('#newBrowserSession');
-  const split = $('#newBrowserSplitSession');
-  split.disabled = primary.disabled || !window.WorkHubPage?.canSplit;
-  split.title = primary.disabled ? primary.title : !window.WorkHubPage?.canSplit ? uiText("最多支持三栏，请先打开对话并留出空栏") : uiText("在右侧分栏新建");
-}
 function conversationCreationDirectories(view) {
   const dirs = conversationDirectories(view.scope, view.environmentFilter).filter(d => !d.disabled && d.target);
   if (view.scope.kind === 'all') dirs.unshift({key:'', cwd:'', environment:view.environmentFilter || view.environment, label:uiText("默认目录（无需项目）"), target:{}});
@@ -759,11 +801,38 @@ function browserSessionActivity(id, chat, environment = activeEnvironment) {
   }
   if (conversationVisible()) renderConversationList(); else updateConversationNavigation();
 }
+function revealConversationCreationGroup(control) {
+  const key = control.closest('[data-conversation-group]')?.dataset.conversationGroup;
+  const view = conversationState.current;
+  const groupState = view?.filteredGroupState || view;
+  if (!key || !groupState?.collapsedGroups.includes(key)) return;
+  groupState.collapsedGroups = groupState.collapsedGroups.filter(value => value !== key);
+  renderConversationList();
+  rememberConversationView();
+}
+$('#sessionToggleAllGroups').addEventListener('click', event => {
+  const control = event.currentTarget;
+  const view = conversationState.current;
+  if (!view || control.hidden) return;
+  const keys = new Set(view.listRows.filter(row => row.kind === 'group').map(row => row.group.key));
+  const groupState = view.filteredGroupState || view;
+  if (control.dataset.expand === 'true') {
+    groupState.collapsedGroups = groupState.collapsedGroups.filter(key => !keys.has(key));
+  } else {
+    groupState.collapsedGroups = [...new Set([...groupState.collapsedGroups, ...keys])];
+    if (!view.filteredGroupState) for (const key of keys) delete view.groupLimits[key];
+  }
+  resetConversationListWindow(view);
+  renderConversationList();
+  rememberConversationView();
+});
 document.addEventListener('click', event => {
   const entry = event.target.closest('[data-action="project-conversations"], [data-action="project-conversation-new"]');
   if (entry) {
     const create = entry.dataset.action === 'project-conversation-new';
     if (entry.disabled || state.busy || create && sessionReadOnly) return;
+    event.stopPropagation();
+    if (create) revealConversationCreationGroup(entry);
     const environment = entry.dataset.environment || activeEnvironment;
     openConversations({kind:'project',id:entry.dataset.id,environment}, entry.dataset.session);
     if (create) {
@@ -772,19 +841,32 @@ document.addEventListener('click', event => {
     }
     return;
   }
-  const groupControl = event.target.closest('[data-conversation-group-toggle], [data-conversation-group-more]');
+  const groupControl = event.target.closest('[data-conversation-group-toggle], [data-conversation-group-more], [data-conversation-group-less]');
   if (groupControl && conversationState.current) {
     const view = conversationState.current;
-    const key = groupControl.dataset.conversationGroupToggle || groupControl.dataset.conversationGroupMore;
-    const index = view.listRows.findIndex(row => row.key === groupControl.dataset.conversationListRow);
-    if (groupControl.hasAttribute('data-conversation-group-toggle')) {
+    const {conversationGroupToggle: toggle, conversationGroupMore: more, conversationGroupLess: less} = groupControl.dataset;
+    const key = toggle || more || less;
+    const previous = view.listRows;
+    view.locateSelection = null;
+    if (toggle) {
       const groupState = view.filteredGroupState || view;
-      groupState.collapsedGroups = groupState.collapsedGroups.includes(key) ? groupState.collapsedGroups.filter(value => value !== key) : [...groupState.collapsedGroups,key];
-      view.locateSelection = null;
-    } else view.groupLimits[key] = (view.groupLimits[key] || 3) + conversationBatchSize;
+      if (groupState.collapsedGroups.includes(key)) groupState.collapsedGroups = groupState.collapsedGroups.filter(value => value !== key);
+      else {
+        groupState.collapsedGroups = [...groupState.collapsedGroups,key];
+        if (!view.filteredGroupState) delete view.groupLimits[key];
+      }
+    } else if (less) delete view.groupLimits[key];
+    else {
+      const preview = previous.find(row => row.key === groupControl.dataset.conversationListRow);
+      if (!preview) return;
+      view.groupLimits[key] = preview.group.shown + window.WorkHubUI.projectConversationStep;
+    }
     renderConversationList();
-    const targetIndex = groupControl.hasAttribute('data-conversation-group-toggle') ? view.listRows.findIndex(row => row.kind === 'group' && row.group.key === key) : index;
-    focusConversationListIndex(targetIndex);
+    const groupIndex = view.listRows.findIndex(row => row.kind === 'group' && row.group.key === key);
+    const previousKeys = more && new Set(previous.map(row => row.key));
+    const firstNewRow = more ? view.listRows.findIndex(row => row.kind === 'session' && row.group.key === key && !previousKeys.has(row.key)) : -1;
+    const smooth = less && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    focusConversationListIndex(firstNewRow >= 0 ? firstNewRow : groupIndex, smooth ? 'smooth' : 'auto');
     rememberConversationView();
     return;
   }
@@ -809,7 +891,8 @@ document.addEventListener('click', event => {
   if (!button || button.disabled || state.busy) return;
   switch (button.dataset.conversationAction) {
     case 'new':
-      if (button.id === 'newBrowserSession') {
+      if (button.dataset.conversationStandalone === 'true') revealConversationCreationGroup(button);
+      if (button.id === 'newBrowserSession' || button.dataset.conversationStandalone === 'true') {
         selectConversationScope({kind:'all',name:uiText("全部对话")});
         conversationState.current.environmentFilter = '';
         conversationState.current.creationDirectory = '';
@@ -896,18 +979,19 @@ document.addEventListener('keydown', event => {
   }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key) || event.metaKey || event.ctrlKey || event.altKey) return;
   const grouped = window.WorkHubPage?.navigationOnly && conversationListMode === 'grouped';
-  const item = event.target.closest(grouped ? '[data-conversation-session], [data-conversation-group-toggle], [data-conversation-group-more]' : '[data-conversation-session]');
+  const item = event.target.closest(grouped ? '[data-conversation-session], [data-conversation-group-toggle], [data-conversation-group-more], [data-conversation-group-less]' : '[data-conversation-session]');
   const fromSearch = event.target.id === 'sessionBrowserSearch' && event.key === 'ArrowDown';
   if (!item && !fromSearch) return;
   const view = conversationState.current;
-  const positions = view?.listRows?.flatMap((row,index) => row.kind === 'session' || grouped && row.kind !== 'section' ? [index] : []) || [];
+  const positions = view?.listRows?.flatMap((row,index) => grouped || row.kind === 'session' ? [index] : []) || [];
   if (!positions.length) return;
   if (fromSearch) {
     focusConversationListIndex(positions.find(index => view.listRows[index].kind === 'session') ?? positions[0]);
     event.preventDefault();
     return;
   }
-  const index = positions.findIndex(index => view.listRows[index].key === item?.dataset.conversationListRow);
+  const key = item?.dataset.conversationListRow || item?.previousElementSibling?.dataset.conversationListRow;
+  const index = positions.findIndex(index => view.listRows[index].key === key);
   const lastLoaded = positions.filter(index => index < view.loadedCount).length - 1;
   const next = event.key === 'Home' ? 0 : event.key === 'End' ? lastLoaded : index + ({ArrowDown:1,ArrowUp:-1,PageDown:conversationBatchSize,PageUp:-conversationBatchSize})[event.key];
   focusConversationListIndex(positions[Math.max(0,Math.min(next,positions.length - 1))]); event.preventDefault();

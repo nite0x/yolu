@@ -10,16 +10,14 @@ import {
   useExternalStoreRuntime,
   type AssistantRuntime,
 } from "@assistant-ui/react";
-import { ArrowDownIcon, HandIcon, LoaderCircleIcon } from "lucide-react";
+import { HandIcon, LoaderCircleIcon } from "lucide-react";
 import {
   Thread,
   Composer,
   type ThreadProps,
 } from "@/components/assistant-ui/elements/thread.aui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { ConversationHeader } from "../app/conversation-surface";
-import { uiText } from "../i18n";
 import type { useChatReading } from "./use-chat-reading";
 
 interface ConversationController {
@@ -123,7 +121,7 @@ interface ConversationPanelProps {
   panelRef: RefObject<HTMLElement | null>;
   header: ReactElement<ComponentProps<typeof ConversationHeader>>;
   reading: Reading;
-  thread: Omit<ThreadProps, "managedScroll" | "scrollToBottom">;
+  thread: Omit<ThreadProps, "managedScroll">;
   composerInput?: ComponentProps<typeof Composer>["input"];
   beforeThread?: ReactNode;
   afterThread?: ReactNode;
@@ -164,22 +162,6 @@ export function ConversationPanel({
           <Thread
             {...thread}
             managedScroll
-            scrollToBottom={
-              reading.awayFromBottom ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="absolute -top-12 left-1/2 z-10 -translate-x-1/2 rounded-full shadow-sm"
-                  aria-label={uiText("回到对话底部")}
-                  onClick={reading.latest}
-                >
-                  <ArrowDownIcon aria-hidden="true" />
-                  {reading.hasNew
-                    ? uiText("有新消息 · 回到最新")
-                    : uiText("回到底部")}
-                </Button>
-              ) : null
-            }
             composer={
               thread.composer ??
               (composerInput ? (

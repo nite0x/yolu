@@ -50,7 +50,7 @@ import {
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
-  ArrowUpIcon,
+  ArrowRightIcon,
   AudioLinesIcon,
   CheckIcon,
   ChevronLeftIcon,
@@ -148,7 +148,6 @@ export type ThreadProps = {
   composerStatus?: ReactNode;
   composerControls?: ReactNode;
   composerLeadingControls?: ReactNode;
-  scrollToBottom?: ReactNode;
   components?: ThreadComponents | undefined;
   autoFocus?: boolean | undefined;
   managedScroll?: boolean | undefined;
@@ -201,7 +200,6 @@ export const Thread: FC<ThreadProps> = ({
   composerStatus,
   composerControls,
   composerLeadingControls,
-  scrollToBottom,
   autoFocus = true,
   managedScroll = false,
   readOnly = false,
@@ -212,7 +210,7 @@ export const Thread: FC<ThreadProps> = ({
 
   return (
     <ThreadComponentsContext.Provider value={components}>
-      <ThreadRoot composer={composer} composerStatus={composerStatus} composerControls={composerControls} composerLeadingControls={composerLeadingControls} scrollToBottom={scrollToBottom} isEmpty={isEmpty} autoFocus={autoFocus} managedScroll={managedScroll} readOnly={readOnly} dockComposer={dockComposer} emptyStateControls={emptyStateControls} />
+      <ThreadRoot composer={composer} composerStatus={composerStatus} composerControls={composerControls} composerLeadingControls={composerLeadingControls} isEmpty={isEmpty} autoFocus={autoFocus} managedScroll={managedScroll} readOnly={readOnly} dockComposer={dockComposer} emptyStateControls={emptyStateControls} />
     </ThreadComponentsContext.Provider>
   );
 };
@@ -222,7 +220,6 @@ const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
   composerStatus,
   composerControls,
   composerLeadingControls,
-  scrollToBottom,
   isEmpty,
   autoFocus,
   managedScroll,
@@ -283,7 +280,7 @@ const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
                 "sticky bottom-0 rounded-t-(--composer-radius)",
             )}
           >
-            {managedScroll ? scrollToBottom : <ThreadScrollToBottom />}
+            <ThreadScrollToBottom behavior={managedScroll ? "instant" : undefined} />
             {composerStatus}
             {!readOnly && !composer && <ThreadFollowupSuggestions />}
             {!readOnly && (composer ?? <Composer autoFocus={autoFocus} controls={composerControls} leadingControls={composerLeadingControls} />)}
@@ -432,9 +429,9 @@ const ThreadLoadEarlier: FC = () => {
   ) : null;
 };
 
-const ThreadScrollToBottom: FC = () => {
+const ThreadScrollToBottom: FC<{behavior?: ScrollBehavior}> = ({ behavior }) => {
   return (
-    <ThreadPrimitive.ScrollToBottom asChild>
+    <ThreadPrimitive.ScrollToBottom asChild behavior={behavior}>
       <TooltipIconButton
         tooltip={uiText("滚动到底部")}
         variant="outline"
@@ -573,18 +570,26 @@ const ComposerAction: FC<{ controls?: ReactNode; leadingControls?: ReactNode; vo
               tooltip={uiText("发送消息")}
               side="bottom"
               type="button"
-              variant="default"
               size="icon"
-              className="aui-composer-send size-7 rounded-full"
+              className="aui-composer-send size-7 rounded-md hover:bg-muted hover:text-foreground dark:hover:bg-muted"
               aria-label={uiText("发送消息")}
               disabled={voice.active}
             >
-              <ArrowUpIcon className="aui-composer-send-icon size-4" />
+              <ArrowRightIcon aria-hidden="true" className="aui-composer-send-icon size-4" />
             </TooltipIconButton>
           </ComposerPrimitive.Send>
         </AuiIf>
         <AuiIf condition={s=>s.thread.isRunning && !s.composer.isEmpty}>
-          <TooltipIconButton type="button" tooltip={uiText("补充到本轮")} aria-label={uiText("发送消息")} className="aui-composer-send size-7 rounded-full" disabled={!canSend || voice.active} onClick={()=>aui.composer.send()}><ArrowUpIcon className="size-4" /></TooltipIconButton>
+          <TooltipIconButton
+            type="button"
+            tooltip={uiText("补充到本轮")}
+            aria-label={uiText("发送消息")}
+            className="aui-composer-send size-7 rounded-md hover:bg-muted hover:text-foreground dark:hover:bg-muted"
+            disabled={!canSend || voice.active}
+            onClick={() => aui.composer.send()}
+          >
+            <ArrowRightIcon aria-hidden="true" className="aui-composer-send-icon size-4" />
+          </TooltipIconButton>
         </AuiIf>
         <AuiIf condition={shouldShowComposerResume}>
           <ComposerPrimitive.Resume asChild>

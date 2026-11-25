@@ -4,6 +4,7 @@ import { JSDOM } from "jsdom"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { patchConversationList } from "../frontend/app/conversation-list"
+import { conversationTree } from "../frontend/app/conversation-tree"
 import { ConversationList, ConversationScopes } from "../frontend/app/session-browser"
 import type { Session } from "../frontend/app/sessions"
 import { uiText } from "../frontend/i18n"
@@ -59,7 +60,7 @@ test("compact conversation rows omit empty metadata and keep directory and envir
   const sessions: Session[] = [
     {id: "plain", name: "Conversation", cwd: "/repo"},
     {id: "terminal", name: "Shell", cwd: "/repo", terminal: {workspaceID: "workspace", attached: true}},
-    {id: "context", name: "Conversation", cwd: "/repo", environment_name: "Remote", context: {project: "App", branch: "feature/work", cwd: "/repo", workspaces: [], kind: "Worktree"}},
+    {id: "context", name: "Conversation", cwd: "/repo", provider: "agy", environment_name: "Remote", context: {project: "App", branch: "feature/work", cwd: "/repo", workspaces: [], kind: "Worktree"}},
   ]
   const dom = new JSDOM(renderToStaticMarkup(createElement(ConversationList, {sessions, showDirectory: false, parallel: true, parallelSessions: ["plain", "terminal"]})))
   assert.equal(dom.window.document.querySelector('[data-conversation-session="plain"] .session-browser-item-meta'), null)
@@ -67,6 +68,14 @@ test("compact conversation rows omit empty metadata and keep directory and envir
   assert.equal(terminal.querySelector('.session-browser-item-meta'), null)
   assert.equal(terminal.querySelector('.session-browser-item-kind'), null)
   assert.equal(terminal.querySelector('.session-browser-item-heading .sr-only')?.textContent, uiText('终端'))
+  assert.equal(terminal.querySelector('.session-browser-item-agent'),null)
+  for (const [id, label, icon] of [["plain", "Codex", "square-terminal"], ["context", "Antigravity", "orbit"]]) {
+    const agent = dom.window.document.querySelector(`[data-conversation-session="${id}"] .session-browser-item-agent`)!
+    assert.equal(agent.getAttribute("aria-label"),label)
+    assert.equal(agent.nextElementSibling?.tagName,"TIME")
+    assert.equal(agent.textContent,"")
+    assert(agent.querySelector(`.lucide-${icon}`))
+  }
   for (const id of ["plain", "terminal"]) {
     const row = dom.window.document.querySelector(`[data-conversation-session="${id}"]`)!
     assert.equal(row.getAttribute('data-parallel-member'), 'true')
@@ -94,5 +103,37 @@ test("workspace names update their accessible labels after metadata arrives whil
   patchConversationList(list, markup("Login"))
   assert.equal(list.querySelector("section")?.getAttribute("aria-label"), "Login")
   assert.equal(list.querySelector("[data-conversation-session]"), row)
+  dom.window.close()
+})
+
+test("grouped list omits project chevrons, middle-truncates long branch and directory subtitles, and groups unbound sessions", () => {
+  const longBranch = "feature/very-long-branch-name-for-middle-truncation-test"
+  const longDirectory = "super-long-worktree-directory-name-01"
+  const sessions: Session[] = [
+    {id: "proj", name: "Project chat", cwd: `/repo/worktrees/${longDirectory}`, primary_project_id: "app", context: {project: "App", projectID: "app", branch: longBranch, cwd: `/repo/worktrees/${longDirectory}`, kind: "Worktree"}},
+    {id: "free", name: "Unbound chat", cwd: `/tmp/${longDirectory}`},
+  ]
+  const rows = conversationTree(sessions, {
+    navigator: {directories: [{key: "local:/repo/app", cwd: "/repo/app", environment: "local", environmentName: "Local", name: "App", projectID: "app", projectName: "App", projectRoot: true}]},
+    limits: {}, collapsed: [], filtered: false,
+  })
+  const dom = new JSDOM(renderToStaticMarkup(createElement(ConversationList, {sessions, rows, showDirectory: true, sidebarMode: "grouped"})))
+  const doc = dom.window.document
+  assert.equal(doc.querySelector(".session-workspace-chevron, .lucide-chevron-right, .lucide-chevron-down"), null)
+  const branch = doc.querySelector('[data-conversation-session="proj"] .session-browser-item-branch')!
+  assert.equal(branch.getAttribute("title"), longBranch)
+  assert.equal(branch.textContent, longBranch)
+  assert(branch.querySelector(".session-middle-truncate-start"))
+  assert(branch.querySelector(".session-middle-truncate-end"))
+  const location = doc.querySelector('[data-conversation-session="free"] .session-browser-item-location')!
+  assert.equal(location.getAttribute("title"), `/tmp/${longDirectory}`)
+  assert.equal(location.textContent, longDirectory)
+  assert(location.querySelector(".session-middle-truncate-start"))
+  assert(location.querySelector(".session-middle-truncate-end"))
+  const unboundGroup = doc.querySelector('[data-collection="independent"]')!
+  const unboundToggle = unboundGroup.querySelector('[data-conversation-group-toggle="independent"]')!
+  assert.equal(unboundToggle.querySelector(".session-workspace-name")?.textContent, uiText("未绑定项目"))
+  assert.equal(unboundGroup.querySelector(".session-collection-details"), null)
+  assert(unboundGroup.querySelector(".session-collection-create[data-conversation-standalone='true']"))
   dom.window.close()
 })

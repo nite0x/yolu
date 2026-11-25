@@ -28,6 +28,8 @@ function refreshTerminalOptions() {
   $('#terminalStyle').value = style;
 }
 
+let terminalSaveRevision = 0;
+
 function updateTerminalFields() {
   const kind = $('#terminalKind').value;
   const custom = kind === 'custom';
@@ -53,17 +55,49 @@ function loadTerminalFields() {
   $('#terminalPath').value = saved.path || '';
   $('#terminalStyle').value = saved.kind === 'custom' ? saved.style : state.terminal.supported_styles?.[0] || 'otty';
   $('#terminalError').hidden = true;
+  if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = '';
   updateTerminalFields();
 }
 
-$('#terminalKind').addEventListener('change', updateTerminalFields);
+async function autoSavePresetTerminal() {
+  const environment = activeEnvironment;
+  const kind = $('#terminalKind').value;
+  if (kind === 'custom' || !state.loaded || !state.terminal.settings) return;
+  const revision = ++terminalSaveRevision;
+  $('#terminalError').hidden = true;
+  if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = uiText('保存中…');
+  try {
+    const result = await api('/api/settings/terminal', { method: 'PUT', environment, body: JSON.stringify({ kind, path: '', style: kind }) });
+    if (environment !== activeEnvironment || revision !== terminalSaveRevision) return;
+    state.terminal = result;
+    $('#terminalStatus').textContent = state.terminal.message + (state.terminal.launcher ? uiText("\n程序：") + state.terminal.launcher : '');
+    if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = uiText('已保存');
+    updateTerminalFields();
+  } catch (error) {
+    if (environment !== activeEnvironment || revision !== terminalSaveRevision) return;
+    if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = '';
+    $('#terminalError').textContent = error.message;
+    $('#terminalError').hidden = false;
+  }
+}
+
+$('#terminalKind').addEventListener('change', () => {
+  updateTerminalFields();
+  if ($('#terminalKind').value === 'custom') {
+    if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = '';
+    return;
+  }
+  void autoSavePresetTerminal();
+});
 $('#terminalForm').addEventListener('submit', event => {
   event.preventDefault();
   const kind = $('#terminalKind').value;
   const body = { kind, path: kind === 'custom' ? $('#terminalPath').value.trim() : '', style: kind === 'custom' ? $('#terminalStyle').value : kind };
+  if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = '';
   mutation(uiText("正在保存终端设置"), async () => {
     state.terminal = await api('/api/settings/terminal', { method: 'PUT', body: JSON.stringify(body) });
     $('#terminalStatus').textContent = state.terminal.message + (state.terminal.launcher ? uiText("\n程序：") + state.terminal.launcher : '');
+    if ($('#terminalSaveStatus')) $('#terminalSaveStatus').textContent = uiText('已保存');
     updateTerminalFields();
     toast(state.terminal.launcher ? uiText("终端设置已保存，所有终端入口将使用此配置") : uiText("终端设置已保存。") + state.terminal.message, !state.terminal.launcher);
   }, $('#terminalError'));

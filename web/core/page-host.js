@@ -134,6 +134,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   function renderChrome() {
     const page = currentPage();
+    const navigator = navigation?.restored && navigation.frame.contentWindow.WorkHubPage;
     const controls = document.getElementById('workhubWindowControls');
     if (controls) window.WorkHubLayout.renderChrome(controls,{
       ready:!!page?.ready,
@@ -142,6 +143,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       canGoForward:visitIndex < visits.length - 1,
       back:() => travel(-1), forward:() => travel(1),
       navigate:view => openPage({route:'/' + view,environment:page?.snapshot.environment}),
+      canCreateConversation:!!page?.ready && !!navigator?.canCreateConversation,
+      canSplitConversation:canSplit(group),
+      createConversation:placement => {
+        const current = currentPage();
+        if (current?.ready && (placement !== 'split' || canSplit(group))) {
+          navigator?.createConversation(placement,current.snapshot.environment);
+        }
+      },
       search:trigger => search.open(trigger),
       refresh:async () => {
         const targets = [navigation,page].filter(target => target?.ready && target.visible);

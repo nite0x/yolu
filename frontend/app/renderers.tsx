@@ -26,7 +26,7 @@ import { createResourceIcons } from "./resource-icons"
 import { ResourceIcon, ShortcutBadge } from "./shortcut-icons"
 import { createConversationList, conversationStatusMatches, patchConversationList } from "./conversation-list"
 import { createConversationState } from "./conversation-state"
-import { conversationTree } from "./conversation-tree"
+import { conversationTree, projectConversationStep } from "./conversation-tree"
 import { renderCreationChoices } from "./creation-choices"
 import { AgyDiagnosticsResults, CodexDiagnosticsResults } from "./settings"
 
@@ -35,7 +35,7 @@ import { AgyDiagnosticsResults, CodexDiagnosticsResults } from "./settings"
 export const workspaceUI = {
   syncListFilter,
   createConversationState,
-  conversationTree,
+  conversationTree, projectConversationStep,
   createConversationList, conversationStatusMatches, patchConversationList,
   createResourceIcons,
   resourceIcon: (props: Parameters<typeof ResourceIcon>[0]) => renderToStaticMarkup(<ResourceIcon {...props} />),

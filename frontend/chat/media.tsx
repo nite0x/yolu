@@ -7,7 +7,7 @@ import type {ChatController} from "./controller";
 import type {Entry} from "./model";
 import {ChatFileProvider, ChatMarkdownLink, ChatInlineCode} from "./file-preview";
 import {chatURLTransform} from "./links";
-import {VisualizationBlock, VisualizationContext, remarkVisualization} from "./visualization";
+import {VisualizationBlock, VisualizationContext, remarkDirectiveMarkers, remarkVisualization} from "./visualization";
 
 type Media = {refs: Map<string, string>; load: (ref: string) => Promise<string>};
 const MediaContext = createContext<Media | null>(null);
@@ -56,7 +56,7 @@ function ChatMarkdownImage({src, alt, title}: ImgHTMLAttributes<HTMLImageElement
   return <img src={loaded.image} alt={alt} title={title} className="chat-history-image max-w-full rounded-lg" loading="lazy" />;
 }
 const markdownComponents = {img: ChatMarkdownImage, a: ChatMarkdownLink, code: ChatInlineCode, div: VisualizationBlock};
-const chatRemarkPlugins = [remarkVisualization];
+const chatRemarkPlugins = [remarkVisualization, remarkDirectiveMarkers];
 export function ChatMessageText() {return <MarkdownText components={markdownComponents} urlTransform={chatURLTransform} remarkPlugins={chatRemarkPlugins} />;}
 export const ChatUserImage: ImageMessagePartComponent = props => {
   const loaded = useLocalImage(props.image);

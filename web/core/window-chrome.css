@@ -32,7 +32,9 @@ html[data-workhub-desktop] .workhub-window-controls button {
 }
 
 .window-header-row {
-  --window-search-width: clamp(180px, calc(100vw - 500px), 360px);
+  --window-header-icon-size: 14px;
+  --window-search-reserve: 650px;
+  --window-search-width: clamp(140px, calc(100vw - var(--window-search-reserve)), 360px);
   display: grid;
   grid-template-columns: minmax(max-content,1fr) minmax(28px,var(--window-search-width)) minmax(max-content,1fr);
   align-items: center;
@@ -41,19 +43,19 @@ html[data-workhub-desktop] .workhub-window-controls button {
   padding-inline: 9px 10px;
 }
 
-html[data-workhub-platform=macos] .window-header-row { --window-search-width: clamp(180px, calc(100vw - 660px), 360px); }
+html[data-workhub-platform=macos] .window-header-row { --window-search-reserve: 820px; }
 html[data-workhub-platform=macos] .window-header-leading { padding-inline-start: 81px; }
 
-.window-header-leading, .window-destinations, .window-history {
+.window-header-leading, .window-destinations, .window-history, .window-conversation-actions {
   display: flex;
   align-items: center;
   flex: none;
 }
 
 .window-header-leading { gap: 10px; justify-self: start; }
-.window-destinations, .window-history { gap: 2px; }
-.window-history { position: relative; padding-inline-start: 8px; }
-.window-history::before {
+.window-destinations, .window-history, .window-conversation-actions { gap: 2px; }
+:is(.window-history, .window-conversation-actions) { position: relative; padding-inline-start: 8px; }
+:is(.window-history, .window-conversation-actions)::before {
   content: "";
   position: absolute;
   inset-inline-start: 0;
@@ -85,7 +87,7 @@ html[data-workhub-platform=macos] .window-header-leading { padding-inline-start:
   text-align: start;
 }
 .window-search-trigger:hover { background: var(--yolu-hover); color: var(--yolu-foreground); }
-.window-search-trigger svg { flex: none; }
+.window-search-trigger svg { width: var(--window-header-icon-size); height: var(--window-header-icon-size); flex: none; }
 .window-search-trigger > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .window-search-trigger kbd { margin-inline-start: auto; font: inherit; white-space: nowrap; }
 
@@ -185,13 +187,13 @@ html[data-workhub-platform=windows] .workhub-window-controls {
 /* Application utilities live above every page and the shared navigator. */
 .window-utilities { position: relative; grid-column: 3; justify-self: end; display: flex; align-items: center; gap: 6px; }
 .window-utility-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; min-width: 28px; padding: 0 6px; border: 0; border-radius: var(--yolu-chip-radius,8px); background: transparent; color: var(--yolu-muted-ink); font: inherit; font-size: var(--yolu-font-size-label); white-space: nowrap; }
-.window-utility-button svg { width: 16px; height: 16px; flex: none; }
+.window-utility-button svg { width: var(--window-header-icon-size, 14px); height: var(--window-header-icon-size, 14px); flex: none; }
 .window-utility-button:hover { background: var(--yolu-hover); color: var(--yolu-foreground); }
 .window-utility-button[aria-current=page] { background: var(--yolu-selected); color: var(--yolu-primary-ink); }
 .window-utility-button:is(:disabled,[aria-disabled=true]) { opacity: .45; cursor: default; }
 .window-utility-button:focus-visible,.window-utilities .codex-quota-trigger:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: -2px; }
 .window-utilities .codex-quota-trigger { width: auto; min-height: 0; height: 28px; gap: 5px; padding: 0 7px; font-size: 11px; }
-.window-utilities .codex-quota-trigger > svg { width: 15px; height: 15px; }
+.window-utilities .codex-quota-trigger > svg { width: var(--window-header-icon-size); height: var(--window-header-icon-size); }
 .window-utilities .codex-quota-copy { flex: none; flex-wrap: nowrap; }
 .window-utilities .codex-quota-chevron { display: none; }
 .window-utilities .codex-quota-summary { margin: 0; white-space: nowrap; }
@@ -221,7 +223,7 @@ html[data-workhub-platform=windows] .workhub-window-controls {
 }
 .window-refresh-status[data-result=failed] { color: var(--yolu-warning); }
 .window-header-leading .window-utility-button { width: 32px; min-width: 32px; height: 32px; padding: 0; }
-@media (max-width: 640px) {
+@media (max-width: 700px) {
   .window-header-row { --window-search-width: 28px; }
   .window-search-trigger { padding: 0; justify-content: center; }
   .window-search-trigger :is(span,kbd) { display: none; }
@@ -231,11 +233,11 @@ html[data-workhub-platform=windows] .workhub-window-controls {
   .window-utilities .codex-quota-copy { display: none; }
 }
 @media (max-width: 420px) {
-  .window-header-row { gap: 4px; padding-inline: 4px; }
+  .window-header-row { gap: 2px; padding-inline: 2px; }
   .window-header-leading { gap: 3px; }
-  .window-destinations, .window-history, .window-utilities { gap: 1px; }
-  .window-history { padding-inline-start: 4px; }
-  .window-history .window-utility-button { width: 26px; min-width: 26px; }
+  .window-destinations, .window-history, .window-conversation-actions, .window-utilities { gap: 1px; }
+  :is(.window-history, .window-conversation-actions) { padding-inline-start: 4px; }
+  .window-header-leading .window-utility-button { width: 26px; min-width: 26px; }
 }
 @media (pointer: coarse) {
   html[data-workhub-desktop]:not([data-workhub-platform]) { --workspace-window-header-height: 48px; }

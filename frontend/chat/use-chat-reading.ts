@@ -1,4 +1,4 @@
-import {useLayoutEffect, useRef, useState} from "react";
+import {useLayoutEffect, useRef} from "react";
 import type {ThreadRuntime} from "@assistant-ui/react";
 import type {DraftRecord} from "./drafts";
 
@@ -14,13 +14,9 @@ export interface ConversationReadingController {
 // Track a message anchor so reflow and prepending history preserve the text in view.
 export function useChatReading(controller: ConversationReadingController, thread: ThreadRuntime) {
   const container = useRef<HTMLDivElement>(null);
-  const [hasNew, setHasNew] = useState(false);
-  const [awayFromBottom, setAwayFromBottom] = useState(false);
   useLayoutEffect(() => {
     const viewport = container.current?.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
     if (!viewport) return;
-    setHasNew(false);
-    setAwayFromBottom(!controller.reading.bottom);
     let frame = 0;
     let restoring = false;
     let initialized = false;
@@ -48,8 +44,6 @@ export function useChatReading(controller: ConversationReadingController, thread
       const anchor = messages().find(node => node.getBoundingClientRect().bottom > top);
       controller.reading = {top: viewport.scrollTop, bottom, anchor: anchor?.dataset.chatMessageId || "", offset: anchor ? anchor.getBoundingClientRect().top - top : 0, latest: bottom ? controller.latestMessage() : controller.reading.latest};
       controller.readingChanged();
-      setAwayFromBottom(!bottom);
-      if (bottom) setHasNew(false);
     };
     const onScroll = () => { record(); loadEarlier(); };
     const restore = () => {
@@ -62,9 +56,8 @@ export function useChatReading(controller: ConversationReadingController, thread
       restoring = false;
       if (!controller.opening) {
         initialized = true;
-        if (saved.bottom) { saved.latest = controller.latestMessage(); setHasNew(false); }
+        if (saved.bottom) saved.latest = controller.latestMessage();
       }
-      setAwayFromBottom(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop >= 80);
       loadEarlier();
     };
     const schedule = () => { if (!frame && visible()) frame = requestAnimationFrame(restore); };
@@ -73,17 +66,7 @@ export function useChatReading(controller: ConversationReadingController, thread
       if (detail?.phase === 'before') record();
       else if (detail?.visible) schedule();
     };
-    const fingerprint = () => {
-      const tail = messages().at(-1);
-      return tail ? tail.dataset.chatMessageId + ':' + tail.textContent : "";
-    };
-    let last = fingerprint();
-    const observer = new MutationObserver(() => {
-      const next = fingerprint();
-      if (!controller.opening && last && next !== last && !controller.reading.bottom) setHasNew(true);
-      last = next;
-      schedule();
-    });
+    const observer = new MutationObserver(schedule);
     observer.observe(viewport.querySelector('[data-slot="aui_message-group"]') || viewport, {childList: true, subtree: true, characterData: true});
     const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
     resize?.observe(viewport);
@@ -112,8 +95,6 @@ export function useChatReading(controller: ConversationReadingController, thread
     // Override any browser/CSS smooth animation: intermediate scroll events
     // must never turn an explicit latest request back into an old-message anchor.
     if (viewport) viewport.scrollTo({top:viewport.scrollHeight, behavior:"instant"});
-    setHasNew(false);
-    setAwayFromBottom(false);
   };
-  return {container, hasNew, awayFromBottom, latest};
+  return {container, latest};
 }

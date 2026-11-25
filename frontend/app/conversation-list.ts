@@ -37,7 +37,7 @@ export function createConversationList({list, sessionKey, render, remember}: {
     let height = 0
     for (let i = start; i < end; i++) {
       const item = items[i]
-      const estimate = "kind" in item && item.kind !== "session" ? 38 : 88
+      const estimate = "kind" in item && item.kind === "more" ? 30 : 44
       height += view.listHeights?.get(rowKey(item)) || estimate
     }
     return height
@@ -110,7 +110,7 @@ export function createConversationList({list, sessionKey, render, remember}: {
         remember()
       }
     },
-    focus(view: ListState | null, index: number) {
+    focus(view: ListState | null, index: number, behavior: ScrollBehavior = "auto") {
       if (!view || !rows(view).length) return
       const items = rows(view)
       index = Math.max(0, Math.min(index, items.length - 1))
@@ -120,7 +120,7 @@ export function createConversationList({list, sessionKey, render, remember}: {
       render()
       const target = elements().find(el => elementKey(el) === rowKey(items[index]))
       target?.focus({preventScroll: true})
-      target?.scrollIntoView({block: "nearest"})
+      target?.scrollIntoView({block: "nearest", behavior})
     },
   }
 }
@@ -151,7 +151,11 @@ export function patchConversationList(list: HTMLElement, markup: string) {
       if (node !== incoming && !node.isEqualNode(incoming)) {
         if (node.matches(".session-browser-groups,.session-browser-group,.session-browser-items,li")) {
           node.className = incoming.className
-          if (node.matches(".session-browser-group")) node.setAttribute("aria-label", incoming.getAttribute("aria-label") || "")
+          if (node.matches(".session-browser-group")) {
+            const label = incoming.getAttribute("aria-label")
+            if (label === null) node.removeAttribute("aria-label")
+            else node.setAttribute("aria-label", label)
+          }
           sync(node, incoming)
         }
         else if (node.hasAttribute("data-list-spacer")) node.style.height = incoming.style.height
