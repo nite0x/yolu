@@ -70,3 +70,9 @@
 .session-worktree-setup code { overflow-wrap: anywhere; }
 .session-worktree-setup form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
 .session-worktree-setup label { display: grid; gap: 4px; }
+.session-worktree-choice { display:inline-flex; width:fit-content; align-items:center; gap:7px; margin:10px 8px 0; color:var(--muted-foreground); font-size:12px; line-height:20px; cursor:pointer; }
+.session-worktree-choice input { width:13px; height:13px; margin:0; accent-color:var(--primary); cursor:pointer; }
+.session-worktree-choice input:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
+.session-worktree-choice:has(input:disabled) { opacity:.5; cursor:default; }
+.session-creation-bindings { display:grid; justify-items:start; gap:4px; width:100%; max-width:400px; margin-top:6px; }
+.session-creation-bindings .session-dir-item { width:100%; }

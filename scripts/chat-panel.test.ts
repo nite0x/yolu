@@ -84,6 +84,45 @@ test("draft previews use the first task line without creating or renaming a sess
   } finally {h.dispose();}
 });
 
+test("saved and live Codex question replies render questions above literal answers", async () => {
+  const pairs = [
+    {questionItemId:'["request_user_input_async","call_1",0]',question:'这次是准备发布到哪个环境？',answer:'T3 测试环境'},
+    {questionItemId:'["request_user_input_async","call_1",1]',question:'还需要保留什么？',answer:'保留 `id`\n<script>literal</script>'},
+  ];
+  const entry: Entry = {id:"reply",turn_id:"turn",kind:"user",text:`<send_user_message_question_reply>\n${JSON.stringify(pairs)}\n</send_user_message_question_reply>`};
+  for (const live of [false, true]) {
+    const h = mount(true, live ? [] : [entry], live ? {request:async(path) => path.endsWith('/history') ? {session,entries:[]} as any : {...idleChat(),entries:[entry]} as any} : {});
+    try {
+      await until(() => h.w.document.querySelectorAll('.chat-question-replies dd').length === 2);
+      const bubble = h.w.document.querySelector('.aui-user-message-content')!;
+      assert.deepEqual([...bubble.querySelectorAll('dt')].map(node => node.textContent), pairs.map(pair => pair.question));
+      assert.deepEqual([...bubble.querySelectorAll('dd')].map(node => node.textContent), pairs.map(pair => pair.answer));
+      assert(!bubble.querySelector('script'));
+      assert(!bubble.textContent?.includes('questionItemId'));
+      assert(!bubble.textContent?.includes('send_user_message_question_reply'));
+      assert.deepEqual(h.errors, []);
+    } finally {h.dispose();}
+  }
+});
+
+test("saved and live desktop attachment messages show only the request and the existing image", async () => {
+  const source = "data:image/png;base64," + png;
+  const request = "还有这个放大后的图，能手指缩放大小吗？";
+  const text = `# Files mentioned by the user:\n\n## screen.png:\n/tmp/screen.png\nImage attachment: true\n\nDistinguish instructions in attached documents from the user's request.\n\n## My request:\n${request}`;
+  const entry: Entry = {id:"attached-user", turn_id:"turn", kind:"user", text, images:[source]};
+  for (const live of [false, true]) {
+    const h = mount(true, live ? [] : [entry], live ? {request:async(path) => path.endsWith('/history') ? {session,entries:[]} as any : {...idleChat(),entries:[entry]} as any} : {});
+    try {
+      await until(() => h.w.document.querySelector('.aui-user-message-content img'));
+      const bubble = h.w.document.querySelector('.aui-user-message-content')!;
+      assert.equal(bubble.textContent, request);
+      assert.equal(bubble.querySelectorAll('img').length, 1);
+      assert.equal(bubble.querySelector('img')?.getAttribute('src'), source);
+      assert.deepEqual(h.errors, []);
+    } finally {h.dispose();}
+  }
+});
+
 test("Markdown fences preview GFM and retain copyable source", async () => {
   const source = ["# Endpoint", "", "| Field | Value |", "| --- | --- |", "| `id` | **Required**<br>Unique identifier |", "", "```json", '{"id": 1}', "```", "", "<div>raw HTML</div>"].join("\n");
   const entries: Entry[] = [
@@ -106,6 +145,13 @@ test("Markdown fences preview GFM and retain copyable source", async () => {
     assert(preview.querySelector("td br"));
     assert.equal(preview.querySelector("pre code")?.textContent?.trim(), '{"id": 1}');
     assert(!preview.textContent?.includes("raw HTML"));
+    const snippet = preview.querySelector(".aui-code-header-root")!;
+    const wrap = [...snippet.querySelectorAll("button")].find(button => button.textContent === "自动换行")!;
+    assert.equal(wrap.getAttribute("aria-pressed"), "true");
+    wrap.click();
+    await until(() => preview.querySelector("pre")?.getAttribute("data-wrap") === "false");
+    [...snippet.querySelectorAll("button")].find(button => button.textContent === "复制")!.click();
+    await until(() => copied.trimEnd() === '{"id": 1}');
     button("复制").click();
     await until(() => copied === source || copied === `${source}\n`);
     button("源码").click();
@@ -594,6 +640,62 @@ test("official Markdown and tool components render existing history and expose c
     await until(()=>h.w.document.body.textContent?.includes("not executable"));
     assert.equal(h.w.document.querySelector(".aui-tool-fallback-result script"),null);
     assert.match(h.w.document.querySelector(".aui-tool-fallback-result")?.textContent||"",/not executable/);
+    assert.deepEqual(h.errors,[]);
+  } finally {h.dispose();}
+});
+
+test("saved and live tool activity uses action summaries, plain output and visible scoped image previews", async () => {
+  const image = '/tmp/tool-preview.png';
+  const entries: Entry[] = [
+    {id:'read',turn_id:'turn',kind:'command',command:"cat src/app.ts",command_actions:[{type:'read',path:'src/app.ts'}],status:'completed'},
+    {id:'edit',turn_id:'turn',kind:'change',text:'src/app.ts\n@@ -1 +1 @@\n-old\n+new',file_changes:[{path:'src/app.ts',additions:1,deletions:1}],status:'completed'},
+    {id:'test',turn_id:'turn',kind:'command',command:'npm test',status:'failed',exit_code:1,output:'<script>failed safely</script>',duration_ms:1234},
+    {id:'view',turn_id:'turn',kind:'activity',activity_type:'imageView',tool:'查看图片',text:image,images:[image],local_images:{[image]:'scoped-preview'},status:'completed'},
+    {id:'tool',turn_id:'turn',kind:'activity',tool:'repo · inspect',text:'',status:'completed'},
+  ];
+  for (const live of [false,true]) {
+    const h=mount(true,[],{request:async(path)=>path.includes('/image?')?{data_url:'data:image/png;base64,'+png} as any
+      :path.endsWith('/history')?{session,entries:live?[]:entries} as any
+      :path.endsWith('/bindings')?{bindings:[]} as any
+      :{...idleChat(),status:'completed',entries:live?entries:[]} as any});
+    try {
+      await until(()=>h.w.document.querySelector('.chat-tool-images img'));
+      const trigger=h.w.document.querySelector<HTMLButtonElement>('.aui-tool-group-trigger')!;
+      for(const category of ['读取文件','编辑文件','运行命令','查看图片','1 项失败']) assert.ok(trigger.textContent?.includes(category));
+      assert.equal(h.w.document.querySelector('.aui-tool-fallback-args'),null);
+      assert.equal(h.w.document.querySelectorAll('.chat-tool-images img').length,1);
+      trigger.click();
+      await until(()=>h.w.document.querySelector('.chat-tool-activity[data-state="failed"]'));
+      const failed=h.w.document.querySelector<HTMLButtonElement>('.chat-tool-activity[data-state="failed"] .aui-tool-fallback-trigger')!;
+      assert.ok(failed.textContent?.includes('运行命令失败'));
+      failed.click();
+      await until(()=>h.w.document.querySelector('.aui-tool-fallback-result'));
+      assert.equal(h.w.document.querySelector('.aui-tool-fallback-result')?.textContent,'<script>failed safely</script>');
+      assert.equal(h.w.document.querySelector('.aui-tool-fallback-result script'),null);
+      assert.ok(h.w.document.querySelector('.chat-tool-metadata')?.textContent?.includes('退出码 1'));
+      assert.ok(!h.w.document.body.textContent?.includes('Used tool'));
+      assert.ok(!h.w.document.body.textContent?.includes('"status":'));
+      assert.ok(!h.w.document.body.textContent?.includes('"command":'));
+      h.w.document.querySelector<HTMLElement>('.chat-tool-image [role="button"]')!.click();
+      await until(()=>h.w.document.querySelector('[role="dialog"]'));
+      assert.deepEqual(h.errors,[]);
+    } finally {h.dispose();}
+  }
+});
+
+test("failed file edits retain readable error output and stay out of the successful change summary", async () => {
+  const h = mount(true,[{id:'failed-edit',turn_id:'turn',kind:'change',status:'failed',text:'src/app.ts\n+unapplied',output:'Patch context did not match.'}]);
+  try {
+    await until(()=>h.w.document.querySelector('.aui-tool-group-trigger'));
+    assert.ok(h.w.document.querySelector('.aui-tool-group-trigger')?.textContent?.includes('1 项失败'));
+    h.w.document.querySelector<HTMLButtonElement>('.aui-tool-group-trigger')!.click();
+    await until(()=>h.w.document.querySelector('.aui-tool-fallback-trigger'));
+    const trigger=h.w.document.querySelector<HTMLButtonElement>('.aui-tool-fallback-trigger')!;
+    assert.ok(trigger.textContent?.includes('编辑文件失败'));
+    trigger.click();
+    await until(()=>h.w.document.querySelector('.aui-tool-fallback-result'));
+    assert.equal(h.w.document.querySelector('.aui-tool-fallback-result')?.textContent,'Patch context did not match.');
+    assert.equal(h.w.document.querySelector('.chat-change-summary'),null);
     assert.deepEqual(h.errors,[]);
   } finally {h.dispose();}
 });
@@ -1111,7 +1213,7 @@ test("the shared panel opens a project directory without any workspace object", 
   const path = h.w.document.querySelector(".chat-panel-header .chat-workspace-path");
   assert.equal(path?.textContent, "/workspace/project");
   assert.equal(h.w.document.querySelector(".chat-panel-header .chat-workspace-branch")?.textContent, "feature/current");
-  assert.equal(setup.parentElement?.className, "chat-creation-setup");
+  assert(setup.closest(".chat-creation-setup"));
   assert(footer?.classList.contains("sticky"));
   h.type("从项目页开始"); await tick();
   h.w.document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
@@ -1458,6 +1560,37 @@ test("native Codex runs show their activity without offering local stop or sendi
   } finally {h.dispose();}
 });
 
+test("runtime notices share the run row and open accessible details inside the conversation dialog", async () => {
+  const notice = "对话正在原生 Codex 中运行，进展会自动同步；请在原窗口处理停止或确认。";
+  const h = mount(true);
+  const dialog = h.w.document.createElement('dialog'); dialog.open = true;
+  dialog.append(h.w.document.querySelector('.session-history-panel')!); h.w.document.body.append(dialog);
+  h.setChat({...idleChat(), external:true, busy:true, status:'running', notice}); h.bridge.open(h.options);
+  try {
+    await until(() => h.w.document.querySelector('.chat-notice-trigger'));
+    const trigger = h.w.document.querySelector<HTMLButtonElement>('.chat-notice-trigger')!;
+    assert.equal(trigger.closest('.chat-run-status')?.querySelectorAll('.chat-run-indicator').length, 1);
+    assert.equal(h.w.document.querySelector('.chat-feedback'), null);
+    assert.equal(h.w.document.body.textContent?.includes(notice), false);
+    trigger.focus(); trigger.click();
+    await until(() => h.w.document.querySelector('.chat-notice-popover'));
+    const details = h.w.document.querySelector('.chat-notice-popover')!;
+    assert.equal(details.closest('dialog'), dialog);
+    assert.equal(details.getAttribute('role'), 'dialog');
+    assert.ok(details.textContent?.includes(notice));
+    details.dispatchEvent(new h.w.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+    await until(() => !h.w.document.querySelector('.chat-notice-popover'));
+    await until(() => h.w.document.activeElement === trigger);
+    h.setChat({...idleChat(), status:'failed', blocked:'请先处理目录冲突', error:'连接失败', notice}); h.bridge.open(h.options);
+    await until(() => h.w.document.querySelector('.chat-feedback [role="alert"]'));
+    assert.equal(h.w.document.querySelector('.chat-run-indicator'), null);
+    assert.ok(h.w.document.querySelector('.chat-feedback')?.textContent?.includes('请先处理目录冲突'));
+    assert.ok(h.w.document.querySelector('.chat-feedback [role="alert"]')?.textContent?.includes('连接失败'));
+    assert.ok(h.w.document.querySelector('.chat-feedback .chat-notice-trigger'));
+    assert.deepEqual(h.errors, []);
+  } finally {h.dispose();}
+});
+
 test("assistant local Markdown images load through the session image API and fail with readable text", async () => {
   const local='/workspace/截图 (1).png';
   const h=mount(true,[{id:'image-answer',turn_id:'turn',kind:'assistant',text:`![检查结果](<${local}>)`,local_images:{[local]:'signed-image-reference'}}],{request:async(path)=>{
@@ -1789,19 +1922,21 @@ test("voice dictation appends to the native draft, stops when hidden and preserv
   } finally {h.dispose();}
 });
 
-test("sending a project mention attaches it silently and shows pending access in working details", async () => {
+test("sending multiple project mentions links them once and shows pending access in working details", async () => {
   const backend = {id:"backend",name:"yolu-web",path:"/repos/backend",worktrees:[{path:"/repos/backend",branch:"main"}]};
+  const service = {id:"service",name:"yolu-svc",path:"/repos/service",worktrees:[]};
+  const similar = {id:"other",name:"yolu",path:"/repos/other",worktrees:[]};
   const calls: {path:string; method?:string; body?:any}[] = [];
   const attached = {id:"secondary",project_id:backend.id,project_name:backend.name,directory:backend.path,branch:"main",status:"pending",role:"additional",access:"read"};
   let bindings: unknown[] = [];
   const h = mount(true, [], {
-    overview:{projects:[project,backend]},
+    overview:{projects:[project,backend,service,similar]},
     async request(path, init) {
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       calls.push({path,method:init?.method,body});
       if (path === "/api/session-bindings/inspect") return attached as any;
       if (path.endsWith("/bindings")) {
-        if (init?.method === "POST") bindings = [attached];
+        if (init?.method === "POST") bindings = [attached,{...attached,id:"service",project_id:service.id,project_name:service.name,directory:service.path}];
         return {bindings} as any;
       }
       if (path.endsWith("/history")) return {session,entries:[]} as any;
@@ -1818,6 +1953,8 @@ test("sending a project mention attaches it silently and shows pending access in
     choice()!.click();
     await until(() => h.input().value.includes("@yolu-web"));
     assert.equal(calls.some(call => call.method === "POST"),false);
+    h.type(h.input().value + "(@yolu-svc), @YOLU-WEB. support@yolu");
+    await tick();
     document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
     await until(() => document.querySelector(".session-context-chip[data-status=pending]"));
     const binding = document.querySelector<HTMLButtonElement>(".session-context-chip[data-status=pending]")!;
@@ -1830,8 +1967,57 @@ test("sending a project mention attaches it silently and shows pending access in
     await until(bindingDetails);
     assert.match(bindingDetails()!.textContent || "", /\/repos\/backend/);
     assert.equal(document.querySelector(".session-binding-dialog"),null);
-    assert.deepEqual(calls.find(call => call.path.endsWith("/bindings") && call.method === "POST")?.body, {project_id:"backend",directory:"/repos/backend",access:"read",role:"additional"});
+    assert.deepEqual(calls.find(call => call.path.endsWith("/bindings") && call.method === "POST")?.body, {project_ids:["backend","service"]});
     await until(() => calls.some(call => call.path.endsWith("/chat") && call.method === "POST"));
+  } finally {h.dispose();}
+});
+
+test("the creation picker retains chosen directory grants and sends them with new project references", async () => {
+  const backend = {id:"backend",name:"yolu-web",path:"/repos/backend",worktrees:[]};
+  const service = {id:"service",name:"Service tools",path:"/repos/service",worktrees:[]};
+  const starts: any[] = [];
+  const changes: any[] = [];
+  const h = mount(false, [], {
+    overview:{projects:[project,backend,service]},
+    target:{project_id:project.id,cwd:project.path},
+    updateDraftBindings: bindings => changes.push(JSON.parse(JSON.stringify(bindings))),
+    async request(path, init) {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      if (path === "/api/session-bindings/inspect") return {...body,status:"pending"} as any;
+      if (path === "/api/sessions/new" && init?.method === "POST") {
+        starts.push(body);
+        return {session,chat:idleChat()} as any;
+      }
+      return {models:[],modes:[],entries:[],session} as any;
+    },
+  });
+  const {document, Event} = h.w;
+  try {
+    await until(h.input);
+    document.dispatchEvent(new Event("workhub:creation-add-directory"));
+    await until(() => document.querySelector(".session-binding-dialog"));
+    const dialog = document.querySelector<HTMLDialogElement>(".session-binding-dialog")!;
+    const [selectProject, selectAccess] = dialog.querySelectorAll("select");
+    assert.equal(selectAccess.value,"read");
+    selectProject.value = backend.id;
+    selectProject.dispatchEvent(new Event("change",{bubbles:true}));
+    await tick();
+    const access = [...dialog.querySelectorAll("select")].at(-1)!;
+    access.value = "write";
+    access.dispatchEvent(new Event("change",{bubbles:true}));
+    await tick();
+    dialog.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+    await until(() => dialog.querySelector(".session-binding-preview"));
+    dialog.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+    await until(() => document.querySelector(".session-creation-bindings .session-dir-item"));
+    const selected = {project_id:backend.id,directory:backend.path,access:"write",role:"additional",allow_shared:false};
+    assert.deepEqual(changes, [[selected]]);
+    h.type(`@${project.name} @${backend.name} @${service.name}`);
+    await tick();
+    document.querySelector<HTMLButtonElement>(".aui-composer-send")!.click();
+    await until(() => starts.length === 1);
+    assert.deepEqual(starts[0].bindings, [selected,{project_id:service.id,directory:service.path,access:"read",role:"additional"}]);
+    assert.equal(starts[0].cwd,project.path);
   } finally {h.dispose();}
 });
 
@@ -1995,4 +2181,137 @@ test("standalone directive markers render as compact status notes and untitled m
   } finally {
     h.dispose();
   }
+});
+
+const predictedChat = (text = "检查边界情况，并运行相关测试。"): ChatState => ({
+  ...idleChat(), id: "prediction-run", turn_id: "prediction-turn", status: "completed",
+  entries: [{id: "prediction-reply", turn_id: "prediction-turn", kind: "assistant", text: "本轮已完成。"}],
+  prediction: {source_turn_id: "prediction-turn", text},
+});
+
+test("next prompt stays ghost text without a visible shortcut bar and Tab accepts an unsent draft", async () => {
+  const h = mount(true);
+  h.setChat(predictedChat());
+  try {
+    await until(() => h.input()?.placeholder === predictedChat().prediction!.text);
+    assert.equal(h.input().value, "");
+    assert.ok(h.input().getAttribute("aria-description")?.includes("Tab"));
+    const composer = h.input().closest("form")!;
+    assert.doesNotMatch(composer.textContent || "", /Tab 接受建议|Esc 忽略/);
+    const sends = () => h.calls.filter(call => call.body && call.path.endsWith("/chat"));
+    h.input().focus();
+    const event = new h.w.KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true});
+    h.input().dispatchEvent(event);
+    assert.equal(event.defaultPrevented, true);
+    await until(() => h.input().value === predictedChat().prediction!.text);
+    assert.equal(sends().length, 0);
+    assert.equal(h.w.document.activeElement, h.input());
+    h.type("我修改后的下一步");
+    await until(() => h.input().value === "我修改后的下一步");
+    assert.equal(sends().length, 0);
+    assert.deepEqual(h.errors, []);
+  } finally {h.dispose();}
+});
+
+test("Escape dismisses predictions across polls and navigation without altering a draft", async () => {
+  const h = mount(true);
+  h.setChat(predictedChat());
+  try {
+    await until(() => h.input()?.placeholder === predictedChat().prediction!.text);
+    h.input().dispatchEvent(new h.w.KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}));
+    await until(() => h.input().placeholder !== predictedChat().prediction!.text);
+    assert.equal(h.input().value, "");
+    h.bridge.close(); await tick(); h.bridge.open(h.options);
+    await until(h.input); await tick();
+    assert.notEqual(h.input().placeholder, predictedChat().prediction!.text);
+    h.type("保留我的草稿");
+    h.bridge.close(); await tick(); h.bridge.open(h.options);
+    await until(() => h.input()?.value === "保留我的草稿");
+    assert.notEqual(h.input().placeholder, predictedChat().prediction!.text);
+  } finally {h.dispose();}
+});
+
+test("typing rejects the current prediction and IME or modified Tab never accepts it", async () => {
+  const h = mount(true);
+  h.setChat(predictedChat());
+  try {
+    await until(() => h.input()?.placeholder === predictedChat().prediction!.text);
+    for (const init of [{key: "Tab", isComposing: true}, {key: "Tab", shiftKey: true}, {key: "Tab", ctrlKey: true}]) {
+      const event = new h.w.KeyboardEvent("keydown", {...init, bubbles: true, cancelable: true});
+      h.input().dispatchEvent(event);
+      assert.equal(event.defaultPrevented, false);
+      assert.equal(h.input().value, "");
+    }
+    h.type("我自己写");
+    await until(() => h.input().placeholder !== predictedChat().prediction!.text);
+    h.type(""); await tick();
+    assert.notEqual(h.input().placeholder, predictedChat().prediction!.text);
+  } finally {h.dispose();}
+});
+
+test("predictions from another turn, running turns, archived sessions and other providers stay hidden", async () => {
+  for (const mode of ["stale", "running", "archived", "agy"]) {
+    const h = mount(true, [], mode === "archived" ? {session: {...session, archived: true}} : mode === "agy" ? {session: {...session, provider: "agy"}} : {});
+    const chat = predictedChat();
+    if (mode === "stale") chat.prediction!.source_turn_id = "old-turn";
+    if (mode === "running") {chat.busy = true; chat.status = "running";}
+    h.setChat(chat);
+    try {
+      await until(h.input); await tick();
+      assert.notEqual(h.input().placeholder, chat.prediction!.text);
+    } finally {h.dispose();}
+  }
+});
+
+test("occupied conversations use the recovery card, preserve the draft and fork through the existing action", async () => {
+  let current = {...idleChat(),status:"conflict",error:"writer lock held",notice:"technical writer details"};
+  let forked = false;
+  const h = mount(true,[],{request:async(path,init)=>{
+    const body=init?.body ? JSON.parse(String(init.body)) : undefined;
+    if (path.endsWith('/history')) return {session,entries:[]} as any;
+    if (path.endsWith('/bindings')) return {bindings:[]} as any;
+    if (path.endsWith('/manage')) {assert.equal(body.action,'fork');forked=true;return {session:{...session,id:'fork'}} as any;}
+    return current as any;
+  }});
+  try {
+    await until(()=>h.w.document.querySelector('.chat-occupied'));
+    h.type('保留尚未发送的消息');await tick();
+    const card=h.w.document.querySelector('.chat-occupied')!;
+    assert.match(card.textContent || '',/已在另一个应用中打开/);
+    assert(!h.w.document.querySelector('.chat-feedback [role=alert]'),'ownership failure is represented once');
+    const actions=[...card.querySelectorAll<HTMLButtonElement>('button')];
+    assert.equal(actions[0].textContent,'重试');assert.equal(actions[1].textContent,'创建聊天分支');
+    actions[1].click();await until(()=>forked);
+    assert.equal(h.input().value,'保留尚未发送的消息');
+    h.type('');current=idleChat();actions[0].click();
+    await until(()=>!h.w.document.querySelector('.chat-occupied'));
+    assert.deepEqual(h.errors,[]);
+  } finally {h.dispose();}
+});
+
+test("Worktree execution creates only on send and reuses the directory after a failed send", async () => {
+  const calls:{path:string;body:any}[]=[];
+  const worktree='/workspace/isolated-project';let sends=0;
+  const h=mount(false,[],{target:{project_id:'p',cwd:'/repo/project'},request:async(path,init)=>{
+    const body=init?.body ? JSON.parse(String(init.body)) : undefined;calls.push({path,body});
+    if (path.endsWith('/git')) return {project:{...project,worktrees:[]},branches:[]} as any;
+    if (path.endsWith('/worktrees')) return {path:worktree} as any;
+    if (path.endsWith('/inspect')) return {directory:body.directory,access:'write'} as any;
+    if (path.endsWith('/sessions/new')) {if (!sends++) throw new Error('send failed');return {session:{...session,cwd:worktree,primary_project_id:'p'},chat:idleChat()} as any;}
+    return idleChat() as any;
+  }});
+  try {
+    await until(()=>h.w.document.querySelector('.session-worktree-choice input'));
+    const mode=h.w.document.querySelector<HTMLInputElement>('.session-worktree-choice input')!;
+    mode.click();await tick();
+    assert(!calls.some(call=>call.path.endsWith('/worktrees')),'choosing a mode creates no directories');
+    assert(!h.w.document.body.textContent?.includes('创建独立 Worktree'));
+    h.type('独立开发');h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
+    await until(()=>h.input().value==='独立开发' && calls.some(call=>call.path.endsWith('/sessions/new')));
+    h.w.document.querySelector<HTMLButtonElement>('.aui-composer-send')!.click();
+    await until(()=>sends===2);
+    assert.equal(calls.filter(call=>call.path.endsWith('/worktrees')).length,1);
+    const sent=calls.filter(call=>call.path.endsWith('/sessions/new'));
+    assert.equal(sent[1].body.cwd,worktree);assert.equal(sent[1].body.project_id,'p');
+  } finally {h.dispose();}
 });

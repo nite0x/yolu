@@ -57,24 +57,18 @@ test('a delayed stop response never overwrites an already received terminal exit
   assert.equal(h.$('#terminalStatusBadge').dataset.state,'completed');
 });
 
-test('terminal creation exposes directory choices without expanding working details', async t => {
+test('terminal creation shows its mode, project and working path before the launcher', async t => {
   const h = await mount(t);
-  assert.equal(h.$('.conversation-kind-switch').parentElement.id,'terminalKind');
+  assert.equal(h.$('.conversation-kind-switch').closest('#terminalCreationSetup').nextElementSibling.id,'terminalForm');
   assert.equal(h.$('.conversation-kind-switch [aria-pressed=true]').textContent,'终端');
   assert.equal(h.$('.conversation-surface-header h2').textContent,'新建对话');
   assert.equal(h.$('#terminalContext').textContent,'App');
-  assert.equal(h.$('#terminalDirectoryName').textContent,'App');
-  assert.equal(h.$('#terminalBranchName').textContent,'codex/header-unification');
-  assert.equal(h.$('#terminalBranch').hidden,false);
+  assert.equal(h.$('#terminalProject').selectedOptions[0].textContent,'App · main');
+  assert.equal(h.$('#terminalDirectoryPath').textContent,'/repo/app');
   assert(h.$('.conversation-surface-header').contains(h.$('#terminalStatusBadge')));
   assert.equal(h.$('#terminalConsole').querySelector('button'),null,'terminal output starts directly beneath the shared header');
-  assert.equal(h.$('#terminalDirectoryContext').open,false);
   assert.equal(h.$('#terminalProject').form,h.$('#terminalForm'));
-  assert.equal(h.$('#terminalDirectory').hidden,true);
-  h.$('#terminalDirectoryChoices [data-creation-choice="/repo/app"]').click();
-  assert.equal(h.$('#terminalDirectory').value,'/repo/app');
-  assert.equal(h.$('#terminalDirectoryChoices [data-creation-choice="/repo/app"]').getAttribute('aria-pressed'),'true');
-  assert.equal(h.$('#terminalDirectoryContext').open,false,'one click changes the directory without opening working details');
+  assert.equal(h.$('#terminalDirectoryContext').hidden,true);
   assert.equal(h.$('#terminalForm').checkValidity(),true,'project root is a valid launch selection');
   h.$('#terminalKindUI').click();
   const switched=h.messages.findLast(message=>message.type==='workhub:conversation-kind');
@@ -84,49 +78,38 @@ test('terminal creation exposes directory choices without expanding working deta
   assert.equal(h.$('#terminalExisting').hidden,true,'empty terminal history does not add another card');
 });
 
-test('terminal defaults pick a valid project and Codex, remember Agent and retain an explicit directory', async t => {
-  const profiles = ['shell','codex','claude'].map(id => ({id,name:id,executable:id,args:[],available:true}));
+test('terminal lists available tools and discloses missing commands separately', async t => {
+  const profiles = ['shell','codex','claude'].map(id => ({id,name:id,executable:id,args:[],available:id !== 'claude'}));
   const h = await mount(t, {}, [], {profiles});
   assert.equal(h.$('#terminalProject').value,'app');
-  assert.equal(h.$('#terminalProfile').value,'codex');
-  assert.equal(h.$('#startTerminal').disabled,false);
-  assert.equal(h.$('#terminalForm').checkValidity(),true);
-  assert.equal(h.$('#terminalProfile').hidden,true);
-  h.$('#terminalProfile').value='claude'; h.$('#terminalProfile').dispatchEvent(new h.w.Event('change'));
-  assert.equal(h.$('#terminalProfile').value,'claude');
-  assert.equal(h.$('#terminalProfileChoices [data-creation-choice="claude"]').getAttribute('aria-pressed'),null);
-  assert.equal(h.w.localStorage.getItem('workhub:conversation-defaults:v1:terminal-profile'),'claude');
-  h.$('#terminalProfileChoices [data-creation-choice="custom"]').click();
-  assert.equal(h.$('#customTerminal').hidden,false);
-  h.$('#customExecutable').value='my-agent';
-  const restored = await mount(t, {projectID:'app',cwd:'/worktrees/app'}, [], {profiles,storage:{'terminal-profile':'claude','terminal-directory':'/repo/app'}});
-  assert.equal(restored.$('#terminalProfile').value,'claude');
-  assert.equal(restored.$('#terminalDirectory').value,'/worktrees/app','explicit entry overrides remembered directory');
-  const unavailable = await mount(t, {}, [], {profiles:[...profiles.filter(p => p.id !== 'claude'),{...profiles[2],available:false}],storage:{'terminal-profile':'claude'}});
-  assert.equal(unavailable.$('#terminalProfile').value,'codex');
+  assert.equal(h.$('[data-terminal-profile="codex"]').disabled,false);
+  assert.equal(h.$('[data-terminal-profile="claude"]'),null);
+  assert.equal(h.$('.terminal-unavailable').open,false);
+  assert.equal(h.$('.terminal-unavailable code').textContent,'claude');
+  assert.equal(h.$('#customTerminal').open,false);
   assert.equal(h.requests.some(r => r.options.method === 'POST'),false);
 });
 
-test('clicking the default Agent starts once, freezes launch settings and allows retry after failure', async t => {
+test('clicking a tool starts once, freezes launch settings and allows retry after failure', async t => {
   let complete;
   const profiles = ['codex','claude'].map(id => ({id,name:id,executable:id,args:[],available:true}));
   const h = await mount(t, {projectID:'app',cwd:'/worktrees/app'}, [], {profiles, intercept:(path,options) => path === '/api/terminals' && options.method === 'POST' ? new Promise(resolve => {complete=resolve;}) : undefined});
   const launches = () => h.requests.filter(r => r.path === '/api/terminals' && r.options.method === 'POST');
   assert.equal(launches().length,0,'restoring the selected Agent never launches it');
-  assert.equal(h.$('#startTerminal').closest('[hidden]')?.id,'customTerminal','standard Agents have no separate launch button');
-  const codex = h.$('#terminalProfileChoices [data-creation-choice="codex"]');
+  assert.equal(h.$('#startTerminal').closest('details').open,false,'standard Agents have no separate launch button');
+  const codex = h.$('[data-terminal-profile="codex"]');
   codex.click(); codex.click();
-  h.$('#terminalProfileChoices [data-creation-choice="claude"]').click();
+  h.$('[data-terminal-profile="claude"]').click();
   assert.equal(launches().length,1);
   assert.equal(JSON.parse(launches()[0].options.body).profile_id,'codex');
   assert.equal(JSON.parse(launches()[0].options.body).project_id,'app');
-  assert.equal(h.$('#terminalDirectoryChoices [data-creation-choice="/repo/app"]').disabled,true);
+  assert.equal(h.$('#terminalProject').disabled,true);
   assert.equal(h.$('#terminalKindUI').disabled,true);
   complete({ok:false,json:async()=>({error:'fixture launch failed'})});
-  for(let i=0;i<4;i++) await new Promise(resolve=>setImmediate(resolve));
-  assert.match(h.$('#terminalFeedback').textContent,/fixture launch failed/);
+  for(let i=0;i<50 && (codex.disabled || !h.$('#terminalLaunchFeedback').textContent);i++) await new Promise(resolve=>setTimeout(resolve,10));
+  assert.match(h.$('#terminalLaunchFeedback').textContent,/fixture launch failed/);
   assert.equal(codex.disabled,false);
-  h.$('#terminalProfileChoices [data-creation-choice="claude"]').click();
+  h.$('[data-terminal-profile="claude"]').click();
   assert.equal(launches().length,2);
   assert.equal(JSON.parse(launches()[1].options.body).profile_id,'claude');
   complete({ok:false,json:async()=>({error:'fixture retry failed'})});
@@ -135,7 +118,7 @@ test('clicking the default Agent starts once, freezes launch settings and allows
 
 test('custom Agent requires its configuration before an explicit launch', async t => {
   const h = await mount(t, undefined, [], {intercept:(path,options) => path === '/api/terminals' && options.method === 'POST' ? {ok:false,json:async()=>({error:'fixture custom launch failed'})} : undefined});
-  h.$('#terminalProfileChoices [data-creation-choice="custom"]').click();
+  h.$('#customTerminal').open=true;
   assert.equal(h.requests.some(r => r.options.method === 'POST'),false);
   assert.equal(h.$('#customTerminal').hidden,false);
   h.$('#customExecutable').value='my-agent';

@@ -190,7 +190,7 @@ function openSessionHistoryPanel(session = null, context = {}) {
     panel.setAttribute('aria-labelledby', 'assistantChatTitle');
     window.WorkHubAssistant.open({
       overview: {projects: overview.projects}, focusComposer:!!context.focusComposer,
-      target: context.target, session: session ? cached || { id: session, name: uiText("对话详情"), cwd: '' } : null, environment, environmentName: environmentName(environment), readOnly: readonly, persistDraft: true,
+      target: context.target, updateDraftBindings: context.updateDraftBindings, session: session ? cached || { id: session, name: uiText("对话详情"), cwd: '' } : null, environment, environmentName: environmentName(environment), readOnly: readonly, persistDraft: true,
       managed: (session, action) => window.dispatchEvent(new CustomEvent("workhub:session-managed", {detail:{session,action,environment}})),
       loaded: loaded => { if (sessionHistoryState === currentPanel) context.loaded?.(loaded); },
       request: (path, options) => api(path, { ...options, environment }),

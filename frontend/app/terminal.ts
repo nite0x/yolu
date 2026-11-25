@@ -3,26 +3,28 @@ import { Terminal, type ITheme } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { SearchAddon } from "@xterm/addon-search"
 import { WebglAddon } from "@xterm/addon-webgl"
-import { mountTerminalSurface } from "./terminal-surface"
+import { mountTerminalSurface, mountTerminalTools, type TerminalProfile } from "./terminal-surface"
 import { conversationDefaults } from "./conversation-defaults"
-import { renderCreationChoices } from "./creation-choices"
+import {mainCreationProjects} from "./creation-directories"
 import "./terminal.css"
 import type { Project } from "./types"
 
-const unmountSurface = mountTerminalSurface(command => window.parent.postMessage({type:"workhub:page-pane-command", command}, location.origin))
-
-interface Profile { id: string; name: string; executable: string; args: string[] | null; available: boolean }
 interface TerminalInfo { id: string; name: string; project_id?: string; session_id?: string; binding_id?: string; cwd: string; state: string; attached: boolean; exit_code?: number }
 interface Snapshot { route: string; environment: string; title: string; kind?: string; context?: string; terminal?: { projectID?: string; sessionID?: string; bindingID?: string; cwd?: string; id?: string }; conversation?: {scope?: object; directory?: string; creationDirectory?: string; selected?: string | null; creating?: boolean; pane?: string} }
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
-const projectSelect = element<HTMLSelectElement>("terminalProject"), directorySelect = element<HTMLSelectElement>("terminalDirectory"), profileSelect = element<HTMLSelectElement>("terminalProfile")
+const unmountSurface = mountTerminalSurface(command => window.parent.postMessage({type:"workhub:page-pane-command", command}, location.origin))
+const terminalTools = mountTerminalTools(id => void launchTerminal(id))
+const projectSelect = element<HTMLSelectElement>("terminalProject"), profileSelect = element<HTMLSelectElement>("terminalProfile")
+const customTerminal = element<HTMLDetailsElement>("customTerminal")
+const startCustom = element<HTMLButtonElement>("startTerminal")
 const executable = element<HTMLInputElement>("customExecutable"), argsInput = element<HTMLTextAreaElement>("customArgs"), envInput = element<HTMLTextAreaElement>("customEnv"), nameInput = element<HTMLInputElement>("customName")
 const host = window.parent, token = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')!.content
 const post = (type: string, extra: object = {}) => host.postMessage({type, ...extra}, location.origin)
 let saved: Snapshot = {route:"/terminals", environment:"local", title:uiText("新建终端"), terminal:{}}
-let active = false, disposed = false, restoring = true, pending = false
-let projects: Project[] = [], profiles: Profile[] = [], customProfiles: Profile[] = [], rows: TerminalInfo[] = []
+let active = false, disposed = false, restoring = true, savingProfile = false
+let startingProfile: string | undefined
+let projects: Project[] = [], profiles: TerminalProfile[] = [], customProfiles: TerminalProfile[] = [], rows: TerminalInfo[] = []
 let term: Terminal | undefined, fit: FitAddon | undefined, search: SearchAddon | undefined, socket: WebSocket | undefined
 let current: TerminalInfo | undefined, seq = 0, generation = 0, retry: ReturnType<typeof setTimeout> | undefined, reconnecting = false
 let restoreRevision = 0, busy = false, finished = false, lastSize = ""
@@ -58,7 +60,11 @@ async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> 
   if (!response.ok) throw new Error(value.error || uiText("终端请求失败"))
   return value as T
 }
-function feedback(message = "") { const node = element("terminalFeedback"); node.textContent = message; node.hidden = !message }
+function feedback(message = "", nearAction = false) {
+  const node = element(!current && !restoring ? "terminalLaunchFeedback" : "terminalFeedback")
+  node.textContent = message; node.hidden = !message
+  if (message && nearAction) node.scrollIntoView?.({block:"nearest"})
+}
 function status(message: string) {
   element("terminalStatus").textContent = message
   element("terminalStatusBadge").dataset.state = message.includes(uiText("失败")) || message === uiText("未连接") ? "failed" : message.startsWith(uiText("已退出")) ? "completed" : message === uiText("已连接") ? "running" : "starting"
@@ -86,65 +92,38 @@ function context() {
   element("terminalBranchName").textContent = branch
   element("terminalContextPath").textContent = path
   element("terminalContextPath").title = path
+  element("terminalDirectoryContext").hidden = !current
 }
 
-function refreshDirectories(preferred = saved.terminal?.cwd) {
-  const project = projects.find(p => p.id === projectSelect.value)
-  const directories = project
-    ? [...new Set([project.path,...project.worktrees.filter(tree => !tree.bare && !tree.missing && !tree.prunable).map(tree => tree.path)])]
-    : preferred ? [preferred] : []
-  if (saved.terminal?.bindingID && preferred) directories.splice(0,directories.length,preferred)
-  directorySelect.replaceChildren(...directories.map(path => {
-    const branch = project?.worktrees.find(tree => tree.path === path)?.branch
-    const option = new Option([project?.name || path, branch].filter(Boolean).join(" · "),path)
-    option.title = path
-    return option
-  }))
-  if (preferred && directories.includes(preferred)) directorySelect.value = preferred
-  directoryPath()
-}
-function directoryPath() {
-  const cwd = directorySelect.value
-  element("terminalDirectoryPath").textContent = cwd
-  if (!current) {
-    saved.terminal = {...saved.terminal,projectID:projectSelect.value || undefined,cwd}
-    saved.conversation = {...saved.conversation, creationDirectory:cwd}
-  }
+function workingDirectoryChanged() {
+  const projectID = projectSelect.value || undefined
+  const cwd = saved.terminal?.bindingID ? saved.terminal.cwd : projects.find(project => project.id === projectID)?.path
+  const path = element("terminalDirectoryPath")
+  path.textContent = cwd || ""
+  path.hidden = !cwd
+  saved.terminal = {...saved.terminal, projectID, cwd}
+  saved.conversation = {...saved.conversation, creationDirectory:cwd || ""}
   context()
   syncLauncher()
 }
-function renderProfiles(selected = profileSelect.value || conversationDefaults.get("terminal-profile")) {
-  profileSelect.replaceChildren()
-  for (const profile of [...profiles, ...customProfiles]) {
-    const option = new Option(profile.name + (!profile.available ? uiText(" · 未找到命令") : ""), profile.id)
-    option.disabled = !profile.available
-    profileSelect.add(option)
-  }
-  profileSelect.add(new Option(uiText("自定义 Agent…"), "custom"))
-  const available = [...profiles, ...customProfiles].filter(p => p.available)
-  profileSelect.value = available.some(p => p.id === selected) ? selected : available.find(p => p.id === "codex")?.id || available[0]?.id || "shell"
-  selectProfile()
-}
-function selectProfile() {
-  const custom = profileSelect.value === "custom" || profileSelect.value.startsWith("custom-")
-  element("customTerminal").hidden = !custom
-  const profile = customProfiles.find(p => p.id === profileSelect.value)
-  if (profile) {nameInput.value = profile.name; executable.value = profile.executable; argsInput.value = JSON.stringify(profile.args || [])}
-  syncLauncher()
+function renderCustomProfiles(selected = profileSelect.value) {
+  profileSelect.replaceChildren(new Option(uiText("新建配置"), "custom"), ...customProfiles.map(profile => new Option(profile.name, profile.id)))
+  profileSelect.value = customProfiles.some(profile => profile.id === selected) ? selected : "custom"
+  element("terminalCustomProfileField").hidden = !customProfiles.length
 }
 function syncLauncher() {
-  const unavailable = restoring || pending || !!current || saved.environment !== "local" || !directorySelect.value
-  element<HTMLButtonElement>("startTerminal").disabled = unavailable
-  profileSelect.disabled = unavailable
-  projectSelect.disabled = pending || !!current || !!saved.terminal?.bindingID
-  directorySelect.disabled = pending || !!current
-  element("terminalDirectoryChoicesField").hidden = !!current || directorySelect.options.length <= 1
-  element<HTMLButtonElement>("terminalKindUI").disabled = pending || !!current
-  renderCreationChoices(directorySelect, element("terminalDirectoryChoices"))
-  renderCreationChoices(profileSelect, element("terminalProfileChoices"), value => {
-    if (value !== "custom") element<HTMLFormElement>("terminalForm").requestSubmit()
-  }, {actions:true})
-  element("terminalForm").setAttribute("aria-busy", String(pending))
+  const waiting = !!startingProfile || savingProfile
+  const local = saved.environment === "local"
+  const unavailable = restoring || waiting || !!current || !local || !saved.terminal?.cwd
+  startCustom.disabled = unavailable
+  startCustom.textContent = startingProfile === "custom" ? uiText("正在启动…") : uiText("启动自定义 Agent")
+  element<HTMLFieldSetElement>("customTerminalFields").disabled = waiting
+  customTerminal.hidden = restoring || !local || !saved.terminal?.cwd
+  projectSelect.disabled = restoring || waiting || !!saved.terminal?.bindingID || projectSelect.options.length <= 1 || !local
+  element("terminalDirectoryHint").hidden = restoring || !local || !!saved.terminal?.cwd || projectSelect.options.length > 1
+  element<HTMLButtonElement>("terminalKindUI").disabled = restoring || waiting
+  terminalTools.render([...profiles, ...customProfiles], unavailable, startingProfile)
+  element("terminalForm").setAttribute("aria-busy", String(restoring || waiting))
 }
 function parsedArgs(): string[] {
   const value: unknown = JSON.parse(argsInput.value || "[]")
@@ -280,75 +259,112 @@ async function showTerminal(info: TerminalInfo) {
   saved = {...saved, title:[project?.name, info.name].filter(Boolean).join(" · "), context:project?.name || info.cwd, terminal:{id:info.id,projectID:info.project_id,sessionID:info.session_id,bindingID:info.binding_id,cwd:info.cwd}}
   element("terminalLauncher").hidden = true; element("terminalConsole").hidden = false
   element<HTMLButtonElement>("stopTerminal").disabled = info.state !== "running"
-  element("terminalKind").hidden = true
-  element("terminalDirectoryChoicesField").hidden = true
   element("terminalStatusBadge").hidden = false; element("terminalRuntimeActions").hidden = false
   element<HTMLDetailsElement>("terminalDirectoryContext").open = false
-  projectSelect.disabled = true; directorySelect.disabled = true
   context(); await terminalFonts
   if (disposed || current !== info) return
   createTerminal(); publish(); await connect()
 }
 async function restore(value: Snapshot) {
   const revision = ++restoreRevision; restoring = true; saved = {...value, terminal:{...value.terminal}}
+  feedback()
+  syncLauncher()
   try {
     if (saved.environment !== "local") throw new Error(uiText("内置终端目前仅支持本机执行环境。"))
-    const [overview, available, terminals] = await Promise.all([api<{projects: Project[]}>("/api/state"), api<Profile[]>("/api/terminal-profiles"), api<TerminalInfo[]>("/api/terminals")])
+    const [overview, available, terminals] = await Promise.all([api<{projects: Project[]}>("/api/state"), api<TerminalProfile[]>("/api/terminal-profiles"), api<TerminalInfo[]>("/api/terminals")])
     if (disposed || revision !== restoreRevision) return
     projects = overview.projects; profiles = available.filter(p => !p.id.startsWith("custom-")); customProfiles = available.filter(p => p.id.startsWith("custom-")); rows = terminals
-    projectSelect.replaceChildren(new Option(uiText("本地目录"), ""), ...projects.map(p => new Option(p.name, p.id)))
-    const cwd = saved.terminal?.cwd || saved.conversation?.creationDirectory || conversationDefaults.get("terminal-directory")
-    const project = projects.find(p => p.id === saved.terminal?.projectID)
-      || (!saved.terminal?.bindingID ? projects.find(p => cwd ? p.path === cwd || p.worktrees.some(tree => tree.path === cwd) : !p.error) : undefined)
-    projectSelect.value = project?.id || ""
-    refreshDirectories(cwd); renderProfiles(); showRows(); context()
-    element<HTMLDetailsElement>("terminalDirectoryContext").open = !directorySelect.value
     if (saved.terminal?.id) {
       const info = rows.find(row => row.id === saved.terminal?.id)
       if (!info) throw new Error(uiText("这个终端已结束或后台已重启，请新建终端。"))
       await showTerminal(info)
+    } else {
+      const roots = mainCreationProjects(projects)
+      const cwd = saved.terminal?.cwd || saved.conversation?.creationDirectory
+      if (saved.terminal?.bindingID) {
+        const project = projects.find(project => project.id === saved.terminal?.projectID)
+        projectSelect.replaceChildren(new Option(project?.name || uiText("对话工作目录"), project?.id || ""))
+      } else {
+        const preferred = cwd || conversationDefaults.get("terminal-directory")
+        const requested = saved.terminal?.projectID
+        const project = roots.find(project => requested ? project.id === requested : project.path === preferred || project.worktrees.some(tree => tree.path === preferred))
+        const placeholder = new Option(uiText("选择本机项目"), "")
+        placeholder.disabled = true
+        projectSelect.replaceChildren(placeholder, ...roots.map(project => {
+          const branch = project.worktrees.find(tree => tree.path === project.path)?.branch
+          return new Option([project.name, branch].filter(Boolean).join(" · "), project.id)
+        }))
+        projectSelect.value = project?.id || (!requested && !cwd ? roots[0]?.id : "") || ""
+      }
+      workingDirectoryChanged()
+      renderCustomProfiles()
+      showRows()
     }
-  } catch (error) {feedback((error as Error).message)}
+  } catch (error) {if (!disposed && revision === restoreRevision) feedback((error as Error).message)}
   finally {if (!disposed && revision === restoreRevision) {restoring = false; syncLauncher(); publish(); post("workhub:page-restored")}}
 }
 
-projectSelect.onchange = () => {refreshDirectories(""); showRows(); publish()}
-directorySelect.onchange = () => {directoryPath(); publish()}
-profileSelect.onchange = () => {selectProfile(); if (profileSelect.value !== "custom") conversationDefaults.set("terminal-profile", profileSelect.value)}
+projectSelect.onchange = () => {workingDirectoryChanged(); feedback(); showRows(); publish()}
+profileSelect.onchange = () => {
+  const profile = customProfiles.find(profile => profile.id === profileSelect.value)
+  nameInput.value = profile?.name || ""
+  executable.value = profile?.executable || ""
+  argsInput.value = JSON.stringify(profile?.args || [])
+  envInput.value = "{}"
+  feedback()
+}
 element("saveTerminalProfile").onclick = async () => {
+  if (startingProfile || savingProfile) return
+  savingProfile = true
+  const button = element("saveTerminalProfile")
+  button.textContent = uiText("保存中…")
+  syncLauncher()
+  feedback()
   try {
     if (!executable.value.trim()) throw new Error(uiText("请填写可执行文件"))
     const id = profileSelect.value.startsWith("custom-") ? profileSelect.value : "custom-" + crypto.randomUUID()
-    const profile: Profile = {id, name:nameInput.value.trim() || executable.value.trim(), executable:executable.value.trim(), args:parsedArgs(), available:true}
-    const result = await api<Profile>("/api/terminal-profiles", "POST", profile)
+    const profile: TerminalProfile = {id, name:nameInput.value.trim() || executable.value.trim(), executable:executable.value.trim(), args:parsedArgs(), available:true}
+    const result = await api<TerminalProfile>("/api/terminal-profiles", "POST", profile)
+    if (disposed) return
     customProfiles = [...customProfiles.filter(p => p.id !== id), result]
-    renderProfiles(id); feedback(uiText("启动配置已保存；环境变量不会保存。"))
-  } catch (error) {feedback((error as Error).message)}
+    renderCustomProfiles(id); feedback(uiText("启动配置已保存；环境变量不会保存。"), true)
+  } catch (error) {if (!disposed) feedback((error as Error).message, true)}
+  finally {savingProfile = false; if (!disposed) {button.textContent = uiText("保存启动配置"); syncLauncher()}}
+}
+async function launchTerminal(id: string) {
+  const target = saved.terminal
+  if (startingProfile || savingProfile || current || restoring || saved.environment !== "local" || !target?.cwd) return
+  startingProfile = id
+  syncLauncher()
+  feedback()
+  try {
+    const preset = customProfiles.find(profile => profile.id === id)
+    const command = id === "custom"
+      ? {name:nameInput.value.trim(), executable:executable.value.trim(), args:parsedArgs(), env:parsedEnv()}
+      : preset ? {name:preset.name, executable:preset.executable, args:preset.args || []} : undefined
+    if (command && !command.executable) throw new Error(uiText("请填写可执行文件"))
+    const directory = target.bindingID ? {session_id:target.sessionID,binding_id:target.bindingID} : {project_id:target.projectID,cwd:target.cwd}
+    const info = await api<TerminalInfo>("/api/terminals", "POST", {...directory, profile_id:command ? "custom" : id, ...command, cols:100, rows:30})
+    conversationDefaults.set("terminal-directory",info.cwd)
+    if (!disposed) await showTerminal(info)
+  } catch (error) {if (!disposed) feedback((error as Error).message, true)}
+  finally {startingProfile = undefined; if (!disposed) syncLauncher()}
 }
 element<HTMLFormElement>("terminalForm").onsubmit = event => {
-  event.preventDefault(); if (pending || current || restoring || saved.environment !== "local" || !directorySelect.value) return
-  void (async () => {
-    pending = true; syncLauncher(); feedback()
-    try {
-      const custom = profileSelect.value === "custom" || profileSelect.value.startsWith("custom-")
-      const info = await api<TerminalInfo>("/api/terminals", "POST", {...(saved.terminal?.bindingID ? {session_id:saved.terminal.sessionID,binding_id:saved.terminal.bindingID} : {project_id:projectSelect.value,cwd:directorySelect.value}), profile_id:custom ? "custom" : profileSelect.value, ...(custom ? {name:nameInput.value.trim(), executable:executable.value.trim(), args:parsedArgs(), env:parsedEnv()} : {}), cols:100, rows:30})
-      conversationDefaults.set("terminal-directory",info.cwd)
-      if (profileSelect.value !== "custom") conversationDefaults.set("terminal-profile", profileSelect.value)
-      if (!disposed) await showTerminal(info)
-    } catch (error) {feedback((error as Error).message)}
-    finally {pending = false; refreshDirectories()}
-  })()
+  event.preventDefault()
+  if (customTerminal.open) void launchTerminal("custom")
 }
 element("terminalContext").onclick = () => {
   const project = saved.terminal?.projectID
   if (project) post("workhub:page-open", {snapshot:{route:`/projects/${encodeURIComponent(project)}?${new URLSearchParams({directory:saved.terminal?.cwd || ""})}`,environment:saved.environment}})
 }
 element("terminalKindUI").onclick = () => {
-  if (current || pending) return
-  const project = projectSelect.value
-  post("workhub:conversation-kind", {kind:"ui", snapshot:{...saved,terminal:{projectID:project,cwd:directorySelect.value},conversation:{...saved.conversation,
+  if (current || startingProfile || savingProfile) return
+  const project = saved.terminal?.projectID
+  const cwd = saved.terminal?.cwd
+  post("workhub:conversation-kind", {kind:"ui", snapshot:{...saved,terminal:{projectID:project,cwd},conversation:{...saved.conversation,
     scope:project ? {kind:"project",id:project,environment:saved.environment} : {kind:"all"},
-    creationDirectory:directorySelect.value,selected:null,creating:true,pane:"detail"}}})
+    creationDirectory:cwd || "",selected:null,creating:true,pane:"detail"}}})
 }
 element("refreshTerminals").onclick = () => void refreshRows().catch(error => feedback(error.message))
 element("reconnectTerminal").onclick = () => {if (finished) {feedback(uiText("终端已退出，请新建终端。")); return}; feedback(); void connect()}
@@ -378,7 +394,7 @@ element<HTMLDialogElement>("stopTerminalDialog").onclose = () => {
 
 document.addEventListener("pointerdown", () => post("workhub:page-focus"), true)
 document.addEventListener("focusin", () => post("workhub:page-focus"))
-function dispose() {if (disposed) return; disposed = true; ++restoreRevision; disconnect(); resize.disconnect(); term?.dispose(); clearInterval(poll); unmountSurface()}
+function dispose() {if (disposed) return; disposed = true; ++restoreRevision; disconnect(); resize.disconnect(); term?.dispose(); clearInterval(poll); terminalTools.unmount(); unmountSurface()}
 window.addEventListener("pagehide", dispose)
 window.addEventListener("message", event => {
   if (event.source !== host || event.origin !== location.origin || !event.data) return
@@ -397,5 +413,7 @@ window.addEventListener("message", event => {
   else if (message.type === "workhub:page-navigate" && typeof message.route === "string") post("workhub:page-open", {snapshot:{route:message.route, environment:saved.environment}})
 })
 const poll = setInterval(() => {if (active && !current && !restoring && !disposed && saved.environment === "local") void refreshRows().catch(() => {})}, 5000)
-;(window as Window & {WorkHubPage?: object}).WorkHubPage = {snapshot, canClose:() => !pending, dispose, get restoring() {return restoring}}
+;(window as Window & {WorkHubPage?: object}).WorkHubPage = {snapshot, canClose:() => !startingProfile && !savingProfile, dispose, get restoring() {return restoring}}
+context()
+syncLauncher()
 post("workhub:page-ready")

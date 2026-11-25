@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -62,6 +63,8 @@ func (c *fakeLiveClient) Call(ctx context.Context, method string, params any, ou
 	c.mu.Unlock()
 	var result any = map[string]any{}
 	switch method {
+	case "thread/prediction/request":
+		return fmt.Errorf("prediction unavailable in test fixture")
 	case "model/list":
 		result = map[string]any{"data": []any{map[string]any{"id": "gpt-6.1-sol", "model": "gpt-6.1-sol", "displayName": "GPT-6.1-Sol", "isDefault": true, "defaultReasoningEffort": "medium", "supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "high"}, map[string]any{"reasoningEffort": "low"}}}}}
 	case "thread/start":
@@ -217,9 +220,9 @@ func TestChatStopAndStaleRunCannotControlAnotherTurn(t *testing.T) {
 func TestChatRejectsTerminalAndActiveRuntimeWithoutStarting(t *testing.T) {
 	for _, mode := range []string{"terminal", "active"} {
 		t.Run(mode, func(t *testing.T) {
-			a, _, c, endpoint := chatFixture(t)
+			a, q, c, endpoint := chatFixture(t)
 			if mode == "terminal" {
-				a.terminalConflict = func(string, string) error { return &execution.SessionConflictError{Message: "terminal busy"} }
+				a.bridges["active"] = &terminalBridge{session: "session", cwd: q.Path, connected: true, bound: true, active: true}
 			} else {
 				c.active = true
 			}
@@ -287,7 +290,7 @@ func TestManualTerminalDetection(t *testing.T) {
 	}
 }
 
-func TestTerminalReappearingInterruptsOnlyPageTurn(t *testing.T) {
+func TestTerminalReappearingDoesNotInterruptPageTurn(t *testing.T) {
 	a, _, c, endpoint := chatFixture(t)
 	var occupied atomic.Bool
 	a.terminalConflict = func(string, string) error {
@@ -298,20 +301,20 @@ func TestTerminalReappearingInterruptsOnlyPageTurn(t *testing.T) {
 	}
 	startFakeChat(t, a, endpoint)
 	occupied.Store(true)
-	s := awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
-	if s.Status != "conflict" {
-		t.Fatal(s)
+	// The old process watcher interrupted at its next one-second tick.
+	select {
+	case <-a.ChatFor("session").finished:
+		t.Fatal("opening a terminal interrupted the Yolu turn")
+	case <-time.After(1200 * time.Millisecond):
 	}
+	c.event("turn/completed", map[string]any{"turn": map[string]any{"id": "turn", "status": "completed"}})
+	<-a.ChatFor("session").finished
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	found := false
 	for _, method := range c.methods {
 		if method == "turn/interrupt" {
-			found = true
+			t.Fatal("opening a terminal triggered an interrupt")
 		}
-	}
-	if !found {
-		t.Fatal("page turn not interrupted")
 	}
 }
 

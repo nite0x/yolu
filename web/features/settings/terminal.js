@@ -45,7 +45,7 @@ function updateTerminalFields() {
       ? uiText("使用 Windows Terminal 的 wt.exe 打开新窗口。")
       : kind === 'powershell' ? uiText("使用独立 PowerShell 窗口打开 Windows 本机项目。")
         : custom ? uiText("仅支持所选启动方式兼容的终端；程序不可用时会提示错误，保留你的选择。") : uiText("自动使用可用的 Linux 桌面终端。");
-  $('#terminalStatus').hidden = kind !== state.terminal.settings?.kind;
+  $('#terminalStatus').hidden = kind !== state.terminal.settings?.kind || state.terminal.available;
 }
 
 function loadTerminalFields() {

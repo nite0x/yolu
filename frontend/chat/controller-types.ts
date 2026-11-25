@@ -5,6 +5,7 @@ import type {ConversationDefaults} from "./settings";
 export interface ChatOptions {
   overview?: ConversationOverview;
   target?: SessionTarget; session: Session | null; environment: string; environmentName?: string;
+  updateDraftBindings?: (bindings: BindingInput[]) => void;
   readOnly?: boolean; persistDraft?: boolean; focusComposer?: boolean;
   request: <T>(path: string, options?: RequestInit) => Promise<T>;
   stream: (path: string, signal: AbortSignal) => Promise<Response>;

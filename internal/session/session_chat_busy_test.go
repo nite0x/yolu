@@ -6,131 +6,124 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"testing"
+	"time"
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/execution"
 )
 
-func TestChatStatePollingOnlyBlocksConfirmedTerminalOwners(t *testing.T) {
-	a, q, _, endpoint := chatFixture(t)
-	fakeSessions(a, map[string]codex.Session{"session": {ID: "session", Cwd: q.Path}})
-	for _, probeErr := range []error{
-		errors.New("无法读取 Codex 终端参数：invalid argument"),
-		nil,
-		execution.ErrBusy,
-		nil,
-		fmt.Errorf("ownership probe: %w", &execution.SessionConflictError{Message: "terminal owns session"}),
-		nil,
-	} {
-		a.terminalConflict = func(string, string) error { return probeErr }
-		code, raw := call(t, a, "GET", endpoint, nil)
-		var state ChatState
-		if code != 200 || json.Unmarshal(raw, &state) != nil {
-			t.Fatalf("cannot poll chat: %d %s", code, raw)
-		}
-		if execution.IsSessionConflict(probeErr) {
-			if state.Blocked != probeErr.Error() || state.Notice == "" {
-				t.Fatalf("confirmed terminal ownership was lost: %+v", state)
-			}
-		} else if state.Blocked != "" || state.Notice != "" || state.Error != "" || state.CanHandoff {
-			t.Fatalf("uncertain probe or recovery advertised terminal ownership: %+v", state)
-		}
-	}
-}
-
-func TestChatRetriesOwnershipCheckFailures(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		err  error
-	}{
-		{"helper busy", fmt.Errorf("ownership probe: %w", execution.ErrBusy)},
-		{"probe timeout", fmt.Errorf("ownership probe: %w", context.DeadlineExceeded)},
-		{"invalid process arguments", errors.New("无法读取 Codex 终端参数：invalid argument")},
-		{"permission denied", errors.New("无法读取 Codex 终端参数：permission denied")},
-		{"helper disconnected", errors.New("WSL 辅助程序连接已断开，请重新连接后检查操作结果")},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+func TestChatStateAndSendIgnoreIdleTerminalProcessPresence(t *testing.T) {
+	for _, probeErr := range []error{nil, execution.ErrBusy, errors.New("invalid process arguments"), &execution.SessionConflictError{Message: "terminal is open"}} {
+		t.Run(fmt.Sprint(probeErr), func(t *testing.T) {
 			a, _, c, endpoint := chatFixture(t)
-			var phase, failures, recovered atomic.Int32
-			a.terminalConflict = func(string, string) error {
-				switch phase.Load() {
-				case 1:
-					failures.Add(1)
-					return tc.err
-				case 2:
-					recovered.Add(1)
-				case 3:
-					return fmt.Errorf("ownership probe: %w", &execution.SessionConflictError{Message: "terminal appeared"})
-				}
-				return nil
+			probes := 0
+			a.terminalConflict = func(string, string) error { probes++; return probeErr }
+			code, raw := call(t, a, "GET", endpoint, nil)
+			var state ChatState
+			if code != 200 || json.Unmarshal(raw, &state) != nil || state.Busy || state.Blocked != "" || state.CanHandoff || state.Notice != "" {
+				t.Fatalf("idle terminal blocked chat: %d %s", code, raw)
 			}
 			startFakeChat(t, a, endpoint)
-			phase.Store(1)
-			state := awaitChat(t, a, func(s ChatState) bool { return failures.Load() >= 2 || !s.Busy })
-			if !state.Busy || state.Status != "running" || state.Error != "" {
-				t.Fatalf("temporary probe failure interrupted turn: %+v", state)
-			}
-			phase.Store(2)
-			awaitChat(t, a, func(s ChatState) bool { return recovered.Load() > 0 || !s.Busy })
-			c.mu.Lock()
-			interrupted := false
-			for _, method := range c.methods {
-				interrupted = interrupted || method == "turn/interrupt"
-			}
-			c.mu.Unlock()
-			if interrupted || !a.ChatBusy("session") {
-				t.Fatal("healthy turn interrupted after ownership check recovered")
-			}
-			phase.Store(3)
-			state = awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
-			if state.Status != "conflict" || !strings.Contains(state.Error, "terminal appeared") {
-				t.Fatalf("real conflict no longer stops the turn: %+v", state)
-			}
-			c.mu.Lock()
-			defer c.mu.Unlock()
-			interrupts := 0
-			for _, method := range c.methods {
-				if method == "turn/interrupt" {
-					interrupts++
-				}
-			}
-			if interrupts != 1 {
-				t.Fatalf("confirmed conflict must interrupt exactly once, got %d", interrupts)
+			c.event("turn/completed", map[string]any{"turn": map[string]any{"id": "turn", "status": "completed"}})
+			<-a.ChatFor("session").finished
+			if probes != 0 {
+				t.Fatalf("chat still treats terminal process presence as ownership: %d probes", probes)
 			}
 		})
 	}
 }
 
-func TestChatDoesNotMisclassifyFailedOwnershipCheckBeforeStart(t *testing.T) {
-	for _, probeErr := range []error{execution.ErrBusy, errors.New("无法读取 Codex 终端参数：invalid argument")} {
-		for _, failAt := range []int{1, 2} {
-			t.Run(fmt.Sprintf("%s/check-%d", probeErr, failAt), func(t *testing.T) {
-				a, _, c, endpoint := chatFixture(t)
-				checks := 0
-				a.terminalConflict = func(string, string) error {
-					checks++
-					if checks == failAt {
-						return probeErr
-					}
-					return nil
-				}
-				if code, raw := call(t, a, "POST", endpoint, map[string]string{"text": "hello", "request_id": "probe-failure"}); code != 202 {
-					t.Fatalf("%d %s", code, raw)
-				}
-				state := awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
-				if state.Status != "failed" || !strings.Contains(state.Error, "无法完成对话占用检查") || !strings.Contains(state.Error, probeErr.Error()) {
-					t.Fatalf("probe failure was classified as occupancy: %+v", state)
-				}
-				c.mu.Lock()
-				defer c.mu.Unlock()
-				for _, method := range c.methods {
-					if method == "turn/start" || method == "turn/interrupt" || failAt == 1 && method == "thread/resume" {
-						t.Fatalf("failed ownership check triggered %s", method)
-					}
-				}
-			})
+func TestIdleManagedTerminalCanContinueAfterYoluTurn(t *testing.T) {
+	a, q, c, endpoint := chatFixture(t)
+	up, server := socketPair(t)
+	client, terminal := socketPair(t)
+	_ = server.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = terminal.SetReadDeadline(time.Now().Add(5 * time.Second))
+	b := &terminalBridge{app: a.Service, session: "session", cwd: q.Path, connected: true, bound: true, client: client, upstream: up, pending: map[string]bridgeCall{}}
+	a.bridges["standby"] = b
+	startFakeChat(t, a, endpoint)
+	// The managed CLI cannot race a Yolu turn, but its connection stays alive.
+	request := []byte(`{"id":1,"method":"turn/start","params":{"threadId":"session"}}`)
+	if err := b.forward(request); err != nil {
+		t.Fatal(err)
+	}
+	_, rejected, err := terminal.ReadMessage()
+	if err != nil || !strings.Contains(string(rejected), "对话正在侧栏运行") {
+		t.Fatalf("CLI was allowed to start during Yolu turn: %s %v", rejected, err)
+	}
+	c.event("turn/completed", map[string]any{"turn": map[string]any{"id": "turn", "status": "completed"}})
+	<-a.ChatFor("session").finished
+	if b.revoked || b.draining || !b.connected {
+		t.Fatal("Yolu turn closed or revoked the standby terminal")
+	}
+	code, raw := call(t, a, "GET", endpoint, nil)
+	var state ChatState
+	if code != 200 || json.Unmarshal(raw, &state) != nil || state.Blocked != "" || state.CanHandoff {
+		t.Fatalf("idle terminal still requires handoff: %d %s", code, raw)
+	}
+	if err := b.forward(request); err != nil {
+		t.Fatal(err)
+	}
+	_, forwarded, err := server.ReadMessage()
+	if err != nil || string(forwarded) != string(request) {
+		t.Fatalf("CLI cannot continue after Yolu completes: %s %v", forwarded, err)
+	}
+}
+
+type lateRuntimeClient struct {
+	*fakeLiveClient
+	reads int
+	phase string
+}
+
+func (c *lateRuntimeClient) Call(ctx context.Context, method string, params, out any) error {
+	if err := c.fakeLiveClient.Call(ctx, method, params, out); err != nil {
+		return err
+	}
+	if method == "thread/read" {
+		c.reads++
+	}
+	if method == "thread/resume" && c.phase == "resume" || method == "thread/read" && c.reads == 2 {
+		if c.phase == "read failure" {
+			return errors.New("runtime unavailable")
 		}
+		id := c.sessionID()
+		if c.phase == "wrong thread" {
+			id = "other"
+		}
+		raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": id, "cwd": c.cwd, "status": map[string]string{"type": "active"}}})
+		return json.Unmarshal(raw, out)
+	}
+	return nil
+}
+
+func TestChatRechecksSharedRuntimeBeforeSending(t *testing.T) {
+	for _, phase := range []string{"resume", "before send", "read failure", "wrong thread"} {
+		t.Run(phase, func(t *testing.T) {
+			a, _, base, endpoint := chatFixture(t)
+			c := &lateRuntimeClient{fakeLiveClient: base, phase: phase}
+			a.openLive = func(context.Context) (codex.LiveClient, error) { return c, nil }
+			if code, raw := call(t, a, "POST", endpoint, map[string]string{"text": "hello", "request_id": "late-check"}); code != 202 {
+				t.Fatalf("%d %s", code, raw)
+			}
+			<-a.ChatFor("session").finished
+			state := a.ChatFor("session").snapshot()
+			want := "conflict"
+			if phase == "read failure" || phase == "wrong thread" {
+				want = "failed"
+			}
+			if state.Busy || state.Status != want || state.Error == "" {
+				t.Fatalf("late runtime check was ignored: %+v", state)
+			}
+			base.mu.Lock()
+			methods := append([]string{}, base.methods...)
+			base.mu.Unlock()
+			for _, method := range methods {
+				if method == "turn/start" || method == "turn/interrupt" {
+					t.Fatalf("late runtime conflict triggered %s", method)
+				}
+			}
+		})
 	}
 }

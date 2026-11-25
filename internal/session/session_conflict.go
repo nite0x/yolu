@@ -29,6 +29,38 @@ func (a *Service) AppTerminalConflict(id, cwd string) error {
 	return a.terminalConflict(id, cwd)
 }
 
+// Chat clients share the daemon's loaded thread. An open terminal is not an
+// exclusive owner; only an unfinished managed launch/request or active turn
+// prevents the next send. Other app-servers enforce their own writer locks.
+// Keep AppTerminalConflict for destructive operations and directory changes.
+func (a *Service) chatTerminalConflict(id string) error {
+	if id == "" {
+		return nil
+	}
+	b := a.TerminalOwner(id, "")
+	if b == nil {
+		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.revoked {
+		return nil
+	}
+	if !b.connected || !b.bound {
+		return &execution.SessionConflictError{Message: "终端正在启动，尚未连接；请稍候。启动失败后会自动释放占用（最多 30 秒）"}
+	}
+	if b.active || b.draining {
+		return &execution.SessionConflictError{Message: "此对话正在终端运行或交接，请等待完成后再发送"}
+	}
+	for _, call := range b.pending {
+		switch call.Method {
+		case "thread/start", "thread/resume", "turn/start", "turn/steer", "thread/shellCommand":
+			return &execution.SessionConflictError{Message: "终端正在提交对话请求，请稍候再发送"}
+		}
+	}
+	return nil
+}
+
 func (a *Service) TerminalOwner(id, cwd string) *terminalBridge {
 	a.bridgeMu.Lock()
 	defer a.bridgeMu.Unlock()

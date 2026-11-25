@@ -15,7 +15,7 @@ import ReactMarkdown from "react-markdown";
 import type { Element, Root } from "hast";
 import { createContext, type FC, type ReactNode, memo, useContext, useMemo, useRef, useState } from "react";
 import { type TextMessagePartProps, useAuiState } from "@assistant-ui/react";
-import { CheckIcon, CopyIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, WrapTextIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { cn } from "@/lib/utils";
 import { uiText } from "../../../i18n";
 import { MermaidBlock } from "./mermaid-block";
+import { CodePre, CodeSource } from "./code-source";
+import { MarkdownTable, TableColumnHandle, TableRowHandle } from "./markdown-table";
 
 type MarkdownTextProps = Partial<TextMessagePartProps> & {
   components?: Parameters<typeof memoizeMarkdownComponents>[0];
@@ -32,7 +34,7 @@ type MarkdownTextProps = Partial<TextMessagePartProps> & {
 };
 
 const MarkdownPreviewContext = createContext<Pick<MarkdownTextPrimitiveProps, "components" | "urlTransform">>({});
-const markdownBlock = { CodeHeader: () => null, SyntaxHighlighter: MarkdownCodeBlock };
+const markdownBlock = { SyntaxHighlighter: MarkdownCodeBlock };
 const gfmPlugins = [remarkGfm];
 const previewRehypePlugins = [() => preserveDocumentBreaks];
 
@@ -80,7 +82,7 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({
     };
   }, [stableComponents]);
   const languageComponents = useMemo(() => ({
-    mermaid: { SyntaxHighlighter: MermaidBlock },
+    mermaid: { CodeHeader, SyntaxHighlighter: MermaidBlock },
     md: markdownBlock,
     markdown: markdownBlock,
     ...stableComponentsByLanguage,
@@ -107,19 +109,19 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({
 
 export const MarkdownText = memo(MarkdownTextImpl);
 
-const CodeHeader: FC<CodeHeaderProps & { children?: ReactNode }> = ({ language, code, children }) => {
-  const { isCopied, copyToClipboard } = useCopyToClipboard();
+function CodeHeader({ language, code, children }: CodeHeaderProps & { children?: ReactNode }) {
+  const { isCopied, copyFailed, copyToClipboard } = useCopyToClipboard();
   const onCopy = () => {
     if (!code || isCopied) return;
-    copyToClipboard(code);
+    void copyToClipboard(code);
   };
 
   return (
-    <div className="aui-code-header-root border-border/50 bg-muted/50 mt-3 flex items-center justify-between rounded-t-xl border border-b-0 px-3.5 py-1.5 text-xs">
-      <span className="aui-code-header-language text-muted-foreground font-medium lowercase">
-        {language}
+    <div className="aui-code-header-root border-border/50 bg-muted/50 mt-3 flex items-center justify-between gap-2 rounded-t-xl border border-b-0 px-3.5 py-1.5 text-xs">
+      <span className="aui-code-header-language text-muted-foreground min-w-0 truncate font-medium" title={language}>
+        {language || uiText("代码")}
       </span>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         {children}
         <TooltipIconButton type="button" tooltip={uiText("复制")} onClick={onCopy}>
           {!isCopied && (
@@ -129,14 +131,38 @@ const CodeHeader: FC<CodeHeaderProps & { children?: ReactNode }> = ({ language, 
             <CheckIcon className="animate-in zoom-in-50 fade-in duration-200 ease-out" />
           )}
         </TooltipIconButton>
+        <span role="status" className="sr-only">{isCopied ? uiText("已复制到剪贴板") : ""}</span>
+        {copyFailed && <span role="status" className="text-destructive">{uiText("复制失败")}</span>}
       </div>
     </div>
   );
-};
+}
 
-function MarkdownCodeBlock({ code, language, components: { Pre, Code } }: SyntaxHighlighterProps) {
+function WrapCodeButton({ wrap, onToggle }: { wrap: boolean; onToggle: () => void }) {
+  return (
+    <TooltipIconButton type="button" tooltip={uiText("自动换行")} aria-pressed={wrap} onClick={onToggle}
+      className="aria-pressed:bg-accent">
+      <WrapTextIcon aria-hidden="true" />
+    </TooltipIconButton>
+  );
+}
+
+function CodeSnippet({ code, language }: Pick<SyntaxHighlighterProps, "code" | "language">) {
+  const [wrap, setWrap] = useState(true);
+  return (
+    <>
+      <CodeHeader language={language} code={code}>
+        <WrapCodeButton wrap={wrap} onToggle={() => setWrap(value => !value)} />
+      </CodeHeader>
+      <CodeSource code={code} language={language} wrap={wrap} />
+    </>
+  );
+}
+
+function MarkdownCodeBlock({ code, language }: SyntaxHighlighterProps) {
   const running = useAuiState((state) => state.part.status.type === "running");
   const [view, setView] = useState<"source" | "preview">();
+  const [wrap, setWrap] = useState(true);
   const preview = view ? view === "preview" : !running;
   const options = useContext(MarkdownPreviewContext);
 
@@ -147,29 +173,32 @@ function MarkdownCodeBlock({ code, language, components: { Pre, Code } }: Syntax
           <Button type="button" variant={preview ? "ghost" : "secondary"} size="xs" aria-pressed={!preview} onClick={() => setView("source")}>{uiText("源码")}</Button>
           <Button type="button" variant={preview ? "secondary" : "ghost"} size="xs" aria-pressed={preview} onClick={() => setView("preview")}>{uiText("预览")}</Button>
         </div>
+        {!preview && <WrapCodeButton wrap={wrap} onToggle={() => setWrap(value => !value)} />}
       </CodeHeader>
       {preview ? (
         <div className="aui-md-preview min-w-0 overflow-x-auto rounded-b-xl border border-t-0 border-border/50 bg-background p-3.5 [overflow-wrap:anywhere]">
           <ReactMarkdown {...options} remarkPlugins={gfmPlugins} rehypePlugins={previewRehypePlugins} skipHtml>{code}</ReactMarkdown>
         </div>
-      ) : <Pre><Code>{code}</Code></Pre>}
+      ) : <CodeSource code={code} language={language} wrap={wrap} />}
     </>
   );
 }
 
-const MarkdownPre: NonNullable<MarkdownTextPrimitiveProps["components"]>["pre"] = ({ className, node: _node, ...props }) => (
-  <pre
-    className={cn(
-      "aui-md-pre border-border/50 bg-muted/30 overflow-x-auto rounded-b-xl border p-3.5 text-[13px] leading-relaxed",
-      className,
-    )}
-    {...props}
-  />
-);
+const MarkdownPre: NonNullable<MarkdownTextPrimitiveProps["components"]>["pre"] =
+  ({ node: _node, ...props }) => <CodePre {...props} />;
 
-const MarkdownPreviewPre: typeof MarkdownPre = ({ className, ...props }) => (
-  <MarkdownPre className={cn("my-3 rounded-lg", className)} {...props} />
-);
+const MarkdownPreviewPre: typeof MarkdownPre = ({ node, children, ...props }) => {
+  const code = node?.children[0];
+  if (code?.type !== "element" || code.tagName !== "code") {
+    return <MarkdownPre {...props}>{children}</MarkdownPre>;
+  }
+  const language = code.properties.className;
+  const label = Array.isArray(language)
+    ? language.find((value): value is string => typeof value === "string" && value.startsWith("language-"))?.slice(9)
+    : undefined;
+  const source = code.children.map(child => child.type === "text" ? child.value : "").join("");
+  return <CodeSnippet code={source} language={label || ""} />;
+};
 
 const defaultComponents = memoizeMarkdownComponents({
   h1: ({ className, ...props }) => (
@@ -277,34 +306,31 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  table: ({ className, ...props }) => (
-    <div className="aui-md-table-wrapper my-3 overflow-x-auto">
-      <table
-        className={cn(
-          "aui-md-table w-full border-separate border-spacing-0",
-          className,
-        )}
-        {...props}
-      />
-    </div>
-  ),
-  th: ({ className, ...props }) => (
+  table: MarkdownTable,
+  th: ({ className, children, ...props }) => (
     <th
       className={cn(
         "aui-md-th bg-muted px-3 py-1.5 text-start font-medium first:rounded-ss-lg last:rounded-se-lg [[align=center]]:text-center [[align=right]]:text-right",
         className,
       )}
       {...props}
-    />
+    >
+      {children}
+      <TableColumnHandle />
+      <TableRowHandle />
+    </th>
   ),
-  td: ({ className, ...props }) => (
+  td: ({ className, children, ...props }) => (
     <td
       className={cn(
         "aui-md-td border-muted-foreground/20 border-s border-b px-3 py-1.5 text-start last:border-e [[align=center]]:text-center [[align=right]]:text-right",
         className,
       )}
       {...props}
-    />
+    >
+      {children}
+      <TableRowHandle />
+    </td>
   ),
   tr: ({ className, ...props }) => (
     <tr
@@ -330,7 +356,7 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  pre: ({ className, ...props }) => <MarkdownPre className={cn("border-t-0", className)} {...props} />,
+  pre: MarkdownPre,
   code: function Code({ className, ...props }) {
     const isCodeBlock = useIsMarkdownCodeBlock();
     return (
@@ -344,6 +370,6 @@ const defaultComponents = memoizeMarkdownComponents({
       />
     );
   },
-  CodeHeader,
+  SyntaxHighlighter: CodeSnippet,
 });
 

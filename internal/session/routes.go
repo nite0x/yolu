@@ -3,6 +3,8 @@ package session
 import "net/http"
 
 func (s *Service) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/settings/default-agent", s.DefaultAgentHandler)
+	mux.HandleFunc("PUT /api/settings/default-agent", s.DefaultAgentHandler)
 	mux.HandleFunc("GET /api/settings/codex", s.CodexDiagnosticsHandler)
 	mux.HandleFunc("GET /api/settings/codex/install", s.CodexInstallHandler)
 	mux.HandleFunc("POST /api/settings/codex/install", s.CodexInstallHandler)

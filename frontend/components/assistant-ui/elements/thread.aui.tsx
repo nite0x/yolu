@@ -99,6 +99,7 @@ const reasoningDuration = (timing: ThreadGroupPart["timing"]) =>
  */
 export type ThreadComponents = {
   Text?: ComponentType;
+  UserText?: TextMessagePartComponent;
   UserImage?: ImageMessagePartComponent;
   AssistantMessage?: ComponentType | undefined;
   AssistantMessageEnd?: ComponentType | undefined;
@@ -153,7 +154,7 @@ export type ThreadProps = {
   managedScroll?: boolean | undefined;
   readOnly?: boolean | undefined;
   dockComposer?: boolean;
-  emptyStateControls?: ReactNode;
+  emptyState?: ReactNode;
 };
 
 const EMPTY_COMPONENTS: ThreadComponents = {};
@@ -204,13 +205,13 @@ export const Thread: FC<ThreadProps> = ({
   managedScroll = false,
   readOnly = false,
   dockComposer = false,
-  emptyStateControls,
+  emptyState,
 }) => {
   const isEmpty = useAuiState(isNewChatView);
 
   return (
     <ThreadComponentsContext.Provider value={components}>
-      <ThreadRoot composer={composer} composerStatus={composerStatus} composerControls={composerControls} composerLeadingControls={composerLeadingControls} isEmpty={isEmpty} autoFocus={autoFocus} managedScroll={managedScroll} readOnly={readOnly} dockComposer={dockComposer} emptyStateControls={emptyStateControls} />
+      <ThreadRoot composer={composer} composerStatus={composerStatus} composerControls={composerControls} composerLeadingControls={composerLeadingControls} isEmpty={isEmpty} autoFocus={autoFocus} managedScroll={managedScroll} readOnly={readOnly} dockComposer={dockComposer} emptyState={emptyState} />
     </ThreadComponentsContext.Provider>
   );
 };
@@ -225,7 +226,7 @@ const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
   managedScroll,
   readOnly,
   dockComposer,
-  emptyStateControls,
+  emptyState,
 }) => {
   const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
   const docked = !isEmpty || dockComposer;
@@ -255,7 +256,7 @@ const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
         >
           <AuiIf condition={isNewChatView}>
             {readOnly ? <p className="text-center text-sm text-muted-foreground">{uiText("此对话尚无已保存的消息或命令记录。")}</p> : (
-              <div className={cn("conversation-start", dockComposer && "flex flex-1 flex-col")}><Welcome />{emptyStateControls}</div>
+              <div className={cn("conversation-start", dockComposer && "flex flex-1 flex-col")}>{emptyState || <Welcome />}</div>
             )}
           </AuiIf>
           <AuiIf condition={isHistoryLoadingView}>
@@ -275,7 +276,7 @@ const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
 
           <ThreadPrimitive.ViewportFooter
             className={cn(
-              "aui-thread-viewport-footer relative bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
+              "aui-thread-viewport-footer relative bg-background flex flex-col gap-2 overflow-visible pb-4 md:pb-6",
               docked &&
                 "sticky bottom-0 rounded-t-(--composer-radius)",
             )}
@@ -490,12 +491,28 @@ export const Composer: FC<{
   controls?: ReactNode;
   leadingControls?: ReactNode;
   input?: {placeholder?: string; "aria-label"?: string; maxLength?: number};
-}> = ({ autoFocus, controls, leadingControls, input }) => {
+  prediction?: {source_turn_id: string; text: string};
+  onDismissPrediction?: () => void;
+}> = ({ autoFocus, controls, leadingControls, input, prediction, onDismissPrediction }) => {
+  const aui = useAui();
+  const empty = useAuiState(s => s.composer.text.length === 0 && s.composer.attachments.length === 0);
   const shortcut = useSendShortcut();
   const root = useRef<HTMLFormElement>(null);
   const voice = useVoiceInput(root, input?.maxLength ?? 32000);
+  const suggestion = empty && !voice.active ? prediction?.text : undefined;
+  const acceptPrediction = () => {
+    if (!suggestion) return;
+    onDismissPrediction?.();
+    aui.composer.setText(suggestion);
+    root.current?.querySelector("textarea")?.focus();
+  };
   return (
-    <ComposerPrimitive.Root ref={root} className="aui-composer-root relative flex w-full flex-col" onSubmitCapture={event => {if (voice.active) event.preventDefault();}}>
+    <ComposerPrimitive.Root ref={root} className="aui-composer-root relative flex w-full flex-col" onSubmitCapture={event => {if (voice.active) event.preventDefault();}}
+      onKeyDownCapture={event => {
+        if (!suggestion || !(event.target instanceof HTMLTextAreaElement) || event.nativeEvent.isComposing || event.keyCode === 229 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        if (event.key === "Tab") { event.preventDefault(); event.stopPropagation(); acceptPrediction(); }
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onDismissPrediction?.(); }
+      }}>
       <ComposerPrimitive.AttachmentDropzone asChild>
         <div
           data-slot="aui_composer-shell"
@@ -503,17 +520,18 @@ export const Composer: FC<{
         >
           <ComposerAttachments />
           <ComposerPrimitive.Input
-            placeholder={uiText("补充说明、询问进展，或交代下一步…")}
+            {...input}
+            placeholder={suggestion || input?.placeholder || uiText("补充说明、询问进展，或交代下一步…")}
             submitMode={shortcut}
             title={shortcut === "enter" ? uiText("Enter 发送；Shift+Enter 换行") : uiText("Ctrl+Enter 或 ⌘+Enter 发送；Enter 换行")}
-            maxLength={32000}
+            maxLength={input?.maxLength ?? 32000}
             addAttachmentOnPaste
             className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
             rows={1}
             autoFocus={autoFocus}
             enterKeyHint="send"
-            aria-label={uiText("对话消息")}
-            {...input}
+            aria-label={input?.["aria-label"] || uiText("对话消息")}
+            aria-description={suggestion ? uiText("下一句建议：{0}。按 Tab 接受为草稿，按 Esc 忽略。", suggestion) : undefined}
             disabled={voice.active || undefined}
           />
           {voice.active && <p role="status" className="px-2.5 text-xs text-muted-foreground">{voice.state === "connecting" ? uiText("正在连接 Codex 语音…") : voice.state === "finishing" ? uiText("正在完成转写…") : uiText("正在听写，点击停止后可编辑并发送。")}</p>}
@@ -855,6 +873,7 @@ const UserImagePart: ImageMessagePartComponent = (part) => {
 
 const UserMessage: FC = () => {
   const messageID = useAuiState(s => s.message.id);
+  const {UserText} = useContext(ThreadComponentsContext);
   return (
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
@@ -867,7 +886,7 @@ const UserMessage: FC = () => {
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
         <div className="aui-user-message-content peer bg-muted text-foreground rounded-(--composer-radius) px-4 py-2 wrap-break-word empty:hidden">
           <MessagePrimitive.Parts
-            components={{ File: UserFilePart, Image: UserImagePart }}
+            components={{ Text: UserText, File: UserFilePart, Image: UserImagePart }}
           />
         </div>
         <div className="aui-user-action-bar-wrapper absolute start-0 top-1/2 -translate-x-full -translate-y-1/2 pe-2 peer-empty:hidden rtl:translate-x-full">

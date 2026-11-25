@@ -544,16 +544,22 @@ function renderConversationBrowser() {
   const creationDirectories = view.creating ? conversationCreationDirectories(view) : [];
   $('#newBrowserSession').disabled = sessionReadOnly;
   $('#newBrowserSession').title = sessionReadOnly ? uiText("当前为只读模式，请在终端新建对话") : uiText("在当前栏新建对话");
+  $('#sessionCreationSetup').hidden = !view.creating;
   $('#conversationCreationKind').hidden = !view.creating || !window.WorkHubPage || window.WorkHubPage.navigationOnly;
   const terminalKind = $('[data-conversation-kind="terminal"]');
-  terminalKind.disabled = (view.targetEnvironment || activeEnvironment) !== 'local' || !view.target?.cwd || !!sessionHistoryState?.submitting;
-  terminalKind.title = terminalKind.disabled ? uiText("请选择本机工作目录后再切换终端") : uiText("在当前栏切换为终端");
-  $('#sessionBrowserNewDirectoryField').hidden = !view.creating || view.scope.kind !== 'all' && creationDirectories.length < 2;
+  const remoteTerminal = (view.targetEnvironment || activeEnvironment) !== 'local';
+  terminalKind.disabled = remoteTerminal || !!sessionHistoryState?.submitting;
+  terminalKind.title = remoteTerminal ? uiText("内置终端目前仅支持本机执行环境。") : uiText("在当前栏切换为终端");
+  $('#sessionBrowserNewDirectoryField').hidden = !view.creating;
   if (view.creating) {
-    $('#sessionBrowserNewDirectory').innerHTML = creationDirectories.map(d => `<option value="${esc(d.key)}" title="${esc(d.cwd)}">${esc(d.label)}</option>`).join('');
+    $('#sessionBrowserNewDirectory').innerHTML = creationDirectories.map(d => `<option value="${esc(d.key)}" title="${esc(d.cwd)}" data-name="${esc(d.name)}" data-branch="${esc(d.branch)}">${esc(d.label)}</option>`).join('');
     $('#sessionBrowserNewDirectory').value = view.creationDirectory || '';
     $('#sessionBrowserNewDirectory').title = view.target?.cwd || '';
-    window.WorkHubUI.renderCreationChoices($('#sessionBrowserNewDirectory'), $('#sessionBrowserDirectoryChoices'));
+    window.WorkHubUI.renderCreationChoices($('#sessionBrowserNewDirectory'), $('#sessionBrowserDirectoryChoices'), undefined, {
+      focus:focusConversationCreationInput,
+      chooseFolder:(view.targetEnvironment || activeEnvironment) === 'local' ? chooseConversationCreationFolder : undefined,
+      addDirectory:window.WorkHubAssistant ? () => document.dispatchEvent(new Event('workhub:creation-add-directory')) : undefined
+    });
   }
   renderConversationList();
   syncConversationScopePanel();
@@ -654,8 +660,14 @@ function showConversationSelection() {
   const selection = ++conversationState.selection;
   const tools = conversationHost.querySelector('.session-browser-list-tools');
   const focusedControl = tools.contains(document.activeElement) ? document.activeElement : null;
+  const bindings = view.creating ? view.creationBindings?.[environment] : undefined;
   openSessionHistoryPanel(session?.id || null, {
-    session, environment, overview: conversationOverview(environment), target: view.target, browserTarget: targetKey, focusComposer:!!view.focusComposer,
+    session, environment, overview: conversationOverview(environment), browserTarget: targetKey, focusComposer:!!view.focusComposer,
+    target: bindings?.length ? {...view.target, bindings} : view.target,
+    updateDraftBindings: view.creating ? bindings => {
+      view.creationBindings = {...view.creationBindings,[environment]:bindings};
+      window.dispatchEvent(new Event('workhub:chat-draft'));
+    } : undefined,
     loaded(loaded) {
       if (conversationState.current !== view || selection !== conversationState.selection || loaded.id !== session?.id) return;
       const activity = conversationState.session(environment, loaded.id);
@@ -668,6 +680,7 @@ function showConversationSelection() {
       window.dispatchEvent(new CustomEvent('workhub:session-loaded'));
     },
     created(created) {
+      window.WorkHubUI.recordCreationDirectory(view.creationDirectory, created.id);
       conversationRequests.invalidate(environment);
       created = conversationTaggedSession(created, environment);
       conversationState.record(environment, [created]);
@@ -751,10 +764,68 @@ function syncConversations() {
   updateConversationNavigation();
   refreshConversationCatalog();
 }
+// This inventory is intentionally separate from conversationDirectories: saved
+// readers and project tools still need their worktrees and historical paths.
 function conversationCreationDirectories(view) {
-  const dirs = conversationDirectories(view.scope, view.environmentFilter).filter(d => !d.disabled && d.target);
-  if (view.scope.kind === 'all') dirs.unshift({key:'', cwd:'', environment:view.environmentFilter || view.environment, label:uiText("默认目录（无需项目）"), target:{}});
+  const dirs = [];
+  for (const entry of conversationEnvironments()) {
+    if (view.environmentFilter && entry.id !== view.environmentFilter || view.scope.environment && entry.id !== view.scope.environment) continue;
+    const projects = window.WorkHubUI.mainCreationProjects(conversationOverview(entry.id).projects);
+    for (const project of projects) {
+      const branch = project.worktrees?.find(tree => conversationPathKey(tree.path) === conversationPathKey(project.path))?.branch || '';
+      const key = conversationEnvironmentKey(entry.id, conversationPathKey(project.path));
+      for (const session of conversationItems(entry.id)) {
+        if (session.primary_project_id === project.id || conversationPathKey(session.cwd) === conversationPathKey(project.path)) window.WorkHubUI.recordCreationDirectory(key, session.id, (session.created_at || 0) * 1000);
+      }
+      const name = project.name + (entry.id !== 'local' ? ' · ' + environmentName(entry.id) : '');
+      dirs.push({key:conversationEnvironmentKey(entry.id, conversationPathKey(project.path)), cwd:project.path, environment:entry.id, name, branch, label:[name,branch].filter(Boolean).join(' · '), target:{project_id:project.id,cwd:project.path}});
+    }
+  }
+  for (const directory of view.creationLocalDirectories || []) {
+    if (!dirs.some(item => item.environment === directory.environment && conversationPathKey(item.cwd) === conversationPathKey(directory.cwd))) dirs.push(directory);
+  }
+  dirs.unshift({key:'', cwd:'', environment:conversationScopeEnvironment(view.scope) || view.environmentFilter || view.environment, name:uiText("默认目录（无需项目）"), branch:'', label:uiText("默认目录（无需项目）"), target:{}});
   return dirs;
+}
+function focusConversationCreationInput() {
+  requestAnimationFrame(() => ($('#assistantChatRoot textarea') || $('#sessionChatInput'))?.focus({preventScroll:true}));
+}
+async function chooseConversationCreationFolder() {
+  const view = conversationState.current;
+  if (!view?.creating) return;
+  const result = await api('/api/dialogs/directory', {environment:'local', method:'POST', body:'{}'});
+  if (!result.path || conversationState.current !== view || !view.creating) return;
+  const directory = {key:conversationEnvironmentKey('local',conversationPathKey(result.path)), cwd:result.path, environment:'local', name:result.path.split(/[\\/]/).filter(Boolean).at(-1) || result.path, branch:'', label:result.path.split(/[\\/]/).filter(Boolean).at(-1) || result.path, target:{cwd:result.path}};
+  // Resolve Git metadata through the existing binding inspector. It validates
+  // the path and rejects a linked worktree instead of mounting it as a root.
+  const inspected = await api('/api/session-bindings/inspect', {environment:'local',method:'POST',body:JSON.stringify({directory:result.path,access:'write'})});
+  if (conversationState.current !== view || !view.creating) return;
+  if (inspected.main_directory && conversationPathKey(inspected.main_directory) !== conversationPathKey(inspected.directory)) throw new Error(uiText("请选择仓库主目录"));
+  if (inspected.worktree?.detached) throw new Error(uiText("请选择仓库主目录"));
+  if (inspected.project_id) {
+    const project = conversationOverview('local').projects.find(project => project.id === inspected.project_id);
+    if (project && conversationPathKey(project.path) !== conversationPathKey(result.path)) throw new Error(uiText("请选择仓库主目录"));
+    directory.target.project_id = inspected.project_id;
+  }
+  const registered = conversationOverview('local').projects.find(project => conversationPathKey(project.path) === conversationPathKey(inspected.directory));
+  if (registered) {directory.target.project_id = registered.id; directory.name = registered.name;}
+  directory.key = conversationEnvironmentKey('local', conversationPathKey(inspected.directory));
+  directory.cwd = inspected.directory; directory.target.cwd = inspected.directory;
+  directory.branch = inspected.branch || '';
+  directory.label = [directory.name,directory.branch].filter(Boolean).join(' · ');
+  view.creationLocalDirectories = [...(view.creationLocalDirectories || []).filter(item => item.key !== directory.key),directory];
+  selectConversationCreationDirectory(view, directory);
+  conversationState.selection++; closeSessionHistory(false); renderConversationBrowser(); showConversationSelection();
+}
+function selectConversationCreationDirectory(view, directory) {
+  view.creationDirectory = directory?.key || '';
+  view.target = directory?.target || {};
+  view.targetEnvironment = directory?.environment;
+  const attached = view.creationBindings?.[view.targetEnvironment];
+  if (directory?.cwd && attached) {
+    const key = conversationPathKey(directory.cwd);
+    view.creationBindings = {...view.creationBindings,[view.targetEnvironment]:attached.filter(binding => conversationPathKey(binding.directory) !== key)};
+  }
 }
 function conversationDirectoryPreference(view) {
   return 'directory:' + conversationScopeKey(view.scope, view.environment);
@@ -762,6 +833,10 @@ function conversationDirectoryPreference(view) {
 function defaultConversationDirectory(view, dirs = conversationCreationDirectories(view)) {
   const explicit = view.creationDirectory && dirs.find(directory => directory.key === view.creationDirectory);
   if (explicit) return explicit;
+  // Old project/worktree entry points now start at their primary repository.
+  const previous = conversationDirectories(view.scope, view.environmentFilter).find(directory => directory.key === (view.creationDirectory || (view.scope.kind === 'directory' ? conversationEnvironmentKey(view.scope.environment,conversationPathKey(view.scope.cwd)) : '')));
+  const primary = previous?.target?.project_id && dirs.find(directory => directory.target.project_id === previous.target.project_id && directory.environment === previous.environment);
+  if (primary) return primary;
   if (view.scope.kind === 'project') {
     const saved = window.WorkHubUI.conversationDefaults.get(conversationDirectoryPreference(view));
     const preferred = saved && dirs.find(directory => directory.key === saved);
@@ -772,14 +847,14 @@ function defaultConversationDirectory(view, dirs = conversationCreationDirectori
   }
   return dirs[0];
 }
-function startBrowserConversation(focus = true) {
+function startBrowserConversation(focus = true, restore = false) {
   if (sessionReadOnly) return;
   const view = conversationState.current;
   const directory = defaultConversationDirectory(view);
+  window.WorkHubUI.resetCreationChoices($('#sessionBrowserDirectoryChoices'));
   view.creating = true; view.selected = null; view.pane = 'detail';
-  view.target = directory?.target || (view.scope.kind === 'project' ? {project_id:view.scope.id} : {});
-  view.targetEnvironment = directory?.environment || conversationScopeEnvironment(view.scope) || activeEnvironment;
-  view.creationDirectory = directory?.key || '';
+  if (!restore) view.creationBindings = {};
+  selectConversationCreationDirectory(view, directory);
   view.focusComposer = focus;
   conversationState.selection++;
   closeSessionHistory(false);
@@ -964,11 +1039,10 @@ if (typeof ResizeObserver !== 'undefined') {
 $('#sessionBrowserNewDirectory').addEventListener('change', event => {
   if (!conversationState.current?.creating) return;
   const directory = conversationCreationDirectories(conversationState.current).find(d => d.key === event.target.value);
-  conversationState.current.target = directory?.target || {};
-  conversationState.current.targetEnvironment = directory?.environment;
-  conversationState.current.creationDirectory = directory?.key || '';
+  selectConversationCreationDirectory(conversationState.current, directory);
   if (directory?.key) window.WorkHubUI.conversationDefaults.set(conversationDirectoryPreference(conversationState.current), directory.key);
   conversationState.selection++; closeSessionHistory(false); renderConversationBrowser(); showConversationSelection();
+  focusConversationCreationInput();
 });
 document.addEventListener('keydown', event => {
   const itemMenu = document.activeElement?.closest('.session-item-menu[open]');

@@ -101,6 +101,8 @@ func TestHistoryAndLiveShareDisplayableToolRecords(t *testing.T) {
 		`{"id":"plan","type":"plan","text":"检查并运行测试"}`,
 		`{"id":"compact","type":"contextCompaction"}`,
 		`{"id":"change","type":"fileChange","status":"completed","changes":[{"path":"a.go","diff":"+ok"}]}`,
+		`{"id":"read","type":"commandExecution","status":"completed","command":"cat a.go","commandActions":[{"type":"read","path":"a.go","secret":"SECRET"}]}`,
+		`{"id":"image","type":"imageView","path":"/tmp/preview.png"}`,
 	}
 	for _, raw := range items {
 		var item codexHistoryItem

@@ -81,6 +81,7 @@ lucide-react/dist/esm/icons/arrow-right.mjs:
 lucide-react/dist/esm/icons/arrow-up.mjs:
 lucide-react/dist/esm/icons/atom.mjs:
 lucide-react/dist/esm/icons/audio-lines.mjs:
+lucide-react/dist/esm/icons/book-open.mjs:
 lucide-react/dist/esm/icons/braces.mjs:
 lucide-react/dist/esm/icons/brain.mjs:
 lucide-react/dist/esm/icons/chart-no-axes-combined.mjs:
@@ -102,9 +103,11 @@ lucide-react/dist/esm/icons/file-code.mjs:
 lucide-react/dist/esm/icons/file-diff.mjs:
 lucide-react/dist/esm/icons/file-cog.mjs:
 lucide-react/dist/esm/icons/file-image.mjs:
+lucide-react/dist/esm/icons/file-pen-line.mjs:
 lucide-react/dist/esm/icons/file-text.mjs:
 lucide-react/dist/esm/icons/file.mjs:
 lucide-react/dist/esm/icons/folder-open.mjs:
+lucide-react/dist/esm/icons/folder-search.mjs:
 lucide-react/dist/esm/icons/folder.mjs:
 lucide-react/dist/esm/icons/gauge.mjs:
 lucide-react/dist/esm/icons/git-branch.mjs:
@@ -112,9 +115,11 @@ lucide-react/dist/esm/icons/git-fork.mjs:
 lucide-react/dist/esm/icons/hand.mjs:
 lucide-react/dist/esm/icons/image-off.mjs:
 lucide-react/dist/esm/icons/image.mjs:
+lucide-react/dist/esm/icons/info.mjs:
 lucide-react/dist/esm/icons/list-tree.mjs:
 lucide-react/dist/esm/icons/loader-circle.mjs:
 lucide-react/dist/esm/icons/loader.mjs:
+lucide-react/dist/esm/icons/lock-keyhole.mjs:
 lucide-react/dist/esm/icons/maximize-2.mjs:
 lucide-react/dist/esm/icons/mic.mjs:
 lucide-react/dist/esm/icons/minimize-2.mjs:
@@ -137,9 +142,11 @@ lucide-react/dist/esm/icons/shield.mjs:
 lucide-react/dist/esm/icons/square-terminal.mjs:
 lucide-react/dist/esm/icons/square.mjs:
 lucide-react/dist/esm/icons/terminal.mjs:
+lucide-react/dist/esm/icons/text-wrap.mjs:
 lucide-react/dist/esm/icons/thumbs-down.mjs:
 lucide-react/dist/esm/icons/thumbs-up.mjs:
 lucide-react/dist/esm/icons/video.mjs:
+lucide-react/dist/esm/icons/wrench.mjs:
 lucide-react/dist/esm/icons/x.mjs:
 lucide-react/dist/esm/icons/zap.mjs:
 lucide-react/dist/esm/lucide-react.mjs:

@@ -21,21 +21,31 @@
   <div id="terminalSurface"></div>
   <p id="terminalFeedback" role="status" hidden></p>
   <main id="terminalLauncher">
-    <section class="terminal-launch-content conversation-start">
-      <h1 class="conversation-welcome-title" data-i18n="选择工具，开始终端工作">选择工具，开始终端工作</h1>
-      <div id="terminalCreationSetup" class="conversation-creation-setup"></div>
+    <section class="terminal-launch-content conversation-start conversation-creation-setup">
+      <div id="terminalCreationSetup"></div>
       <form id="terminalForm">
-        <div class="terminal-profile-choices"><span id="terminalProfileLabel">Agent / Shell</span><div id="terminalProfileChoices" class="creation-choices" role="group" aria-labelledby="terminalProfileLabel"></div><select id="terminalProfile" hidden aria-label="Agent / Shell"></select></div>
-        <fieldset id="customTerminal" hidden>
-          <legend data-i18n="自定义 Agent">自定义 Agent</legend>
-          <label>名称<input id="customName" placeholder="例如：我的 Agent" maxlength="80" data-i18n-placeholder="例如：我的 Agent"></label>
-          <label>可执行文件<input id="customExecutable" placeholder="命令名称或绝对路径" autocomplete="off" spellcheck="false" data-i18n-placeholder="命令名称或绝对路径"></label>
-          <label>参数（JSON 数组）<textarea id="customArgs" rows="2" spellcheck="false">[]</textarea></label>
-          <label>环境变量（JSON 对象，仅用于本次启动）<textarea id="customEnv" rows="2" spellcheck="false">{}</textarea></label>
-          <button id="saveTerminalProfile" type="button" data-i18n="保存启动配置">保存启动配置</button>
-          <button id="startTerminal" class="primary" type="submit" data-i18n="启动自定义 Agent">启动自定义 Agent</button>
-        </fieldset>
-        <p class="terminal-help" data-i18n="点击启动按钮即可打开终端，使用所选工具自己的登录与审批界面。">点击启动按钮即可打开终端，使用所选工具自己的登录与审批界面。</p>
+        <div class="terminal-directory-field">
+          <label for="terminalProject" data-i18n="工作目录">工作目录</label>
+          <span class="terminal-select"><select id="terminalProject" aria-describedby="terminalDirectoryPath" disabled></select></span>
+          <code id="terminalDirectoryPath" class="terminal-help" hidden></code>
+          <p id="terminalDirectoryHint" class="terminal-help" data-i18n="请先注册一个本机项目，再启动终端。" hidden>请先注册一个本机项目，再启动终端。</p>
+        </div>
+        <div id="terminalProfileChoices" role="group" aria-label="终端工具" data-i18n-aria-label="终端工具"></div>
+        <details id="customTerminal" class="terminal-disclosure" hidden>
+          <summary data-i18n="自定义 Agent">自定义 Agent</summary>
+          <fieldset id="customTerminalFields">
+            <label id="terminalCustomProfileField" hidden><span data-i18n="启动配置">启动配置</span><span class="terminal-select"><select id="terminalProfile"></select></span></label>
+            <label><span data-i18n="名称">名称</span><input id="customName" placeholder="例如：我的 Agent" maxlength="80" data-i18n-placeholder="例如：我的 Agent"></label>
+            <label><span data-i18n="可执行文件">可执行文件</span><input id="customExecutable" placeholder="命令名称或绝对路径" autocomplete="off" spellcheck="false" data-i18n-placeholder="命令名称或绝对路径"></label>
+            <label><span data-i18n="参数（JSON 数组）">参数（JSON 数组）</span><textarea id="customArgs" rows="2" spellcheck="false">[]</textarea></label>
+            <label><span data-i18n="环境变量（JSON 对象，仅用于本次启动）">环境变量（JSON 对象，仅用于本次启动）</span><textarea id="customEnv" rows="2" spellcheck="false">{}</textarea></label>
+            <div class="terminal-form-footer">
+              <button id="saveTerminalProfile" type="button" data-i18n="保存启动配置">保存启动配置</button>
+              <button id="startTerminal" class="primary" type="submit" data-i18n="启动自定义 Agent">启动自定义 Agent</button>
+            </div>
+          </fieldset>
+        </details>
+        <p id="terminalLaunchFeedback" class="terminal-launch-feedback" role="status" hidden></p>
       </form>
     </section>
     <details id="terminalExisting" class="terminal-existing" hidden><summary id="terminalExistingSummary" data-i18n="已有终端">已有终端</summary><div class="terminal-existing-body"><button id="refreshTerminals" type="button" data-i18n="刷新">刷新</button><div id="terminalList"></div></div></details>

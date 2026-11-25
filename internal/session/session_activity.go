@@ -16,6 +16,9 @@ func (a *Service) sessionActivity(ctx context.Context, s codex.Session) codex.Ac
 		return codex.Activity{Status: status}
 	}
 	if s.Path == "" {
+		if s.Status.Type == "idle" {
+			return codex.Activity{Status: "completed"}
+		}
 		return codex.Activity{Status: "unknown"}
 	}
 	if a.Execution.Remote != nil {
@@ -25,7 +28,13 @@ func (a *Service) sessionActivity(ctx context.Context, s codex.Session) codex.Ac
 		}
 		return activity
 	}
-	return codex.RolloutActivity(s.Path)
+	activity := codex.RolloutActivity(s.Path)
+	if s.Status.Type == "idle" && (activity.Status == "unknown" || activity.Status == "running") {
+		// A loaded idle runtime is stronger evidence than a delayed rollout
+		// lifecycle event or an unreadable/compressed preview file.
+		activity.Status = "completed"
+	}
+	return activity
 }
 func (a *Service) externalActivity(ctx context.Context, id string) (codex.Activity, bool) {
 	c, err := a.openSessions(ctx)

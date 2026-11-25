@@ -10,7 +10,8 @@ import {
   useExternalStoreRuntime,
   type AssistantRuntime,
 } from "@assistant-ui/react";
-import { HandIcon, LoaderCircleIcon } from "lucide-react";
+import { HandIcon, InfoIcon, LoaderCircleIcon, LockKeyholeIcon, XIcon } from "lucide-react";
+import { Popover } from "radix-ui";
 import {
   Thread,
   Composer,
@@ -19,6 +20,38 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ConversationHeader } from "../app/conversation-surface";
 import type { useChatReading } from "./use-chat-reading";
+import { uiText } from "../i18n";
+
+export function ConversationOccupied({description, retrying, forking, canRetry, canFork, onRetry, onFork}: {
+  description: string; retrying: boolean; forking: boolean; canRetry: boolean; canFork: boolean;
+  onRetry: () => void; onFork: () => void;
+}) {
+  return <div className="chat-occupied" role="status">
+    <LockKeyholeIcon className="chat-occupied-icon" aria-hidden="true" />
+    <div className="chat-occupied-copy"><strong>{uiText("已在另一个应用中打开")}</strong><p>{description}</p></div>
+    <div className="chat-occupied-actions">
+      <button type="button" disabled={!canRetry || retrying || forking} onClick={onRetry}>{retrying ? uiText("重试中…") : uiText("重试")}</button>
+      <button type="button" disabled={!canFork || retrying || forking} onClick={onFork}>{forking ? uiText("创建中…") : uiText("创建聊天分支")}</button>
+    </div>
+  </div>;
+}
+
+export function ConversationNotice({message, portal}: {
+  message: string;
+  portal: RefObject<HTMLElement | null>;
+}) {
+  return <Popover.Root>
+    <Popover.Trigger type="button" className="chat-notice-trigger" aria-label={uiText("状态说明")}>
+      <InfoIcon aria-hidden="true" /><span>{uiText("状态说明")}</span>
+    </Popover.Trigger>
+    <Popover.Portal container={portal.current}>
+      <Popover.Content className="shadcn-scope chat-control-overlay chat-notice-popover" side="top" align="start" sideOffset={8} collisionPadding={12} aria-label={uiText("状态说明")}>
+        <p>{message}</p>
+        <Popover.Close type="button" className="chat-notice-close" aria-label={uiText("关闭说明")}><XIcon aria-hidden="true" /></Popover.Close>
+      </Popover.Content>
+    </Popover.Portal>
+  </Popover.Root>;
+}
 
 interface ConversationController {
   subscribe: (listener: () => void) => () => void;
@@ -99,7 +132,7 @@ export function ConversationFeedback({
   children?: ReactNode;
 }) {
   return (
-    <footer className="shrink-0 space-y-2 border-t px-5 py-3 text-xs text-muted-foreground">
+    <footer className="chat-feedback shrink-0 space-y-1 text-xs text-muted-foreground">
       {messages.filter(Boolean).map((message, index) => (
         <p key={index} role="status">
           {message}
@@ -123,6 +156,8 @@ interface ConversationPanelProps {
   reading: Reading;
   thread: Omit<ThreadProps, "managedScroll">;
   composerInput?: ComponentProps<typeof Composer>["input"];
+  composerPrediction?: ComponentProps<typeof Composer>["prediction"];
+  onDismissPrediction?: () => void;
   beforeThread?: ReactNode;
   afterThread?: ReactNode;
   feedback?: ReactNode;
@@ -137,6 +172,8 @@ export function ConversationPanel({
   reading,
   thread,
   composerInput,
+  composerPrediction,
+  onDismissPrediction,
   beforeThread,
   afterThread,
   feedback,
@@ -168,6 +205,8 @@ export function ConversationPanel({
                 <Composer
                   autoFocus={!!thread.autoFocus}
                   input={composerInput}
+                  prediction={composerPrediction}
+                  onDismissPrediction={onDismissPrediction}
                   controls={thread.composerControls}
                   leadingControls={thread.composerLeadingControls}
                 />

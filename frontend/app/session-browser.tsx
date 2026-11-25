@@ -1,7 +1,7 @@
 import { uiText, uiLocale } from "../i18n";
-import { ConversationKindSwitch } from "./conversation-surface"
+import { ConversationCreationIntro } from "./conversation-surface"
 import { ShortcutBadge } from "./shortcut-icons"
-import { Plus, Search, ArrowLeft, X, ChevronUp, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, GitBranch, RotateCw, Check, Folder, FolderOpen, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, SquareTerminal, Orbit, ListFilter as ListFilterIcon, type LucideIcon } from "lucide-react"
+import { Plus, Search, ArrowLeft, X, ChevronUp, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, GitBranch, RotateCw, Check, Folder, FolderOpen, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, SquareSplitHorizontal, SquareTerminal, Orbit, ListFilter as ListFilterIcon, type LucideIcon } from "lucide-react"
 import { ListCreateButton, ListFilter, ListSearch } from "./list-controls"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -80,8 +80,8 @@ export function SessionBrowser() {
         <div className="session-reading-toolbar"><div className="session-browser-mobile-back"><Button type="button" size="sm" variant="ghost" data-conversation-action="back"><ArrowLeft aria-hidden="true" />{uiText("对话列表")}</Button></div></div>
         <div className="session-reading-layout" id="sessionReadingLayout"><div className="session-reading-chat">
         <div className="shrink-0">
-          <div id="sessionCreationSetup" className="conversation-creation-setup">
-            <div id="conversationCreationKind" hidden><ConversationKindSwitch kind="ui" /></div>
+          <div id="sessionCreationSetup" className="conversation-creation-setup" hidden>
+            <ConversationCreationIntro kind="ui" switchID="conversationCreationKind" switchHidden />
             <div id="sessionBrowserNewDirectoryField" className="session-browser-new-directory" hidden><span id="sessionBrowserNewDirectoryLabel">{uiText("工作目录")}</span><div id="sessionBrowserDirectoryChoices" className="creation-choices" role="group" aria-labelledby="sessionBrowserNewDirectoryLabel" /><select id="sessionBrowserNewDirectory" hidden aria-label={uiText("工作目录")} /></div>
           </div>
         </div>
@@ -156,8 +156,10 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
           {StatusIcon && <StatusIcon aria-hidden="true" />}
         </span>
         {s.unread && !status && <span className="session-browser-unread-dot" role="img" aria-label={uiText("有新消息")} title={uiText("有新消息")} />}
-        {!s.terminal && <span className="session-browser-item-agent" role="img" aria-label={antigravity ? "Antigravity" : "Codex"}><AgentIcon aria-hidden="true" /></span>}
-        <time className="session-browser-item-time" title={date?.toLocaleString(uiLocale(), {hour12: false})} dateTime={date?.toISOString()}>{dateLabel}</time>
+        <span className="session-browser-item-trailing">
+          {!s.terminal && <span className="session-browser-item-agent" role="img" aria-label={antigravity ? "Antigravity" : "Codex"}><AgentIcon aria-hidden="true" /></span>}
+          <time className="session-browser-item-time" title={date?.toLocaleString(uiLocale(), {hour12: false})} dateTime={date?.toISOString()}>{dateLabel}</time>
+        </span>
       </span>
       {branchMatch >= 0 || pathMatch >= 0 ? <span className="session-browser-item-meta">
         <span className="session-browser-item-directory session-browser-item-search-match" title={uiText(matchLabel, matchValue)}>{uiText(matchLabel, (matchStart ? "…" : "") + matchValue.slice(matchStart))}</span>
@@ -176,8 +178,8 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
         {showEnvironment && <span className="session-browser-environment" title={environmentName}>{environmentName}</span>}
       </span>}
       {s.error && !rowError ? <span className="table-message">{s.error}</span> : null}
-    </button>{parallel ? <Button type="button" variant="ghost" size="icon-sm" className="parallel-list-add transition-colors" data-conversation-parallel={key} data-conversation-terminal={s.terminal ? s.id : undefined} data-parallel-open={isParallel || undefined} disabled={s.available === false || parallelFull && !isParallel} aria-label={isParallel ? uiText("定位对话：{0}", s.name) : uiText("将对话加入并列：{0}", s.name)} title={isParallel ? `${uiText("已并列")} · ${uiText("定位到对应栏")}` : parallelFull ? uiText("最多并列三个对话，可在栏标题中更换") : uiText("加入右侧并列")}>
-      {isParallel ? <Columns2 aria-hidden="true" /> : <Plus aria-hidden="true" />}
+    </button>{parallel ? <Button type="button" variant="ghost" size="icon-sm" className="parallel-list-add transition-none" data-conversation-parallel={key} data-conversation-terminal={s.terminal ? s.id : undefined} data-parallel-open={isParallel || undefined} disabled={s.available === false || parallelFull && !isParallel} aria-label={isParallel ? uiText("定位对话：{0}", s.name) : uiText("将对话加入并列：{0}", s.name)} title={isParallel ? `${uiText("已并列")} · ${uiText("定位到对应栏")}` : parallelFull ? uiText("最多并列三个对话，可在栏标题中更换") : uiText("加入右侧并列")}>
+      {isParallel ? <Columns2 aria-hidden="true" /> : <SquareSplitHorizontal aria-hidden="true" />}
     </Button> : null}</li>
   }
   if (rows && sidebarMode === "recent") return <ul className="session-browser-items session-browser-items-flat">{rows.filter(row => row.kind === "session").map(row => renderSession(row.session, row))}</ul>
@@ -205,8 +207,8 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
           title={group.name}>
           {collection && (group.identity ? <ShortcutBadge name={group.iconName || group.name} identity={group.identity} appearance={group.icon} /> : <Folder className="session-collection-fallback-icon" aria-hidden="true" />)}
           <span className="session-workspace-name">{group.name}</span>
-          {group.collapsed && group.running && <span className="session-workspace-running session-browser-item-status" data-state="running" aria-hidden="true" title={uiText("有对话正在运行")}><LoaderCircle /></span>}
           {environmentName && <small>{environmentName}</small>}
+          {group.collapsed && group.running && <span className="session-workspace-running session-browser-item-status" data-state="running" aria-hidden="true" title={uiText("有对话正在运行")}><LoaderCircle /></span>}
           {!collection && count}
         </button>
         {collection && <span className="session-collection-actions">

@@ -142,19 +142,23 @@ function ToolFallbackTrigger({
   toolName,
   status,
   responseDeliveryStatus,
+  label: customLabel,
+  icon: CustomIcon,
   className,
   ...props
 }: React.ComponentProps<typeof CollapsibleTrigger> & {
   toolName: string;
   status?: ToolCallMessagePartStatus;
   responseDeliveryStatus?: ToolCallMessagePart["responseDeliveryStatus"];
+  label?: React.ReactNode;
+  icon?: React.ElementType;
 }) {
   const statusType = status?.type ?? "complete";
   const isRunning = statusType === "running";
   const isCancelled =
     status?.type === "incomplete" && status.reason === "cancelled";
 
-  const Icon = statusIconMap[statusType];
+  const Icon = CustomIcon ?? statusIconMap[statusType];
   const label =
     responseDeliveryStatus === "queued"
       ? "Reply queued, not sent yet"
@@ -186,12 +190,13 @@ function ToolFallbackTrigger({
       <span
         data-slot="tool-fallback-trigger-label"
         className={cn(
-          "aui-tool-fallback-trigger-label-wrapper inline-block min-w-0 text-start leading-none wrap-anywhere",
+          "aui-tool-fallback-trigger-label-wrapper min-w-0 text-start wrap-anywhere",
+          customLabel ? "flex items-baseline gap-2 leading-normal" : "inline-block leading-none",
           isCancelled && "text-muted-foreground line-through",
           isRunning && "shimmer motion-reduce:animate-none",
         )}
       >
-        {label}: <b>{toolName}</b>
+        {customLabel ?? <>{label}: <b>{toolName}</b></>}
       </span>
       <ToolFallbackDuration />
       <ChevronDownIcon

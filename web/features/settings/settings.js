@@ -283,6 +283,56 @@ function setConversationDefaultOptions(select, defaultLabel, options, value, una
   select.value = selected || unavailableLabel ? value : '';
 }
 
+let defaultAgentEnvironment = null;
+let defaultAgentRevision = 0;
+let defaultAgentSaved = 'codex';
+async function loadDefaultAgent() {
+  const environment = activeEnvironment;
+  const revision = ++defaultAgentRevision;
+  defaultAgentEnvironment = environment;
+  $('#defaultAgentSelect').disabled = true;
+  $('#defaultAgentStatus').textContent = '';
+  $('#defaultAgentError').hidden = true;
+  $('#defaultAgentRetry').hidden = true;
+  try {
+    await settingsSaveQueues.get(JSON.stringify([environment, 'default-agent']))?.catch(() => {});
+    const result = await api('/api/settings/default-agent', {environment});
+    if (environment !== activeEnvironment || revision !== defaultAgentRevision) return;
+    defaultAgentSaved = result.provider === 'agy' ? 'agy' : 'codex';
+    $('#defaultAgentSelect').value = defaultAgentSaved;
+    $('#defaultAgentSelect').disabled = false;
+  } catch (error) {
+    if (environment !== activeEnvironment || revision !== defaultAgentRevision) return;
+    $('#defaultAgentError').textContent = error.message;
+    $('#defaultAgentError').hidden = false;
+    $('#defaultAgentRetry').hidden = false;
+  }
+}
+async function saveDefaultAgent() {
+  if ($('#defaultAgentSelect').disabled) { void loadDefaultAgent(); return; }
+  const environment = activeEnvironment;
+  const revision = ++defaultAgentRevision;
+  const provider = $('#defaultAgentSelect').value;
+  $('#defaultAgentStatus').textContent = uiText('保存中…');
+  $('#defaultAgentError').hidden = true;
+  $('#defaultAgentRetry').hidden = true;
+  try {
+    await enqueueSettingsSave(JSON.stringify([environment, 'default-agent']), () => api('/api/settings/default-agent', {method:'PUT', environment, body:JSON.stringify({provider})}));
+    if (environment !== activeEnvironment || revision !== defaultAgentRevision) return;
+    defaultAgentSaved = provider;
+    $('#defaultAgentStatus').textContent = uiText('已保存');
+  } catch (error) {
+    if (environment !== activeEnvironment || revision !== defaultAgentRevision) return;
+    $('#defaultAgentStatus').textContent = '';
+    $('#defaultAgentError').textContent = error.message;
+    $('#defaultAgentError').hidden = false;
+    $('#defaultAgentRetry').hidden = false;
+  }
+}
+$('#defaultAgentSelect').addEventListener('change', () => { void saveDefaultAgent(); });
+$('#defaultAgentForm').addEventListener('submit', event => { event.preventDefault(); void saveDefaultAgent(); });
+$('#defaultAgentRetry').addEventListener('click', () => { void saveDefaultAgent(); });
+
 function selectedProvider() {
   return $('#conversationDefaultProviderGroup input[name="conversation_default_provider"]:checked')?.value || 'codex';
 }
@@ -503,6 +553,9 @@ function renderSettings() {
   $('#terminalSettingsFields').disabled = !state.loaded || !state.terminal.settings;
   if (!state.loaded) {
     settingsEnvironment = null;
+    defaultAgentEnvironment = null;
+    defaultAgentRevision++;
+    $('#defaultAgentSelect').disabled = true;
     titleSettingsEnvironment = null;
     titleSettingsRevision++;
     titleSettingsLoading = false;
@@ -516,6 +569,7 @@ function renderSettings() {
     $('#terminalStatus').textContent = uiText("等待执行环境连接后读取终端配置");
     return;
   }
+  if (state.view === 'settings' && defaultAgentEnvironment !== activeEnvironment) void loadDefaultAgent();
   if (state.view === 'settings' && titleSettingsEnvironment !== activeEnvironment) loadSessionTitleSettings();
   if (state.view === 'settings' && conversationDefaultsEnvironment !== activeEnvironment) loadConversationDefaults();
   // Forms live outside the polled content panel. Initialize once per environment

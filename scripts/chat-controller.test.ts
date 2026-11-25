@@ -6,7 +6,7 @@ import {convertEntries, convertEntry, idleChat, readSnapshots, mergeEntries, typ
 const target = {project_id:"p",cwd:"/home/test/worktrees/p"};
 const session = {id:"thread", name:"会话", cwd:target.cwd};
 function setup(request: ChatOptions["request"], isNew = false) {
-  return new ChatController({target, session: isNew ? null : session, environment:"wsl-ubuntu", request, stream: async () => {throw new Error("offline");}, created() {}, close() {}});
+  return new ChatController({target, session: isNew ? null : session, environment:"wsl-ubuntu", request: (path, init) => path === "/api/settings/default-agent" ? Promise.resolve({provider:"codex"}) as any : request(path, init), stream: async () => {throw new Error("offline");}, created() {}, close() {}});
 }
 
 test("new conversations and existing conversations inherit native settings without fixed overrides", async () => {
@@ -23,6 +23,7 @@ test("loading saved defaults preserves explicit choices and never overrides an e
   let resolve!: (value:any) => void;
   const fresh=setup(async()=>new Promise(done=>{resolve=done;}) as any,true);
   const pending=fresh.loadOptions();
+  await Promise.resolve();
   fresh.setSettings({model:'manual',permission:'ask'});
   resolve({models:[],modes:[],defaults:{model:'saved',permission:'full'}});
   await pending;
@@ -49,6 +50,7 @@ test("saving defaults during a pending catalog read refreshes the composer witho
   },true);
   try {
     fresh.connect();const initial=fresh.loadOptions();
+    await Promise.resolve();
     assert.equal(fresh.canSend(),false);
     fresh.setSettings({model:'manual'});
     events.dispatchEvent(new CustomEvent('workhub:conversation-defaults',{detail:{environment:'wsl-ubuntu'}}));
@@ -677,4 +679,75 @@ test("switching provider to agy loads agy options, creates an agy session and di
   assert.equal(createReq?.body.provider, "agy");
   assert.equal(c.getSnapshot().session?.provider, "agy");
   await assert.rejects(c.send("运行中插话"));
+});
+
+test("prediction delivery keeps the completed turn stream alive and never overwrites typed drafts", async () => {
+  for (const mode of ["accept", "typed", "dismiss", "navigate"]) {
+    let write!: ReadableStreamDefaultController<Uint8Array>;
+    let streamSignal: AbortSignal | undefined;
+    const active = {...running(), revision: 1};
+    const c = setup(async path => {
+      if (path.includes("/history")) return {session, entries: []} as any;
+      if (path.endsWith("/chat")) return active as any;
+      return {} as any;
+    });
+    c.options.stream = async (_path, signal) => {
+      streamSignal = signal;
+      return new Response(new ReadableStream<Uint8Array>({start(controller) {write = controller;}}));
+    };
+    const settle = async (check: () => boolean) => {
+      for (let i = 0; i < 100 && !check(); i++) await new Promise(done => setImmediate(done));
+      assert.ok(check());
+    };
+    const push = (state: ChatState) => write.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(state)}\n\n`));
+    c.connect();
+    try {
+      await settle(() => !!write);
+      const completed = {...active, revision: 2, busy: false, status: "completed", prediction_pending: true};
+      push(completed);
+      await settle(() => !c.getSnapshot().chat.busy);
+      assert.equal(streamSignal?.aborted, false, "completion aborted prediction delivery");
+      if (mode === "typed") c.setDraft("Keep my draft");
+      if (mode === "dismiss") c.dismissPrediction();
+      if (mode === "navigate") c.disconnect();
+      push({...completed, revision: 3, prediction_pending: false, prediction: {source_turn_id: "turn", text: "Check the edge cases"}});
+      write.close();
+      await new Promise(done => setImmediate(done));
+      await new Promise(done => setImmediate(done));
+      assert.equal(c.getSnapshot().draft, mode === "typed" ? "Keep my draft" : "");
+      assert.equal(c.getSnapshot().chat.prediction?.text, mode === "accept" ? "Check the edge cases" : undefined);
+      if (mode === "typed") {
+        c.setDraft("");
+        assert.equal(c.getSnapshot().chat.prediction, undefined);
+      }
+      assert.equal(c.getSnapshot().error, "");
+    } finally {c.disconnect();}
+  }
+});
+
+
+test("fresh conversations load the configured default agent and its own defaults", async () => {
+  const paths:string[]=[];
+  const c = new ChatController({environment:"local",session:null,target,request:async(path)=>{
+    paths.push(path);
+    if(path === "/api/settings/default-agent") return {provider:"agy"} as any;
+    return {models:[{model:"gemini"}],modes:[],defaults:{model:"gemini",permission:"ask"}} as any;
+  },stream:async()=>{throw new Error("offline")},created(){},close(){}});
+  await c.loadOptions();
+  assert.equal(c.getSnapshot().provider,"agy");
+  assert.equal(c.getSnapshot().defaults.model,"gemini");
+  assert.deepEqual(paths,["/api/settings/default-agent","/api/agents/chat-options?provider=agy"]);
+});
+
+test("a manual agent choice wins over a pending default-agent read", async () => {
+  let resolve!:(value:any)=>void;
+  const c = new ChatController({environment:"local",session:null,target,request:async(path)=>{
+    if(path === "/api/settings/default-agent") return new Promise(done=>{resolve=done}) as any;
+    return {models:[],modes:[]} as any;
+  },stream:async()=>{throw new Error("offline")},created(){},close(){}});
+  const pending=c.loadOptions();
+  c.setProvider("codex");
+  resolve({provider:"agy"});
+  await pending;
+  assert.equal(c.getSnapshot().provider,"codex");
 });

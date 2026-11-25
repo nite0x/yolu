@@ -9,6 +9,13 @@ export function ConversationKindSwitch({kind, id, uiID, terminalID}: {kind: "ui"
   </div>
 }
 
+export function ConversationCreationIntro({kind, switchID, uiID, switchHidden}: {kind: "ui" | "terminal"; switchID?: string; uiID?: string; switchHidden?: boolean}) {
+  return <div className="conversation-creation-intro">
+    <div id={switchID} hidden={switchHidden}><ConversationKindSwitch kind={kind} uiID={uiID} /></div>
+    <h1 className="conversation-welcome-title">{kind === "ui" ? uiText("想完成什么？") : uiText("选择终端工具")}</h1>
+  </div>
+}
+
 export function ConversationHeader({title, titleID, titleHint, context, actions, children}: {title: ReactNode; titleID: string; titleHint?: string; context?: ReactNode; actions?: ReactNode; children?: ReactNode}) {
   return <header className="chat-panel-header conversation-surface-header">
     <div className="chat-panel-toolbar">

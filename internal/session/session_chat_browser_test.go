@@ -35,6 +35,10 @@ func (c *browserLive) Reply(id json.RawMessage, result any) error {
 	return nil
 }
 func (c *browserLive) Call(ctx context.Context, method string, params any, out any) error {
+	if method == "thread/prediction/request" {
+		c.event("thread/prediction/updated", map[string]any{"sourceTurnId": params.(map[string]any)["sourceTurnId"], "result": map[string]any{"type": "completed", "text": "请继续检查边界情况，并运行相关测试。"}})
+		return nil
+	}
 	if method == "thread/start" {
 		c.session = "browser-" + model.NewID()
 	}

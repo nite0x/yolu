@@ -4,7 +4,7 @@ import {useChatState} from "./use-chat-state";
 import {memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from "react";
 import {ExportedMessageRepository, MessageNotSentError, type ThreadMessage} from "@assistant-ui/react";
 import {ChevronDownIcon, PlusIcon, TerminalIcon} from "lucide-react";
-import {ConversationPanel, ConversationFeedback, ConversationRunIndicator, useConversationRuntime} from "./conversation-panel";
+import {ConversationPanel, ConversationFeedback, ConversationOccupied, ConversationNotice, ConversationRunIndicator, useConversationRuntime} from "./conversation-panel";
 import {TooltipIconButton} from "@/components/assistant-ui/elements/tooltip-icon-button";
 import {Alert, AlertDescription} from "@/components/ui/alert";
 import {Button} from "@/components/ui/button";
@@ -22,14 +22,33 @@ import {ChatAttachmentAdapter} from "./attachments";
 import {conversationContext, isGeneralConversationDirectory} from "../app/conversation-context";
 import {ChatToolFallback, ChatChangeSummary, ChatChangePathsProvider} from "./file-changes";
 import {QuestionComposer} from "./questions";
+import {ChatUserText} from "./user-message";
 import {sendShortcut} from "./input-preference";
 import {draftTitle} from "./draft-title";
 import {useSessionDirectories} from "./session-directories";
+import {ChatToolGroup} from "./tool-activity";
 
 function ConversationDraftTitle({controller}: {controller: ChatController}) {
   const preview = useChatState(controller, state => draftTitle(state.draft));
   const title = preview ? uiText("草稿：{0}", preview) : uiText("新建对话");
   return <span title={title}>{title}</span>;
+}
+
+function OccupiedConversation({controller, send}: {controller: ChatController; send: () => void}) {
+  const state = useChatState(controller, s => ({managing:s.managing, submitting:s.submitting, session:s.session, capabilities:s.capabilities, chat:s.chat}));
+  const [retrying, setRetrying] = useState(false);
+  const retry = async () => {
+    setRetrying(true); controller.setError("");
+    try {
+      await controller.poll();
+      const latest = controller.getSnapshot();
+      if (!latest.chat.blocked && !latest.chat.busy && latest.chat.status !== "unknown" && latest.draft.trim()) send();
+    } finally {setRetrying(false);}
+  };
+  return <ConversationOccupied description={uiText("请先在那边关闭会话，才能在这里继续。")}
+    retrying={retrying || state.submitting} forking={state.managing}
+    canRetry={!state.chat.busy} canFork={!!state.capabilities.fork && !state.chat.busy && !state.submitting && !state.session?.archived}
+    onRetry={() => void retry()} onFork={() => void controller.manage("fork")} />;
 }
 
 function ParallelPaneControls() {
@@ -45,7 +64,7 @@ function ParallelPaneControls() {
   return <ConversationPaneButtons {...layout} command={command} />
 }
 
-const chatComponents = {Text: ChatMessageText, UserImage: ChatUserImage, ToolFallback: ChatToolFallback, AssistantMessageEnd: ChatChangeSummary};
+const chatComponents = {Text: ChatMessageText, UserText: ChatUserText, UserImage: ChatUserImage, ToolFallback: ChatToolFallback, ToolGroup: ChatToolGroup, AssistantMessageEnd: ChatChangeSummary};
 
 // The workspace owns this stable button and its file-panel controller. Move it
 // into the active chat toolbar, returning it before the React slot unmounts.
@@ -70,18 +89,18 @@ function ConversationCreationSetup({children}: {children?: React.ReactNode}) {
     slot.current.append(setup);
     return () => {mount.append(setup);};
   }, []);
-  return <div ref={slot} className="chat-creation-setup">{children}</div>;
+  return <div className="chat-creation-setup"><div ref={slot} />{children}</div>;
 }
 
-const ChatRunIndicator = memo(function ChatRunIndicator({controller}: {controller: ChatController}) {
-  const state = useChatState(controller, s => ({stopping:s.stopping,submitting:s.submitting,chat:{busy:s.chat.busy,status:s.chat.status,external:s.chat.external}}));
+const ChatRunIndicator = memo(function ChatRunIndicator({controller, portal}: {controller: ChatController; portal: React.RefObject<HTMLElement | null>}) {
+  const state = useChatState(controller, s => ({stopping:s.stopping,submitting:s.submitting,chat:{busy:s.chat.busy,status:s.chat.status,external:s.chat.external,notice:s.chat.notice}}));
   if (controller.options.readOnly || (!state.chat.busy && !state.submitting && !state.stopping)) return null;
   const status = state.stopping || state.chat.status === "stopping" ? "stopping"
     : state.chat.status === "waiting" ? "waiting"
     : state.chat.status === "starting" ? "starting"
     : state.chat.busy ? "running" : "sending";
   const labels = {stopping: uiText("正在停止…"), waiting: uiText("等待你的确认"), starting: uiText("正在连接…"), running: state.chat.external ? uiText("Codex 正在运行…") : uiText("进行中…"), sending: uiText("正在发送…")};
-  return <ConversationRunIndicator status={status} label={labels[status]} />;
+  return <div className="chat-run-status"><ConversationRunIndicator status={status} label={labels[status]} />{state.chat.notice && <ConversationNotice message={state.chat.notice} portal={portal} />}</div>;
 });
 
 function ApprovalCard({approval, controller}: {approval: Approval; controller: ChatController}) {
@@ -154,7 +173,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
     isLoading: state.loading && messages.length === 0,
     hasEarlier: !!state.cursor,
     onLoadEarlier: () => controller.history(true),
-    isSendDisabled: !!state.chat.external && (state.chat.busy || state.chat.status === "unknown") || !controller.canSend() || !!state.chat.blocked || state.submitting || !!state.session?.archived || (state.chat.busy && (!state.capabilities.steer || !state.chat.turn_id || !["running","waiting"].includes(state.chat.status))),
+    isSendDisabled: directories.preparing || !!state.chat.external && (state.chat.busy || state.chat.status === "unknown") || !controller.canSend() || !!state.chat.blocked || state.submitting || !!state.session?.archived || (state.chat.busy && (!state.capabilities.steer || !state.chat.turn_id || !["running","waiting"].includes(state.chat.status))),
     onNew: async message => {
       reading.latest();
       const text = message.content.filter(p => p.type === "text").map(p => p.text).join("\n");
@@ -192,17 +211,22 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   const changePaths = useMemo(() => ({cwd: path, additionalDirectories,
     projectRoots: controller.options.overview?.projects.flatMap(project => [project.path, ...project.worktrees.map(tree => tree.path)]) || [],
   }), [path, additionalDirectories, controller.options.overview]);
-  const status = state.chat.blocked;
-  const feedback = (state.draftNotice || status || state.chat.notice || state.chat.retrying || state.chat.can_handoff || state.error || state.chat.error) &&
-    <ConversationFeedback messages={[status, state.draftNotice, state.chat.notice, state.chat.retrying]} error={state.error || state.chat.error}>
+  const occupied = !readOnly && !!state.session && (state.chat.status === "conflict" || /占用|终端|客户端|写入锁|active writer|another app/i.test(state.chat.blocked || ""));
+  const status = occupied ? undefined : state.chat.blocked;
+  const notice = !occupied && state.chat.notice && (readOnly || (!state.chat.busy && !state.submitting && !state.stopping)) ? state.chat.notice : undefined;
+  const feedback = (occupied || state.draftNotice || status || notice || state.chat.retrying || state.chat.can_handoff || state.error || state.chat.error) &&
+    <ConversationFeedback messages={[status, state.draftNotice, state.chat.retrying]} error={state.error || (!occupied ? state.chat.error : undefined)}>
+      {occupied && <OccupiedConversation controller={controller} send={() => runtime.thread.composer.send()} />}
+      {notice && <ConversationNotice message={notice} portal={panel} />}
       {state.capabilities.handoff && state.chat.can_handoff && !state.chat.busy && <Button type="button" size="sm" variant="outline" disabled={state.submitting} onClick={() => void controller.handoff()}>{uiText("在这里继续（等终端本轮结束）")}</Button>}
     </ConversationFeedback>;
   const terminal = state.terminal;
-  const contextSummary = (context.project || context.branch) ? <>
-    <span className="chat-workspace-project" title={context.project}><span>{context.project || uiText("工作目录")}</span></span>
+  const draftDirectoryName = !state.session && path && !isGeneralConversationDirectory(path) ? path.split(/[\\/]/).filter(Boolean).at(-1) : undefined;
+  const contextSummary = (context.project || context.branch || draftDirectoryName) ? <>
+    <span className="chat-workspace-project" title={context.project}><span>{context.project || draftDirectoryName || uiText("工作目录")}</span></span>
     {context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><span>{context.branch}</span></span>}
   </> : (!state.session ? <span className="chat-workspace-project" title={uiText("默认目录（无需项目）")}><span>{uiText("默认目录")}</span></span> : undefined);
-  const contextTitle = [context.project || (context.branch ? uiText("工作目录") : ""), context.branch].filter(Boolean).join(" · ") || (!state.session ? uiText("默认目录") : "");
+  const contextTitle = [context.project || draftDirectoryName || (context.branch ? uiText("工作目录") : ""), context.branch].filter(Boolean).join(" · ") || (!state.session ? uiText("默认目录") : "");
   return <ChatMediaProvider controller={controller} entries={entries}><ChatChangePathsProvider value={changePaths}>
     <ConversationPanel runtime={runtime} panelRef={panel} reading={reading}
       header={<ConversationHeader title={state.session ? state.session.name || uiText("未命名对话") : <ConversationDraftTitle controller={controller} />} titleID="assistantChatTitle" titleHint={state.session?.name}
@@ -213,7 +237,9 @@ export function ChatPanel({controller}: {controller: ChatController}) {
             <ChatSessionMenu controller={controller} portal={panel} onSearch={() => setSearchOpen(true)} />
             <ParallelPaneControls />
         </>}
-        context={<ConversationWorkingContext trigger={contextSummary} triggerTitle={contextTitle || undefined} header={directories.header}>
+        context={!state.session && document.getElementById("sessionBrowserDirectoryChoices") ? <button type="button" className="creation-header-directory" aria-label={uiText("选择工作目录")} aria-haspopup="dialog" aria-expanded={false} aria-controls="sessionBrowserDirectoryChoices-popover" aria-keyshortcuts="Meta+Shift+D Control+Shift+D" title={[contextTitle, displayPath].filter(Boolean).join("\n")} onClick={event => document.dispatchEvent(new CustomEvent("workhub:creation-directory", {detail:event.currentTarget}))}>
+          <span className="conversation-context-summary">{contextSummary}</span><ChevronDownIcon aria-hidden="true" />
+        </button> : <ConversationWorkingContext trigger={contextSummary} triggerTitle={contextTitle || undefined} header={directories.header}>
           {directories.context}
           <div className="chat-context-footer">
             <div className="chat-context-footer-row">
@@ -246,13 +272,15 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       beforeThread={state.historyError && <Alert variant="destructive" className="shrink-0 rounded-none"><AlertDescription>{state.historyError}</AlertDescription></Alert>}
       thread={{
         dockComposer: !readOnly,
-        emptyStateControls: !readOnly && !state.session && <ConversationCreationSetup>{directories.creation}</ConversationCreationSetup>,
-        composerStatus: !readOnly && <>{directories.composer}{feedback}<ChatRunIndicator controller={controller} /></>, components: chatComponents,
+        emptyState: !readOnly && !state.session && <ConversationCreationSetup>{directories.creation}</ConversationCreationSetup>,
+        composerStatus: !readOnly && <>{directories.composer}<div className="chat-composer-status">{feedback}<ChatRunIndicator controller={controller} portal={panel} /></div></>, components: chatComponents,
         autoFocus: !!controller.options.focusComposer && !readOnly && !state.session && !document.documentElement.hasAttribute("data-workspace-inactive"), readOnly,
         composer: question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined,
         composerControls: <ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />,
       }}
       composerInput={{placeholder: uiText(state.session ? "补充说明、询问进展，或交代下一步…" : "描述你要完成的任务…")}}
+      composerPrediction={!readOnly && state.provider === "codex" && !state.submitting && !state.chat.busy && !state.chat.external && !state.session?.archived && !state.chat.blocked && state.chat.status === "completed" && state.chat.prediction?.source_turn_id === state.chat.turn_id && entries.at(-1)?.turn_id === state.chat.turn_id ? state.chat.prediction : undefined}
+      onDismissPrediction={controller.dismissPrediction}
       afterThread={<>
       {readOnly && (terminal?.waiting || !!terminal?.confirmations?.length) && <Alert className="max-h-[40%] shrink-0 overflow-y-auto rounded-none" role="alert"><AlertDescription>
         <p>{uiText("终端有待确认事项，请在原终端处理。")}{!terminal.connected && uiText("连接已断开，以下提示尚未核实。")}</p>

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { NativeSelect, NativeSelectOption as Option, NativeSelectOptGroup } from "@/components/ui/native-select"
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { HelpTip } from "./help-tip"
 import { cn } from "@/lib/utils"
 import { ChevronDown, CodeXml, FolderOpen, Terminal } from "lucide-react"
 import type { GitOverview, Worktree } from "./types"
@@ -51,9 +52,10 @@ export function ProjectOpenActions({ project, path, disabled, tool, primary = fa
     </div></details> : <Button className="workspace-split-toggle rounded-l-none border-l-0" size="icon-sm" variant={buttonVariant} disabled aria-label={uiText("选择打开方式")}><ChevronDown aria-hidden="true" /></Button>}
   </div>
 }
-export function Field({ id, label, help, required, children, ...props }: ComponentProps<"div"> & { id: string; label: string; help?: string; required?: boolean; children: ReactNode }) {
+export function Field({ id, label, help, helpDisplay = "inline", required, children, ...props }: ComponentProps<"div"> & { id: string; label: string; help?: string; helpDisplay?: "inline" | "tooltip"; required?: boolean; children: ReactNode }) {
   const described = help ? Children.map(children, child => isValidElement<{ id?: string; "aria-describedby"?: string }>(child) && child.props.id === id ? cloneElement(child, { "aria-describedby": [child.props["aria-describedby"], `${id}-help`].filter(Boolean).join(" ") }) : child) : children
-  return <div {...props} className={cn("field grid gap-2", props.className)}><Label id={`${id}-label`} htmlFor={id} className="leading-relaxed">{label}{required ? <span className="text-destructive" aria-hidden="true"> *</span> : null}</Label>{described}{help ? <small id={`${id}-help`} className="text-xs leading-relaxed text-muted-foreground">{help}</small> : null}</div>
+  const labelContent = <Label id={`${id}-label`} htmlFor={id} className="leading-relaxed">{label}{required ? <span className="text-destructive" aria-hidden="true"> *</span> : null}</Label>
+  return <div {...props} className={cn("field grid gap-2", props.className)}>{help && helpDisplay === "tooltip" ? <div className="settings-label">{labelContent}<HelpTip id={`${id}-help`} label={label}>{help}</HelpTip></div> : labelContent}{described}{help && helpDisplay === "inline" ? <small id={`${id}-help`} className="text-xs leading-relaxed text-muted-foreground">{help}</small> : null}</div>
 }
 export function Check({ label, ...props }: ComponentProps<"input"> & { label: ReactNode }) {
   return <Label className="flex min-h-9 cursor-pointer items-center gap-2 leading-relaxed"><Input {...props} type="checkbox" className="m-0 size-4 min-w-4 shrink-0 accent-primary shadow-none" /><span>{label}</span></Label>

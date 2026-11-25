@@ -45,22 +45,24 @@ type ChatQuestion struct {
 	} `json:"options"`
 }
 type ChatState struct {
-	SessionName    string         `json:"session_name,omitempty"`
-	External       bool           `json:"external,omitempty"`
-	Revision       uint64         `json:"revision"`
-	ID             string         `json:"id,omitempty"`
-	Status         string         `json:"status"`
-	Busy           bool           `json:"busy"`
-	TurnID         string         `json:"turn_id,omitempty"`
-	Entries        []HistoryEntry `json:"entries"`
-	Approvals      []ChatApproval `json:"approvals"`
-	Error          string         `json:"error,omitempty"`
-	Retrying       string         `json:"retrying,omitempty"`
-	Blocked        string         `json:"blocked,omitempty"`
-	CanHandoff     bool           `json:"can_handoff"`
-	Notice         string         `json:"notice,omitempty"`
-	AcceptedInputs []string       `json:"accepted_inputs,omitempty"`
-	Context        *ChatContext   `json:"context,omitempty"`
+	Prediction        *ChatPrediction `json:"prediction,omitempty"`
+	PredictionPending bool            `json:"prediction_pending,omitempty"`
+	SessionName       string          `json:"session_name,omitempty"`
+	External          bool            `json:"external,omitempty"`
+	Revision          uint64          `json:"revision"`
+	ID                string          `json:"id,omitempty"`
+	Status            string          `json:"status"`
+	Busy              bool            `json:"busy"`
+	TurnID            string          `json:"turn_id,omitempty"`
+	Entries           []HistoryEntry  `json:"entries"`
+	Approvals         []ChatApproval  `json:"approvals"`
+	Error             string          `json:"error,omitempty"`
+	Retrying          string          `json:"retrying,omitempty"`
+	Blocked           string          `json:"blocked,omitempty"`
+	CanHandoff        bool            `json:"can_handoff"`
+	Notice            string          `json:"notice,omitempty"`
+	AcceptedInputs    []string        `json:"accepted_inputs,omitempty"`
+	Context           *ChatContext    `json:"context,omitempty"`
 }
 type ChatRun struct {
 	mu                     sync.Mutex
@@ -122,7 +124,10 @@ func (a *Service) ChatStateHandler(w http.ResponseWriter, r *http.Request) {
 		state = run.snapshot()
 	}
 	if !state.Busy && model.NormalizeProvider(record.Provider) != model.ProviderAgy {
-		if external, ok := a.externalActivity(r.Context(), record.ID); ok && (state.ID == "" || external.TurnID != "" && external.TurnID != state.TurnID) {
+		// An unaccepted send has no turn ID. Its error must survive polling an
+		// older completed rollout, so the composer can restore the failed draft.
+		// A running/waiting native turn still owns its live controls.
+		if external, ok := a.externalActivity(r.Context(), record.ID); ok && (state.ID == "" || external.Status == "running" || external.Status == "waiting" || external.TurnID != "" && external.TurnID != state.TurnID && (state.TurnID != "" || state.Error == "")) {
 			state.Status = external.Status
 			state.ID = ""
 			state.Revision = 0
@@ -131,6 +136,8 @@ func (a *Service) ChatStateHandler(w http.ResponseWriter, r *http.Request) {
 			state.Context = nil
 			state.Error = ""
 			state.AcceptedInputs = nil
+			state.Prediction = nil
+			state.PredictionPending = false
 			state.External = true
 			state.TurnID = external.TurnID
 			state.Busy = external.Status == "running" || external.Status == "waiting"
@@ -143,12 +150,11 @@ func (a *Service) ChatStateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if !state.Busy && model.NormalizeProvider(record.Provider) != model.ProviderAgy {
 		state.Blocked = ""
-		// Passive polling retries uncertain probes without advertising a terminal
-		// owner. Sending still performs its own mandatory ownership checks.
-		if err := a.AppTerminalConflict(r.PathValue("session"), cwd); execution.IsSessionConflict(err) {
+		state.CanHandoff = false
+		if err := a.chatTerminalConflict(record.ID); err != nil {
 			state.Blocked = err.Error()
+			a.DecorateHandoff(&state, record.ID, cwd)
 		}
-		a.DecorateHandoff(&state, r.PathValue("session"), cwd)
 	}
 	a.prepareHistoryMedia(record.ID, state.Entries)
 	if err := a.decorateAsyncQuestions(record.ID, state.Entries); err != nil {
@@ -237,6 +243,9 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 			a.chatMu.Unlock()
 			httpx.WriteError(w, 409, "该对话正在运行，请等待完成或停止后再发送")
 			return
+		}
+		if s.PredictionPending {
+			previous.cancel()
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -338,7 +347,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	run.cwd = plan.Cwd
 	run.mu.Unlock()
 	checkOwner := func() error {
-		if err := a.AppTerminalConflict(run.session, s.Cwd); err != nil {
+		if err := a.chatTerminalConflict(run.session); err != nil {
 			return err
 		}
 		if metadata.Thread.Status.Type == "active" {
@@ -375,6 +384,16 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	run.mu.Unlock()
 	var profile string
 	configurationFailure := func(err error) {
+		// A separate app-server may retain an idle thread's writer lock. This
+		// is ownership contention, not a failed turn or directory permission.
+		if strings.Contains(err.Error(), "already has an active writer") {
+			run.change(func(s *ChatState) {
+				s.Status = "conflict"
+				s.Error = "另一个 Codex 后台仍持有此对话的写入锁，CLI 后台暂时无法继续。"
+				s.Notice = "消息已保留，可在原 Codex 窗口继续此对话；待原后台释放写入锁后，再在 Yolu 重试发送。"
+			})
+			return
+		}
 		run.mu.Lock()
 		run.directoryError = err.Error()
 		run.mu.Unlock()
@@ -506,6 +525,27 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		a.captureRunDirectories(inspect, run, plan.Bindings)
 		cancel()
 	}
+	if run.created == nil {
+		// Settings discovery and directory snapshots may take time. Recheck the
+		// shared runtime just before sending to catch CLI turns that started
+		// meanwhile. The protocol has no atomic idle-only start precondition.
+		var latest struct {
+			Thread codex.Session `json:"thread"`
+		}
+		if err := call("thread/read", map[string]any{"threadId": run.session, "includeTurns": false}, &latest); err != nil {
+			ownerFailure(err)
+			return
+		}
+		if latest.Thread.ID != run.session {
+			fail("无法核实当前对话状态，请稍后重试")
+			return
+		}
+		metadata.Thread.Status.Type = latest.Thread.Status.Type
+	}
+	if err := checkOwner(); err != nil {
+		ownerFailure(err)
+		return
+	}
 	if err := call("turn/start", params, &started); err != nil {
 		configurationFailure(err)
 		return
@@ -514,6 +554,9 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		fail("Codex 未返回运行标识，请刷新历史检查进展")
 		return
 	}
+	// Freeze the completed turn's directory state before waiting for an
+	// optional prediction; suggestions must never keep the turn busy.
+	defer run.predictNextPrompt(ctx, c)
 	defer a.freezeRunDirectories(run)
 	run.mu.Lock()
 	run.configured = map[string]configuredDirectory{}
@@ -537,8 +580,6 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 		}
 		close(run.started)
 	}
-	watch := time.NewTicker(time.Second)
-	defer watch.Stop()
 	for {
 		select {
 		case event, ok := <-c.Events():
@@ -554,20 +595,6 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 				continue
 			}
 			if run.handle(event) {
-				return
-			}
-		case <-watch.C:
-			if err := a.AppTerminalConflict(run.session, s.Cwd); err != nil {
-				// An unavailable check does not establish another owner. Retry on
-				// the next tick without interrupting the turn already in progress.
-				if !execution.IsSessionConflict(err) {
-					continue
-				}
-				_ = run.interrupt()
-				run.change(func(s *ChatState) {
-					s.Status = "conflict"
-					s.Error = "确认对话被占用，已请求停止页面发起的工作：" + err.Error()
-				})
 				return
 			}
 		case <-ctx.Done():
@@ -674,7 +701,7 @@ func (a *Service) ChatEventsHandler(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 			last = s.Revision
 		}
-		if !s.Busy {
+		if !s.Busy && !s.PredictionPending {
 			return
 		}
 		select {

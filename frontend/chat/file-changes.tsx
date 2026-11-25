@@ -1,12 +1,14 @@
 import { uiText } from "../i18n";
 import {createContext, Fragment, useContext, useId, useMemo, useState} from "react";
 import {useAuiState, type ToolCallMessagePartComponent} from "@assistant-ui/react";
-import {ChevronDownIcon, FileDiffIcon} from "lucide-react";
+import {ChevronDownIcon, FileDiffIcon, XCircleIcon} from "lucide-react";
 import {ToolFallback} from "@/components/assistant-ui/elements/tool-fallback.aui";
 import {FileTypeIcon} from "@/components/file-type-icon";
 import {ChatFileButton} from "./file-preview";
 import {sourceFileReference} from "./links";
 import {changePathLabel, summarizeFileChanges, type FileChangePaths} from "./change-summary";
+import {ChatActivityTool, ChatToolResult, toolIcons} from "./tool-activity";
+import {toolPresentation} from "./tool-presentation";
 
 const ChangePathsContext = createContext<FileChangePaths>({projectRoots: []});
 export const ChatChangePathsProvider = ChangePathsContext.Provider;
@@ -83,13 +85,15 @@ function ChangeText({text}: {text: string}) {
 }
 
 export const ChatToolFallback: ToolCallMessagePartComponent = props => {
-  if (typeof props.args?.changes !== "string" || props.approval || props.status?.type === "requires-action") return <ToolFallback {...props} />;
-  return <ToolFallback.Root>
-    <ToolFallback.Trigger toolName={props.toolName} status={props.status} responseDeliveryStatus={props.responseDeliveryStatus} />
+  if (props.approval || props.status?.type === "requires-action") return <ToolFallback {...props} />;
+  if (typeof props.args?.changes !== "string") return <ChatActivityTool {...props} />;
+  const summary = toolPresentation(props);
+  return <ToolFallback.Root className="chat-tool-activity" data-state={summary.state}>
+    <ToolFallback.Trigger className={summary.state === "failed" ? "text-xs text-destructive" : "text-xs"} toolName={props.toolName} status={props.status} responseDeliveryStatus={props.responseDeliveryStatus} label={summary.label} icon={summary.state === "failed" ? XCircleIcon : toolIcons.edit} />
     <ToolFallback.Content>
       <ToolFallback.Error status={props.status} />
       <div className="aui-tool-fallback-args"><ChangeText text={props.args.changes} />{typeof props.args.cwd === "string" && <p className="text-xs text-muted-foreground break-all">{uiText("工作目录 ·")}{" "}{props.args.cwd}</p>}</div>
-      <ToolFallback.Result result={props.result} />
+      <ChatToolResult result={props.result} />
     </ToolFallback.Content>
   </ToolFallback.Root>;
 };

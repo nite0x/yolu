@@ -60,6 +60,10 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
     }
     else if (url === '/api/environments') result = options.method === 'POST' ? { id: 'wsl-test' } : environments;
     else if (url === '/api/settings/terminal' && options.method === 'PUT') result = data.terminal = { ...data.terminal, settings: body, launcher: body.path || '/usr/bin/terminal', message: '终端已就绪' };
+    else if (url === '/api/settings/default-agent') {
+      if (options.method === 'PUT') data.default_agent = body.provider;
+      result = {provider:data.default_agent || 'codex'};
+    }
     else if (url === '/api/settings/browser-access') result = {enabled:false,port:4318,code:'',running:false,error:'',can_manage:true,addresses:[]};
     else if (url === '/api/settings/codex') result = {platform:'linux',user:'tester',codex_home:'/home/tester/.codex',cli_path:'/usr/bin/codex',candidates:['/usr/bin/codex'],version:'codex-cli test',checked_at:'2026-11-04T12:00:00Z',status:'ok',checks:[{id:'cli',name:'CLI 安装与版本',status:'ok',message:'codex-cli test'}]};
     else if (url.startsWith('/api/settings/conversation-defaults?provider=agy')) {
@@ -696,7 +700,7 @@ test('conversation defaults save automatically per agent and environment with se
   assert.equal(h.$('#conversationDefaultsFields').disabled, false);
   assert.equal(h.$('#conversationDefaultModel').value, '');
   assert.equal(permissionValue(), '');
-  assert.equal(h.$('#environmentSelect').closest('form').id, 'conversationDefaultsForm');
+  assert.equal(h.$('#environmentSelect').closest('form').id, 'defaultAgentForm');
   assert.match(h.$('#settingsTitleEnv').textContent, /本机.*仅用于新对话/);
   h.change('#conversationDefaultModel', 'body-model'); await settle();
   h.change('#conversationDefaultSpeed', 'fast'); await settle();
@@ -997,11 +1001,11 @@ test('message shortcuts and drafts retain their concrete creation directory', as
   assert.equal(sent.length, 1); assert.equal(sent[0].body.text, '继续检查'); assert(sent[0].body.request_id);
   h.click('#newBrowserSession');
   assert.equal(h.$('#sessionBrowserNewDirectory').value, '');
-  h.change('#sessionBrowserNewDirectory', '/workspace/workspace/app');
-  assert.equal(h.currentSession().target.cwd,'/workspace/workspace/app');
+  h.change('#sessionBrowserNewDirectory', '/repo/app');
+  assert.equal(h.currentSession().target.cwd,'/repo/app');
   h.input('#sessionChatInput', '保留这份草稿');
   h.window.closeSessionHistory(); h.click('#newBrowserSession');
-  h.change('#sessionBrowserNewDirectory', '/workspace/workspace/app');
+  h.change('#sessionBrowserNewDirectory', '/repo/app');
   assert.equal(h.$('#sessionChatInput').value, '保留这份草稿');
   assert(!h.requests.some(r => r.url.endsWith('/sessions/new')));
 });
@@ -1555,6 +1559,32 @@ test('the independent project list restores search, scroll and focus after openi
   assert.equal(h.document.activeElement.dataset.id, 'app');
 });
 
+for (const desktop of [false, true]) test(`the ${desktop ? 'desktop' : 'browser'} default-directory draft can switch to the terminal launcher`, async t => {
+  const host = pageHost(t), h = await harness(t, false, {pageHost:host.window, desktop});
+  h.window.dispatchEvent(new h.window.MessageEvent('message', {source:host.window, origin:'http://localhost:4317', data:{type:'workhub:page-restore', active:true, snapshot:{route:'/sessions', environment:'local', conversation:{scope:{kind:'all'}, creating:true, selected:null, pane:'detail'}}}}));
+  await settle(); await settle();
+  assert.equal(h.$('#sessionBrowserNewDirectory').value, '');
+  const terminal = h.$('[data-conversation-kind="terminal"]');
+  assert.equal(terminal.disabled, false, 'the default directory does not prevent switching forms');
+  h.input('#sessionChatInput', 'Keep the default-directory draft');
+  terminal.focus(); terminal.click();
+  const switched = host.messages.findLast(message => message.type === 'workhub:conversation-kind');
+  assert.equal(switched.kind, 'terminal');
+  assert.equal(switched.snapshot.environment, 'local');
+  assert.equal(switched.snapshot.conversation.creationDirectory, '');
+  assert.equal(switched.snapshot.terminal.cwd, undefined);
+  assert.equal(h.$('#sessionChatInput').value, 'Keep the default-directory draft');
+  assert.equal(h.requests.some(request => request.options.method === 'POST' && /\/chat$|\/terminals$/.test(request.url)), false);
+  h.currentSession().submitting = true;
+  h.window.renderConversationBrowser();
+  assert.equal(terminal.disabled, true, 'a pending send still prevents switching');
+  h.currentSession().submitting = false;
+  h.window.WorkHubConversations.current.targetEnvironment = 'remote';
+  h.window.renderConversationBrowser();
+  assert.equal(terminal.disabled, true, 'remote environments still prevent switching');
+  assert.match(terminal.title, /仅支持本机/);
+});
+
 test('new conversation page exposes inline form switching only while creating and keeps the selected directory', async t => {
   const host=pageHost(t), h=await harness(t,false,{pageHost:host.window});
   const post=snapshot=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot}}));
@@ -1562,14 +1592,14 @@ test('new conversation page exposes inline form switching only while creating an
   await settle(); await settle();
   assert.equal(h.$('#conversationCreationKind').hidden,false);
   assert.equal(h.document.querySelector('[role="dialog"]')?.textContent.includes('选择交互形式') || false,false);
-  h.change('#sessionBrowserNewDirectory','/workspace/workspace/app'); await settle();
+  h.change('#sessionBrowserNewDirectory','/repo/app'); await settle();
   h.input('#sessionChatInput','保留我的草稿');
   h.click('[data-conversation-kind="terminal"]'); await settle();
   const switched=host.messages.findLast(message=>message.type==='workhub:conversation-kind');
   assert.equal(switched.kind,'terminal');
-  assert.equal(switched.snapshot.terminal.cwd,'/workspace/workspace/app');
+  assert.equal(switched.snapshot.terminal.cwd,'/repo/app');
   assert.equal(switched.snapshot.terminal.projectID,'app');
-  assert.equal(switched.snapshot.conversation.creationDirectory,'/workspace/workspace/app');
+  assert.equal(switched.snapshot.conversation.creationDirectory,'/repo/app');
   assert.equal(switched.snapshot.conversation.directory,'', 'changing forms preserves the list filter independently of the draft directory');
   assert.equal(h.$('#sessionChatInput').value,'保留我的草稿');
   assert.equal(h.requests.some(request=>request.options.method==='POST' && /\/chat$|\/terminals$/.test(request.url)),false);
@@ -1586,19 +1616,19 @@ test('one click opens a ready composer, remembers directory per scope and restor
   assert.equal(h.currentSession().target.cwd, '/repo/app');
   assert.equal(h.$('#sessionHistoryPanel').hidden, false);
   assert.equal(h.$('#sessionBrowserNewDirectory').hidden, true);
-  h.click('#sessionBrowserDirectoryChoices [data-creation-choice="/workspace/workspace/app"]'); await settle();
-  assert.equal(h.$('#sessionBrowserDirectoryChoices [aria-pressed="true"]').dataset.creationChoice, '/workspace/workspace/app');
+  h.click('#sessionBrowserDirectoryChoices [data-creation-choice="/repo/app"]'); await settle();
+  assert.equal(h.$('#sessionBrowserDirectoryChoices [aria-pressed="true"]').dataset.creationChoice, '/repo/app');
   const saved = h.window.WorkHubPage.snapshot().conversation;
-  assert.equal(saved.creationDirectory, '/workspace/workspace/app');
+  assert.equal(saved.creationDirectory, '/repo/app');
   post({scope:{kind:'project', id:'app'}, creating:true, selected:null});
   await settle(); await settle();
-  assert.equal(h.currentSession().target.cwd, '/workspace/workspace/app', 'a new draft remembers the last valid directory');
+  assert.equal(h.currentSession().target.cwd, '/repo/app', 'a new draft remembers the last valid directory');
   post({scope:{kind:'project', id:'backend'}, creating:true, selected:null});
   await settle(); await settle();
   assert.equal(h.currentSession().target.cwd, '/repo/backend', 'another scope does not inherit the workspace directory');
   post({...saved, creationDirectory:'/missing'});
   await settle(); await settle();
-  assert.equal(h.currentSession().target.cwd, '/workspace/workspace/app', 'a removed directory falls back to a valid choice');
+  assert.equal(h.currentSession().target.cwd, '/repo/app', 'a removed directory falls back to a valid choice');
   post({...saved, creationDirectory:'/repo/app'});
   await settle(); await settle();
   assert.equal(h.currentSession().target.cwd, '/repo/app', 'an explicit draft overrides remembered preferences');
@@ -1663,7 +1693,7 @@ test('cross-environment scopes and creation targets preserve ownership without c
   const remoteData = {...h.data,projects:h.data.projects.map(project => ({...project, name:project.id === 'app' ? 'Remote project' : project.name}))};
   h.setIntercept((url, options) => {
     if (url === '/api/state' && options.headers['X-Environment-ID'] === 'remote') return {ok: true, json: async () => remoteData};
-    if (url.startsWith('/api/sessions?') && options.headers['X-Environment-ID'] === 'remote') return {ok: true, json: async () => ({sessions: [{id: 'remote-session', name: 'Remote workspace session', cwd: '/workspace/workspace/app'}]})};
+    if (url.startsWith('/api/sessions?') && options.headers['X-Environment-ID'] === 'remote') return {ok: true, json: async () => ({sessions: [{id: 'remote-session', name: 'Remote workspace session', cwd: '/repo/app'}]})};
   });
   await h.window.loadEnvironments(); await h.window.refresh(true); await h.navigate('/sessions');
   h.input('#sessionScopeSearch', 'Remote project');
@@ -1674,7 +1704,7 @@ test('cross-environment scopes and creation targets preserve ownership without c
   h.click('#newBrowserSession'); await settle();
   const choices = [...h.$('#sessionBrowserNewDirectory').options];
   assert.equal(h.$('#sessionBrowserNewDirectory').value, '');
-  const remoteWorktree = choices.find(o => o.value.includes('/workspace/workspace/app') && o.textContent.includes('WSL'));
+  const remoteWorktree = choices.find(o => o.value.includes('/repo/app') && o.textContent.includes('WSL'));
   assert(remoteWorktree);
   h.change('#sessionBrowserNewDirectory', remoteWorktree.value); await settle();
   assert.equal(h.currentSession().environment, 'remote');
@@ -2526,13 +2556,13 @@ for (const scope of [{kind:'directory',cwd:'/workspace/workspace/app',environmen
  assert.equal(draft.currentSession().session,null, 'existing conversations must not replace a new draft');
  assert.equal(draft.window.WorkHubPage.snapshot().conversation.creating,true);
  assert.equal(draft.window.WorkHubPage.snapshot().title,'新建对话');
- assert.equal(draft.$('#sessionBrowserNewDirectoryField').hidden,scope.kind === 'directory');
- assert.equal(draft.currentSession().target.cwd,'/workspace/workspace/app');
+ assert.equal(draft.$('#sessionBrowserNewDirectoryField').hidden,false);
+ assert.equal(draft.currentSession().target.cwd,'/repo/app');
  assert.equal(draft.requests.some(r=>r.url.endsWith('/chat') && r.options.method==='POST'),false);
  const saved = draft.window.WorkHubPage.snapshot();
  post(draft,{type:'workhub:page-restore',active:true,snapshot:saved});await settle();await settle();
  assert.equal(draft.currentSession().session,null);
- assert.equal(draft.currentSession().target.cwd,'/workspace/workspace/app');
+ assert.equal(draft.currentSession().target.cwd,'/repo/app');
 });
 
 test('grouped navigation expands by project name, saves display preferences and opens project actions', async t => {
@@ -3201,7 +3231,7 @@ test('resource icons edit only the active detail, persist without browser storag
   assert.equal(saved.local.icons['project:app'].icon,'rocket');
 });
 
-test('creation directory choices omit redundant local environment, disambiguate duplicate detached worktrees and filter when many exist', async t => {
+test('creation directory choices show primary repositories and search all roots from a bounded picker', async t => {
   const host = pageHost(t);
   const projects = [
     {
@@ -3231,14 +3261,66 @@ test('creation directory choices omit redundant local environment, disambiguate 
   assert.equal(labels[0], '默认目录（无需项目）');
   assert.ok(labels.every(label => !label.includes('· 本机')), `redundant local suffix found: ${labels.join(' | ')}`);
   assert.equal(new Set(labels).size, labels.length, `duplicate labels found: ${labels.join(' | ')}`);
-  assert.ok(labels.some(label => label.includes('detached @ 1234567 (wt-alpha)')));
-  assert.ok(labels.some(label => label.includes('detached @ 1234567 (wt-beta)')));
-  // Primary project directories appear ahead of secondary worktrees.
-  assert.ok(labels.indexOf('yolu · main') < labels.findIndex(label => label.includes('wt-alpha')));
-  const filter = draft.$('#sessionBrowserNewDirectoryField .creation-choices-filter');
-  assert.ok(filter, 'filter input should appear when more than 6 directories exist');
-  filter.value = 'yolu';
-  filter.dispatchEvent(new draft.window.Event('input', {bubbles: true}));
-  const visible = buttons().filter(b => !b.hidden).map(b => b.textContent);
-  assert.deepEqual(visible, ['yolu · main']);
+  assert.ok(labels.every(label => !label.includes('detached') && !label.includes('wt-')));
+  assert.equal(labels.length,5);
+  assert.equal(draft.$('.creation-choices-filter'),null);
+  assert.equal(draft.$('#sessionBrowserNewDirectory').options.length,5);
+  assert(draft.$('#sessionBrowserDirectoryChoices .creation-more'));
+});
+
+test('creation folder shortcuts validate the selected root, retain it in snapshots and preserve drafts on cancellation', async t => {
+  const host=pageHost(t);
+  let selected='/home/tester/new-project';
+  const h=await harness(t,false,{pageHost:host.window,intercept:(url,options)=>{
+    if(url==='/api/dialogs/directory') return {ok:true,json:async()=>({path:selected})};
+    if(url==='/api/session-bindings/inspect') return {ok:true,json:async()=>({directory:JSON.parse(options.body).directory,branch:'main',main_directory:selected,access:'write'})};
+    return null;
+  }});
+  h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data:{type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},creating:true,pane:'detail'}}}}));
+  await settle();await settle();
+  h.input('#sessionChatInput','保留本地目录草稿');
+  h.$('.creation-directory-footer').click();await settle();await settle();
+  assert.equal(h.currentSession().target.cwd,selected);
+  assert.equal(h.$('#sessionBrowserNewDirectory').value,selected);
+  const snapshot=h.window.WorkHubPage.snapshot();
+  assert.equal(snapshot.conversation.creationLocalDirectories[0].cwd,selected);
+  selected='';h.$('.creation-directory-footer').click();await settle();
+  assert.equal(h.currentSession().target.cwd,'/home/tester/new-project');
+});
+
+
+test('default agent saves independently from the agent being configured', async t => {
+  const h = await harness(t, true, {route:'/settings'});
+  assert.equal(h.$('#defaultAgentSelect').value, 'codex');
+  h.change('#defaultAgentSelect', 'agy'); await settle();
+  assert.equal(h.data.default_agent, 'agy');
+  assert.equal(h.$('#conversationDefaultProviderGroup input:checked').value, 'codex');
+  h.click('#conversationDefaultProviderGroup input[value="agy"]'); await settle();
+  h.click('#conversationDefaultProviderGroup input[value="codex"]'); await settle();
+  assert.equal(h.data.default_agent, 'agy');
+  assert.equal(h.$('#defaultAgentSelect').value, 'agy');
+  h.setIntercept((url, options) => url === '/api/settings/default-agent' && options.method === 'PUT' ? {ok:false,json:async()=>({error:'Agent save failed'})} : undefined);
+  h.change('#defaultAgentSelect', 'codex'); await settle();
+  assert.equal(h.data.default_agent, 'agy');
+  assert.equal(h.$('#defaultAgentError').hidden, false);
+  assert.equal(h.$('#defaultAgentSelect').value, 'codex');
+  h.setIntercept(() => undefined);
+  h.click('#defaultAgentRetry'); await settle();
+  assert.equal(h.data.default_agent, 'codex');
+});
+
+test('settings descriptions appear in help tips with focus and Escape support', async t => {
+  const h = await harness(t, true, {route:'/settings'});
+  assert.equal(h.$('.settings-row-info > p'), null);
+  const tip=h.$('#sessionTitleHelp');
+  const trigger=tip.parentElement.querySelector('button');
+  assert.equal(tip.hidden,true);
+  trigger.focus();
+  assert.equal(tip.hidden,false);
+  h.window.document.dispatchEvent(new h.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  assert.equal(tip.hidden,true);
+  h.click('#conversationDefaultPermission input[value="full"]'); await settle();
+  assert.equal(h.$('#conversationDefaultPermissionHelp').hidden,true);
+  assert.equal(h.$('#conversationDefaultPermissionHelp').dataset.danger,'true');
+  assert.match(h.$('#conversationDefaultPermissionHelp').textContent,/沙箱/);
 });

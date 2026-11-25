@@ -1,6 +1,6 @@
 import type {Session} from "./sessions"
 import type {Project} from "./types"
-import type {SessionTarget} from "../chat/controller-types"
+import type {BindingInput, SessionTarget} from "../chat/controller-types"
 import {projectConversationPreview, type ConversationTreeRow} from "./conversation-tree"
 
 export interface ConversationScope {
@@ -42,6 +42,7 @@ export interface ConversationView {
   target?: SessionTarget | null
   targetEnvironment?: string
   creationDirectory?: string
+  creationBindings?: Record<string, BindingInput[]>
   focusComposer?: boolean
   directSession?: Session
   followTarget?: unknown

@@ -27,7 +27,8 @@ import { ResourceIcon, ShortcutBadge } from "./shortcut-icons"
 import { createConversationList, conversationStatusMatches, patchConversationList } from "./conversation-list"
 import { createConversationState } from "./conversation-state"
 import { conversationTree, projectConversationStep } from "./conversation-tree"
-import { renderCreationChoices } from "./creation-choices"
+import { renderCreationChoices, resetCreationChoices } from "./creation-choices"
+import { mainCreationProjects, recordCreationDirectory } from "./creation-directories"
 import { AgyDiagnosticsResults, CodexDiagnosticsResults } from "./settings"
 
 // Static views retain their native controllers. Interactive islands have
@@ -41,7 +42,7 @@ export const workspaceUI = {
   resourceIcon: (props: Parameters<typeof ResourceIcon>[0]) => renderToStaticMarkup(<ResourceIcon {...props} />),
   resourceIconBadge: (props: Parameters<typeof ShortcutBadge>[0]) => renderToStaticMarkup(<ShortcutBadge {...props} />),
   conversationDefaults,
-  renderCreationChoices,
+  renderCreationChoices, resetCreationChoices, mainCreationProjects, recordCreationDirectory,
   mountGitView, resetGitView, scrollToGitSection, notifyWorkspace,
   setupConversationResize, conversationPathKey, conversationEnvironmentKey, createSessionRequests,
   createOperations, createConversationFiles, mountFileBrowser, setupSplitResize,

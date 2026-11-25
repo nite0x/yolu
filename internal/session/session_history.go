@@ -16,27 +16,35 @@ import (
 // Only user-visible messages and command records cross the HTTP boundary.
 // Do not forward raw thread items (which can contain internal reasoning).
 type HistoryEntry struct {
-	FileChanges     []HistoryFileChange `json:"file_changes,omitempty"`
-	LocalImages     map[string]string   `json:"local_images,omitempty"`
-	Visualizations  map[string]string   `json:"visualizations,omitempty"`
-	LocalImagePaths []string            `json:"-"`
-	ID              string              `json:"id"`
-	TurnID          string              `json:"turn_id"`
-	Kind            string              `json:"kind"`
-	Text            string              `json:"text,omitempty"`
-	Command         string              `json:"command,omitempty"`
-	Cwd             string              `json:"cwd,omitempty"`
-	Status          string              `json:"status,omitempty"`
-	Output          *string             `json:"output"`
-	ExitCode        *int                `json:"exit_code"`
-	DurationMs      *int64              `json:"duration_ms"`
-	StartedAtMs     *int64              `json:"started_at_ms"`
-	CompletedAtMs   *int64              `json:"completed_at_ms"`
-	Tool            string              `json:"tool,omitempty"`
-	Images          []string            `json:"images,omitempty"`
-	Delivery        string              `json:"delivery,omitempty"`
-	Questions       []ChatQuestion      `json:"questions,omitempty"`
-	QuestionStatus  string              `json:"question_status,omitempty"`
+	CommandActions  []HistoryCommandAction `json:"command_actions,omitempty"`
+	ActivityType    string                 `json:"activity_type,omitempty"`
+	FileChanges     []HistoryFileChange    `json:"file_changes,omitempty"`
+	LocalImages     map[string]string      `json:"local_images,omitempty"`
+	Visualizations  map[string]string      `json:"visualizations,omitempty"`
+	LocalImagePaths []string               `json:"-"`
+	ID              string                 `json:"id"`
+	TurnID          string                 `json:"turn_id"`
+	Kind            string                 `json:"kind"`
+	Text            string                 `json:"text,omitempty"`
+	Command         string                 `json:"command,omitempty"`
+	Cwd             string                 `json:"cwd,omitempty"`
+	Status          string                 `json:"status,omitempty"`
+	Output          *string                `json:"output"`
+	ExitCode        *int                   `json:"exit_code"`
+	DurationMs      *int64                 `json:"duration_ms"`
+	StartedAtMs     *int64                 `json:"started_at_ms"`
+	CompletedAtMs   *int64                 `json:"completed_at_ms"`
+	Tool            string                 `json:"tool,omitempty"`
+	Images          []string               `json:"images,omitempty"`
+	Delivery        string                 `json:"delivery,omitempty"`
+	Questions       []ChatQuestion         `json:"questions,omitempty"`
+	QuestionStatus  string                 `json:"question_status,omitempty"`
+}
+
+// Command descriptions contain only the public action category and file path.
+type HistoryCommandAction struct {
+	Type string `json:"type"`
+	Path string `json:"path,omitempty"`
 }
 
 // Keep file identities and counts separate from the bounded text preview.
@@ -76,6 +84,7 @@ type codexHistoryItem struct {
 	Delivery         string                   `json:"delivery"`
 	Questions        []asyncUserInputQuestion `json:"questions"`
 	Command          string                   `json:"command"`
+	CommandActions   []HistoryCommandAction   `json:"commandActions"`
 	Cwd              string                   `json:"cwd"`
 	Status           string                   `json:"status"`
 	AggregatedOutput *string                  `json:"aggregatedOutput"`
@@ -159,6 +168,18 @@ func visibleHistoryEntry(raw codexHistoryEntry) (HistoryEntry, bool) {
 	case "commandExecution":
 		e.Kind, e.Command, e.Cwd, e.Status = "command", i.Command, i.Cwd, i.Status
 		e.Output, e.ExitCode, e.DurationMs = i.AggregatedOutput, i.ExitCode, i.DurationMs
+		for _, action := range i.CommandActions {
+			if len(e.CommandActions) >= 100 {
+				break
+			}
+			switch action.Type {
+			case "read", "listFiles", "search", "unknown":
+				if len(action.Path) > 4096 {
+					action.Path = ""
+				}
+				e.CommandActions = append(e.CommandActions, action)
+			}
+		}
 	case "fileChange":
 		e.Kind, e.Status = "change", i.Status
 		for _, change := range i.Changes {
@@ -178,6 +199,7 @@ func visibleHistoryEntry(raw codexHistoryEntry) (HistoryEntry, bool) {
 		e.Kind, e.Tool, e.Text = "activity", "网页搜索", i.Query
 	case "imageView":
 		e.Kind, e.Tool, e.Text = "activity", "查看图片", i.Path
+		e.LocalImagePaths, e.Images = []string{i.Path}, []string{i.Path}
 	case "imageGeneration":
 		e.Kind, e.Tool, e.Status = "assistant", "生成图片", i.Status
 		var result string
@@ -195,6 +217,12 @@ func visibleHistoryEntry(raw codexHistoryEntry) (HistoryEntry, bool) {
 		e.Kind, e.Tool, e.Text = "activity", "代码审查", i.Review
 	default:
 		return e, false
+	}
+	if e.Kind == "activity" {
+		e.ActivityType = i.Type
+		if e.Status == "" {
+			e.Status = i.Status
+		}
 	}
 	e.Text = boundedChatText(e.Text)
 	if e.Output != nil {

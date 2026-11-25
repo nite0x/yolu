@@ -57,6 +57,25 @@ function namedProject(text: string, projects: ProjectOption[]) {
   return matches.length === 1 ? matches[0] : undefined
 }
 
+function mentionedProjects(text: string, projects: ProjectOption[]) {
+  const byName = new Map<string, ProjectOption[]>()
+  for (const project of projects) {
+    const name = project.name.toLowerCase()
+    if (name) byName.set(name, [...(byName.get(name) || []), project])
+  }
+  if (!byName.size || !text.includes("@")) return {explicit: false, projects: []}
+  const names = [...byName.keys()].sort((a, b) => b.length - a.length)
+    .map(name => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  const pattern = new RegExp(`(?:^|[^\\p{L}\\p{N}_.@-])@(${names.join("|")})(?![\\p{L}\\p{N}_-]|\\.[\\p{L}\\p{N}_.-])`, "gu")
+  const matches = [...text.toLowerCase().matchAll(pattern)]
+  const found = new Set<ProjectOption>()
+  for (const [, name] of matches) {
+    const candidates = byName.get(name)
+    if (candidates?.length === 1) found.add(candidates[0])
+  }
+  return {explicit: matches.length > 0, projects: [...found]}
+}
+
 const json = (method: string, body: unknown): RequestInit => ({method, body:JSON.stringify(body)})
 const failure = (error: unknown) => error instanceof Error ? error.message : String(error)
 const labelFor = (binding: BindingInput, projects: ProjectOption[]) => projects.find(project => project.id === binding.project_id)?.name || binding.directory?.split(/[\\/]/).filter(Boolean).at(-1) || uiText("本地目录")
@@ -83,17 +102,19 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
   const [prompt, setPrompt] = useState<Prompt>()
   const [detail, setDetail] = useState("")
   const [scope, setScope] = useState<"all" | "changes">("all")
-  const [planned, setPlanned] = useState<BindingInput[]>([])
-  const [primary, setPrimary] = useState<SessionTarget>({})
+  const [planned, setPlanned] = useState<BindingInput[]>(() => controller.options.target?.bindings || [])
+  const [executionMode, setExecutionMode] = useState<"local" | "worktree">("local")
+  const [preparing, setPreparing] = useState(false)
+  const worktreeRequest = useRef<{project: string; slug: string; path?: string} | undefined>(undefined)
   const [dismissed, setDismissed] = useState("")
-  const plannedRef = useRef<BindingInput[]>([])
+  const plannedRef = useRef(planned)
   const approvalRef = useRef<Prompt | undefined>(undefined)
   const revision = useRef(0)
   const base = session ? `/api/sessions/${encodeURIComponent(session.id)}/bindings` : ""
   const { request, environment, overview, readOnly } = controller.options
   const projects = overview?.projects || []
   const bindings = data?.bindings || emptyBindings
-  const target = {...controller.options.target, ...primary}
+  const target = {...controller.options.target}
   const bindingVersion = JSON.stringify(bindings.map(binding => [binding.id,binding.directory,binding.project_id,!!binding.git,binding.role]))
   useEffect(() => {
     if (!session) return
@@ -101,6 +122,13 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
     window.dispatchEvent(new CustomEvent("workhub:session-bindings-changed", {detail:{session:session.id, environment, directories}}))
   }, [bindingVersion,environment,session?.id])
   const excluded = new Set([target.project_id || "", ...bindings.map(binding => binding.project_id || ""), ...planned.map(binding => binding.project_id || "")])
+  const addDirectory = () => setPrompt({purpose:uiText("为此对话添加参考或开发目录。")})
+
+  useEffect(() => {
+    if (session || readOnly || busy) return
+    document.addEventListener("workhub:creation-add-directory", addDirectory)
+    return () => document.removeEventListener("workhub:creation-add-directory", addDirectory)
+  }, [session, readOnly, busy])
 
   useEffect(() => {
     approvalRef.current = prompt
@@ -149,6 +177,11 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
       setPrompt(next)
     })
   }
+  function updatePlanned(next: BindingInput[]) {
+    plannedRef.current = next
+    setPlanned(next)
+    controller.options.updateDraftBindings?.(next)
+  }
   async function save(input: BindingInput) {
     if (!prompt) return
     if (base) {
@@ -160,9 +193,8 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
       if (bound) setDetail(bound.id)
     } else {
       const key = conversationPathKey(input.directory || "")
-      const next = [...plannedRef.current.filter(binding => conversationPathKey(binding.directory || "") !== key), input]
-      plannedRef.current = next
-      setPlanned(next)
+      if (target.cwd && conversationPathKey(target.cwd) === key) throw new Error(uiText("此目录已是主工作目录。"))
+      updatePlanned([...plannedRef.current.filter(binding => conversationPathKey(binding.directory || "") !== key), input])
     }
     rememberProject(environment, input.project_id)
     closePrompt(true)
@@ -190,32 +222,73 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
     window.dispatchEvent(new CustomEvent("workhub:binding-files", {detail:{session:session?.id, environment, id:binding.id, path:binding.directory, project:binding.project_id, git:!!binding.git, file:path,mode}}))
   }
   async function send(text: string, images: string[]) {
-    let payload: SessionTarget = session ? {} : {...primary, bindings:plannedRef.current}
-    const match = !readOnly && !session?.archived && !busy ? namedProject(text, projects) : undefined
-    if (match && match.id !== target.project_id && match.id !== session?.primary_project_id) {
-      // Read saved bindings before attaching, including when the first poll has not returned.
+    let runtimeTarget = target
+    if (!session && executionMode === "worktree" && target.project_id) {
+      if (preparing) throw new Error(uiText("正在准备工作目录…"))
+      setPreparing(true)
+      try {
+        if (worktreeRequest.current?.project !== target.project_id) worktreeRequest.current = {project:target.project_id,slug:"session-" + crypto.randomUUID().slice(0, 12)}
+        const planned = worktreeRequest.current
+        const route = `/api/projects/${encodeURIComponent(planned.project)}`
+        const branch = "codex/" + planned.slug
+        // Reuse a worktree after an acknowledged creation or a lost response.
+        if (!planned.path) {
+          const overview = await request<GitOverview>(route + "/git")
+          planned.path = overview.project.worktrees.find(tree => tree.branch === branch && !tree.missing && !tree.prunable && !tree.error)?.path
+          if (!planned.path) {
+            const result = await request<{path:string}>(route + "/worktrees", json("POST", {mode:"new",slug:planned.slug,branch,source:"HEAD"}))
+            if (!result.path) throw new Error(uiText("Worktree 已创建，但未返回执行目录。请从项目页选择它。"))
+            planned.path = result.path
+          }
+        }
+        runtimeTarget = {...target,cwd:planned.path}
+      } finally {setPreparing(false)}
+    }
+    let payload: SessionTarget = session ? {} : {...runtimeTarget, bindings:plannedRef.current}
+    const mentions = mentionedProjects(text, projects)
+    const natural = !mentions.explicit && !busy ? namedProject(text, projects) : undefined
+    const matches = natural ? [natural] : mentions.projects
+    if (!readOnly && !session?.archived && matches.length) {
       const saved = base ? await request<BindingSet>(base) : undefined
-      const attached = [...(saved?.bindings || []), ...plannedRef.current]
-      const path = conversationPathKey(match.path)
-      if (![saved?.cwd, session?.cwd, target.cwd].some(cwd => cwd && conversationPathKey(cwd) === path) &&
-          !attached.some(binding => binding.project_id === match.id ||
-            (binding.directory && conversationPathKey(binding.directory) === path))) {
-        const input: BindingInput = {project_id:match.id, directory:match.path, access:"read", role:"additional"}
+      const managedSession = saved?.native_resume_requires_confirmation
+      const projectIDs = new Set<string>()
+      const primaryProject = session ? session.primary_project_id : target.project_id
+      if (primaryProject && !managedSession) projectIDs.add(primaryProject)
+      const paths = new Set<string>()
+      const cwd = session ? saved?.cwd || session.cwd : runtimeTarget.cwd
+      if (cwd) paths.add(conversationPathKey(cwd))
+      if (!managedSession) {
+        for (const path of session?.additional_directories || []) paths.add(conversationPathKey(path))
+      }
+      for (const binding of [...(saved?.bindings || []), ...plannedRef.current]) {
+        if (binding.project_id) projectIDs.add(binding.project_id)
+        if (binding.directory) paths.add(conversationPathKey(binding.directory))
+      }
+      const inputs: BindingInput[] = []
+      for (const match of matches) {
+        const path = conversationPathKey(match.path)
+        if (projectIDs.has(match.id) || paths.has(path)) continue
+        inputs.push({project_id:match.id, directory:match.path, access:"read", role:"additional"})
+        projectIDs.add(match.id)
+        paths.add(path)
+      }
+      if (inputs.length) {
+        if (busy) throw new Error(uiText("请等待当前运行结束，再发送包含新项目引用的消息。"))
         if (base) {
           revision.current++
-          const result = await request<BindingSet>(base, json("POST", input))
+          const result = await request<BindingSet>(base, json("POST", {project_ids:inputs.map(input => input.project_id)}))
           revision.current++
           setData(result)
           setError("")
         } else {
-          payload = {...payload, bindings:[...plannedRef.current, input]}
+          payload = {...payload, bindings:[...plannedRef.current, ...inputs]}
         }
-        rememberProject(environment, match.id)
+        for (const input of inputs) rememberProject(environment, input.project_id)
       }
     }
-    if (!session && (target.cwd || target.project_id) && (target.access || "write") === "write") {
+    if (!session && (runtimeTarget.cwd || runtimeTarget.project_id) && (runtimeTarget.access || "write") === "write") {
       const binding = await request<Binding>("/api/session-bindings/inspect", json("POST", {
-        project_id:target.project_id, directory:target.cwd, role:"primary", access:"write", provider,
+        project_id:runtimeTarget.project_id, directory:runtimeTarget.cwd, role:"primary", access:"write", provider,
       }))
       if (binding.conflicts?.length) {
         const approved = await ask({purpose:uiText("已有可写对话正在使用此目录。可另建 Worktree，或确认共享此目录。"),conflict:binding.directory})
@@ -242,8 +315,17 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
       </select>
       <ChevronDown aria-hidden="true" />
     </label> : <strong className="session-dir-heading">{uiText("关联目录")}</strong>}
-    {!readOnly && !session?.archived && <Button type="button" size="xs" variant="ghost" className="session-dir-add" aria-label={uiText("添加项目或目录")} onClick={() => setPrompt({purpose:uiText("为此对话添加参考或开发目录。")})}><Plus aria-hidden="true" />{uiText("添加项目")}</Button>}
+    {!readOnly && !session?.archived && <Button type="button" size="xs" variant="ghost" className="session-dir-add" aria-label={uiText("添加项目或目录")} onClick={addDirectory}><Plus aria-hidden="true" />{uiText("添加项目")}</Button>}
   </>
+  const plannedRows = planned.map(binding => <div className="session-dir-item" key={binding.directory}>
+    <div className="session-dir-row-bar session-context-chip session-context-draft session-dir-draft" title={binding.directory}>
+      <span className="session-dir-icon" aria-hidden="true"><Folder /></span>
+      <span className="session-dir-identity"><span className="session-dir-name">{labelFor(binding, projects)}</span></span>
+      <span className="session-dir-trailing"><small className="session-dir-badge" data-access={binding.access}>{binding.access === "read" ? uiText("只读") : uiText("可修改")}</small></span>
+      <Button type="button" size="icon-xs" variant="ghost" disabled={busy || preparing} aria-label={uiText("移除 {0}", labelFor(binding, projects))}
+        onClick={() => updatePlanned(plannedRef.current.filter(item => item !== binding))}><X aria-hidden="true" /></Button>
+    </div>
+  </div>)
   const directoryList = <div className="session-context-strip session-dir-list" role="group" aria-label={uiText("对话项目与目录")}>
     {session ? visibleBindings.map(binding => {
       const name = binding.project_name || labelFor(binding, projects)
@@ -287,16 +369,7 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
           openProject={binding.project_id && controller.options.openProject ? () => controller.options.openProject?.(binding.project_id!,binding.directory) : undefined}
           openTerminal={environment === "local" && controller.options.openTerminal ? () => controller.options.openTerminal?.(binding) : undefined} />}
       </div>
-    }) : planned.map(binding => <div className="session-dir-item" key={binding.directory}>
-      <div className="session-dir-row-bar session-context-chip session-context-draft session-dir-draft">
-        <span className="session-dir-icon" aria-hidden="true"><Folder /></span>
-        <span className="session-dir-identity"><span className="session-dir-name">{labelFor(binding, projects)}</span></span>
-        <span className="session-dir-trailing"><small className="session-dir-badge" data-status="pending">{uiText("待配置")}</small></span>
-        <Button type="button" size="icon-xs" variant="ghost" aria-label={uiText("移除 {0}", labelFor(binding, projects))} onClick={() => {
-          plannedRef.current = plannedRef.current.filter(item => item !== binding); setPlanned(plannedRef.current);
-        }}><X aria-hidden="true" /></Button>
-      </div>
-    </div>)}
+    }) : plannedRows}
     {session && bindings.length > 0 && !visibleBindings.length && <div className="session-dir-empty-filter">
       <span className="session-context-empty">{uiText("当前关联目录没有未提交改动")}</span>
       <Button type="button" size="xs" variant="ghost" onClick={() => setScope("all")}>{uiText("查看全部目录")}</Button>
@@ -311,17 +384,22 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
       {error && <p className="session-context-error" role="alert">{error}</p>}
     </>,
     dialog: prompt && <BindingDialog prompt={prompt} request={request} environment={environment} provider={provider} session={session?.id}
-      projects={projects} hasPrimary={!!target.project_id || !!target.cwd || [...bindings,...planned].some(binding => binding.role === "primary")} save={save} cancel={() => closePrompt()} confirm={() => closePrompt(true)} />,
+      projects={projects} hasPrimary={!!controller.options.updateDraftBindings || !!target.project_id || !!target.cwd || [...bindings,...planned].some(binding => binding.role === "primary")} save={save} cancel={() => closePrompt()} confirm={() => closePrompt(true)} />,
     cwd: data?.cwd,
     managed: !session || !!data?.native_resume_requires_confirmation || !data && session.source === "workbench",
     composer: !readOnly && !session?.archived && <DraftProjectSuggestions controller={controller} projects={projects}
       excluded={excluded} dismissed={dismissed} dismiss={setDismissed} configure={setPrompt} />,
-    creation: !session && target.project_id && !readOnly && <WorktreeSetup
-      project={target.project_id} request={request} disabled={busy}
-      key={target.project_id}
-      directory={primary.cwd}
-      onCreated={path => setPrimary({project_id:target.project_id,cwd:path})}
-      onReset={() => setPrimary({})} />,
+    preparing,
+    creation: !session && !readOnly && <>
+      {target.project_id && <label className="session-worktree-choice">
+        <input type="checkbox" checked={executionMode === "worktree"} disabled={busy || preparing} onChange={event => setExecutionMode(event.target.checked ? "worktree" : "local")} />
+        <span>{uiText("创建新 Worktree")}</span>
+      </label>}
+      {controller.options.updateDraftBindings && <div className="session-creation-bindings">
+        <Button type="button" size="sm" variant="ghost" disabled={busy || preparing} onClick={addDirectory}><Plus aria-hidden="true" />{uiText("添加附加目录")}</Button>
+        {plannedRows}
+      </div>}
+    </>,
   }
 }
 

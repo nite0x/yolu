@@ -68,12 +68,14 @@
 .session-workspace-preview button { display: inline-flex; align-items: center; gap: 4px; min-width: 0; min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px; color: var(--muted-foreground); background: transparent; font: inherit; font-size: var(--yolu-font-size-label); text-align: start; cursor: pointer; }
 .session-workspace-preview button svg { width: 12px; height: 12px; flex: none; }
 .session-workspace-heading > button:focus-visible, .session-workspace-preview button:focus-visible, .session-collection-actions :is(a, button):focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-.session-browser-item { cursor: pointer; display: block; width: 100%; min-height: 34px; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--foreground); text-align: left; font: inherit; }
+.session-browser-item { cursor: pointer; display: block; width: 100%; min-height: 34px; padding: 6px var(--session-row-inset, 10px); border: 0; border-radius: 6px; background: transparent; color: var(--foreground); text-align: left; font: inherit; }
 .session-browser-item:hover { background: var(--muted); }
 .session-browser-item[data-parallel-member]:not([aria-pressed="true"]) { background: color-mix(in srgb, var(--yolu-selected,#edf0ff) 62%, transparent); }
 .session-browser-item[aria-pressed="true"] { background: var(--yolu-selected,#edf0ff); }
 .session-browser-item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .session-browser-item-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.session-browser-item-trailing { display: grid; grid-template-columns: 13px minmax(0, 1fr); align-items: center; gap: 6px; flex: 0 0 var(--session-row-trailing-width, 72px); min-width: 0; }
+.session-browser-item-trailing .session-browser-item-time { grid-column: 2; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-browser-item-agent { display: inline-flex; flex: none; color: var(--muted-foreground); }
 .session-browser-item-agent svg { width: 13px; height: 13px; }
 .session-browser-pin { width: 13px; height: 13px; margin-top: 3px; flex-shrink: 0; color: var(--primary); }
@@ -244,24 +246,22 @@ html[data-workspace-conversation] .session-browser[data-pane="list"] .session-br
 html[data-workspace-conversation] .session-browser[data-pane="detail"] .session-browser-list { display:none; }
 
 .has-session-menu .session-browser-item{padding-right:36px}
-.parallel-list-add[data-slot] { position: absolute; right: 4px; top: 1px; width: 30px; height: 30px; border-radius: 7px; color: var(--muted-foreground); opacity: var(--parallel-action-opacity, 0); pointer-events: var(--parallel-action-events, none); }
+.parallel-list-item { --parallel-action-visibility: hidden; --parallel-time-visibility: visible; }
+.parallel-list-add[data-slot] { position: absolute; inset-inline-end: 4px; top: 1px; width: 30px; height: 30px; border-radius: 7px; color: var(--muted-foreground); visibility: var(--parallel-action-visibility); }
 .parallel-list-add[data-parallel-open] { color: var(--primary); }
-.parallel-list-item .session-browser-item-time { visibility: var(--parallel-time-visibility, visible); }
+.parallel-list-item .session-browser-item-time { visibility: var(--parallel-time-visibility); }
 .parallel-list-item:has(> .parallel-list-add:enabled):is(:hover, :focus-within) {
-  --parallel-action-opacity: 1;
-  --parallel-action-events: auto;
+  --parallel-action-visibility: visible;
   --parallel-time-visibility: hidden;
 }
 @media (hover: none) {
-  .parallel-list-item:has(> .parallel-list-add:enabled) { --parallel-action-opacity: 1; --parallel-action-events: auto; --parallel-time-visibility: hidden; }
+  .parallel-list-item:has(> .parallel-list-add:enabled) { --parallel-action-visibility: visible; --parallel-time-visibility: hidden; }
   .session-browser-item { min-height: 44px; }
 }
 html[data-workspace-navigation][data-workspace-single] .parallel-list-item:has(> .session-browser-item[aria-pressed="true"]) {
-  --parallel-action-opacity: 0;
-  --parallel-action-events: none;
+  --parallel-action-visibility: hidden;
   --parallel-time-visibility: visible;
 }
-html[data-workspace-navigation][data-workspace-single] .parallel-list-item:has(> .session-browser-item[aria-pressed="true"]) .parallel-list-add { visibility: hidden; }
 .parallel-list-add svg { width: 14px; height: 14px; }
 
 /* A host-managed conversation never renders another list, even during mode changes. */
@@ -272,13 +272,14 @@ html[data-workspace-conversation] .ui-narrow-list{display:none!important}
 .shortcut-icon-settings:hover { background:var(--yolu-selected,#e1e7ff); }
 .shortcut-icon-settings:focus-visible { outline:2px solid var(--yolu-ring,#818cf8); }
 
-.session-collection-heading { --session-project-action-size: 34px; display: grid; grid-template-columns: minmax(0,1fr); }
+.session-browser-list { --session-project-action-size: 34px; --session-row-inset: 12px; --session-row-trailing-width: calc(2 * var(--session-project-action-size) + 4px); }
+.session-collection-heading { display: grid; grid-template-columns: minmax(0,1fr); }
 .session-collection-heading > * { grid-area: 1 / 1; }
 .session-browser-workspaces .session-workspace-heading > button { gap: 6px; min-height: 32px; padding-block: 4px; padding-inline-start: 6px; border-radius: 7px; }
 .session-browser-workspaces .session-browser-item-title { line-height: 18px; }
 .session-browser-workspaces .session-browser-item-meta { margin-top: 2px; line-height: 15px; }
-.session-workspace-heading .session-workspace-running svg { color: inherit; }
-.session-collection-heading > .session-collection-toggle { padding-inline-end: calc(2 * var(--session-project-action-size) + 4px); }
+.session-workspace-heading .session-workspace-running svg { width: 14px; height: 14px; color: inherit; }
+.session-collection-heading > .session-collection-toggle { padding-inline-end: calc(var(--session-row-trailing-width) + var(--session-row-inset) + 6px); }
 .session-collection-toggle .shortcut-badge, .session-collection-toggle .session-collection-fallback-icon { width: 16px; height: 16px; flex: none; }
 .session-collection-toggle .shortcut-badge svg { width: 15px; height: 15px; color: inherit; }
 .session-collection-actions {
@@ -292,18 +293,15 @@ html[data-workspace-conversation] .ui-narrow-list{display:none!important}
   .session-collection-details { grid-area: 1 / 1; }
   .session-collection-actions > :is(.session-collection-count, .session-collection-create) { grid-area: 1 / 2; }
   .session-collection-actions:not(:has(.session-collection-details)) > :is(.session-collection-count, .session-collection-create) { grid-area: 1 / 1; }
-  .session-collection-heading:not(:has(.session-collection-details)) > .session-collection-toggle { padding-inline-end: calc(var(--session-project-action-size) + 4px); }
   .session-collection-actions :is(a, button) { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
   .session-collection-heading:is(:hover, :has(:focus-visible)) .session-collection-actions :is(a, button) { opacity: 1; pointer-events: auto; }
   .session-collection-heading:is(:hover, :has(:focus-visible)) .session-collection-count { visibility: hidden; }
 }
 @media (hover: none) {
-  .session-collection-heading:not(:has(.session-collection-details)) > .session-collection-toggle { padding-inline-end: calc(var(--session-project-action-size) + 4px); }
-  #sessionBrowserList:not([data-hide-project-counts]) .session-collection-heading > .session-collection-toggle { padding-inline-end: calc(3 * var(--session-project-action-size) + 4px); }
-  #sessionBrowserList:not([data-hide-project-counts]) .session-collection-heading:not(:has(.session-collection-details)) > .session-collection-toggle { padding-inline-end: calc(2 * var(--session-project-action-size) + 4px); }
+  .session-browser-list { --session-row-trailing-width: calc(3 * var(--session-project-action-size) + 4px); }
 }
 @media (hover: none) and (pointer: coarse) {
-  .session-collection-heading { --session-project-action-size: 44px; }
+  .session-browser-list { --session-project-action-size: 44px; }
   .session-browser-workspaces .session-workspace-heading > button, .session-workspace-preview button, .parallel-list-add[data-slot] { min-height: 44px; }
   .parallel-list-add[data-slot] { width: 44px; top: 0; }
   .parallel-list-item .session-browser-item-time { min-width: 42px; }

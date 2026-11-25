@@ -17,7 +17,7 @@
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--yolu-shadow-ink) 16%, transparent) transparent; }
 
 html[data-workhub-desktop] {
-  --workspace-pane-gap: 8px;
+  --workspace-pane-gap: 1px;
   --workspace-pane-inset: 0px;
   --workspace-pane-top-inset: var(--workspace-pane-inset);
   --workspace-list-heading-height: 34px;
@@ -71,7 +71,10 @@ html[data-workhub-desktop] .workspace-pane {
   box-shadow: none;
 }
 body[data-workspace-conversations] .workspace-pages,
-html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages { padding: 0; }
+html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages {
+  padding: 0;
+  background: var(--yolu-surface, #fff);
+}
 html[data-workhub-desktop] .shell main { background: var(--yolu-surface, #fff); }
 html[data-workhub-desktop] .workspace-pane { background: transparent; }
 html[data-workhub-desktop] .assistant-chat-scope,
@@ -96,14 +99,15 @@ html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.c
   background: color-mix(in srgb, var(--yolu-primary) 5%, var(--background));
 }
 
-/* A persistent hairline separates parallel conversations. The full 8px gutter
-   remains draggable; its grip appears on hover or keyboard focus. */
+/* Headers meet the divider without a surface-colored gutter.
+   Keep the resize target wider than its single-pixel grid track. */
+.workspace-pane-resize { width: 12px; justify-self: center; }
 .workspace-pane-resize::before {
   content: "";
   position: absolute;
-  inset: 0 auto 0 50%;
+  inset: 0 auto 0 calc(50% - .5px);
   width: 1px;
-  background: var(--yolu-border-strong, #d6ddeb);
+  background: var(--yolu-border, #e2e8e4);
   pointer-events: none;
   transition: background-color .15s;
 }
@@ -113,6 +117,7 @@ html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.c
 .workspace-pane-resize::after, .workspace-shared-list-resize::after { width: 3px; inset: 50% auto auto 50%; height: 40px; transform: translate(-50%, -50%); border-radius: 3px; background: transparent; transition: background-color .15s; }
 .workspace-pane-resize:hover::after, .workspace-pane-resize:focus-visible::after, .workspace-pages[data-split-resizing] .workspace-pane-resize::after,
 .workspace-shared-list-resize:hover::after, .workspace-shared-list-resize:focus-visible::after, body[data-split-resizing] .workspace-shared-list-resize::after { background: color-mix(in srgb, var(--yolu-primary, #1f5f5a) 45%, transparent); }
+.workspace-pane-resize::after { width: 2px; height: 32px; }
 
 /* Tabs: quiet text until active, then a lifted chip. */
 html[data-workhub-desktop] .workspace-tab-item { border-color: transparent; border-radius: 8px; background: transparent; transition: background-color .15s, box-shadow .15s; }
@@ -152,7 +157,7 @@ input[type="search"][data-slot="input"]:focus-visible { background-image: none; 
 .session-status-filters button { border-radius: 7px; }
 .session-status-filters button[aria-pressed="true"] { color: var(--yolu-foreground, #182a2b); box-shadow: var(--yolu-elevation-sm); }
 .session-browser-group-heading { padding: 16px 12px 6px; color: var(--yolu-faint-ink, #8a9a95); font-weight: 600; }
-.session-browser-item { padding: 10px 12px; border-radius: 10px; transition: background-color .12s; }
+.session-browser-item { padding: 10px var(--session-row-inset, 12px); border-radius: 10px; transition: background-color .12s; }
 .session-browser-item:hover { background: var(--yolu-subtle, #f4f7f5); }
 .session-browser-item[aria-pressed="true"] { background: var(--yolu-selected, #dbe9e2); }
 .session-browser-item[aria-pressed="true"] .session-browser-item-title { color: var(--yolu-primary-ink, #173f3d); }
@@ -209,7 +214,7 @@ html[data-workspace-navigation] .sidebar .session-browser-list-tools { gap: 0; p
 .session-sidebar-modes button[aria-pressed="true"] { background: var(--yolu-surface); color: var(--yolu-foreground); box-shadow: var(--yolu-elevation-sm); }
 .session-sidebar-modes button:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: -2px; }
 @media (pointer: coarse) { .session-sidebar-modes button { min-height: 44px; } }
-html[data-workspace-navigation] .sidebar #sessionBrowserList { padding: 0 2px 12px; scrollbar-gutter: auto; scrollbar-color: transparent transparent; }
+html[data-workspace-navigation] .sidebar #sessionBrowserList { --session-row-inset: 8px; padding: 0 2px 12px; scrollbar-gutter: auto; scrollbar-color: transparent transparent; }
 html[data-workspace-navigation] .sidebar #sessionBrowserList:is(:hover, :focus-within) { scrollbar-color: color-mix(in srgb, var(--yolu-shadow-ink) 20%, transparent) transparent; }
 @supports not (scrollbar-color: currentColor transparent) {
   html[data-workspace-navigation] .sidebar #sessionBrowserList { scrollbar-width: auto; }
@@ -220,7 +225,7 @@ html[data-workspace-navigation] .sidebar #sessionBrowserList:is(:hover, :focus-w
 }
 html[data-workspace-navigation] .sidebar .session-collection-toggle .shortcut-badge { width: 16px; height: 16px; border-radius: 0; }
 html[data-workspace-navigation] .sidebar .session-workspace-name { font-size: var(--yolu-font-size-compact); font-weight: 600; }
-html[data-workspace-navigation] .sidebar .session-browser-item { padding: 6px 8px; border-radius: 7px; }
+html[data-workspace-navigation] .sidebar .session-browser-item { padding: 6px var(--session-row-inset, 8px); border-radius: 7px; }
 html[data-workspace-navigation] .sidebar .session-browser-item-title { font-size: var(--yolu-font-size-compact); font-weight: 450; }
 html[data-workspace-navigation] .sidebar .session-browser-item-time { font-size: 11px; opacity: .75; }
 /* Shared 44px flush desktop pane header matching .conversation-surface-header. */

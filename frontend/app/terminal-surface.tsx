@@ -1,18 +1,45 @@
 import { uiText } from "../i18n";
 import {createRoot} from "react-dom/client"
 import {createPortal, flushSync} from "react-dom"
-import {ALargeSmall, Minus, MoreHorizontal, Plus, RefreshCw, Search, X} from "lucide-react"
-import {ConversationHeader, ConversationIconButton, ConversationKindSwitch, ConversationPaneButtons, ConversationStatusBadge, ConversationWorkingContext} from "./conversation-surface"
+import {ALargeSmall, ArrowRight, Bot, Minus, MoreHorizontal, Plus, RefreshCw, Search, Terminal, X} from "lucide-react"
+import {ConversationCreationIntro, ConversationHeader, ConversationIconButton, ConversationPaneButtons, ConversationStatusBadge, ConversationWorkingContext} from "./conversation-surface"
+
+export interface TerminalProfile { id: string; name: string; executable: string; args: string[] | null; available: boolean }
+
+export function mountTerminalTools(launch: (id: string) => void) {
+  const root = createRoot(document.getElementById("terminalProfileChoices")!)
+  return {
+    render(profiles: TerminalProfile[], disabled: boolean, starting?: string) {
+      const available = profiles.filter(profile => profile.available)
+      const unavailable = profiles.filter(profile => !profile.available)
+      root.render(<>
+        <div className="terminal-tool-list">
+          {available.map(profile => {
+            const Icon = profile.id === "shell" ? Terminal : Bot
+            const label = starting === profile.id ? uiText("正在启动 {0}…", profile.name) : uiText("启动 {0}", profile.name)
+            return <button key={profile.id} type="button" className="terminal-tool" data-terminal-profile={profile.id} disabled={disabled} aria-label={label} onClick={() => launch(profile.id)}>
+              <span className="terminal-tool-icon"><Icon aria-hidden="true" /></span>
+              <span>{starting === profile.id ? label : profile.name}</span>
+              <ArrowRight className="terminal-tool-arrow" aria-hidden="true" />
+            </button>
+          })}
+        </div>
+        {!!unavailable.length && <details className="terminal-disclosure terminal-unavailable">
+          <summary>{uiText("未找到命令 · {0}", unavailable.length)}</summary>
+          <ul>{unavailable.map(profile => <li key={profile.id}><span>{profile.name}</span><code>{profile.executable}</code></li>)}</ul>
+        </details>}
+      </>)
+    },
+    unmount: () => root.unmount(),
+  }
+}
 
 // Mount the same chrome as UI conversations once. The terminal controller owns
-// the existing selects and their values, including unfinished launch settings.
+// the launch form values, including unfinished custom settings.
 export function mountTerminalSurface(command: (command: string) => void) {
   const root = createRoot(document.getElementById("terminalSurface")!)
   flushSync(() => root.render(<>
-    {createPortal(<>
-    <div id="terminalKind"><ConversationKindSwitch kind="terminal" uiID="terminalKindUI" /></div>
-    <div id="terminalDirectoryChoicesField" className="terminal-directory-choices"><span id="terminalDirectoryChoicesLabel">{uiText("工作目录")}</span><div id="terminalDirectoryChoices" className="creation-choices" role="group" aria-labelledby="terminalDirectoryChoicesLabel" /><select id="terminalDirectory" form="terminalForm" hidden aria-label={uiText("工作目录")} /></div>
-    </>, document.getElementById("terminalCreationSetup")!)}
+    {createPortal(<ConversationCreationIntro kind="terminal" uiID="terminalKindUI" />, document.getElementById("terminalCreationSetup")!)}
     <ConversationHeader title={uiText("新建对话")} titleID="terminalTitle"
       actions={<>
         <ConversationStatusBadge id="terminalStatusBadge" hidden><span className="chat-status-dot" aria-hidden="true" /><span id="terminalStatus">{uiText("正在连接…")}</span></ConversationStatusBadge>
@@ -41,10 +68,6 @@ export function mountTerminalSurface(command: (command: string) => void) {
       </>}>
         <button id="terminalContext" className="chat-workspace-link" type="button">{uiText("打开项目")}</button>
         <code id="terminalContextPath" className="chat-workspace-path" />
-        <div className="terminal-project-fields">
-          <label>{uiText("选择项目")}<select id="terminalProject" form="terminalForm" /></label>
-          <small id="terminalDirectoryPath" />
-        </div>
       </ConversationWorkingContext>}>
 
       <div id="terminalSearchBar" className="terminal-search-bar" role="search" hidden><input id="terminalSearch" type="search" placeholder={uiText("搜索终端输出")} aria-label={uiText("搜索终端输出")} /><button id="terminalSearchNext" type="button">{uiText("查找")}</button><ConversationIconButton id="closeTerminalSearch" label={uiText("关闭终端搜索")}><X aria-hidden="true" /></ConversationIconButton></div>

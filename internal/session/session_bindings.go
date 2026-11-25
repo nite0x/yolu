@@ -35,6 +35,7 @@ type directoryConflict struct {
 }
 
 type bindingView struct {
+	MainDirectory string `json:"main_directory,omitempty"`
 	model.SessionProjectBinding
 	ProjectName string              `json:"project_name,omitempty"`
 	WorktreeID  string              `json:"worktree_id,omitempty"`
@@ -145,6 +146,12 @@ func (a *Service) inspectBinding(ctx context.Context, input bindingInput, files 
 	}
 	if isGitRoot {
 		if files {
+			if raw, err := execution.Git(ctx, v.Directory, "worktree", "list", "--porcelain", "-z"); err == nil {
+				if trees := project.ParseWorktrees(raw); len(trees) > 0 {
+					v.MainDirectory = trees[0].Path
+				}
+			}
+
 			state, err := execution.ReadGitState(ctx, v.Directory)
 			if err != nil {
 				return v, fmt.Errorf("无法读取 Git 状态：%w", err)
@@ -501,10 +508,22 @@ func (a *Service) MutateBindingHandler(w http.ResponseWriter, r *http.Request) {
 		a.writeSessionBindings(w, r, record)
 		return
 	}
-	var input bindingInput
-	if !httpx.Decode(w, r, &input) {
+	var body struct {
+		bindingInput
+		ProjectIDs []string `json:"project_ids"`
+	}
+	if !httpx.Decode(w, r, &body) {
 		return
 	}
+	if r.Method == http.MethodPost && body.ProjectIDs != nil {
+		if err := a.bindProjectReferences(r.Context(), record, body.ProjectIDs); err != nil {
+			writeBindingError(w, err)
+			return
+		}
+		a.writeSessionBindings(w, r, record)
+		return
+	}
+	input := body.bindingInput
 	bindings, err := a.Execution.Store.SessionBindings(id)
 	if err != nil {
 		httpx.DbError(w, err)
@@ -586,6 +605,74 @@ func (a *Service) MutateBindingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.writeSessionBindings(w, r, record)
+}
+
+// bindProjectReferences appends read-only grants together. An existing
+// project checkout or canonical directory already satisfies the reference.
+func (a *Service) bindProjectReferences(ctx context.Context, record model.Session, ids []string) error {
+	if len(ids) > maxSessionBindings {
+		return invalidSessionTarget("对话关联目录数量已达上限")
+	}
+	ctx = execution.WithClient(ctx, a.Execution.Remote)
+	bindings, err := a.Execution.Store.SessionBindings(record.ID)
+	if err != nil {
+		return err
+	}
+	managed, err := a.Execution.Store.SessionBindingsManaged(record.ID)
+	if err != nil {
+		return err
+	}
+	var existing, additions []model.SessionProjectBinding
+	if !managed {
+		paths := append([]string{record.Cwd}, record.AdditionalDirectories...)
+		for i, path := range paths {
+			directory, err := canonicalDirectory(ctx, path)
+			if err != nil {
+				return err
+			}
+			role := model.SessionBindingAdditional
+			if i == 0 {
+				role = model.SessionBindingPrimary
+			}
+			if !hasProjectReference(existing, "", directory) {
+				existing = append(existing, model.SessionProjectBinding{Directory: directory, Role: role, Access: model.SessionBindingRead})
+			}
+		}
+	}
+	bindings = append(bindings, existing...)
+	for _, id := range ids {
+		if id == "" {
+			return invalidSessionTarget("请选择项目")
+		}
+		if hasProjectReference(bindings, id, "") {
+			continue
+		}
+		v, err := a.inspectBinding(ctx, bindingInput{SessionID: record.ID, ProjectID: id}, false)
+		if err != nil {
+			return err
+		}
+		if hasProjectReference(bindings, "", v.Directory) {
+			continue
+		}
+		bindings = append(bindings, v.SessionProjectBinding)
+		additions = append(additions, v.SessionProjectBinding)
+	}
+	if len(additions) == 0 {
+		return nil
+	}
+	if err := validateBindingSet(bindings); err != nil {
+		return err
+	}
+	return a.Execution.Store.InsertSessionBindings(record.ID, append(existing, additions...))
+}
+
+func hasProjectReference(bindings []model.SessionProjectBinding, projectID, directory string) bool {
+	for _, binding := range bindings {
+		if projectID != "" && binding.ProjectID == projectID || directory != "" && platform.SameWorkspacePath(binding.Directory, directory) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Service) checkBindingMutation(ctx context.Context, record model.Session) error {

@@ -39,7 +39,8 @@ test("conversation statuses use inline accessible icons and titles preserve thei
     assert.equal(title.getAttribute("title"), name)
     assert.equal(title.textContent, name)
     assert.equal(status.parentElement, title.parentElement)
-    assert.equal(row.querySelector("time")?.parentElement, title.parentElement)
+    assert.equal(row.querySelector("time")?.parentElement?.className, "session-browser-item-trailing")
+    assert.equal(row.querySelector("time")?.parentElement?.parentElement, title.parentElement)
     assert.equal(status.textContent, "")
     assert.equal(row.querySelector(".session-browser-item-meta [data-session-indicators]"), null)
     if (status.dataset.state === "idle") {

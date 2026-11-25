@@ -32,6 +32,7 @@ export class ChatController {
   private snapshot: Snapshot;
   private viewSnapshot?: Omit<Snapshot, 'draft'>;
   private activitySnapshot?: ChatState;
+  private dismissedPredictionTurn?: string;
   private listeners = new Set<() => void>();
   private connected = false;
   private timer?: ReturnType<typeof setInterval>;
@@ -46,6 +47,8 @@ export class ChatController {
   private pending?: SessionTarget & {text: string; images?: string[]; provider?: AgentProvider; request_id: string; settings?: TurnSettings; turn_id?: string};
   private openingApproval = false;
   private defaultsRefreshPending = false;
+  private defaultAgentLoaded = false;
+  private providerChosen = false;
   private draftPersistence: ReturnType<typeof createDraftPersistence>;
  private forkRequest?: {id:string;turn:string};
  private pageHide = () => this.persist();
@@ -160,7 +163,14 @@ export class ChatController {
       }
     }
   };
-  setDraft = (draft: string) => { if (draft !== this.snapshot.draft) { this.update({draft}); this.draftChanged(); } };
+  dismissPrediction = () => {
+    this.dismissedPredictionTurn = this.snapshot.chat.turn_id;
+    if (this.snapshot.chat.prediction) this.update({chat: {...this.snapshot.chat, prediction: undefined}});
+  };
+  setDraft = (draft: string) => { if (draft !== this.snapshot.draft) {
+    if (draft) this.dismissPrediction();
+    this.update({draft}); this.draftChanged();
+  } };
   setError = (error: string) => this.update({error});
   updateSession = (session: Session) => {
     if (this.snapshot.session?.id === session.id) {
@@ -169,6 +179,7 @@ export class ChatController {
     }
   };
   setProvider = (provider: AgentProvider) => {
+    this.providerChosen = true;
     if (this.snapshot.session || this.snapshot.submitting) return;
     const normalized = normalizeProvider(provider);
     if (normalized === this.snapshot.provider) return;
@@ -216,6 +227,7 @@ export class ChatController {
     this.timer = setInterval(() => { if (this.connected && this.visible() && this.snapshot.session) void this.poll(); }, 2000);
   }
   disconnect() {
+    if (this.connected) this.dismissPrediction();
     if (this.connected) this.persist();
     if (typeof window !== "undefined") window.removeEventListener("pagehide",this.pageHide);
     if (typeof window !== 'undefined') window.removeEventListener('workhub:page-visibility', this.visibilityChanged);
@@ -256,6 +268,10 @@ export class ChatController {
   }
   private apply(chat: ChatState) {
     const previous = this.snapshot.chat;
+    if (chat.prediction && (chat.prediction.source_turn_id === this.dismissedPredictionTurn || this.snapshot.draft || this.draftAttachments.length)) {
+      if (this.snapshot.draft || this.draftAttachments.length) this.dismissedPredictionTurn = chat.prediction.source_turn_id;
+      chat = {...chat, prediction: undefined};
+    }
     if (!chat.busy && chat.id === this.handoffID) this.handoffID = undefined;
     if (previous.busy && !chat.id && !previous.external && !chat.external) return;
     if (chat.id === previous.id && (chat.revision || 0) < (previous.revision || 0)) return;
@@ -282,8 +298,8 @@ export class ChatController {
       this.activitySnapshot = this.snapshot.chat;
       this.options.activity?.(this.snapshot.session.id, chat);
     }
-    if (chat.external || previous.busy && !chat.busy) { this.streamAbort?.abort(); void this.history(false, true); }
-    if (chat.busy && chat.id && !chat.external && this.connected) void this.watch(chat.id);
+    if (chat.external || previous.busy && !chat.busy) { if (!chat.prediction_pending) this.streamAbort?.abort(); void this.history(false, true); }
+    if ((chat.busy || chat.prediction_pending) && chat.id && !chat.external && this.connected) void this.watch(chat.id);
   }
   async poll() {
     if (this.options.readOnly || !this.snapshot.session || !this.connected || this.polling || !this.visible()) return;
@@ -311,6 +327,7 @@ export class ChatController {
     if (this.options.readOnly || this.snapshot.chat.external && (this.snapshot.chat.busy || this.snapshot.chat.status === "unknown")) return;
     text = text.trim();
     const messageText = [text, ...draftFiles(this.draftAttachments).map(f=>f.text)].filter(Boolean).join("\n\n");
+    this.dismissPrediction();
     const before = this.snapshot;
     const steering = before.chat.busy;
     if (!messageText && !images.length) return;
@@ -379,6 +396,7 @@ export class ChatController {
     for (const [key, draft] of Object.entries(record.questions || {})) {
       if (key.startsWith('["async",') && draft && typeof draft === "object") this.questionDrafts.set(key, draft);
     }
+    if (record.provider) this.providerChosen = true;
     const restoredProvider = !this.snapshot.session && record.provider ? normalizeProvider(record.provider) : this.snapshot.provider;
     this.update({draft:record.text,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
   }
@@ -395,8 +413,18 @@ export class ChatController {
   loadOptions = async () => {
     if(this.snapshot.optionsLoading) return;
     this.defaultsRefreshPending = false;
-    const provider = normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider);
     this.update({optionsLoading:true});
+    if (!this.snapshot.session && !this.defaultAgentLoaded && !this.providerChosen && !this.options.readOnly) {
+      this.defaultAgentLoaded = true;
+      try {
+        const preferred = await this.options.request<{provider?:AgentProvider}>("/api/settings/default-agent");
+        if (!this.providerChosen && !this.snapshot.session) {
+          const provider = normalizeProvider(preferred.provider);
+          this.update({provider, capabilities:defaultCapabilities(provider)});
+        }
+      } catch { /* Older backends retain the built-in Codex default. */ }
+    }
+    const provider = normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider);
     try {
       const optionsPath = provider === "agy" ? "/api/agents/chat-options?provider=agy" : "/api/codex/chat-options";
       const [catalog,context] = await Promise.all([this.options.readOnly ? Promise.resolve({models:[],modes:[]}) : this.options.request<{models:ChatModel[];modes:string[];defaults?:ConversationDefaults;capabilities?:ProviderCapabilities}>(optionsPath),this.snapshot.session ? this.options.request<ChatContext>(this.base()+"/context") : Promise.resolve(undefined)]);

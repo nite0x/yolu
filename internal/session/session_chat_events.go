@@ -160,6 +160,8 @@ func (run *ChatRun) handle(event codex.Event) bool {
 		run.change(func(s *ChatState) {
 			s.Status = p.Turn.Status
 			s.Busy = false
+			s.Prediction = nil
+			s.PredictionPending = p.Turn.Status == "completed"
 			s.Approvals = []ChatApproval{}
 			s.Retrying = ""
 			if p.Turn.Error != nil && p.Turn.Error.Message != "" {

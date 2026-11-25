@@ -1,8 +1,12 @@
 import { uiText } from "../i18n";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type {ApprovalChoice, Elicitation} from "./approval";
+import {readQuestionReplies} from "./question-replies";
+import {userInputText} from "./user-input";
 
 export interface Entry {
+  command_actions?: {type: string; path?: string}[];
+  activity_type?: string;
   file_changes?: {path: string; additions: number; deletions: number}[];
   id: string; turn_id: string; kind: string; text?: string; command?: string; cwd?: string;
   tool?: string; images?: string[]; local_images?: Record<string,string>; status?: string; output?: string | null; exit_code?: number | null; duration_ms?: number | null;
@@ -19,7 +23,8 @@ export function pendingAsyncQuestion(entries: Entry[], resolved: ReadonlySet<str
   const entry = entries.slice(after + 1).find(e => e.delivery === "async" && e.questions?.length && !["accepted", "skipped"].includes(e.question_status || "") && !resolved.has(entryKey(e)));
   return entry ? {id: entry.id, turn_id: entry.turn_id, kind: "questions", title: uiText("Codex 需要你的回答"), details: "", can_accept: true, questions: entry.questions, delivery: "async", question_status: entry.question_status} : undefined;
 }
-export interface ChatState { id?: string; revision?: number; turn_id?: string; status: string; busy: boolean; external?: boolean; entries: Entry[]; approvals: Approval[]; error?: string; retrying?: string; blocked?: string; can_handoff?: boolean; notice?: string; accepted_inputs?: string[]; context?: ChatContext; session_name?: string }
+export interface ChatPrediction { source_turn_id: string; text: string }
+export interface ChatState { prediction?: ChatPrediction; prediction_pending?: boolean; id?: string; revision?: number; turn_id?: string; status: string; busy: boolean; external?: boolean; entries: Entry[]; approvals: Approval[]; error?: string; retrying?: string; blocked?: string; can_handoff?: boolean; notice?: string; accepted_inputs?: string[]; context?: ChatContext; session_name?: string }
 export interface HistoryPush { connected: boolean; entries: Entry[]; sync: number; message?: string; waiting?: boolean; confirmations?: {id: string; title: string; details?: string; questions?: Question[]}[] }
 export interface Session { id: string; provider?: import("./settings").AgentProvider; name: string; cwd: string; source?: string; primary_project_id?: string; additional_directories?: string[]; available?: boolean; pinned?: boolean; archived?: boolean; model?: string; reasoningEffort?: string }
 export {defaultCapabilities, newConversationSettings, normalizeProvider, type AgentProvider, type PermissionMode, type ProviderCapabilities, type TurnSettings} from "./settings";
@@ -58,16 +63,22 @@ export function mergeHistoryEntries(saved:Entry[],fresh:Entry[]) {
 export function convertEntry(entry: Entry): ThreadMessageLike {
   const id = entryKey(entry);
   const images = (entry.images || []).filter(image=>/^data:image\/(png|jpeg|gif|webp);base64,/.test(image) || !!entry.local_images?.[image]).map(image=>({type:"image" as const,image}));
-  if (entry.kind === "user") return { id, role: "user", content: [{type: "text", text: cleanText(entry.text)}, ...images] };
+  if (entry.kind === "user") {
+    const text = userInputText(cleanText(entry.text), images.map(part => part.image));
+    const replies = readQuestionReplies(text)?.map(reply => ({question: cleanText(reply.question), answer: cleanText(reply.answer)}));
+    return {id, role: "user", content: [{type: "text", text: replies ? replies.map(reply => `${reply.question}\n${reply.answer}`).join("\n\n") : text}, ...images],
+      ...(replies ? {metadata: {custom: {questionReplies: replies}}} : {})};
+  }
   const status = entry.status === "inProgress" ? {type: "running" as const} : {type: "complete" as const, reason: "stop" as const};
   // assistant-ui rejects local paths in assistant image parts. Reuse our
   // authenticated Markdown image renderer for refs, leaving inline images as-is.
   if (entry.kind === "assistant") return { id, role: "assistant", status, content: [{type: "text", text: cleanText(entry.text)}, ...images.map(part => entry.local_images?.[part.image] ? {type:"text" as const,text:uiText("![生成的图片](<{0}>)", encodeURI(part.image))} : part)] };
   // Feed the official ToolFallback its normal args/result shape. Output is a
   // result, never a command argument, and remains available after expansion.
-  const args: Record<string, string | NonNullable<Entry["file_changes"]>> = entry.kind === "change"
+  const args: Record<string, string | string[] | NonNullable<Entry["file_changes"]> | NonNullable<Entry["command_actions"]>> = entry.kind === "change"
     ? {changes: cleanText(entry.text), ...(entry.file_changes ? {files: entry.file_changes} : {}), ...(entry.cwd ? {cwd: cleanText(entry.cwd)} : {})}
-    : entry.kind === "activity" ? {activity: cleanText(entry.text)} : {command: cleanText(entry.command), ...(entry.cwd ? {cwd: cleanText(entry.cwd)} : {})};
+    : entry.kind === "activity" ? {activity: cleanText(entry.text), ...(entry.activity_type ? {activity_type: entry.activity_type} : {}), ...(images.length ? {images: images.map(part => part.image)} : {})}
+    : {command: cleanText(entry.command), ...(entry.command_actions?.length ? {actions: entry.command_actions} : {}), ...(entry.cwd ? {cwd: cleanText(entry.cwd)} : {})};
   const result = {status: entry.status || "unknown", ...(entry.output != null ? {output: cleanText(entry.output)} : {}), ...(entry.exit_code != null ? {exit_code: entry.exit_code} : {}), ...(entry.duration_ms != null ? {duration_ms: entry.duration_ms} : {})};
   return { id, role: "assistant", status, content: [{type: "tool-call", toolCallId: id, toolName: entry.tool || ({command:uiText("执行命令"),change:uiText("文件修改")}[entry.kind] || entry.kind), args, argsText: JSON.stringify(args, null, 2), ...(entry.status !== "inProgress" || entry.output != null ? {result} : {}), ...(entry.status === "inProgress" ? {isPreliminary: true} : {}), ...(entry.status === "failed" ? {isError: true} : {})}] };
 }

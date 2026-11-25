@@ -64,3 +64,11 @@ export const ChatUserImage: ImageMessagePartComponent = props => {
   if (loaded.error) return <span className="text-xs text-muted-foreground">{uiText("图片不存在或已移动")}</span>;
   return loaded.image ? <Image {...props} image={loaded.image} /> : <span className="text-xs text-muted-foreground">{uiText("正在加载图片…")}</span>;
 };
+
+export function ChatToolImage({source}: {source: string}) {
+  const loaded = useLocalImage(source);
+  const image = source.startsWith("data:image/") ? source : loaded.image;
+  if (loaded.error || !image && !loaded.ref) return <span className="chat-tool-metadata">{uiText("图片不存在或已移动")}</span>;
+  if (!image) return <span className="chat-tool-metadata" role="status">{uiText("正在加载图片…")}</span>;
+  return <Image.Root size="sm" className="chat-tool-image"><Image.Zoom src={image} alt={uiText("已查看的图片")}><Image.Preview src={image} alt={uiText("已查看的图片")} fit="contain" ratio="4:3" /></Image.Zoom></Image.Root>;
+}

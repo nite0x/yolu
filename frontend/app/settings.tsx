@@ -1,16 +1,14 @@
 import { uiText } from "../i18n";
 import { Fragment, type ReactNode } from "react"
 import { Activity, MessageSquare, Orbit, RefreshCw, SlidersHorizontal, SquareTerminal, Terminal } from "lucide-react"
+import { HelpTip, setupHelpTips } from "./help-tip"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Check, Feedback, Field, ModalFooter, ModalHeader, NativeSelect, Option, StatusBadge } from "./shared"
 
-function Heading({ id, title, children, actions }: { id: string; title: string; children: ReactNode; actions?: ReactNode }) {
-  return <div className="settings-card-heading"><div><h3 id={id} className="m-0 text-sm font-semibold">{title}</h3><p className="text-xs leading-relaxed text-muted-foreground">{children}</p></div>{actions}</div>
-}
-function Help({ children }: { children: ReactNode }) {
-  return <p className="settings-help text-xs leading-relaxed text-muted-foreground">{children}</p>
+function Heading({ id, title, children, actions }: { id: string; title: string; children?: ReactNode; actions?: ReactNode }) {
+  return <div className="settings-card-heading"><div className="settings-label"><h3 id={id} className="m-0 text-sm font-semibold">{title}</h3>{children && <HelpTip id={`${id}-help`} label={title}>{children}</HelpTip>}</div>{actions}</div>
 }
 export function SettingsPage() {
   const themeChoices = [
@@ -27,16 +25,14 @@ export function SettingsPage() {
       label:uiText("对话"),
       Icon:MessageSquare,
       headerAction:<Button type="button" id="conversationDefaultsReload" variant="ghost" size="sm" className="settings-reload-button" disabled><RefreshCw className="size-3.5" aria-hidden="true" /><span>{uiText("刷新可用模型")}</span></Button>,
-      cards:["conversationDefaultsHeading", "chatInputHeading", "sessionTitleHeading"]
+      cards:["defaultAgentHeading", "conversationDefaultsHeading", "chatInputHeading", "sessionTitleHeading"]
     },
     {id:"settings-environment",label:uiText("执行环境"),Icon:Terminal,cards:["environmentSettingsTitle", "terminalTitle", "mcpSettingsTitle", "browserAccessTitle"]},
     {id:"settings-diagnostics",label:uiText("诊断"),Icon:Activity,cards:["codexDiagnosticsTitle", "agyDiagnosticsTitle"]}
   ];
   const cards: Record<string, ReactNode> = {
     "appearanceTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="appearanceTitle"><form id="appearanceForm">
-      <Heading id="appearanceTitle" title={uiText("界面配色")} actions={<span id="appearanceStatus" role="status" className="settings-inline-status" />}>
-        {uiText("立即应用到整个工作台，无需重新加载。")}
-      </Heading>
+      <Heading id="appearanceTitle" title={uiText("界面配色")} actions={<span id="appearanceStatus" role="status" className="settings-inline-status" />} />
       <fieldset id="colorThemeGroup" className="settings-theme-grid" aria-label={uiText("配色方案")}>
         {themeChoices.map(theme => (
           <label key={theme.value} className="settings-theme-option" title={theme.desc}>
@@ -53,8 +49,7 @@ export function SettingsPage() {
     "languageTitle": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="languageTitle"><form id="languageForm">
       <div className="settings-row">
         <div className="settings-row-info">
-          <h3 id="languageTitle">{uiText("界面语言")}</h3>
-          <p>{uiText("语言设置应用于所有项目和执行环境。应用时会重新加载界面，后台工作继续。")}</p>
+          <div className="settings-label"><h3 id="languageTitle">{uiText("界面语言")}</h3><HelpTip id="languageHelp" label={uiText("界面语言")}>{uiText("语言设置应用于所有项目和执行环境。应用时会重新加载界面，后台工作继续。")}</HelpTip></div>
         </div>
         <div className="settings-row-control">
           <Field id="languageSelect" label={uiText("界面语言")} className="settings-inline-field"><NativeSelect id="languageSelect" name="language" size="sm"><Option value="system">{uiText("跟随系统")}</Option><Option value="en">English</Option><Option value="zh-CN">简体中文</Option></NativeSelect></Field>
@@ -64,14 +59,21 @@ export function SettingsPage() {
       </div>
       <p id="languageStatus" role="status" className="settings-help" />
     </form></Card>),
-    "conversationDefaultsHeading": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="conversationDefaultsHeading"><form id="conversationDefaultsForm">
-      <Heading id="conversationDefaultsHeading" title={uiText("新对话默认设置")} actions={<span id="conversationDefaultsStatus" role="status" className="settings-inline-status" />}>
-        {uiText("按执行环境和引擎分别保存，仅用于新建对话。已有对话可单独调整。")}
-      </Heading>
+    "defaultAgentHeading": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="defaultAgentHeading"><form id="defaultAgentForm">
+      <Heading id="defaultAgentHeading" title={uiText("新对话")} actions={<span id="defaultAgentStatus" role="status" className="settings-inline-status" />} />
       <div className="settings-context-grid">
       <Field id="environmentSelect" label={uiText("执行环境")} className="settings-environment-field"><NativeSelect id="environmentSelect" size="sm"><Option value="local">{uiText("本机")}</Option></NativeSelect><small id="environmentStatus" role="status" className="sr-only" /></Field>
-      <div className="settings-agent-field"><span id="conversationDefaultProvider-label" className="settings-field-label">{uiText("对话引擎")}</span>
-      <fieldset id="conversationDefaultProviderGroup" className="settings-segments settings-provider-tabs" aria-label={uiText("对话引擎")} disabled>
+        <Field id="defaultAgentSelect" label={uiText("默认 Agent")}><NativeSelect id="defaultAgentSelect" size="sm" disabled><Option value="codex">Codex</Option><Option value="agy">Antigravity (AGY)</Option></NativeSelect></Field>
+      </div>
+      <Feedback id="defaultAgentError" variant="destructive" className="mt-3" hidden />
+      <Button type="button" id="defaultAgentRetry" variant="outline" size="sm" className="mt-2" hidden>{uiText("重试保存")}</Button>
+    </form></Card>),
+    "conversationDefaultsHeading": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="conversationDefaultsHeading"><form id="conversationDefaultsForm">
+      <Heading id="conversationDefaultsHeading" title={uiText("Agent 默认配置")} actions={<span id="conversationDefaultsStatus" role="status" className="settings-inline-status" />}>
+        {uiText("按执行环境和引擎分别保存，仅用于新建对话。已有对话可单独调整。")}
+      </Heading>
+      <div className="settings-agent-field"><span id="conversationDefaultProvider-label" className="settings-field-label">{uiText("配置 Agent")}</span>
+      <fieldset id="conversationDefaultProviderGroup" className="settings-segments settings-provider-tabs" aria-label={uiText("配置 Agent")} disabled>
         <label>
           <input type="radio" className="sr-only" name="conversation_default_provider" value="codex" defaultChecked />
           <SquareTerminal aria-hidden="true" />
@@ -84,22 +86,19 @@ export function SettingsPage() {
         </label>
       </fieldset>
       </div>
-      </div>
       <fieldset id="conversationDefaultsFields" disabled>
         <div className="settings-field-grid settings-model-fields">
           <Field id="conversationDefaultModel" label={uiText("默认模型")}><NativeSelect id="conversationDefaultModel" size="sm"><Option value="">{uiText("沿用 Codex 默认模型")}</Option></NativeSelect></Field>
           <Field id="conversationDefaultSpeed" label={uiText("默认响应速度")}><NativeSelect id="conversationDefaultSpeed" size="sm"><Option value="">{uiText("沿用 Codex 默认速度")}</Option></NativeSelect></Field>
         </div>
         <div className="field grid gap-2 settings-segment-field">
-          <span id="conversationDefaultEffort-label" className="settings-field-label">{uiText("默认思考强度")}</span>
+          <div className="settings-label"><span id="conversationDefaultEffort-label" className="settings-field-label">{uiText("默认思考强度")}</span><HelpTip id="conversationDefaultEffortHelp" label={uiText("默认思考强度")}>{uiText("更高的思考强度通常需要更多时间。默认值由所选模型决定。")}</HelpTip></div>
           <div id="conversationDefaultEffort" className="settings-segments" role="radiogroup" aria-labelledby="conversationDefaultEffort-label" />
           <div id="conversationDefaultEffortDropdown" hidden><NativeSelect id="conversationDefaultEffortSelect" size="sm" aria-labelledby="conversationDefaultEffort-label" aria-describedby="conversationDefaultEffortHelp" /></div>
-          <p id="conversationDefaultEffortHelp" className="settings-help">{uiText("更高的思考强度通常需要更多时间。默认值由所选模型决定。")}</p>
         </div>
         <div className="field grid gap-2 settings-segment-field">
-          <span id="conversationDefaultPermission-label" className="settings-field-label">{uiText("默认权限")}</span>
+          <div className="settings-label"><span id="conversationDefaultPermission-label" className="settings-field-label">{uiText("默认权限")}</span><HelpTip id="conversationDefaultPermissionHelp" label={uiText("默认权限")}><span /></HelpTip></div>
           <div id="conversationDefaultPermission" className="settings-segments" role="radiogroup" aria-labelledby="conversationDefaultPermission-label" aria-describedby="conversationDefaultPermissionHelp" />
-          <p id="conversationDefaultPermissionHelp" className="settings-help settings-permission-help" />
         </div>
       </fieldset>
       <Feedback id="conversationDefaultsError" variant="destructive" className="mt-3" hidden />
@@ -108,9 +107,7 @@ export function SettingsPage() {
     "chatInputHeading": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="chatInputHeading"><form id="chatInputForm">
       <div className="settings-row">
         <div className="settings-row-info">
-          <h3 id="chatInputHeading">{uiText("发送快捷键")}</h3>
-          <p id="sendShortcutHelp" />
-          <p className="settings-scope">{uiText("应用于所有项目和执行环境，包括已打开的对话。")}</p>
+          <div className="settings-label"><h3 id="chatInputHeading">{uiText("发送快捷键")}</h3><HelpTip id="chatInputHelp" label={uiText("发送快捷键")}><span id="sendShortcutHelp" /> {uiText("应用于所有项目和执行环境，包括已打开的对话。")}</HelpTip></div>
         </div>
         <div className="settings-row-control">
           <fieldset id="sendShortcutGroup" className="settings-segments settings-compact-segments" aria-label={uiText("发送快捷键")}>
@@ -131,10 +128,7 @@ export function SettingsPage() {
     "sessionTitleHeading": (<Card className="settings-card settings-row-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="sessionTitleHeading"><form id="sessionTitleForm">
       <div className="settings-row">
         <div className="settings-row-info">
-          <h3 id="sessionTitleHeading">{uiText("自动生成标题")}</h3>
-          <p>{uiText("首条消息发送后生成标题，保留手动名称。")}</p>
-          <p id="settingsTitleEnv" className="settings-scope" />
-          <details className="settings-help-details"><summary>{uiText("标题生成说明")}</summary><Help>{uiText("仅影响当前环境的新对话标题。沿用 Codex 登录，额外消耗一次模型请求；生成失败保留初始标题。")}</Help></details>
+          <div className="settings-label"><h3 id="sessionTitleHeading">{uiText("自动生成标题")}</h3><HelpTip id="sessionTitleHelp" label={uiText("自动生成标题")}><span id="settingsTitleEnv" /> {uiText("首条消息发送后生成标题，保留手动名称。")} {uiText("仅影响当前环境的新对话标题。沿用 Codex 登录，额外消耗一次模型请求；生成失败保留初始标题。")}</HelpTip></div>
         </div>
         <div className="settings-row-control">
           <fieldset id="sessionTitleFields" className="settings-inline-fieldset" disabled>
@@ -153,8 +147,7 @@ export function SettingsPage() {
       <fieldset id="terminalSettingsFields" disabled>
         <div className="settings-row">
           <div className="settings-row-info">
-            <h3 id="terminalTitle">{uiText("终端工具")}</h3>
-            <p>{uiText("Codex、Git 终端和在终端获取分支共用此设置，切换后立即生效。")}</p>
+            <div className="settings-label"><h3 id="terminalTitle">{uiText("终端工具")}</h3><HelpTip id="terminalHelp" label={uiText("终端工具")}><span id="terminalHint" /></HelpTip></div>
           </div>
           <div className="settings-row-control">
             <Field id="terminalKind" label={uiText("终端工具")} className="settings-inline-field"><NativeSelect id="terminalKind" name="kind" size="sm"><Option value="auto">{uiText("系统终端")}</Option></NativeSelect></Field>
@@ -162,12 +155,11 @@ export function SettingsPage() {
         </div>
         <div id="terminalCustomFields" className="settings-subpanel" hidden>
           <div className="settings-field-grid">
-            <Field id="terminalPath" label={uiText("终端程序路径")} required help={uiText("填写终端可执行文件的完整路径，无需引号或参数。")}><Input id="terminalPath" name="path" autoComplete="off" spellCheck={false} /></Field>
+            <Field id="terminalPath" label={uiText("终端程序路径")} required help={uiText("填写终端可执行文件的完整路径，无需引号或参数。")} helpDisplay="tooltip"><Input id="terminalPath" name="path" autoComplete="off" spellCheck={false} /></Field>
             <Field id="terminalStyle" label={uiText("启动方式")}><NativeSelect id="terminalStyle" name="style" size="sm"><Option value="otty">Otty</Option><Option value="windows-terminal">Windows Terminal</Option><Option value="command">{uiText("其他终端（支持 -e 程序 参数）")}</Option></NativeSelect></Field>
           </div>
           <div className="settings-actions"><Button type="submit" variant="default" size="sm" id="saveTerminal">{uiText("保存终端设置")}</Button></div>
         </div>
-        <p id="terminalHint" className="settings-help text-muted-foreground" />
         <p id="terminalSaveStatus" role="status" className="settings-help" />
         <Feedback id="terminalStatus" role="status" className="mt-3 bg-muted text-muted-foreground" />
         <Feedback id="terminalError" variant="destructive" className="mt-3" hidden />
@@ -189,7 +181,7 @@ export function SettingsPage() {
     "browserAccessTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="browserAccessTitle">
       <form id="browserAccessForm">
         <Heading id="browserAccessTitle" title={uiText("浏览器访问")}>
-          {uiText("桌面端与浏览器共用后台、项目和对话。开启后，可从局域网内的其他设备登录。")}
+          {uiText("浏览器连接使用 HTTP，请在可信的局域网内使用。Git、终端和对话在主机的执行环境中运行。")}
         </Heading>
         <fieldset id="browserAccessFields" disabled>
           <Check id="browserAccessEnabled" label={uiText("启用局域网访问")} />
@@ -197,17 +189,15 @@ export function SettingsPage() {
             <Input id="browserAccessPort" type="number" min={1024} max={65535} defaultValue={4318} required />
           </Field>
           <div id="browserAccessConnection" hidden>
-            <Field id="browserAccessCode" label={uiText("配对码")} help={uiText("在浏览器登录页输入此码。更换配对码会断开已有浏览器连接。")}>
+            <Field id="browserAccessCode" label={uiText("配对码")} help={uiText("在浏览器登录页输入此码。更换配对码会断开已有浏览器连接。")} helpDisplay="tooltip">
               <Input id="browserAccessCode" readOnly autoComplete="off" spellCheck={false} />
             </Field>
             <div className="detail-actions">
               <Button type="button" id="copyBrowserAccessCode" variant="outline" size="sm">{uiText("复制配对码")}</Button>
               <Button type="button" id="resetBrowserAccessCode" variant="outline" size="sm">{uiText("更换配对码")}</Button>
             </div>
-            <p className="settings-help">{uiText("在其他设备上打开主机的局域网 IP 地址。")}</p>
             <ul id="browserAccessAddresses" className="browser-access-addresses" />
           </div>
-          <Help>{uiText("浏览器连接使用 HTTP，请在可信的局域网内使用。Git、终端和对话在主机的执行环境中运行。")}</Help>
           <div className="settings-actions">
             <Button type="submit" variant="outline" size="sm" id="saveBrowserAccess">{uiText("保存浏览器访问设置")}</Button>
           </div>
@@ -215,25 +205,23 @@ export function SettingsPage() {
         <p id="browserAccessStatus" role="status" className="settings-help" />
       </form>
       <form id="browserAccessLogout" action="/browser-logout" method="post" target="_top" hidden>
-        <Help>{uiText("请在主机上的 Yolu 中配置浏览器访问")}</Help>
+        <HelpTip id="browserAccessLogoutHelp" label={uiText("浏览器访问")}>{uiText("请在主机上的 Yolu 中配置浏览器访问")}</HelpTip>
         <Button type="submit" variant="outline" size="sm" className="mt-3">{uiText("退出浏览器登录")}</Button>
       </form>
     </Card>),
     "codexDiagnosticsTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="codexDiagnosticsTitle">
-      <Heading id="codexDiagnosticsTitle" title={uiText("Codex 安装检测")}>{uiText("安装或升级 Codex CLI 后，Yolu 会自动启动共享后台并重新检测当前环境。")}</Heading>
+      <Heading id="codexDiagnosticsTitle" title={uiText("Codex 安装检测")}>{uiText("检测不会发送模型请求。升级后，如有对话仍在使用旧版本，请在相关操作结束后退出并停止 Yolu 后台，再重新打开。")}</Heading>
       <div className="detail-actions codex-diagnostic-actions"><Button type="button" variant="outline" size="sm" id="checkCodex">{uiText("检测当前环境")}</Button><Button type="button" size="sm" variant="ghost" id="checkAllCodex">{uiText("检测全部已登记环境")}</Button><Button type="button" size="sm" variant="ghost" id="copyCodexDiagnostics" disabled>{uiText("复制检测报告")}</Button></div>
       <p id="codexDiagnosticsStatus" className="settings-help" role="status">{uiText("尚未检测")}</p>
       <p id="codexUnregistered" className="settings-help" hidden />
       <div id="codexDiagnosticsResults" />
       <textarea id="codexDiagnosticsCopy" className="codex-report-copy" aria-label={uiText("检测报告（可全选复制）")} readOnly hidden />
-      <Help>{uiText("检测不会发送模型请求。升级后，如有对话仍在使用旧版本，请在相关操作结束后退出并停止 Yolu 后台，再重新打开。")}</Help>
     </Card>),
     "agyDiagnosticsTitle": (<Card className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none" aria-labelledby="agyDiagnosticsTitle">
-      <Heading id="agyDiagnosticsTitle" title={uiText("Antigravity (AGY) 检测")}>{uiText("检测当前环境的 agy CLI 与 ACP 协议握手状态。新建对话时可选择 Antigravity 引擎。")}</Heading>
+      <Heading id="agyDiagnosticsTitle" title={uiText("Antigravity (AGY) 检测")}>{uiText("检测仅执行 ACP 初始化与只读列表探活，不会发送模型请求。如提示未登录，请在终端执行 agy 或 agy acp --login。")}</Heading>
       <div className="detail-actions codex-diagnostic-actions"><Button type="button" variant="outline" size="sm" id="checkAgy">{uiText("检测 Antigravity")}</Button></div>
       <p id="agyDiagnosticsStatus" className="settings-help" role="status">{uiText("尚未检测")}</p>
       <div id="agyDiagnosticsResults" />
-      <Help>{uiText("检测仅执行 ACP 初始化与只读列表探活，不会发送模型请求。如提示未登录，请在终端执行 agy 或 agy acp --login。")}</Help>
     </Card>)
   };
   return <div className="settings-shell">
@@ -265,6 +253,7 @@ export function SettingsPage() {
 // Settings forms are static boundaries owned by the legacy controllers.
 export function setupSettingsNavigation() {
   const page = document.getElementById("settingsPage");
+  if (page) setupHelpTips(page);
   const scroller = page?.querySelector<HTMLElement>(".settings-sections") || page?.closest("main");
   let frame = 0;
   const mark = (id: string) => page?.querySelectorAll<HTMLElement>("[data-settings-section]").forEach(button => {

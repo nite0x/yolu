@@ -148,8 +148,6 @@
   margin-bottom: 12px;
 }
 .settings-card :is(h2, h3) { font-size: 14px; font-weight: 600; color: var(--yolu-foreground); line-height: 1.4; margin: 0; }
-.settings-card-heading p,
-.settings-row-info p,
 .settings-help {
   font-size: 12px;
   color: var(--muted-foreground, var(--yolu-muted-ink, #64748b));
@@ -328,24 +326,14 @@
   margin-bottom: 0 !important;
   max-width: none !important;
 }
-.settings-permission-help[data-danger="true"] {
-  margin-top: 6px;
-  padding: 7px 10px;
-  border: 1px solid var(--yolu-warning-border, #f0d799);
-  border-radius: 7px;
-  background: var(--yolu-warning-soft, #fffbeb);
-  color: var(--yolu-warning, #92400e);
-}
-
 /* Horizontal macOS/Linear preference row: label+hint on left, compact control on right. */
 .settings-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px 24px;
 }
 .settings-row-info { flex: 1 1 240px; min-width: 0; }
-.settings-row-info .settings-help-details { margin-top: 8px; }
 .settings-row-control {
   display: flex;
   align-items: center;
@@ -458,3 +446,42 @@
   .settings-card .field { max-width: none; }
   .settings-facts > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
 }
+
+/* Static form help is shared by browser and desktop, including keyboard/touch access. */
+.settings-label { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.help-tip { display: inline-flex; flex: none; vertical-align: middle; }
+.help-tip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--yolu-muted-ink);
+  cursor: help;
+}
+.help-tip-trigger svg { width: 14px; height: 14px; }
+.help-tip-trigger:hover { background: var(--yolu-hover); color: var(--yolu-foreground); }
+.help-tip-trigger:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: 1px; }
+.help-tip:has([data-danger="true"]) .help-tip-trigger { color: var(--yolu-warning, var(--yolu-danger)); }
+.help-tip-content {
+  position: fixed;
+  inset: auto;
+  z-index: 100;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--yolu-border);
+  border-radius: var(--yolu-chip-radius);
+  background: var(--yolu-surface);
+  color: var(--yolu-foreground);
+  box-shadow: var(--yolu-elevation);
+  font: 12px/1.6 var(--font-sans);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.help-tip-content[hidden] { display: none; }

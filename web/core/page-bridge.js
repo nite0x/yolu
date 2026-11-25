@@ -70,7 +70,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       })() : '',
       status:session?.chat_status || '',
       sessionEnvironment:session?.environment_id,
-      conversation: view ? {scope:view.scope, creating:!!view.creating, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(session.environment_id || activeEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,source:session.source,provider:session.provider,primary_project_id:session.primary_project_id,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
+      conversation: view ? {scope:view.scope, creating:!!view.creating, creationBindings:view.creating ? view.creationBindings : undefined, creationLocalDirectories:view.creationLocalDirectories, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(session.environment_id || activeEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,source:session.source,provider:session.provider,primary_project_id:session.primary_project_id,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
     };
   }
   function publish() {
@@ -127,7 +127,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         rememberConversationView(); closeSessionHistory(false);
         window.WorkHubConversations.current = conversationViewFor(savedView.scope);
         Object.assign(window.WorkHubConversations.current, {
-          search:savedView.search || '', directory:savedView.directory || '', creationDirectory:savedView.creationDirectory || '',
+          search:savedView.search || '', directory:savedView.directory || '', creationDirectory:savedView.creationDirectory || '', creationLocalDirectories:savedView.creationLocalDirectories || [], creationBindings:savedView.creationBindings || {},
           loadedCount:Number.isSafeInteger(savedView.loadedCount) && savedView.loadedCount >= 20 ? savedView.loadedCount : 20,
           windowStart:Number.isSafeInteger(savedView.windowStart) && savedView.windowStart >= 0 ? savedView.windowStart : 0, locateSelection:null,
           statusFilter:savedView.statusFilter || 'all', environmentFilter:savedView.environmentFilter || '',
@@ -143,7 +143,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         if (savedView.creating && !sessionReadOnly && !navigationOnly) {
           const view = window.WorkHubConversations.current;
           void refresh().then(() => {
-            if (!disposed && revision === restoreRevision && view === window.WorkHubConversations.current && view.creating) startBrowserConversation(active && (!parallelPane || document.documentElement.hasAttribute('data-workspace-focused')));
+            if (!disposed && revision === restoreRevision && view === window.WorkHubConversations.current && view.creating) startBrowserConversation(active && (!parallelPane || document.documentElement.hasAttribute('data-workspace-focused')), true);
           });
         }
         else showConversationSelection();
@@ -213,7 +213,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       event.preventDefault(); event.stopImmediatePropagation();
       const current = snapshot(), target = window.WorkHubConversations.current.target;
       const terminal = {...creationHint,projectID:target?.project_id,cwd:target?.cwd};
-      post('workhub:conversation-kind',{kind:'terminal',snapshot:{...current,terminal,conversation:{...current.conversation,creationDirectory:target ? conversationEnvironmentKey(window.WorkHubConversations.current.targetEnvironment,conversationPathKey(target.cwd)) : current.conversation.creationDirectory}}}); return;
+      post('workhub:conversation-kind',{kind:'terminal',snapshot:{...current,terminal,conversation:{...current.conversation,creationDirectory:target?.cwd ? conversationEnvironmentKey(window.WorkHubConversations.current.targetEnvironment,conversationPathKey(target.cwd)) : current.conversation.creationDirectory}}}); return;
     }
     const projectCreate = event.target.closest('[data-action="project-conversation-new"]');
     const create = projectCreate || event.target.closest('[data-conversation-action="new"]');

@@ -11,6 +11,7 @@ import (
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/model"
+	"worktree-hub/internal/project"
 )
 
 func getBindings(t *testing.T, a *App, id string) []bindingView {
@@ -37,6 +38,56 @@ func finishFakeTurn(t *testing.T, a *App, c *fakeLiveClient) {
 	if state := run.snapshot(); state.Status != "completed" {
 		t.Fatal(state)
 	}
+}
+
+func TestProjectReferencesAreAtomicAndIdempotent(t *testing.T) {
+	a, q, c, endpoint := chatFixture(t)
+	first := register(t, a, "API", repo(t, "api", "master"))
+	second := register(t, a, "UI", repo(t, "ui", "master"))
+	if code, raw := call(t, a, "POST", "/api/sessions/new", map[string]any{
+		"text": "start", "request_id": "references", "project_id": q.ProjectID, "cwd": q.Path,
+	}); code != 202 {
+		t.Fatalf("create: %d %s", code, raw)
+	}
+	awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
+	base := "/api/sessions/session/bindings"
+	if code, _ := call(t, a, "POST", base, map[string]any{"project_ids": []string{first}}); code != 409 {
+		t.Fatalf("references changed the grants of a running turn: %d", code)
+	}
+	finishFakeTurn(t, a, c)
+	if code, _ := call(t, a, "POST", base, map[string]any{"project_ids": []string{first, "missing"}}); code < 400 {
+		t.Fatalf("unknown project accepted: %d", code)
+	}
+	if got := getBindings(t, a, "session"); len(got) != 1 {
+		t.Fatalf("invalid batch partially attached: %+v", got)
+	}
+	for range 2 {
+		if code, raw := call(t, a, "POST", base, map[string]any{
+			"project_ids": []string{q.ProjectID, first, second, first}, "access": "write",
+		}); code != 200 {
+			t.Fatalf("bind references: %d %s", code, raw)
+		}
+	}
+	got := getBindings(t, a, "session")
+	if len(got) != 3 || got[0].Access != "write" || got[0].Directory != q.Path {
+		t.Fatalf("expected primary and two references: %+v", got)
+	}
+	if code, raw := call(t, a, "POST", endpoint, map[string]any{"text": "continue", "request_id": "use-references"}); code != 202 {
+		t.Fatalf("continue: %d %s", code, raw)
+	}
+	awaitChat(t, a, func(s ChatState) bool { return s.Status == "running" })
+	c.mu.Lock()
+	resume := c.threadParams["thread/resume"]
+	c.mu.Unlock()
+	profileID := resume["permissions"].(string)
+	profile := resume["config"].(map[string]any)["permissions"].(map[string]any)[profileID].(map[string]any)
+	fs := profile["filesystem"].(map[string]string)
+	for _, binding := range got[1:] {
+		if binding.Role != "additional" || binding.Access != "read" || fs[binding.Directory] != "read" {
+			t.Fatalf("reference grant: %+v, filesystem: %+v", binding, fs)
+		}
+	}
+	finishFakeTurn(t, a, c)
 }
 
 func TestSessionBindingProfileManageRestoreAndDiff(t *testing.T) {
@@ -223,5 +274,21 @@ func TestUnconfirmedProfileCannotSendFirstTurn(t *testing.T) {
 	defer c.mu.Unlock()
 	if strings.Contains(strings.Join(c.methods, ","), "turn/start") || a.ChatFor("session") != nil {
 		t.Fatalf("unverified permissions allowed execution: %v", c.methods)
+	}
+}
+
+func TestInspectBindingIdentifiesMainDirectoryForLinkedWorktree(t *testing.T) {
+	a, q, _, _ := chatFixture(t)
+	p, err := project.LookupProject(context.Background(), a.Execution, q.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, raw := call(t, a, "POST", "/api/session-bindings/inspect", map[string]any{"directory": q.Path, "access": "read"})
+	var binding bindingView
+	if code != 200 || json.Unmarshal(raw, &binding) != nil {
+		t.Fatalf("inspect: %d %s", code, raw)
+	}
+	if binding.MainDirectory != p.Path || binding.Directory != q.Path {
+		t.Fatalf("wrong checkout identity: %+v", binding)
 	}
 }

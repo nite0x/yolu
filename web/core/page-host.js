@@ -238,7 +238,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     paintConversationListWidth();
     document.body.toggleAttribute('data-workspace-navigation-visible',shared);
     document.body.toggleAttribute('data-workspace-conversations',splitVisible);
-    pages.style.gridTemplateColumns = splitVisible ? visible.map(page => (visible.length === 1 ? 1 : group.widths[group.pages.indexOf(page)] || 1) + 'fr').join(' 8px ') : '';
+    pages.style.gridTemplateColumns = splitVisible ? visible.map(page => (visible.length === 1 ? 1 : group.widths[group.pages.indexOf(page)] || 1) + 'fr').join(' var(--workspace-pane-gap, 1px) ') : '';
     send(workspace,'workhub:page-pane',{split:false,shared:false});
     const workspaceVisible = !conversationsVisible || !conversationsPresented && !!workspace.visible;
     workspace.frame.hidden = !workspaceVisible;
@@ -367,7 +367,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (!total) return;
     const weight = owner.widths[index] + owner.widths[index + 1];
     owner.widths[index] = weight * width / total; owner.widths[index + 1] = weight - owner.widths[index];
-    pages.style.gridTemplateColumns = owner.widths.map(value => value + 'fr').join(' 8px ');
+    pages.style.gridTemplateColumns = owner.widths.map(value => value + 'fr').join(' var(--workspace-pane-gap, 1px) ');
   }
   function pageScope(snapshot) {
     if (isTerminal(snapshot) && snapshot.terminal?.projectID) return {kind:'project',id:snapshot.terminal.projectID,environment:snapshot.environment};

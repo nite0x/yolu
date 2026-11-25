@@ -176,7 +176,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, 409, "请在正在运行此对话的 Codex 窗口回答，或等待本轮结束")
 			return
 		}
-		if err := a.AppTerminalConflict(record.ID, record.Cwd); err != nil {
+		if err := a.chatTerminalConflict(record.ID); err != nil {
 			httpx.WriteError(w, 409, err.Error())
 			return
 		}
@@ -234,6 +234,9 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithCancel(context.Background())
 		run := &ChatRun{session: record.ID, cwd: plan.Cwd, writeRoots: writableRoots(plan), directoryRoots: uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...)), managedBindings: plan.ManagedBindings, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), asyncRequest: requestID, started: make(chan struct{}), state: ChatState{ID: requestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
 		a.chatMu.Lock()
+		if previous := a.chats[record.ID]; previous != nil && previous.snapshot().PredictionPending {
+			previous.cancel()
+		}
 		a.chats[record.ID] = run
 		a.chatMu.Unlock()
 		go a.DriveChat(ctx, run, plan, text)
