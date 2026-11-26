@@ -2,7 +2,7 @@ import {uiText} from "@/shared/i18n"
 import {createContext, useCallback, useContext, useMemo, type AnchorHTMLAttributes, type HTMLAttributes, type PropsWithChildren} from "react"
 import {useIsMarkdownCodeBlock} from "@assistant-ui/react-markdown"
 import type {ChatController} from "../runtime/controller"
-import {fileReference, sourceFileReference, type FileReference} from "../model/links"
+import {fileReference, projectReference, sourceFileReference, type FileReference} from "../model/links"
 
 const MarkdownAnchorContext = createContext(false);
 
@@ -34,10 +34,14 @@ export function ChatMarkdownLink({href, children, title}: AnchorHTMLAttributes<H
   const links = useContext(LinkContext);
   if (!href) return <span>{children}</span>;
   const file = fileReference(href);
-  return <a href={file ? "#file-preview" : href} title={title || (file ? `${file.path}:${file.line}` : undefined)} className="aui-md-a text-primary hover:text-primary/80 underline decoration-primary/40 hover:decoration-primary underline-offset-3 transition-colors" target={file ? undefined : "_blank"} rel="noopener noreferrer" onClick={event => {
+  const project = links?.controller.isYoluAssistant() ? projectReference(href) : null;
+  const openProject = links?.controller.options.openProject;
+  if (href.startsWith("#/projects/") && !(project && openProject)) return <span>{children}</span>;
+  return <a href={file ? "#file-preview" : href} data-chat-project-link={project ? "" : undefined} title={title || (file ? `${file.path}:${file.line}` : undefined)} className="aui-md-a text-primary hover:text-primary/80 underline decoration-primary/40 hover:decoration-primary underline-offset-3 transition-colors" target={file || project ? undefined : "_blank"} rel="noopener noreferrer" onClick={event => {
     event.preventDefault();
     if (!links) return;
     if (file) links.open(file);
+    else if (project && openProject) openProject(project.id, project.path, project.environment);
     else if (/^https?:\/\//i.test(href) || href.startsWith("//")) {
       const url = new URL(href, window.location.href).href;
       const session = links.controller.getSnapshot().session?.id;

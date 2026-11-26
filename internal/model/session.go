@@ -45,6 +45,7 @@ func CapabilitiesForProvider(provider string) ProviderCapabilities {
 // Each runtime environment already has its own Store, so IDs and paths never
 // cross environments.
 type Session struct {
+	YoluAssistant         bool     `json:"yolu_assistant,omitempty"`
 	Pinned                bool     `json:"pinned"`
 	Archived              bool     `json:"archived"`
 	ID                    string   `json:"id"`

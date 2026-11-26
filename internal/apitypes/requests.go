@@ -28,6 +28,7 @@ type DirectoryBindingInput struct {
 }
 
 type CreateSessionInput struct {
+	YoluAssistant    bool                    `json:"yolu_assistant,omitempty"`
 	CloudEnvironment string                  `json:"cloud_environment,omitempty"`
 	Text             string                  `json:"text"`
 	Project          string                  `json:"project_id"`

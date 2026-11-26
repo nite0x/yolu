@@ -1821,6 +1821,8 @@
   "草稿：{0}": "Draft: {0}",
   "新对话 {0}": "New chat {0}",
   "描述你要完成的任务…": "Describe the task you want to complete…",
+  "询问项目、分支或工作树状态…": "Ask about projects, branches or worktree status…",
+  "找不到项目所在的执行环境": "The project's execution environment is unavailable",
   "清除范围与筛选": "Clear scope and filters",
   "配置自定义 Agent…": "Configure custom agent…",
   "启动 {0}": "Launch {0}",

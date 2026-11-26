@@ -345,6 +345,7 @@ func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) 
 	if cached, err := a.Execution.Store.Session(s.ID); err == nil {
 		s.Name = cached.Name
 	}
+	s.YoluAssistant = record.YoluAssistant
 	history, err := readSessionHistory(c, s, r.URL.Query().Get("cursor"))
 	if err != nil {
 		httpx.WriteError(w, 503, "无法读取对话历史："+err.Error())

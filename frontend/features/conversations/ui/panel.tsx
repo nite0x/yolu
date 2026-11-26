@@ -31,7 +31,7 @@ import {ChatToolGroup} from "./tool-activity"
 
 function ConversationDraftTitle({controller}: {controller: ChatController}) {
   const preview = useChatState(controller, state => draftTitle(state.draft));
-  const title = preview ? uiText("草稿：{0}", preview) : uiText("新建对话");
+  const title = preview ? uiText("草稿：{0}", preview) : uiText(controller.isYoluAssistant() ? "Yolu 助手" : "新建对话");
   return <span title={title}>{title}</span>;
 }
 
@@ -316,13 +316,13 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       beforeThread={state.historyError && <Alert variant="destructive" className="shrink-0 rounded-none"><AlertDescription>{state.historyError}</AlertDescription></Alert>}
       thread={{
         dockComposer: !readOnly,
-        emptyState: !readOnly && !state.session && <ConversationCreationSetup>{!cloud && directories.creation}{controller.options.environment === "local" && state.provider === "codex" && <CloudEnvironmentFields controller={controller} selected={state.cloudEnvironment} disabled={state.submitting} />}</ConversationCreationSetup>,
+        emptyState: !readOnly && !state.session && <ConversationCreationSetup>{!cloud && directories.creation}{!controller.isYoluAssistant() && controller.options.environment === "local" && state.provider === "codex" && <CloudEnvironmentFields controller={controller} selected={state.cloudEnvironment} disabled={state.submitting} />}</ConversationCreationSetup>,
         composerStatus: !readOnly && <>{!cloud && !occupied && directories.composer}<div className="chat-composer-status">{feedback}<ChatRunIndicator controller={controller} portal={panel} /></div></>, components: chatComponents,
         autoFocus: !!controller.options.focusComposer && !readOnly && !state.session && !document.documentElement.hasAttribute("data-workspace-inactive"), readOnly,
         composer: occupied ? null : question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined,
         composerControls: cloud ? undefined : <ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />,
       }}
-      composerInput={{placeholder: uiText(state.session ? "补充说明、询问进展，或交代下一步…" : "描述你要完成的任务…")}}
+      composerInput={{placeholder: uiText(state.session ? "补充说明、询问进展，或交代下一步…" : controller.isYoluAssistant() ? "询问项目、分支或工作树状态…" : "描述你要完成的任务…")}}
       composerPrediction={!readOnly && state.provider === "codex" && !state.submitting && !state.chat.busy && !state.chat.external && !state.session?.archived && !state.chat.blocked && state.chat.status === "completed" && state.chat.prediction?.source_turn_id === state.chat.turn_id && entries.at(-1)?.turn_id === state.chat.turn_id ? state.chat.prediction : undefined}
       onDismissPrediction={controller.dismissPrediction}
       afterThread={<>

@@ -67,7 +67,9 @@ function protocol(fixtureFile) {
         const titleRequest = !!params.outputSchema?.properties?.title;
         const text = String(params.input?.[0]?.text || '');
         const title = titleRequest ? String(JSON.parse(text.split('\n').at(-1)).user).split(/\s+/).slice(0, 4).join(' ').slice(0, 28) : '';
-        const reply = { id: id + '-reply', type: 'agentMessage', text: titleRequest ? JSON.stringify({ title }) : 'Reviewed the selected directory.' };
+        const statusReply = text.includes('[assistant-status]') && data.assistantLink;
+        const reply = { id: id + '-reply', type: 'agentMessage', text: titleRequest ? JSON.stringify({ title })
+          : statusReply ? `[Open fixture worktree](${data.assistantLink})` : 'Reviewed the selected directory.' };
         result = { turn };
         const complete = () => {
           const user = { id: id + '-user', type: 'userMessage', content: params.input || [] };

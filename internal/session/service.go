@@ -20,6 +20,7 @@ type Service struct {
 	chatRuntime
 	controlCoordinator
 	Execution             *execution.Service
+	AssistantMCP          []string
 	openSessions          func(context.Context) (codex.SessionClient, error)
 	openCloudSessions     func(context.Context) (codex.SessionClient, error)
 	sessionPool           *codex.SessionPool

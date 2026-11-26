@@ -22,6 +22,7 @@ export interface DirectoryBindingInput {
 }
 
 export interface CreateSessionInput {
+  yolu_assistant?: boolean
   cloud_environment?: string
   text?: string
   project_id?: string

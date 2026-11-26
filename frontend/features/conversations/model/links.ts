@@ -1,5 +1,16 @@
 export interface FileReference {path: string; line: number}
 
+export function projectReference(href: string) {
+  const match = /^#\/projects\/([\w-]{1,200})\?([^#]{1,4096})$/.exec(href);
+  if (!match) return null;
+  const query = new URLSearchParams(match[2]);
+  const environment = query.get("environment");
+  const path = query.get("directory") || undefined;
+  if (!environment || !/^[\w-]{1,200}$/.test(environment)) return null;
+  if (path && (!/^(?:\/|[a-z]:[\\/]|\\\\)/i.test(path) || /[\x00-\x1f\x7f]/.test(path))) return null;
+  return {id: match[1], environment, path};
+}
+
 export function fileReference(href: string): FileReference | null {
   let path = href.trim();
   if (!path || path.startsWith("#") || path.startsWith("//") || /^(?:https?|mailto):/i.test(path)) return null;

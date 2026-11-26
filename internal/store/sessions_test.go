@@ -50,6 +50,42 @@ func TestSessionTitlesPreserveManualNamesAgainstStaleReads(t *testing.T) {
 	}
 }
 
+func TestYoluAssistantSessionSurvivesDiscoveryAndBackup(t *testing.T) {
+	dir := t.TempDir()
+	source, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.DB.Close()
+	for _, record := range []model.Session{
+		{ID: "assistant", Cwd: "/repo", YoluAssistant: true},
+		{ID: "assistant", Cwd: "/repo", Source: "codex"},
+		{ID: "ordinary", Cwd: "/repo", Source: "codex"},
+	} {
+		if err := source.SaveSession(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err := ExportMetadata(t.Context(), filepath.Join(dir, "worktree-hub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.DB.Close()
+	if err := target.ImportMetadata(snapshot); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"assistant", "ordinary"} {
+		record, err := target.Session(id)
+		if err != nil || record.YoluAssistant != (id == "assistant") {
+			t.Fatalf("unexpected restored session: %+v, %v", record, err)
+		}
+	}
+}
+
 func TestSessionTitleProvenanceSurvivesBackupAndOldSnapshotImport(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)

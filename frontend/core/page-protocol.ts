@@ -5,7 +5,7 @@ export interface PageSnapshot {
   environment?: string
   title?: string
   kind?: string
-  conversation?: {selected?: string | null; creating?: boolean; scope?: object; directory?: string; creationDirectory?: string; environmentFilter?: string; pane?: string; session?: unknown; creationBindings?: unknown; creationLocalDirectories?: unknown} | null
+  conversation?: {selected?: string | null; creating?: boolean; creatingYoluAssistant?: boolean; scope?: object; directory?: string; creationDirectory?: string; environmentFilter?: string; pane?: string; session?: unknown; creationBindings?: unknown; creationLocalDirectories?: unknown} | null
   terminal?: {id?: string; cwd?: string; projectID?: string; sessionID?: string; bindingID?: string}
   context?: string
   draftTitle?: string
@@ -49,7 +49,7 @@ export function isPageSnapshot(value: unknown): value is PageSnapshot {
   if (!record(value) || !route(value.route) || !optional(value.environment, string) || !optional(value.title, string)) return false
   if (value.conversation != null) {
     const view = value.conversation
-    if (!record(view) || !optional(view.selected, v => v === null || string(v)) || !optional(view.creating, bool)) return false
+    if (!record(view) || !optional(view.selected, v => v === null || string(v)) || !optional(view.creating, bool) || !optional(view.creatingYoluAssistant, bool)) return false
     if (view.scope !== undefined && (!record(view.scope) || !['all', 'project', 'directory'].includes(String(view.scope.kind)))) return false
   }
   const terminal = value.terminal

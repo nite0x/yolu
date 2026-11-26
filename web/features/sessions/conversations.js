@@ -373,7 +373,7 @@ function renderConversationList() {
     const context = window.WorkHubUI.conversationContext(session.cwd, session.provider === 'codex-cloud' ? undefined : overview, session.primary_project_id);
     return {...(session.terminal ? session : sessionWithUnread(session)), context};
   });
-  const matching = annotatedItems.filter(session => !text || [session.name, session.terminal ? uiText("终端") : '', session.cwd, session.provider === 'codex-cloud' ? 'Codex Cloud' : session.environment_name, session.cloud_environment, session.context.project, session.context.branch].join(' ').toLowerCase().includes(text));
+  const matching = annotatedItems.filter(session => !text || [session.name, session.terminal ? uiText("终端") : '', session.yolu_assistant ? uiText("Yolu 助手") : '', session.cwd, session.provider === 'codex-cloud' ? 'Codex Cloud' : session.environment_name, session.cloud_environment, session.context.project, session.context.branch].join(' ').toLowerCase().includes(text));
   const statusFilter = view.statusFilter || 'all';
   const filtered = !!text || statusFilter !== 'all' || view.archived;
   if (filtered) {
@@ -387,6 +387,7 @@ function renderConversationList() {
   view.listItems = sessions;
   view.listRows = window.WorkHubUI.conversationTree(sessions, {
     recent,
+    showYoluAssistant: !sessionReadOnly && view.scope.kind === 'all' && !view.directory && !filtered && (!view.environmentFilter || view.environmentFilter === 'local'),
     navigator: sidebarMode === 'grouped' ? {
       directories: conversationEnvironments().flatMap(entry => {
         if (view.environmentFilter && view.environmentFilter !== entry.id) return [];
@@ -439,7 +440,7 @@ function renderConversationList() {
   if (conversationListRenderKeys.get(list) !== renderKey) {
     const spacer = (height,side) => height ? `<div class="session-list-spacer" data-list-spacer="${side}" aria-hidden="true"></div>` : '';
     const more = loaded < view.listRows.length ? `<p class="session-list-more" role="status">${uiText("向下滚动加载更多")}</p>` : '';
-    const markup = emptyError ? '' : spacer(before,'before') + window.WorkHubUI.conversationList(props) + spacer(after,'after') + more;
+    const markup = emptyError && !rows.length ? '' : spacer(before,'before') + window.WorkHubUI.conversationList(props) + spacer(after,'after') + more;
     if (list.innerHTML !== markup) {
       const top = list.scrollTop;
       const listTop = list.getBoundingClientRect().top;
@@ -546,7 +547,7 @@ function renderConversationBrowser() {
   $('#newBrowserSession').disabled = sessionReadOnly;
   $('#newBrowserSession').title = sessionReadOnly ? uiText("当前为只读模式，请在终端新建对话") : uiText("在当前栏新建对话");
   $('#sessionCreationSetup').hidden = !view.creating;
-  $('#conversationCreationKind').hidden = !view.creating || !window.WorkHubPage || window.WorkHubPage.navigationOnly;
+  $('#conversationCreationKind').hidden = !view.creating || view.creatingYoluAssistant || !window.WorkHubPage || window.WorkHubPage.navigationOnly;
   const terminalKind = $('[data-conversation-kind="terminal"]');
   const remoteTerminal = (view.targetEnvironment || activeEnvironment) !== 'local';
   terminalKind.disabled = remoteTerminal || !!sessionHistoryState?.submitting;
@@ -690,6 +691,7 @@ function showConversationSelection() {
       if (conversationState.current !== view || selection !== conversationState.selection) return;
       view.selected = conversationSessionKey(created); view.creating = false; view.target = null;
       renderConversationBrowser(); showConversationSelection(); rememberConversationView();
+      window.dispatchEvent(new CustomEvent('workhub:session-loaded'));
     }
   });
   view.focusComposer = false;
@@ -771,6 +773,7 @@ function syncConversations() {
 function conversationCreationDirectories(view) {
   const dirs = [];
   for (const entry of conversationEnvironments()) {
+    if (view.creatingYoluAssistant && entry.id !== 'local') continue;
     if (view.environmentFilter && entry.id !== view.environmentFilter || view.scope.environment && entry.id !== view.scope.environment) continue;
     const projects = window.WorkHubUI.mainCreationProjects(conversationOverview(entry.id).projects);
     for (const project of projects) {
@@ -787,7 +790,7 @@ function conversationCreationDirectories(view) {
   for (const directory of view.creationLocalDirectories || []) {
     if (!dirs.some(item => item.environment === directory.environment && conversationPathKey(item.cwd) === conversationPathKey(directory.cwd))) dirs.push(directory);
   }
-  dirs.unshift({key:'', cwd:'', environment:conversationScopeEnvironment(view.scope) || view.environmentFilter || view.environment, name:uiText("默认目录（无需项目）"), branch:'', label:uiText("默认目录（无需项目）"), target:{}});
+  dirs.unshift({key:'', cwd:'', environment:view.creatingYoluAssistant ? 'local' : conversationScopeEnvironment(view.scope) || view.environmentFilter || view.environment, name:uiText("默认目录（无需项目）"), branch:'', label:uiText("默认目录（无需项目）"), target:{}});
   return dirs;
 }
 function focusConversationCreationInput() {
@@ -822,7 +825,7 @@ async function chooseConversationCreationFolder() {
 }
 function selectConversationCreationDirectory(view, directory) {
   view.creationDirectory = directory?.key || '';
-  view.target = directory?.target || {};
+  view.target = view.creatingYoluAssistant ? {...directory?.target,yolu_assistant:true} : directory?.target || {};
   view.targetEnvironment = directory?.environment;
   const attached = view.creationBindings?.[view.targetEnvironment];
   if (directory?.cwd && attached) {
@@ -850,9 +853,10 @@ function defaultConversationDirectory(view, dirs = conversationCreationDirectori
   }
   return dirs[0];
 }
-function startBrowserConversation(focus = true, restore = false) {
+function startBrowserConversation(focus = true, restore = false, creatingYoluAssistant = false) {
   if (sessionReadOnly) return;
   const view = conversationState.current;
+  if (!restore) view.creatingYoluAssistant = creatingYoluAssistant;
   const directory = defaultConversationDirectory(view);
   window.WorkHubUI.resetCreationChoices($('#sessionBrowserDirectoryChoices'));
   view.creating = true; view.selected = null; view.pane = 'detail';
@@ -975,7 +979,7 @@ document.addEventListener('click', event => {
         conversationState.current.environmentFilter = '';
         conversationState.current.creationDirectory = '';
       }
-      startBrowserConversation(); break;
+      startBrowserConversation(true, false, button.dataset.yoluAssistant === 'true'); break;
     case 'refresh': refreshConversations(true); break;
     case 'clear-search':
       conversationState.current.search = ''; resetConversationListWindow(); $('#sessionBrowserSearch').value = ''; $('#sessionBrowserList').scrollTop = 0;

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -43,6 +44,8 @@ type getProjectInput struct {
 type getProjectOutput struct {
 	Project          projectInventoryEntry `json:"project"`
 	StatusRefreshing bool                  `json:"status_refreshing"`
+	OpenURL          string                `json:"open_url"`
+	WorktreeLinks    map[string]string     `json:"worktree_links"`
 }
 
 type projectMCP struct {
@@ -151,7 +154,20 @@ func (s *projectMCP) projectStatus(ctx context.Context, info desktopServiceInfo,
 	}
 	for _, project := range inventory.Projects {
 		if project.ID == input.ProjectID && project.EnvironmentID == input.EnvironmentID {
-			return getProjectOutput{Project: project, StatusRefreshing: project.Connected && project.Refreshing}, nil
+			path := "#/projects/" + url.PathEscape(project.ID) + "?"
+			query := url.Values{"environment": {project.EnvironmentID}}
+			result := getProjectOutput{
+				Project: project, StatusRefreshing: project.Connected && project.Refreshing,
+				OpenURL: path + query.Encode(), WorktreeLinks: make(map[string]string),
+			}
+			for _, worktree := range project.Worktrees {
+				if worktree.Path == "" || worktree.Missing || worktree.Bare {
+					continue
+				}
+				query.Set("directory", worktree.Path)
+				result.WorktreeLinks[worktree.Path] = path + query.Encode()
+			}
+			return result, nil
 		}
 	}
 	for _, environment := range inventory.Environments {

@@ -10,6 +10,7 @@ type LaunchPlan struct {
 	Script                string                  `json:"-"`
 	Bindings              []SessionProjectBinding `json:"-"`
 	ManagedBindings       bool                    `json:"-"`
+	YoluAssistant         bool                    `json:"-"`
 	Permission            string                  `json:"-"`
 	AllowShared           bool                    `json:"-"`
 	SharedDirectories     []string                `json:"-"`

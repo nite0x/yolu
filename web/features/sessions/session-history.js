@@ -196,7 +196,16 @@ function openSessionHistoryPanel(session = null, context = {}) {
       request: (path, options) => api(path, { ...options, environment }),
       stream: (path, signal) => fetch(path, { headers: { 'X-CSRF-Token': token, 'X-Environment-ID': environment }, signal }),
       close: () => closeSessionHistory(),
-      openProject: (id, path) => openConversationProject(id, environment, path),
+      openProject: (id, path, targetEnvironment) => {
+        if (!targetEnvironment) return openConversationProject(id, environment, path);
+        if (!conversationEnvironments().some(entry => entry.id === targetEnvironment)) {
+          toast(uiText("找不到项目所在的执行环境"), true);
+          return;
+        }
+        if (!window.WorkHubPage) return openConversationProject(id, targetEnvironment, path);
+        const route = resourceDirectoryRoute('/projects/' + id, path);
+        window.WorkHubBrowser.postPageMessage(window.parent, location.origin, 'workhub:page-open', {snapshot:{route,environment:targetEnvironment}});
+      },
       openTerminal: binding => window.parent.postMessage({type:'workhub:page-open',placement:window.WorkHubPage?.canSplit ? 'split' : 'current',snapshot:{route:'/terminals',environment,terminal:{sessionID:currentPanel.session,bindingID:binding.id,projectID:binding.project_id,cwd:binding.directory}}},location.origin),
       activity: (id, chat) => {
         updateSessionChatActivity(id, chat, environment);

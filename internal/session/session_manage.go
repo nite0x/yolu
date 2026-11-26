@@ -168,7 +168,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				fork := result.Thread
 				err = a.Execution.Store.SaveSessionWithBindings(model.Session{
-					ID: fork.ID, Name: sessionName(fork), Cwd: fork.Cwd, CreatedAt: fork.CreatedAt, UpdatedAt: fork.UpdatedAt, Source: "workbench", Permission: record.Permission,
+					ID: fork.ID, Name: sessionName(fork), Cwd: fork.Cwd, CreatedAt: fork.CreatedAt, UpdatedAt: fork.UpdatedAt, Source: "workbench", Permission: record.Permission, YoluAssistant: record.YoluAssistant,
 				}, bindings)
 			} else if err = a.SaveSession(result.Thread, "workbench"); err == nil {
 				err = a.Execution.Store.SaveSessionDirectories(result.Thread.ID, record.AdditionalDirectories)

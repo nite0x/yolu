@@ -52,6 +52,14 @@ func (a *Service) CreateSession(ctx context.Context, input CreateSessionInput) (
 		return CreationResult{}, creationFailure(400, "", "不支持的对话引擎")
 	}
 	provider := model.NormalizeProvider(input.Provider)
+	if input.YoluAssistant {
+		if provider != model.ProviderCodex || input.CloudEnvironment != "" || input.Purpose != "" || input.Settings.Permission == "full" {
+			return CreationResult{}, creationFailure(400, "", "Yolu 助手需要本机 Codex 和受管目录权限")
+		}
+		if len(a.AssistantMCP) == 0 || a.Execution.Remote != nil {
+			return CreationResult{}, creationFailure(503, "", "当前执行环境无法启动 Yolu 助手")
+		}
+	}
 	if err := validateChatImages(input.Images); err != nil {
 		return CreationResult{}, creationFailure(400, "", err.Error())
 	}
@@ -89,6 +97,9 @@ func (a *Service) CreateSession(ctx context.Context, input CreateSessionInput) (
 		return CreationResult{}, creationStorageFailure(err)
 	}
 	input.Settings = newConversationSettings(input.Settings, defaults)
+	if input.YoluAssistant && input.Settings.Permission == "full" {
+		input.Settings.Permission = "ask"
+	}
 	ctx = execution.WithClient(ctx, a.Execution.Remote)
 	target, err := a.resolveCreation(ctx, SessionTarget{
 		ProjectID: input.Project, Cwd: input.Cwd, Bindings: input.Bindings, Access: input.Access,
@@ -115,6 +126,7 @@ func (a *Service) CreateSession(ctx context.Context, input CreateSessionInput) (
 	if err := validateProviderBindings(provider, target.plan); err != nil {
 		return CreationResult{}, creationFailure(409, "unsupported_bindings", err.Error())
 	}
+	target.plan.YoluAssistant = input.YoluAssistant
 	releaseDirectories, conflicts := a.reserveDirectories("create:"+key, "", target.plan)
 	if releaseDirectories == nil {
 		return CreationResult{}, &creationError{status: 409, code: "directory_conflict", cause: errors.New(directoryConflictMessage), conflicts: conflicts}

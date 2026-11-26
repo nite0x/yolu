@@ -16,7 +16,7 @@ export type {ChatOptions, SessionTarget, Snapshot} from "./contracts";
 // drafts are scoped to their creation target.
 export const conversationKey = (options: ChatOptions, session: string | null = options.session?.id || null) => JSON.stringify(session
   ? [options.environment, "session", session]
-  : [options.environment, "draft", "", options.target?.project_id || "", options.target?.cwd || ""]);
+  : [options.environment, "draft", options.target?.yolu_assistant ? "yolu-assistant" : "", options.target?.project_id || "", options.target?.cwd || ""]);
 export class ChatController {
   reading: DraftRecord['reading'] = {top: 0, bottom: true, anchor: "", offset: 0};
   opening = true;
@@ -185,15 +185,16 @@ export class ChatController {
     }
   };
   setCloudEnvironment = (cloudEnvironment?: string) => {
-    if (this.snapshot.session || this.snapshot.submitting) return;
+    if (this.snapshot.session || this.snapshot.submitting || this.isYoluAssistant()) return;
     if (cloudEnvironment !== undefined) this.providerChosen = true;
     this.update({cloudEnvironment, error: ""});
     this.draftChanged();
   };
   isCloud = () => isCloudSession(this.snapshot.session) || this.snapshot.cloudEnvironment !== undefined;
+  isYoluAssistant = () => !!(this.snapshot.session?.yolu_assistant || !this.snapshot.session && this.options.target?.yolu_assistant);
   setProvider = (provider: AgentProvider) => {
     this.providerChosen = true;
-    if (this.snapshot.session || this.snapshot.submitting) return;
+    if (this.snapshot.session || this.snapshot.submitting || this.isYoluAssistant()) return;
     const normalized = normalizeProvider(provider);
     if (normalized === this.snapshot.provider) return;
     if (this.snapshot.optionsLoading) this.defaultsRefreshPending = true;
@@ -385,7 +386,7 @@ export class ChatController {
       : before.cloudEnvironment !== undefined ? {cloud_environment:before.cloudEnvironment} : {...this.options.target, ...update};
     const settings = this.isCloud() ? {} : before.settings;
     const createProvider: AgentProvider | undefined = !before.session && before.provider === "agy" ? "agy" : undefined;
-    const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.cwd === target.cwd && this.pending.cloud_environment === target.cloud_environment
+    const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.cwd === target.cwd && this.pending.cloud_environment === target.cloud_environment && this.pending.yolu_assistant === target.yolu_assistant
       && this.pending.provider === createProvider && this.pending.access === target.access && this.pending.allow_shared === target.allow_shared
       && JSON.stringify(this.pending.bindings) === JSON.stringify(target.bindings)
       && (this.pending.images || []).length === images.length
@@ -446,8 +447,8 @@ export class ChatController {
       if (key.startsWith('["async",') && draft && typeof draft === "object") this.questionDrafts.set(key, draft);
     }
     if (record.provider) this.providerChosen = true;
-    const restoredProvider = !this.snapshot.session && record.provider ? normalizeProvider(record.provider) : this.snapshot.provider;
-    this.update({draft:record.text,cloudEnvironment:!this.snapshot.session && restoredProvider === "codex" && typeof record.cloudEnvironment === "string" ? record.cloudEnvironment : undefined,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
+    const restoredProvider = !this.snapshot.session && !this.isYoluAssistant() && record.provider ? normalizeProvider(record.provider) : this.snapshot.provider;
+    this.update({draft:record.text,cloudEnvironment:!this.snapshot.session && !this.isYoluAssistant() && restoredProvider === "codex" && typeof record.cloudEnvironment === "string" ? record.cloudEnvironment : undefined,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
   }
   private loadDraft() { return this.draftPersistence.load(); }
   private draftChanged() { this.draftPersistence.changed(); }
@@ -463,7 +464,7 @@ export class ChatController {
     if(this.snapshot.optionsLoading) return;
     this.defaultsRefreshPending = false;
     this.update({optionsLoading:true});
-    if (!this.snapshot.session && !this.defaultAgentLoaded && !this.providerChosen && !this.options.readOnly) {
+    if (!this.snapshot.session && !this.defaultAgentLoaded && !this.providerChosen && !this.options.readOnly && !this.isYoluAssistant()) {
       this.defaultAgentLoaded = true;
       try {
         const preferred = await this.options.request<{provider?:AgentProvider}>("/api/settings/default-agent");

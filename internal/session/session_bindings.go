@@ -256,6 +256,8 @@ func (a *Service) neutralDirectory(ctx context.Context, key string) (string, err
 	return dir, nil
 }
 
+const managedDirectoryInstructions = "修改前请阅读实际工作目录中的 AGENTS.md，并在对应目录运行 Git、构建和测试。"
+
 func (a *Service) resolveCreation(ctx context.Context, target SessionTarget, key string) (executionContext, error) {
 	var out executionContext
 	if len(target.Bindings) > maxSessionBindings {
@@ -306,14 +308,14 @@ func (a *Service) resolveCreation(ctx context.Context, target SessionTarget, key
 	if model.NormalizeProvider(target.Provider) == model.ProviderAgy {
 		out.plan.Title = "Antigravity"
 	}
-	out.instructions = "修改前请阅读实际工作目录中的 AGENTS.md，并在对应目录运行 Git、构建和测试。"
+	out.instructions = managedDirectoryInstructions
 	return out, nil
 }
 
 // savedSessionPlan revalidates every grant on every run. The provider's original
 // cwd is metadata and may lag an explicit context switch until the next turn.
 func (a *Service) savedSessionPlan(ctx context.Context, record model.Session, allowShared bool) (model.LaunchPlan, error) {
-	plan := model.LaunchPlan{Cwd: record.Cwd, AdditionalDirectories: []string{}, Permission: record.Permission, AllowShared: allowShared}
+	plan := model.LaunchPlan{Cwd: record.Cwd, AdditionalDirectories: []string{}, Permission: record.Permission, AllowShared: allowShared, YoluAssistant: record.YoluAssistant}
 	var err error
 	plan.ManagedBindings, err = a.Execution.Store.SessionBindingsManaged(record.ID)
 	if err != nil {

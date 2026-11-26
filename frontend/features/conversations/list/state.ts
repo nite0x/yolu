@@ -42,6 +42,7 @@ export interface ConversationView {
   target?: SessionTarget | null
   targetEnvironment?: string
   creationDirectory?: string
+  creatingYoluAssistant?: boolean
   creationBindings?: Record<string, BindingInput[]>
   focusComposer?: boolean
   directSession?: Session
