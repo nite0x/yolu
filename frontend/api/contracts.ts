@@ -39,6 +39,7 @@ export interface CreateSessionInput {
 }
 
 export interface APIErrorResponse {
+  conflict_directory?: string
   error: string
   code?: string
   details?: string[]

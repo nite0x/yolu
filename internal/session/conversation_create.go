@@ -16,10 +16,10 @@ type CreationResult struct {
 }
 
 type creationError struct {
-	status    int
-	code      string
-	cause     error
-	conflicts []directoryConflict
+	status   int
+	code     string
+	cause    error
+	conflict *directoryWriteConflict
 }
 
 func (e *creationError) Error() string { return e.cause.Error() }
@@ -127,9 +127,9 @@ func (a *Service) CreateSession(ctx context.Context, input CreateSessionInput) (
 		return CreationResult{}, creationFailure(409, "unsupported_bindings", err.Error())
 	}
 	target.plan.YoluAssistant = input.YoluAssistant
-	releaseDirectories, conflicts := a.reserveDirectories("create:"+key, "", target.plan)
+	releaseDirectories, conflict := a.reserveDirectories("create:"+key, "", target.plan)
 	if releaseDirectories == nil {
-		return CreationResult{}, &creationError{status: 409, code: "directory_conflict", cause: errors.New(directoryConflictMessage), conflicts: conflicts}
+		return CreationResult{}, &creationError{status: 409, code: "directory_conflict", cause: errors.New(directoryConflictMessage), conflict: conflict}
 	}
 	defer releaseDirectories()
 	if provider == model.ProviderAgy {

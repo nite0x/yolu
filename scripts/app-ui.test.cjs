@@ -2718,20 +2718,39 @@ test('project group ordering defaults to Yolu, preserves hidden slots and surviv
   const nav = await open();
   assert.deepEqual(names(nav),['yolu','App','Backend']);
   project(nav,'Backend').querySelector('[data-conversation-group-toggle]').click();
+  const list = nav.$('#sessionBrowserList');
+  const box = (top,bottom) => ({left:0,right:280,top,bottom,height:bottom-top});
+  list.getBoundingClientRect = () => box(0,250);
+  project(nav,'yolu').getBoundingClientRect = () => box(0,65);
+  project(nav,'App').getBoundingClientRect = () => box(75,140);
+  project(nav,'Backend').getBoundingClientRect = () => box(150,182);
   const source = project(nav,'yolu').querySelector('[data-project-reorder]');
-  const target = project(nav,'Backend').querySelector('.session-collection-heading');
-  const dataTransfer = {setData() {}};
-  const drag = (node, type) => {
-    const event = new nav.window.MouseEvent(type,{bubbles:true,cancelable:true,clientY:10});
-    Object.defineProperty(event,'dataTransfer',{value:dataTransfer});
+  const pointer = (node, type, y) => {
+    const event = new nav.window.MouseEvent(type,{bubbles:true,cancelable:true,clientX:50,clientY:y});
+    Object.defineProperty(event,'pointerId',{value:1});
     node.dispatchEvent(event);
   };
-  drag(source,'dragstart');
-  drag(target,'dragover');
+  pointer(source,'pointerdown',10);
+  pointer(list,'pointermove',14);
+  assert.equal(nav.$('[data-project-drop], [data-project-dragging]'),null);
+  pointer(list,'pointermove',188);
   assert.equal(project(nav,'Backend').dataset.projectDrop,'after');
-  drag(target,'drop');
+  pointer(list,'pointercancel',188);
+  assert.deepEqual(names(nav),['yolu','App','Backend']);
+  assert.equal(nav.$('[data-project-drop], [data-project-dragging]'),null);
+  pointer(source,'pointerdown',10);
+  pointer(list,'pointermove',188);
+  assert.equal(project(nav,'Backend').dataset.projectDrop,'after');
+  pointer(list,'pointerup',188);
   assert.deepEqual(names(nav),['App','Backend','yolu']);
   assert.equal(project(nav,'Backend').querySelector('[data-conversation-group-toggle]').getAttribute('aria-expanded'),'false');
+  const movedTitle = project(nav,'yolu').querySelector('[data-project-reorder]');
+  const click = () => movedTitle.dispatchEvent(new nav.window.MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
+  click();
+  assert.equal(movedTitle.getAttribute('aria-expanded'),'true');
+  movedTitle.dispatchEvent(new nav.window.Event('pointerdown',{bubbles:true}));
+  click();
+  assert.equal(project(nav,'yolu').querySelector('[data-project-reorder]').getAttribute('aria-expanded'),'false');
   assert.equal(nav.$('[data-project-drop], [data-project-dragging]'),null);
 
   nav.input('#sessionBrowserSearch','billing');
@@ -2739,10 +2758,9 @@ test('project group ordering defaults to Yolu, preserves hidden slots and surviv
   assert.equal(nav.$('[data-project-reorder]'),null);
   nav.input('#sessionBrowserSearch','review');
   assert.deepEqual(names(nav),['App','yolu']);
-  const grip = project(nav,'App').querySelector('[data-project-reorder]');
-  grip.click();
-  assert.equal(grip.getAttribute('aria-expanded'),'true');
-  project(nav,'App').querySelector('[data-project-move="1"]').click();
+  const title = project(nav,'App').querySelector('[data-project-reorder]');
+  title.focus();
+  title.dispatchEvent(new nav.window.KeyboardEvent('keydown',{key:'ArrowDown',altKey:true,bubbles:true,cancelable:true}));
   assert.deepEqual(names(nav),['yolu','App']);
   assert.equal(nav.document.activeElement,project(nav,'App').querySelector('[data-conversation-group-toggle]'));
   nav.input('#sessionBrowserSearch','');
@@ -2824,7 +2842,7 @@ test('search group overrides preserve saved expansion, explain matches and suppo
   await settle(); await settle();
   post({type:'workhub:conversation-group',selected:'session-1',sessions:[],split:false});
 
-  const group = name => nav.$(`[data-conversation-group-toggle][title="${name}"]`);
+  const group = name => nav.$(`[data-conversation-group-toggle][aria-label="展开或折叠 ${name} 的对话"]`);
   const session = () => nav.$('[data-conversation-session="session-1"]');
   const search = query => nav.input('#sessionBrowserSearch',query);
   const move = key => nav.document.activeElement.dispatchEvent(new nav.window.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));

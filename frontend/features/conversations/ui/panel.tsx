@@ -189,6 +189,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   };
   const state = useSyncExternalStore(controller.subscribe, controller.getViewSnapshot);
   const cloud = controller.isCloud();
+  const assistantDraft = !state.session && controller.isYoluAssistant();
   useLayoutEffect(() => {
     const form = document.getElementById("sessionCreationSetup");
     if (!form || !cloud) return;
@@ -226,6 +227,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       // restoration, then mirror the result below so text is never appended twice.
       try { if (cloud) await controller.send(text, images, false); else await directories.send(text, images); } catch (error) {
         if (!panel.current && !controller.getSnapshot().draft) controller.setDraft(text);
+        if (error instanceof MessageNotSentError) throw error;
         controller.setError((error as Error).message);
         throw new MessageNotSentError((error as Error).message);
       }
@@ -241,9 +243,14 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       const restored = attachment.content ? {id: attachment.id, type: attachment.type, name: attachment.name, contentType: attachment.contentType, content: attachment.content} : attachment.file;
       if (restored) void composer.addAttachment(restored).catch(error => controller.setError((error as Error).message));
     }
+    let previousAttachments = composer.getState().attachments;
     const unsubscribe = composer.subscribe(() => {
       const draft = composer.getState();
-      if (!draft.submission && !controller.getSnapshot().submitting) { controller.draftAttachments = draft.attachments; controller.attachmentsChanged(); }
+      if (draft.submission || controller.getSnapshot().submitting) return;
+      if (draft.attachments.length === previousAttachments.length && draft.attachments.every((item, index) => item === previousAttachments[index])) return;
+      previousAttachments = draft.attachments;
+      controller.draftAttachments = draft.attachments;
+      controller.attachmentsChanged();
     });
     const unsubscribeErrors = composer.unstable_on("attachmentAddError", event => controller.setError(event.message));
     return () => { unsubscribe(); unsubscribeErrors(); };
@@ -281,7 +288,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
             <ChatSessionMenu controller={controller} portal={panel} onSearch={() => setSearchOpen(true)} />
             <ParallelPaneControls />
         </>}
-        context={cloud ? <span className="chat-workspace-project">{"Codex Cloud" + (state.session?.cloud_environment ? " · " + state.session.cloud_environment : "")}</span> : !state.session && document.getElementById("sessionBrowserDirectoryChoices") ? <button type="button" className="creation-header-directory" disabled={state.submitting} aria-label={uiText("选择工作目录")} aria-haspopup="dialog" aria-expanded={false} aria-controls="sessionBrowserDirectoryChoices-popover" aria-keyshortcuts="Meta+Shift+D Control+Shift+D" title={[contextTitle, displayPath].filter(Boolean).join("\n")} onClick={event => document.dispatchEvent(new CustomEvent("workhub:creation-directory", {detail:event.currentTarget}))}>
+        context={assistantDraft ? undefined : cloud ? <span className="chat-workspace-project">{"Codex Cloud" + (state.session?.cloud_environment ? " · " + state.session.cloud_environment : "")}</span> : !state.session && document.getElementById("sessionBrowserDirectoryChoices") ? <button type="button" className="creation-header-directory" disabled={state.submitting} aria-label={uiText("选择工作目录")} aria-haspopup="dialog" aria-expanded={false} aria-controls="sessionBrowserDirectoryChoices-popover" aria-keyshortcuts="Meta+Shift+D Control+Shift+D" title={[contextTitle, displayPath].filter(Boolean).join("\n")} onClick={event => document.dispatchEvent(new CustomEvent("workhub:creation-directory", {detail:event.currentTarget}))}>
           <span className="conversation-context-summary">{contextSummary}</span><ChevronDownIcon aria-hidden="true" />
         </button> : <ConversationWorkingContext trigger={contextSummary} triggerTitle={contextTitle || undefined} header={directories.header}>
           {directories.context}
@@ -316,7 +323,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       beforeThread={state.historyError && <Alert variant="destructive" className="shrink-0 rounded-none"><AlertDescription>{state.historyError}</AlertDescription></Alert>}
       thread={{
         dockComposer: !readOnly,
-        emptyState: !readOnly && !state.session && <ConversationCreationSetup>{!cloud && directories.creation}{!controller.isYoluAssistant() && controller.options.environment === "local" && state.provider === "codex" && <CloudEnvironmentFields controller={controller} selected={state.cloudEnvironment} disabled={state.submitting} />}</ConversationCreationSetup>,
+        emptyState: !readOnly && !state.session && <ConversationCreationSetup>{!cloud && !assistantDraft && directories.creation}{!assistantDraft && controller.options.environment === "local" && state.provider === "codex" && <CloudEnvironmentFields controller={controller} selected={state.cloudEnvironment} disabled={state.submitting} />}</ConversationCreationSetup>,
         composerStatus: !readOnly && <>{!cloud && !occupied && directories.composer}<div className="chat-composer-status">{feedback}<ChatRunIndicator controller={controller} portal={panel} /></div></>, components: chatComponents,
         autoFocus: !!controller.options.focusComposer && !readOnly && !state.session && !document.documentElement.hasAttribute("data-workspace-inactive"), readOnly,
         composer: occupied ? null : question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined,

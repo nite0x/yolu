@@ -14,9 +14,12 @@ import {reuseValue} from "./state"
 export type {ChatOptions, SessionTarget, Snapshot} from "./contracts";
 // Existing conversations are shared across every entry point. Only unsent
 // drafts are scoped to their creation target.
-export const conversationKey = (options: ChatOptions, session: string | null = options.session?.id || null) => JSON.stringify(session
-  ? [options.environment, "session", session]
-  : [options.environment, "draft", options.target?.yolu_assistant ? "yolu-assistant" : "", options.target?.project_id || "", options.target?.cwd || ""]);
+export const conversationKey = (options: ChatOptions, session: string | null = options.session?.id || null) => {
+  const draftTarget = options.draftTarget || options.target;
+  return JSON.stringify(session
+    ? [options.environment, "session", session]
+    : [options.environment, "draft", options.target?.yolu_assistant ? "yolu-assistant" : "", draftTarget?.project_id || "", draftTarget?.cwd || ""]);
+};
 export class ChatController {
   reading: DraftRecord['reading'] = {top: 0, bottom: true, anchor: "", offset: 0};
   opening = true;

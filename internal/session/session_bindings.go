@@ -417,7 +417,7 @@ func (a *Service) InspectBindingHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
-	v, err := a.inspectBinding(ctx, input, true)
+	v, err := a.inspectBinding(ctx, input, r.URL.Query().Get("include_files") != "false")
 	if err != nil {
 		writeBindingError(w, err)
 		return
@@ -590,7 +590,7 @@ func (a *Service) MutateBindingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(conflicts) != 0 && !input.AllowShared {
 		a.directoryStarts.Unlock()
-		writeBindingConflict(w, conflicts)
+		writeBindingConflict(w, &directoryWriteConflict{Directory: v.Directory, Conflicts: conflicts})
 		return
 	}
 	if !managed {

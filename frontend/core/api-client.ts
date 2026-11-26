@@ -3,12 +3,14 @@ import type {ReadRequest} from "./request-cache"
 
 export class APIError extends Error {
   readonly code?: string
+  readonly conflictDirectory?: string
   readonly command?: string
   readonly requestID?: string
   constructor(readonly status: number, payload: APIErrorResponse, translate: (text: string) => string, requestID?: string) {
     super([payload.error, ...(payload.details || [])].filter(Boolean).map(translate).join("\n") || String(status))
     this.name = "APIError"
     this.code = payload.code
+    this.conflictDirectory = payload.conflict_directory
     this.command = payload.command
     this.requestID = payload.request_id || requestID
   }

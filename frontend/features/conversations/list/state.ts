@@ -40,6 +40,7 @@ export interface ConversationView {
   requestID?: number
   requestKey?: string | null
   target?: SessionTarget | null
+  draftTarget?: SessionTarget
   targetEnvironment?: string
   creationDirectory?: string
   creatingYoluAssistant?: boolean

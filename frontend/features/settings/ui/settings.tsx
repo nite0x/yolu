@@ -1,13 +1,6 @@
-import {
-  Activity,
-  MessageSquare,
-  Orbit,
-  RefreshCw,
-  SlidersHorizontal,
-  SquareTerminal,
-  Terminal,
-} from "lucide-react"
+import {Activity, MessageSquare, RefreshCw, SlidersHorizontal, Terminal} from "lucide-react"
 import {Fragment, type ReactNode} from "react"
+import {AgentIcon} from "@/entities/conversations/agent-icon"
 import {uiText} from "@/shared/i18n"
 import {Feedback} from "@/shared/ui/feedback/message"
 import {Check} from "@/shared/ui/forms/check"
@@ -160,12 +153,12 @@ export function SettingsPage() {
                   value="codex"
                   defaultChecked
                 />
-                <SquareTerminal aria-hidden="true" />
+                <AgentIcon agent="codex" decorative />
                 <span>Codex</span>
               </label>
               <label>
                 <input type="radio" className="sr-only" name="conversation_default_provider" value="agy" />
-                <Orbit aria-hidden="true" />
+                <AgentIcon agent="agy" decorative />
                 <span>Antigravity (AGY)</span>
               </label>
             </fieldset>

@@ -70,7 +70,7 @@ When two active agents can write to the same directory, Yolu asks for explicit c
 
 Open the **Yolu Assistant** group in the shared conversation navigator and select **New conversation** on its group row. The assistant uses local Codex with Yolu's built-in MCP server. Ask questions such as “Which registered projects have worktrees with uncommitted changes?” Select a project or worktree link in the reply to open its details in Yolu. The assistant can query registered projects across execution environments and reports unavailable or stale status when applicable.
 
-Assistant conversations use the same history, drafts and directory access controls as other conversations. They stay in the assistant group when you associate a project or worktree.
+Send the first message to start in a dedicated default directory. Use **Working details** in the conversation header to attach a project, worktree or local directory after creation. The conversation stays in the assistant group when you attach a directory.
 
 ### Codex Cloud conversations
 

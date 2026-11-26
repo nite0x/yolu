@@ -13,8 +13,8 @@ const quote = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
 
 // Real HTTP, Git and SQLite with deterministic provider responses. No user
 // projects, authentication files or paid model requests are involved.
-export async function startBrowserApp(binary) {
-  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'yolu-browser-')));
+export async function startBrowserApp(binary, fixtureRoot = os.tmpdir()) {
+  const directory = await realpath(await mkdtemp(path.join(fixtureRoot, 'yolu-browser-')));
   const data = path.join(directory, 'data');
   const worktrees = path.join(directory, 'worktrees');
   const repository = path.join(directory, 'repository');

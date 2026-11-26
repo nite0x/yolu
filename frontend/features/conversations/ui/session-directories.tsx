@@ -1,5 +1,6 @@
 import {useEffect, useId, useRef, useState, type FormEvent} from "react"
 import {ChevronDown, CircleAlert, FileDiff, Folder, FolderOpen, GitBranch, Plus, Terminal, X} from "lucide-react"
+import {MessageNotSentError} from "@assistant-ui/react"
 import {Button} from "@/shared/ui/primitives/button"
 import {Input} from "@/shared/ui/primitives/input"
 import {NativeSelect, NativeSelectOption as Option} from "@/shared/ui/primitives/native-select"
@@ -103,7 +104,9 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
   const [detail, setDetail] = useState("")
   const [scope, setScope] = useState<"all" | "changes">("all")
   const [planned, setPlanned] = useState<BindingInput[]>(() => controller.options.target?.bindings || [])
-  const [executionMode, setExecutionMode] = useState<"local" | "worktree">("local")
+  const [createWorktree, setCreateWorktree] = useState(false)
+  const [inspection, setInspection] = useState<"available" | "occupied" | "unavailable">()
+  const [rejectedDirectory, setRejectedDirectory] = useState<{path: string; additional: boolean}>()
   const [preparing, setPreparing] = useState(false)
   const worktreeRequest = useRef<{project: string; slug: string; path?: string} | undefined>(undefined)
   const [dismissed, setDismissed] = useState("")
@@ -111,10 +114,29 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
   const approvalRef = useRef<Prompt | undefined>(undefined)
   const revision = useRef(0)
   const base = session ? `/api/sessions/${encodeURIComponent(session.id)}/bindings` : ""
+  const assistantDraft = !session && controller.isYoluAssistant()
   const { request, environment, overview, readOnly } = controller.options
   const projects = overview?.projects || []
   const bindings = data?.bindings || emptyBindings
   const target = {...controller.options.target}
+  const {cwd, project_id: projectID, access} = target
+  const inspectPrimary = !session && !readOnly && !assistantDraft && !controller.isCloud() && access !== "read" && !!(cwd || projectID)
+  const useSelectedDirectory = inspectPrimary && !createWorktree
+  const rejectedPrimary = rejectedDirectory && !rejectedDirectory.additional ? rejectedDirectory.path : undefined
+  const primaryOccupied = rejectedPrimary || (useSelectedDirectory && inspection === "occupied")
+  useEffect(() => {
+    setInspection(undefined)
+    if (!inspectPrimary) return
+    const abort = new AbortController()
+    void request<Binding>("/api/session-bindings/inspect?include_files=false", {
+      ...json("POST", {project_id:projectID, directory:cwd, role:"primary", access:"write", provider}), signal:abort.signal,
+    }).then(binding => {
+      if (!abort.signal.aborted) setInspection(binding.conflicts?.length ? "occupied" : "available")
+    }).catch(() => {
+      if (!abort.signal.aborted) setInspection("unavailable")
+    })
+    return () => abort.abort()
+  }, [inspectPrimary, cwd, projectID, provider, request])
   const bindingVersion = JSON.stringify(bindings.map(binding => [binding.id,binding.directory,binding.project_id,!!binding.git,binding.role]))
   useEffect(() => {
     if (!session) return
@@ -125,10 +147,10 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
   const addDirectory = () => setPrompt({purpose:uiText("为此对话添加参考或开发目录。")})
 
   useEffect(() => {
-    if (session || readOnly || busy) return
+    if (session || assistantDraft || readOnly || busy) return
     document.addEventListener("workhub:creation-add-directory", addDirectory)
     return () => document.removeEventListener("workhub:creation-add-directory", addDirectory)
-  }, [session, readOnly, busy])
+  }, [session, assistantDraft, readOnly, busy])
 
   useEffect(() => {
     approvalRef.current = prompt
@@ -223,7 +245,7 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
   }
   async function send(text: string, images: string[]) {
     let runtimeTarget = target
-    if (!session && executionMode === "worktree" && target.project_id) {
+    if (!session && createWorktree && target.project_id) {
       if (preparing) throw new Error(uiText("正在准备工作目录…"))
       setPreparing(true)
       try {
@@ -244,7 +266,7 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
         runtimeTarget = {...target,cwd:planned.path}
       } finally {setPreparing(false)}
     }
-    let payload: SessionTarget = session ? {} : {...runtimeTarget, bindings:plannedRef.current}
+    let payload: SessionTarget = session ? {} : {...runtimeTarget, ...(useSelectedDirectory ? {allow_shared:true} : {}), bindings:plannedRef.current}
     const mentions = mentionedProjects(text, projects)
     const natural = !mentions.explicit && !busy ? namedProject(text, projects) : undefined
     const matches = natural ? [natural] : mentions.projects
@@ -286,19 +308,18 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
         for (const input of inputs) rememberProject(environment, input.project_id)
       }
     }
-    if (!session && (runtimeTarget.cwd || runtimeTarget.project_id) && (runtimeTarget.access || "write") === "write") {
-      const binding = await request<Binding>("/api/session-bindings/inspect", json("POST", {
-        project_id:runtimeTarget.project_id, directory:runtimeTarget.cwd, role:"primary", access:"write", provider,
-      }))
-      if (binding.conflicts?.length) {
-        const approved = await ask({purpose:uiText("已有可写对话正在使用此目录。可另建 Worktree，或确认共享此目录。"),conflict:binding.directory})
-        if (!approved) throw new Error(uiText("消息已保留。可选择独立 Worktree 后再次发送。"))
-        payload = {...payload,allow_shared:true}
-      }
-    }
     try { await controller.send(text, images, false, payload) }
     catch (error) {
-      if ((error as {code?:string}).code !== "directory_conflict" || !session) throw error
+      const {code, conflictDirectory} = error as {code?: string; conflictDirectory?: string}
+      if (code !== "directory_conflict") throw error
+      if (!session) {
+        if (!conflictDirectory) throw error
+        const key = conversationPathKey(conflictDirectory)
+        const additional = plannedRef.current.some(binding => binding.role !== "primary" && binding.access === "write" && conversationPathKey(binding.directory || "") === key)
+        setRejectedDirectory({path:conflictDirectory, additional})
+        controller.setError("")
+        throw new MessageNotSentError()
+      }
       const approved = await ask({purpose:failure(error),conflict:data?.cwd || session.cwd})
       if (!approved) throw error
       await controller.send(text, images, false, {allow_shared:true})
@@ -325,6 +346,9 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
       <Button type="button" size="icon-xs" variant="ghost" disabled={busy || preparing} aria-label={uiText("移除 {0}", labelFor(binding, projects))}
         onClick={() => updatePlanned(plannedRef.current.filter(item => item !== binding))}><X aria-hidden="true" /></Button>
     </div>
+    {!session && rejectedDirectory?.additional && conversationPathKey(rejectedDirectory.path) === conversationPathKey(binding.directory || "") && <CreationDirectoryConflict
+      additionalShare={{checked:!!binding.allow_shared, disabled:busy || preparing,
+        onChange: checked => updatePlanned(plannedRef.current.map(item => item === binding ? {...item, allow_shared:checked} : item))}} />}
   </div>)
   const directoryList = <div className="session-context-strip session-dir-list" role="group" aria-label={uiText("对话项目与目录")}>
     {session ? visibleBindings.map(binding => {
@@ -388,13 +412,21 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
     cwd: data?.cwd,
     managed: !session || !!data?.native_resume_requires_confirmation || !data && session.source === "workbench",
     composer: !readOnly && !session?.archived && <DraftProjectSuggestions controller={controller} projects={projects}
-      excluded={excluded} dismissed={dismissed} dismiss={setDismissed} configure={setPrompt} />,
+      excluded={excluded} dismissed={dismissed} dismiss={setDismissed} configure={assistantDraft ? undefined : setPrompt} />,
     preparing,
     creation: !session && !readOnly && <>
       {target.project_id && <label className="session-worktree-choice">
-        <input type="checkbox" checked={executionMode === "worktree"} disabled={busy || preparing} onChange={event => setExecutionMode(event.target.checked ? "worktree" : "local")} />
+        <input type="checkbox" checked={createWorktree} disabled={busy || preparing} onChange={event => {
+          setCreateWorktree(event.target.checked)
+          setRejectedDirectory(conflict => conflict?.additional ? conflict : undefined)
+        }} />
         <span>{uiText("创建新 Worktree")}</span>
       </label>}
+      {primaryOccupied ? <CreationDirectoryConflict suggestWorktree={!!target.project_id && !createWorktree}
+        path={createWorktree ? rejectedPrimary : undefined} />
+        : useSelectedDirectory && inspection !== "available" && <p role="status" className="session-creation-directory-status">
+          {inspection === "unavailable" ? uiText("暂时无法检查目录占用。") : uiText("正在检查工作目录…")}
+        </p>}
       {controller.options.updateDraftBindings && <div className="session-creation-bindings">
         <Button type="button" size="sm" variant="ghost" disabled={busy || preparing} onClick={addDirectory}><Plus aria-hidden="true" />{uiText("添加附加目录")}</Button>
         {plannedRows}
@@ -403,9 +435,24 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
   }
 }
 
+function CreationDirectoryConflict({suggestWorktree, path, additionalShare}: {
+  suggestWorktree?: boolean; path?: string;
+  additionalShare?: {checked: boolean; disabled: boolean; onChange: (checked: boolean) => void};
+}) {
+  const description = useId()
+  return <div className="session-creation-directory-conflict">
+    <p id={additionalShare ? description : undefined} role="status"><CircleAlert aria-hidden="true" /><span>
+      {path ? uiText("新 Worktree 正被其他对话使用，请选择其他目录。") : suggestWorktree ? uiText("其他对话正在使用此目录，建议新建 Worktree。") : uiText("其他对话正在使用此目录。")}
+      {path && <code>{path}</code>}
+    </span></p>
+    {additionalShare && <label className="session-share-choice"><input type="checkbox" aria-describedby={description} checked={additionalShare.checked} disabled={additionalShare.disabled}
+      onChange={event => additionalShare.onChange(event.target.checked)} />{uiText("允许共享附加目录")}</label>}
+  </div>
+}
+
 function DraftProjectSuggestions({controller, projects, excluded, dismissed, dismiss, configure}: {
   controller: ChatController; projects:ProjectOption[]; excluded:Set<string>; dismissed:string;
-  dismiss:(draft:string) => void; configure:(prompt:Prompt) => void;
+  dismiss:(draft:string) => void; configure?:(prompt:Prompt) => void;
 }) {
   const draft = useChatState(controller, snapshot => snapshot.draft)
   if (draft === dismissed) return null
@@ -415,7 +462,7 @@ function DraftProjectSuggestions({controller, projects, excluded, dismissed, dis
       <Button key={project.id} type="button" size="sm" variant="outline" onClick={() =>
         controller.setDraft(draft.replace(/@[^\s@]*$/u, () => "@" + project.name + " "))
       }>@{project.name}</Button>)}
-    <Button type="button" size="sm" variant="ghost" onClick={() => configure({initial:{access:"read"},purpose:uiText("选择消息所引用的本地目录。")})}><FolderOpen aria-hidden="true" />{uiText("选择本地目录…")}</Button>
+    {configure && <Button type="button" size="sm" variant="ghost" onClick={() => configure({initial:{access:"read"},purpose:uiText("选择消息所引用的本地目录。")})}><FolderOpen aria-hidden="true" />{uiText("选择本地目录…")}</Button>}
     <Button type="button" size="icon-sm" variant="ghost" aria-label={uiText("关闭项目选择器")} onClick={() => dismiss(draft)}><X aria-hidden="true" /></Button>
   </div>
   return null

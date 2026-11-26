@@ -62,6 +62,8 @@ test("compact conversation rows omit empty metadata and keep directory and envir
     {id: "plain", name: "Conversation", cwd: "/repo"},
     {id: "terminal", name: "Shell", cwd: "/repo", terminal: {workspaceID: "workspace", attached: true}},
     {id: "context", name: "Conversation", cwd: "/repo", provider: "agy", environment_name: "Remote", context: {project: "App", branch: "feature/work", cwd: "/repo", workspaces: [], kind: "Worktree"}},
+    {id: "cloud", name: "Cloud task", cwd: "", provider: "codex-cloud"},
+    {id: "assistant", name: "Assistant", cwd: "/repo", yolu_assistant: true},
   ]
   const dom = new JSDOM(renderToStaticMarkup(createElement(ConversationList, {sessions, showDirectory: false, parallel: true, parallelSessions: ["plain", "terminal"]})))
   assert.equal(dom.window.document.querySelector('[data-conversation-session="plain"] .session-browser-item-meta'), null)
@@ -70,12 +72,16 @@ test("compact conversation rows omit empty metadata and keep directory and envir
   assert.equal(terminal.querySelector('.session-browser-item-kind'), null)
   assert.equal(terminal.querySelector('.session-browser-item-heading .sr-only')?.textContent, uiText('终端'))
   assert.equal(terminal.querySelector('.session-browser-item-agent'),null)
-  for (const [id, label, icon] of [["plain", "Codex", "square-terminal"], ["context", "Antigravity", "orbit"]]) {
+  for (const [id, label, src] of [
+    ["plain", "Codex", "/agent-codex.png"],
+    ["context", "Antigravity", "/agent-antigravity.svg"],
+    ["cloud", "Codex Cloud", "/agent-codex.png"],
+    ["assistant", uiText("Yolu 助手"), "/yolu.svg"],
+  ]) {
     const agent = dom.window.document.querySelector(`[data-conversation-session="${id}"] .session-browser-item-agent`)!
-    assert.equal(agent.getAttribute("aria-label"),label)
-    assert.equal(agent.nextElementSibling?.tagName,"TIME")
-    assert.equal(agent.textContent,"")
-    assert(agent.querySelector(`.lucide-${icon}`))
+    assert.equal(agent.getAttribute("alt"),label)
+    assert.equal(agent.getAttribute("src"),src)
+    assert(agent.nextElementSibling?.matches(".session-browser-item-title"))
   }
   for (const id of ["plain", "terminal"]) {
     const row = dom.window.document.querySelector(`[data-conversation-session="${id}"]`)!

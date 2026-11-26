@@ -1,6 +1,6 @@
 import {uiText} from "@/shared/i18n"
-import {memo, useEffect, useId, useRef, useState, useSyncExternalStore, type RefObject} from "react"
-import {ArchiveIcon, ArchiveRestoreIcon, ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, GaugeIcon, GitForkIcon, LoaderCircleIcon, MoreHorizontalIcon, OrbitIcon, PencilIcon, PinIcon, PinOffIcon, RefreshCwIcon, SearchIcon, ShieldAlertIcon, ShieldCheckIcon, ShieldIcon, ShieldQuestionMarkIcon, SquareTerminalIcon, XIcon, ZapIcon, type LucideIcon} from "lucide-react"
+import {memo, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject} from "react"
+import {ArchiveIcon, ArchiveRestoreIcon, ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, GaugeIcon, GitForkIcon, LoaderCircleIcon, MoreHorizontalIcon, PencilIcon, PinIcon, PinOffIcon, RefreshCwIcon, SearchIcon, ShieldAlertIcon, ShieldCheckIcon, ShieldIcon, ShieldQuestionMarkIcon, XIcon, ZapIcon} from "lucide-react"
 import {Collapsible, DropdownMenu, Popover} from "radix-ui"
 import {TooltipIconButton} from "../components/assistant-ui/elements/tooltip-icon-button"
 import {Button} from "@/shared/ui/primitives/button"
@@ -10,11 +10,11 @@ import {convertEntries, mergeEntries, newConversationSettings, type AgentProvide
 import {effortLabel, findChatModel, isFastTier, permissionChoices, serviceTierLabel} from "../model/settings"
 import {ChatController} from "../runtime/controller"
 import {useChatState} from "../runtime/use-chat-state"
+import {AgentIcon} from "@/entities/conversations/agent-icon"
 import {isGeneralConversationDirectory} from "@/entities/conversations/context"
 import {ConversationStatusBadge} from "@/shared/ui/conversation-surface"
 
 const providerLabel = (provider?: AgentProvider) => provider === "agy" ? "Antigravity" : "Codex";
-const providerIcons = {codex: SquareTerminalIcon, agy: OrbitIcon};
 const permissionIcons = {ask: ShieldQuestionMarkIcon, auto: ShieldCheckIcon, full: ShieldAlertIcon};
 const modeLabel = (mode?: string) => mode === "plan" ? uiText("规划") : mode === "default" ? uiText("执行") : mode === "accept-edits" ? uiText("自动编辑") : mode === "auto" ? uiText("自动") : mode || uiText("未获取工作模式");
 const approvalLabel = (policy: unknown, provider?: AgentProvider) => typeof policy === "string" ? ({"on-request": uiText("按需审批"), untrusted: uiText("非受信任操作需审批"), "on-failure": uiText("失败后审批"), never: uiText("无需审批")}[policy] || policy) : provider === "agy" ? uiText("由 Antigravity 管理") : uiText("由 Codex 管理");
@@ -34,7 +34,7 @@ function ChatStatusView({controller}: {controller: ChatController}) {
   </ConversationStatusBadge>;
 }
 
-type SettingChoice = {value: string; label: string; description?: string; danger?: boolean; icon?: LucideIcon};
+type SettingChoice = {value: string; label: string; description?: string; danger?: boolean; icon?: ReactNode};
 
 function contextPermission(context?: ChatContext): PermissionMode | undefined {
   if (context?.sandbox?.type === "dangerFullAccess" && context.approvalPolicy === "never") return "full";
@@ -48,9 +48,9 @@ type ChoiceProps = {label: string; options: SettingChoice[]; value: string; disa
 function SettingChoices({label, options, value, disabled, onChange}: ChoiceProps) {
   const name = useId();
   return <fieldset className="chat-setting-segments" disabled={disabled} aria-label={label}>
-    {options.map(({icon: Icon, ...option}) => <label key={option.value}>
+    {options.map(({icon, ...option}) => <label key={option.value}>
       <input type="radio" className="sr-only" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} />
-      {Icon && <Icon aria-hidden="true" />}
+      {icon}
       <span>{option.label}</span>
     </label>)}
   </fieldset>;
@@ -128,7 +128,6 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
   const summaryModel = modelName || defaultLabel;
   const summaryEffort = effortLabel(nextEffort);
   const speedLabel = selectedTier ? serviceTierLabel(selectedTier) : tiers.length ? defaultLabel : uiText("由模型决定");
-  const ProviderIcon = providerIcons[s.provider];
   const PermissionIcon = effectivePermission ? permissionIcons[effectivePermission.value] : ShieldIcon;
   const SpeedIcon = isFastTier(selectedTier?.id) ? ZapIcon : GaugeIcon;
   const summary = [
@@ -141,7 +140,7 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
   return <Popover.Root onOpenChange={open => {if (open) void controller.loadOptions();}}>
     <Popover.Trigger asChild><Button type="button" variant="ghost" size="sm" className="chat-context-trigger chat-settings-trigger" aria-label={uiText("上下文与设置")}
       aria-description={summary} title={summary}>
-      <ProviderIcon aria-hidden="true" />
+      <AgentIcon agent={assistant ? "yolu-assistant" : s.provider} size={13} decorative />
       <span className="chat-settings-model-brief"><span className="chat-settings-model-prefix">{summaryModel.slice(0, -9)}</span><span className="chat-settings-model-suffix">{summaryModel.slice(-9)}</span></span>
       {summaryEffort && <span className="chat-settings-effort-brief">{summaryEffort}</span>}
       {!readOnly && <span className="chat-settings-state-icons" aria-hidden="true">
@@ -185,8 +184,8 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
         <div className="chat-setting-line">
           <strong>{uiText("新建时选择引擎")}</strong>
           <SettingChoices label={uiText("对话引擎")} options={[
-            {value: "codex", label: providerLabel("codex"), icon: providerIcons.codex},
-            {value: "agy", label: providerLabel("agy"), icon: providerIcons.agy},
+            {value: "codex", label: providerLabel("codex"), icon: <AgentIcon agent="codex" decorative />},
+            {value: "agy", label: providerLabel("agy"), icon: <AgentIcon agent="agy" decorative />},
           ]} value={s.provider} disabled={disabled} onChange={value => controller.setProvider(value as AgentProvider)} />
         </div>
       </div>}

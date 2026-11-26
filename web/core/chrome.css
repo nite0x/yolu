@@ -228,9 +228,9 @@ html[data-workspace-navigation] .sidebar #sessionBrowserList:is(:hover, :focus-w
 }
 html[data-workspace-navigation] .sidebar .session-collection-toggle .shortcut-badge { width: 16px; height: 16px; border-radius: 0; }
 html[data-workspace-navigation] .sidebar .session-workspace-name { font-size: var(--yolu-font-size-compact); font-weight: 600; }
-html[data-workspace-navigation] .sidebar .session-browser-item { padding: 6px var(--session-row-inset, 8px); border-radius: 7px; }
+html[data-workspace-navigation] .sidebar .session-browser-item { padding: var(--session-row-block-inset, 6px) var(--session-row-inset, 8px); border-radius: 7px; }
 html[data-workspace-navigation] .sidebar .session-browser-item-title { font-size: var(--yolu-font-size-compact); font-weight: 450; }
-html[data-workspace-navigation] .sidebar .session-browser-item-time { font-size: 11px; opacity: .75; }
+html[data-workspace-navigation] .sidebar .session-browser-item-time { font-size: 11px; --session-time-muted-opacity: .75; }
 /* Shared 44px flush desktop pane header matching .conversation-surface-header. */
 html[data-workhub-desktop] main:has(> #settingsPage:not([hidden]), > #issuesPage:not([hidden])) {
   max-width: none;

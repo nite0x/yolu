@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"worktree-hub/internal/apitypes"
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
@@ -22,6 +23,11 @@ import (
 type directoryReservation struct {
 	session string
 	dirs    []string
+}
+
+type directoryWriteConflict struct {
+	Directory string
+	Conflicts []directoryConflict
 }
 
 type configuredDirectory struct {
@@ -130,7 +136,7 @@ func (a *Service) directoryConflictsLocked(path, own string) []directoryConflict
 	return items
 }
 
-func (a *Service) reserveDirectories(id, session string, plan model.LaunchPlan) (func(), []directoryConflict) {
+func (a *Service) reserveDirectories(id, session string, plan model.LaunchPlan) (func(), *directoryWriteConflict) {
 	a.directoryStarts.Lock()
 	defer a.directoryStarts.Unlock()
 	roots := writableRoots(plan)
@@ -142,7 +148,7 @@ func (a *Service) reserveDirectories(id, session string, plan model.LaunchPlan) 
 			}
 			if !shared {
 				if conflicts := a.directoryConflictsLocked(root, session); len(conflicts) > 0 {
-					return nil, conflicts
+					return nil, &directoryWriteConflict{Directory: root, Conflicts: conflicts}
 				}
 			}
 		}
@@ -160,8 +166,14 @@ func (a *Service) reserveDirectories(id, session string, plan model.LaunchPlan) 
 
 const directoryConflictMessage = "另一个 Agent 正在修改重叠的目录。请创建独立 Worktree，或确认共享当前目录。"
 
-func writeBindingConflict(w http.ResponseWriter, conflicts []directoryConflict) {
-	httpx.WriteJSON(w, 409, map[string]any{"error": directoryConflictMessage, "code": "directory_conflict", "conflicts": conflicts})
+func writeBindingConflict(w http.ResponseWriter, conflict *directoryWriteConflict) {
+	httpx.WriteJSON(w, http.StatusConflict, struct {
+		apitypes.APIErrorResponse
+		Conflicts []directoryConflict `json:"conflicts"`
+	}{
+		APIErrorResponse: apitypes.APIErrorResponse{Error: directoryConflictMessage, Code: "directory_conflict", ConflictDirectory: conflict.Directory},
+		Conflicts:        conflict.Conflicts,
+	})
 }
 
 func collectDirectorySnapshot(ctx context.Context, dir string) fileSnapshot {

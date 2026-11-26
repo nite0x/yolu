@@ -453,7 +453,7 @@ function renderConversationList() {
   const list = $('#sessionBrowserList');
   list.setAttribute('aria-busy',String(initialLoading || view.loading));
   const rows = view.listRows.slice(start, end);
-  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, sidebarMode, projectGroups:view.projectGroups.map(group => group.key), parallel:!!sidebarMode, parallelSessions:window.WorkHubPage?.parallelSessions || [], parallelFull:!!window.WorkHubPage?.parallelFull, selected, search:text, showDirectory: showContext, showContext, loading: initialLoading, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
+  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, sidebarMode, canReorderProjects:view.projectGroups.length > 1, parallel:!!sidebarMode, parallelSessions:window.WorkHubPage?.parallelSessions || [], parallelFull:!!window.WorkHubPage?.parallelFull, selected, search:text, showDirectory: showContext, showContext, loading: initialLoading, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
   const emptyError = !!view.error && !items.length && !view.loading;
   const renderKey = JSON.stringify([new Date().toDateString(), emptyError, props, before, after, loaded, sessions.length]);
   if (conversationListRenderKeys.get(list) !== renderKey) {
@@ -562,7 +562,7 @@ function renderConversationBrowser() {
   $('#sessionScopeAll').hidden = view.scope.kind === 'all';
   $('#sessionBrowserSearch').value = view.search;
   $('#sessionBrowserArchived').checked = !!view.archived;
-  const creationDirectories = view.creating ? conversationCreationDirectories(view) : [];
+  const showCreationDirectories = view.creating && !view.creatingYoluAssistant;
   $('#newBrowserSession').disabled = sessionReadOnly;
   $('#newBrowserSession').title = sessionReadOnly ? uiText("当前为只读模式，请在终端新建对话") : uiText("在当前栏新建对话");
   // The assistant shows setup in the empty thread and returns it here when messages appear.
@@ -573,8 +573,9 @@ function renderConversationBrowser() {
   const remoteTerminal = (view.targetEnvironment || activeEnvironment) !== 'local';
   terminalKind.disabled = remoteTerminal || !!sessionHistoryState?.submitting;
   terminalKind.title = remoteTerminal ? uiText("内置终端目前仅支持本机执行环境。") : uiText("在当前栏切换为终端");
-  $('#sessionBrowserNewDirectoryField').hidden = !view.creating;
-  if (view.creating) {
+  $('#sessionBrowserNewDirectoryField').hidden = !showCreationDirectories;
+  if (showCreationDirectories) {
+    const creationDirectories = conversationCreationDirectories(view);
     $('#sessionBrowserNewDirectory').innerHTML = creationDirectories.map(d => `<option value="${esc(d.key)}" title="${esc(d.cwd)}" data-name="${esc(d.name)}" data-branch="${esc(d.branch)}">${esc(d.label)}</option>`).join('');
     $('#sessionBrowserNewDirectory').value = view.creationDirectory || '';
     $('#sessionBrowserNewDirectory').title = view.target?.cwd || '';
@@ -684,11 +685,13 @@ function showConversationSelection() {
   const selection = ++conversationState.selection;
   const tools = conversationHost.querySelector('.session-browser-list-tools');
   const focusedControl = tools.contains(document.activeElement) ? document.activeElement : null;
-  const bindings = view.creating ? view.creationBindings?.[environment] : undefined;
+  const chooseDraftDirectories = view.creating && !view.creatingYoluAssistant;
+  const bindings = chooseDraftDirectories ? view.creationBindings?.[environment] : undefined;
   openSessionHistoryPanel(session?.id || null, {
     session, environment, overview: conversationOverview(environment), browserTarget: targetKey, focusComposer:!!view.focusComposer,
     target: bindings?.length ? {...view.target, bindings} : view.target,
-    updateDraftBindings: view.creating ? bindings => {
+    draftTarget: view.creating ? view.draftTarget : undefined,
+    updateDraftBindings: chooseDraftDirectories ? bindings => {
       view.creationBindings = {...view.creationBindings,[environment]:bindings};
       window.dispatchEvent(new Event('workhub:chat-draft'));
     } : undefined,
@@ -704,7 +707,7 @@ function showConversationSelection() {
       window.dispatchEvent(new CustomEvent('workhub:session-loaded'));
     },
     created(created) {
-      if (created.provider !== 'codex-cloud') window.WorkHubUI.recordCreationDirectory(view.creationDirectory, created.id);
+      if (chooseDraftDirectories && created.provider !== 'codex-cloud') window.WorkHubUI.recordCreationDirectory(view.creationDirectory, created.id);
       conversationRequests.invalidate(environment);
       created = conversationTaggedSession(created, environment);
       conversationState.record(environment, [created]);
@@ -794,7 +797,6 @@ function syncConversations() {
 function conversationCreationDirectories(view) {
   const dirs = [];
   for (const entry of conversationEnvironments()) {
-    if (view.creatingYoluAssistant && entry.id !== 'local') continue;
     if (view.environmentFilter && entry.id !== view.environmentFilter || view.scope.environment && entry.id !== view.scope.environment) continue;
     const projects = window.WorkHubUI.mainCreationProjects(conversationOverview(entry.id).projects);
     for (const project of projects) {
@@ -811,7 +813,7 @@ function conversationCreationDirectories(view) {
   for (const directory of view.creationLocalDirectories || []) {
     if (!dirs.some(item => item.environment === directory.environment && conversationPathKey(item.cwd) === conversationPathKey(directory.cwd))) dirs.push(directory);
   }
-  dirs.unshift({key:'', cwd:'', environment:view.creatingYoluAssistant ? 'local' : conversationScopeEnvironment(view.scope) || view.environmentFilter || view.environment, name:uiText("默认目录（无需项目）"), branch:'', label:uiText("默认目录（无需项目）"), target:{}});
+  dirs.unshift({key:'', cwd:'', environment:conversationScopeEnvironment(view.scope) || view.environmentFilter || view.environment, name:uiText("默认目录（无需项目）"), branch:'', label:uiText("默认目录（无需项目）"), target:{}});
   return dirs;
 }
 function focusConversationCreationInput() {
@@ -819,7 +821,7 @@ function focusConversationCreationInput() {
 }
 async function chooseConversationCreationFolder() {
   const view = conversationState.current;
-  if (!view?.creating) return;
+  if (!view?.creating || view.creatingYoluAssistant) return;
   const result = await api('/api/dialogs/directory', {environment:'local', method:'POST', body:'{}'});
   if (!result.path || conversationState.current !== view || !view.creating) return;
   const directory = {key:conversationEnvironmentKey('local',conversationPathKey(result.path)), cwd:result.path, environment:'local', name:result.path.split(/[\\/]/).filter(Boolean).at(-1) || result.path, branch:'', label:result.path.split(/[\\/]/).filter(Boolean).at(-1) || result.path, target:{cwd:result.path}};
@@ -846,7 +848,7 @@ async function chooseConversationCreationFolder() {
 }
 function selectConversationCreationDirectory(view, directory) {
   view.creationDirectory = directory?.key || '';
-  view.target = view.creatingYoluAssistant ? {...directory?.target,yolu_assistant:true} : directory?.target || {};
+  view.target = directory?.target || {};
   view.targetEnvironment = directory?.environment;
   const attached = view.creationBindings?.[view.targetEnvironment];
   if (directory?.cwd && attached) {
@@ -878,11 +880,25 @@ function startBrowserConversation(focus = true, restore = false, creatingYoluAss
   if (sessionReadOnly) return;
   const view = conversationState.current;
   if (!restore) view.creatingYoluAssistant = creatingYoluAssistant;
-  const directory = defaultConversationDirectory(view);
   window.WorkHubUI.resetCreationChoices($('#sessionBrowserDirectoryChoices'));
   view.creating = true; view.selected = null; view.pane = 'detail';
   if (!restore) view.creationBindings = {};
-  selectConversationCreationDirectory(view, directory);
+  view.draftTarget = undefined;
+  if (view.creatingYoluAssistant) {
+    // Prepare the new default while retaining the text and attachments of older drafts.
+    if (restore && view.creationDirectory) {
+      const saved = view.creationLocalDirectories?.find(item => item.key === view.creationDirectory);
+      const project = conversationOverview('local').projects.find(item => conversationPathKey(item.path) === view.creationDirectory);
+      view.draftTarget = saved?.target || {project_id:project?.id,cwd:project?.path || view.creationDirectory};
+    } else {
+      view.creationDirectory = '';
+    }
+    view.creationBindings = {};
+    view.target = {yolu_assistant:true};
+    view.targetEnvironment = 'local';
+  } else {
+    selectConversationCreationDirectory(view, defaultConversationDirectory(view));
+  }
   view.focusComposer = focus;
   conversationState.selection++;
   closeSessionHistory(false);
@@ -1065,7 +1081,7 @@ if (typeof ResizeObserver !== 'undefined') {
   window.addEventListener('pagehide', () => pickerResize.disconnect());
 }
 $('#sessionBrowserNewDirectory').addEventListener('change', event => {
-  if (!conversationState.current?.creating) return;
+  if (!conversationState.current?.creating || conversationState.current.creatingYoluAssistant) return;
   const directory = conversationCreationDirectories(conversationState.current).find(d => d.key === event.target.value);
   selectConversationCreationDirectory(conversationState.current, directory);
   if (directory?.key) window.WorkHubUI.conversationDefaults.set(conversationDirectoryPreference(conversationState.current), directory.key);

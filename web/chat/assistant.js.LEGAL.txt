@@ -124,7 +124,6 @@ lucide-react/dist/esm/icons/maximize-2.mjs:
 lucide-react/dist/esm/icons/mic.mjs:
 lucide-react/dist/esm/icons/minimize-2.mjs:
 lucide-react/dist/esm/icons/minus.mjs:
-lucide-react/dist/esm/icons/orbit.mjs:
 lucide-react/dist/esm/icons/palette.mjs:
 lucide-react/dist/esm/icons/pause.mjs:
 lucide-react/dist/esm/icons/pencil.mjs:
@@ -139,7 +138,6 @@ lucide-react/dist/esm/icons/shield-alert.mjs:
 lucide-react/dist/esm/icons/shield-check.mjs:
 lucide-react/dist/esm/icons/shield-question-mark.mjs:
 lucide-react/dist/esm/icons/shield.mjs:
-lucide-react/dist/esm/icons/square-terminal.mjs:
 lucide-react/dist/esm/icons/square.mjs:
 lucide-react/dist/esm/icons/terminal.mjs:
 lucide-react/dist/esm/icons/text-wrap.mjs:

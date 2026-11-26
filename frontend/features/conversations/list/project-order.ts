@@ -2,7 +2,13 @@ import {uiText} from "@/shared/i18n"
 import type {ConversationGroup} from "./tree"
 
 const signalKey = "workhub:conversation-project-order:v1"
-const gripSelector = "[data-project-reorder]"
+const titleSelector = "[data-project-reorder]"
+const projectSelector = '[data-collection="project"]'
+const dragThreshold = 6
+const scrollEdge = 32
+
+type DropTarget = {section: HTMLElement; key: string; after: boolean}
+type Point = Pick<PointerEvent, "clientX" | "clientY">
 
 function readOrder(saved: string | null) {
   try {
@@ -46,10 +52,6 @@ export function createConversationProjectOrdering({list, status, initialOrder, g
     })
   }
 
-  const openGrip = () => list.querySelector<HTMLButtonElement>(`${gripSelector}[aria-expanded="true"]`)
-  function closeControls() {
-    openGrip()?.setAttribute("aria-expanded", "false")
-  }
   function move(source: string, target: string, after: boolean, restoreFocus = false) {
     const {order, visible} = groups()
     const from = visible.findIndex(group => group.key === source)
@@ -69,88 +71,116 @@ export function createConversationProjectOrdering({list, status, initialOrder, g
     status.textContent = uiText("已将 {0} 移到第 {1} 个项目位置", visible[from].name, position + 1)
   }
 
-  list.ownerDocument.addEventListener("click", event => {
-    const target = event.target as HTMLElement
-    const grip = target.closest<HTMLButtonElement>(gripSelector)
-    const control = target.closest<HTMLButtonElement>("[data-project-move]")
-    const open = openGrip()
-    if (grip && list.contains(grip)) {
-      closeControls()
-      if (open !== grip) grip.setAttribute("aria-expanded", "true")
-    } else if (control && list.contains(control)) {
-      const source = control.closest<HTMLElement>("[data-conversation-group]")?.dataset.conversationGroup
-      const {visible} = groups()
-      const direction = Number(control.dataset.projectMove)
-      const index = visible.findIndex(group => group.key === source)
-      const adjacent = index >= 0 && visible[index + direction]
-      closeControls()
-      if (source && adjacent) move(source, adjacent.key, direction > 0, true)
-    } else {
-      closeControls()
-    }
-  })
   list.addEventListener("keydown", event => {
-    const grip = openGrip()
-    if (event.key !== "Escape" || !grip) return
-    closeControls()
-    grip.focus()
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return
+    const title = (event.target as HTMLElement).closest<HTMLElement>(titleSelector)
+    const key = title?.dataset.conversationGroupToggle
+    if (!key) return
     event.preventDefault()
-    event.stopPropagation()
+    const {visible} = groups()
+    const index = visible.findIndex(group => group.key === key)
+    const down = event.key === "ArrowDown"
+    const adjacent = index >= 0 && visible[index + (down ? 1 : -1)]
+    if (adjacent) move(key, adjacent.key, down, true)
   })
 
-  let source: HTMLElement | undefined
-  let destination: HTMLElement | undefined
-  const projectSection = (element: EventTarget | null) => (element as HTMLElement | null)?.closest<HTMLElement>('[data-collection="project"]')
-  function clearDropTarget() {
-    destination?.removeAttribute("data-project-drop")
-    destination = undefined
+  let drag: {pointerId: number; key: string; section: HTMLElement; point: Point; started: boolean} | undefined
+  let destination: DropTarget | undefined
+  let scrollFrame = 0
+  let suppressClick = false
+  list.addEventListener("click", event => {
+    if (!suppressClick || event.detail === 0) return
+    suppressClick = false
+    event.preventDefault()
+    event.stopPropagation()
+  }, true)
+  function showDropTarget(target?: DropTarget) {
+    if (target?.section === destination?.section && target?.after === destination?.after) return
+    destination?.section.removeAttribute("data-project-drop")
+    destination = target
+    if (target) target.section.dataset.projectDrop = target.after ? "after" : "before"
+  }
+  function dropTarget({clientX, clientY}: Point, source: string): DropTarget | undefined {
+    const {left, right, top, bottom} = list.getBoundingClientRect()
+    if (clientX < left || clientX >= right || clientY < top || clientY >= bottom) return
+    const hit = list.ownerDocument.elementFromPoint?.(clientX, clientY)
+    if (hit && (!list.contains(hit) || hit.closest(`.session-browser-group:not(${projectSelector})`))) return
+    const projects = [...list.querySelectorAll<HTMLElement>(projectSelector)]
+    // Each group owns half of the space above and below its midpoint. This
+    // includes the gaps and the blank list area after the final project.
+    const next = projects.findIndex(section => {
+      const bounds = section.getBoundingClientRect()
+      return clientY < bounds.top + bounds.height / 2
+    })
+    const after = next < 0
+    const section = after ? projects.at(-1) : projects[next]
+    const key = section?.dataset.conversationGroup
+    if (!section || !key || key === source || (!after && projects[next - 1]?.dataset.conversationGroup === source)) return
+    return {section, key, after}
+  }
+  function scrollNearEdge() {
+    scrollFrame = 0
+    if (!drag?.started) return
+    const {clientX, clientY} = drag.point
+    const {left, right, top, bottom} = list.getBoundingClientRect()
+    if (clientX < left || clientX >= right || clientY < top || clientY >= bottom) return
+    const offset = Math.max(0, scrollEdge - (bottom - clientY)) - Math.max(0, scrollEdge - (clientY - top))
+    const previous = list.scrollTop
+    list.scrollTop += Math.round(offset / 3)
+    if (list.scrollTop !== previous) scrollFrame = window.requestAnimationFrame(scrollNearEdge)
   }
   function endDrag() {
-    source?.removeAttribute("data-project-dragging")
-    source = undefined
-    clearDropTarget()
+    if (!drag) return
+    const current = drag
+    drag = undefined
+    current.section.removeAttribute("data-project-dragging")
+    showDropTarget()
+    window.cancelAnimationFrame(scrollFrame)
+    scrollFrame = 0
+    if (list.hasPointerCapture?.(current.pointerId)) list.releasePointerCapture(current.pointerId)
   }
-  list.addEventListener("dragstart", event => {
-    const grip = (event.target as HTMLElement).closest(gripSelector)
-    const section = grip && projectSection(grip)
-    if (!section?.dataset.conversationGroup || !event.dataTransfer) return
+  list.addEventListener("pointerdown", event => {
+    if (event.button !== 0 || drag) return
+    suppressClick = false
+    const title = (event.target as Element).closest(titleSelector)
+    const section = title?.closest<HTMLElement>(projectSelector)
+    const key = section?.dataset.conversationGroup
+    if (section && key) drag = {pointerId: event.pointerId, key, section, point: event, started: false}
+  })
+  window.addEventListener("pointermove", event => {
+    if (!drag || event.pointerId !== drag.pointerId) return
+    if (!drag.started) {
+      if (Math.hypot(event.clientX - drag.point.clientX, event.clientY - drag.point.clientY) < dragThreshold) return
+      drag.started = true
+      suppressClick = true
+      drag.section.setAttribute("data-project-dragging", "")
+      list.setPointerCapture?.(event.pointerId)
+    }
+    drag.point = event
+    showDropTarget(dropTarget(event, drag.key))
+    if (!scrollFrame) scrollFrame = window.requestAnimationFrame(scrollNearEdge)
+  })
+  list.addEventListener("scroll", () => {
+    if (drag?.started) showDropTarget(dropTarget(drag.point, drag.key))
+  })
+  window.addEventListener("pointerup", event => {
+    if (!drag || event.pointerId !== drag.pointerId) return
+    const {key, started} = drag
+    const target = started ? dropTarget(event, key) : undefined
     endDrag()
-    closeControls()
-    source = section
-    source.setAttribute("data-project-dragging", "")
-    event.dataTransfer.effectAllowed = "move"
-    event.dataTransfer.setData("application/x-yolu-project-group", section.dataset.conversationGroup)
+    if (target) move(key, target.key, target.after)
   })
-  function dropPosition(event: DragEvent, section: HTMLElement) {
-    const heading = section.querySelector(".session-collection-heading")
-    const bounds = (heading || section).getBoundingClientRect()
-    return event.clientY >= bounds.top + bounds.height / 2 ? "after" : "before"
-  }
-  list.addEventListener("dragover", event => {
-    if (!source) return
-    const section = projectSection(event.target)
-    if (section !== destination) clearDropTarget()
-    if (!section || section.dataset.conversationGroup === source.dataset.conversationGroup || !event.dataTransfer) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = "move"
-    destination = section
-    section.dataset.projectDrop = dropPosition(event, section)
+  window.addEventListener("pointercancel", event => {
+    if (event.pointerId === drag?.pointerId) endDrag()
   })
-  list.addEventListener("dragleave", event => {
-    if (destination && !destination.contains(event.relatedTarget as Node | null) && projectSection(event.target) === destination) clearDropTarget()
+  list.addEventListener("lostpointercapture", event => {
+    if (event.target === list && event.pointerId === drag?.pointerId) endDrag()
   })
-  list.addEventListener("drop", event => {
-    if (!source) return
-    const key = source.dataset.conversationGroup
-    const section = projectSection(event.target)
-    const target = section?.dataset.conversationGroup
-    endDrag()
-    if (!section || !key || !target) return
-    event.preventDefault()
-    move(key, target, dropPosition(event, section) === "after")
+  window.addEventListener("keydown", event => {
+    if (event.key === "Escape") endDrag()
   })
-  window.addEventListener("dragend", endDrag)
-  window.addEventListener("drop", endDrag)
+  window.addEventListener("blur", endDrag)
+  window.addEventListener("pagehide", endDrag)
 
   return { get order() { return saved } }
 }

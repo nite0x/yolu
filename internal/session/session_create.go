@@ -53,7 +53,7 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 		if errors.As(err, &failure) {
 			logger.Warn("Conversation creation failed", "code", failure.code, "status", failure.status)
 			if failure.code == "directory_conflict" {
-				writeBindingConflict(w, failure.conflicts)
+				writeBindingConflict(w, failure.conflict)
 			} else if failure.status == 500 {
 				httpx.DbError(w, failure.cause)
 			} else {
