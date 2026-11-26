@@ -98,7 +98,7 @@ func (s *Service) Close() error {
 		s.Mu.Lock()
 		defer s.Mu.Unlock()
 		if s.Store != nil {
-			s.closeErr = s.Store.DB.Close()
+			s.closeErr = s.Store.Close()
 		}
 	})
 	return s.closeErr

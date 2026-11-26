@@ -72,7 +72,7 @@ func (a *App) projectInventoryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		projects, err := s.Projects()
 		if app == nil {
-			_ = s.DB.Close()
+			_ = s.Close()
 		}
 		if err != nil {
 			if e.ID == "local" {

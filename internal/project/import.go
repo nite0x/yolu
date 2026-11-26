@@ -105,8 +105,7 @@ func (a *Service) importProject(ctx context.Context, input projectImportInput) (
 	if common != input.CommonDir {
 		return "", false, fmt.Errorf("仓库位置已变化，请重新扫描")
 	}
-	var id string
-	err = a.Execution.Store.DB.QueryRowContext(ctx, `SELECT id FROM projects WHERE common_dir=?`, common).Scan(&id)
+	id, err := a.Execution.Store.ProjectIDForRepository(ctx, common)
 	if err == nil {
 		return id, true, nil
 	}

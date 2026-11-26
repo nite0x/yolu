@@ -237,8 +237,7 @@ func (a *Service) ChatSteerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := json.Marshal(input)
 	fingerprint := fmt.Sprintf("%x", sha256.Sum256(raw))
-	var previous, status string
-	err := a.Execution.Store.DB.QueryRow(`SELECT fingerprint,status FROM conversation_input_requests WHERE session_id=? AND request_id=?`, record.ID, input.RequestID).Scan(&previous, &status)
+	previous, status, err := a.Execution.Store.InputReceipt(r.Context(), record.ID, input.RequestID)
 	run := a.ChatFor(record.ID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		httpx.DbError(w, err)
@@ -276,7 +275,7 @@ func (a *Service) ChatSteerHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 409, "对话仍在连接，请稍后发送")
 		return
 	}
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_input_requests(session_id,request_id,fingerprint,status) VALUES(?,?,?,'pending')`, record.ID, input.RequestID, fingerprint); err != nil {
+	if err := a.Execution.Store.ReserveInput(r.Context(), record.ID, input.RequestID, fingerprint); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
@@ -289,7 +288,7 @@ func (a *Service) ChatSteerHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 409, "补充消息未确认，请检查历史后再操作；草稿已保留")
 		return
 	}
-	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_input_requests SET status='accepted' WHERE session_id=? AND request_id=?`, record.ID, input.RequestID); err != nil {
+	if err := a.Execution.Store.AcceptInput(context.WithoutCancel(r.Context()), record.ID, input.RequestID); err != nil {
 		httpx.DbError(w, err)
 		return
 	}

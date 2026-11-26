@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 
 	"worktree-hub/internal/model"
@@ -41,7 +42,7 @@ func (s *Store) SaveCodexCloudSession(session model.Session, cloud CodexCloudSes
 	if err := saveCodexCloudLink(tx, session.ID, cloud); err != nil {
 		return err
 	}
-	if err := MustAffected(tx.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, session.ID, request)); err != nil {
+	if err := completeCreation(context.Background(), tx, request, session.ID); err != nil {
 		return err
 	}
 	return tx.Commit()

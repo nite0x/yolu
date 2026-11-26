@@ -27,8 +27,7 @@ func creationFingerprint(in CreateSessionInput) string {
 }
 
 func (a *Service) createdSessionID(ctx context.Context, key, fingerprint string) (string, error) {
-	var id, previous string
-	err := a.Execution.Store.DB.QueryRowContext(ctx, `SELECT session_id,fingerprint FROM conversation_create_requests WHERE request_id=?`, key).Scan(&id, &previous)
+	id, previous, err := a.Execution.Store.CreationReceipt(ctx, key)
 	if err != nil {
 		return "", err
 	}

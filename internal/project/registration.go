@@ -63,12 +63,11 @@ func (a *Service) registration(ctx context.Context, name, path, id string) (Regi
 	if folder == "" {
 		folder = "project-" + id[:6]
 	}
-	var exists int
-	err = a.Execution.Store.DB.QueryRowContext(ctx, `SELECT count(*) FROM projects WHERE common_dir=? OR name=? COLLATE NOCASE OR folder=? COLLATE NOCASE`, common, name, folder).Scan(&exists)
+	exists, err := a.Execution.Store.RegistrationExists(ctx, common, name, folder)
 	if err != nil {
 		return review, err
 	}
-	if exists > 0 {
+	if exists {
 		return review, &OperationError{Status: 409, Message: "仓库已登记，或项目名称/目录名重复，请使用不同的项目名称"}
 	}
 	review.Project = model.Project{ID: id, Name: name, Path: root, CommonDir: common, Folder: folder}
@@ -84,7 +83,7 @@ func (a *Service) ReviewRegistration(ctx context.Context, name, path string) (Re
 func (a *Service) insertRegistration(ctx context.Context, review RegistrationReview) (model.Project, error) {
 	p := review.Project
 	p.CreatedAt = model.Now()
-	_, err := a.Execution.Store.DB.ExecContext(ctx, `INSERT INTO projects(id,name,path,common_dir,folder,created_at) VALUES(?,?,?,?,?,?)`, p.ID, p.Name, p.Path, p.CommonDir, p.Folder, p.CreatedAt)
+	err := a.Execution.Store.InsertProject(ctx, p)
 	return p, err
 }
 
@@ -102,8 +101,7 @@ func (a *Service) RegisterProject(ctx context.Context, name, path string) (model
 }
 
 func (a *Service) reconcileRegistration(ctx context.Context, review RegistrationReview) (model.Project, bool, error) {
-	var p model.Project
-	err := a.Execution.Store.DB.QueryRowContext(ctx, `SELECT id,name,path,common_dir,folder,created_at FROM projects WHERE id=?`, review.Project.ID).Scan(&p.ID, &p.Name, &p.Path, &p.CommonDir, &p.Folder, &p.CreatedAt)
+	p, err := a.Execution.Store.Project(ctx, review.Project.ID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, false, nil
 	}

@@ -107,8 +107,7 @@ func (a *App) reserveWorktree(ctx context.Context, path string) (func(), error) 
 }
 
 func (a *App) customTerminalProfiles() ([]terminal.Profile, error) {
-	var raw string
-	err := a.Execution.Store.DB.QueryRow(`SELECT value FROM settings WHERE key='terminal_profiles:v1'`).Scan(&raw)
+	raw, err := a.Execution.Store.Setting(context.Background(), "terminal_profiles:v1")
 	if errors.Is(err, sql.ErrNoRows) {
 		return []terminal.Profile{}, nil
 	}
@@ -160,7 +159,7 @@ func (a *App) saveTerminalProfileHandler(w http.ResponseWriter, r *http.Request)
 		httpx.DbError(w, err)
 		return
 	}
-	if _, err = a.Execution.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('terminal_profiles:v1',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(raw)); err != nil {
+	if err = a.Execution.Store.SaveSetting(context.Background(), "terminal_profiles:v1", string(raw)); err != nil {
 		httpx.DbError(w, err)
 		return
 	}

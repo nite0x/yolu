@@ -60,13 +60,9 @@ func (a *Service) RegisteredProject(ctx context.Context, id string) (model.Proje
 
 // LookupProject validates the registered repository without starting a status cache.
 func LookupProject(ctx context.Context, environment *execution.Service, id string) (model.Project, error) {
-	ps, err := environment.Store.ProjectMap()
+	p, err := environment.Store.Project(ctx, id)
 	if err != nil {
 		return model.Project{}, err
-	}
-	p, ok := ps[id]
-	if !ok {
-		return model.Project{}, sql.ErrNoRows
 	}
 	common, err := execution.Git(ctx, p.Path, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {

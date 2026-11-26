@@ -176,6 +176,12 @@ func (s *Store) listSessions(filter string, args ...any) ([]model.Session, error
 }
 
 func (s *Store) SaveSessionDirectories(id string, directories []string) error {
+	return saveSessionDirectories(s.DB, id, directories)
+}
+
+func saveSessionDirectories(db interface {
+	Exec(string, ...any) (sql.Result, error)
+}, id string, directories []string) error {
 	if directories == nil {
 		directories = []string{}
 	}
@@ -183,7 +189,7 @@ func (s *Store) SaveSessionDirectories(id string, directories []string) error {
 	if err != nil {
 		return err
 	}
-	return MustAffected(s.DB.Exec(`UPDATE sessions SET additional_directories=? WHERE id=?`, string(raw), id))
+	return MustAffected(db.Exec(`UPDATE sessions SET additional_directories=? WHERE id=?`, string(raw), id))
 }
 
 func (s *Store) OrganizeSession(id string, pinned, archived bool) error {

@@ -580,7 +580,7 @@ func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.Launch
 	}
 	a.startSessionTitle(run, text)
 	if run.asyncRequest != "" {
-		if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_async_answers SET status='accepted' WHERE session_id=? AND request_id=?`, run.session, run.asyncRequest); err != nil {
+		if err := a.Execution.Store.AcceptAsyncAnswer(context.WithoutCancel(ctx), run.session, run.asyncRequest); err != nil {
 			fail(err.Error())
 			return
 		}

@@ -20,8 +20,7 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" {
-		var payload string
-		err := a.Execution.Store.DB.QueryRow(`SELECT payload FROM conversation_drafts WHERE key=?`, key).Scan(&payload)
+		payload, err := a.Execution.Store.Draft(r.Context(), key)
 		if errors.Is(err, sql.ErrNoRows) {
 			httpx.WriteJSON(w, 200, nil)
 			return
@@ -154,7 +153,7 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	raw, _ := json.Marshal(draft)
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_drafts(key,payload,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at WHERE excluded.updated_at>=conversation_drafts.updated_at`, key, string(raw), draft.Updated); err != nil {
+	if err := a.Execution.Store.SaveDraft(r.Context(), key, string(raw), draft.Updated); err != nil {
 		httpx.DbError(w, err)
 		return
 	}

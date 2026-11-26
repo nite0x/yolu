@@ -15,6 +15,7 @@ import (
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
+	"worktree-hub/internal/store"
 )
 
 // Async questions are agent messages, not outstanding JSON-RPC requests.
@@ -40,18 +41,22 @@ func asyncChatQuestions(questions []asyncUserInputQuestion) []ChatQuestion {
 }
 
 func (a *Service) decorateAsyncQuestions(session string, entries []HistoryEntry) error {
+	var statuses map[store.AsyncQuestionKey]string
 	for i := range entries {
 		e := &entries[i]
 		if e.Delivery != "async" || len(e.Questions) == 0 {
 			continue
 		}
-		var status string
-		err := a.Execution.Store.DB.QueryRow(`SELECT status FROM conversation_async_answers WHERE session_id=? AND item_id=? AND turn_id=?`, session, e.ID, e.TurnID).Scan(&status)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
+		if statuses == nil {
+			var err error
+			statuses, err = a.Execution.Store.AsyncAnswerStatuses(context.Background(), session)
+			if err != nil {
+				return err
+			}
 		}
-		e.QuestionStatus = status
+		e.QuestionStatus = statuses[store.AsyncQuestionKey{Item: e.ID, Turn: e.TurnID}]
 	}
+
 	return nil
 }
 
@@ -132,8 +137,8 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return ChatState{Status: "idle", Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}
 	}
-	var previous, status string
-	err := a.Execution.Store.DB.QueryRow(`SELECT fingerprint,status FROM conversation_async_answers WHERE session_id=? AND item_id=? AND turn_id=?`, record.ID, input.ItemID, input.TurnID).Scan(&previous, &status)
+	key := store.AsyncQuestionKey{Item: input.ItemID, Turn: input.TurnID}
+	previous, status, err := a.Execution.Store.AsyncAnswer(r.Context(), record.ID, key)
 	if err == nil {
 		if previous != fingerprint {
 			httpx.WriteError(w, 409, "此问询已提交其他回答，请刷新历史")
@@ -199,7 +204,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	if input.Decision == "decline" {
 		status = "skipped"
 	}
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_async_answers(session_id,item_id,turn_id,fingerprint,status,request_id) VALUES(?,?,?,?,?,?)`, record.ID, input.ItemID, input.TurnID, fingerprint, status, requestID); err != nil {
+	if err := a.Execution.Store.SaveAsyncAnswer(r.Context(), record.ID, key, requestID, fingerprint, status); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
@@ -226,7 +231,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, 409, "回答未确认，请检查历史后再操作；已保留你的选择")
 			return
 		}
-		if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_async_answers SET status='accepted' WHERE session_id=? AND request_id=?`, record.ID, requestID); err != nil {
+		if err := a.Execution.Store.AcceptAsyncAnswer(context.WithoutCancel(r.Context()), record.ID, requestID); err != nil {
 			httpx.DbError(w, err)
 			return
 		}
@@ -245,8 +250,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		case <-run.finished:
 			// Completion may race with the start acknowledgement. The durable
 			// receipt, rather than select ordering, determines delivery success.
-			var delivered string
-			if err := a.Execution.Store.DB.QueryRow(`SELECT status FROM conversation_async_answers WHERE session_id=? AND request_id=?`, record.ID, requestID).Scan(&delivered); err != nil || delivered != "accepted" {
+			if _, delivered, err := a.Execution.Store.AsyncAnswer(r.Context(), record.ID, key); err != nil || delivered != "accepted" {
 				httpx.WriteError(w, 409, "回答未确认："+run.snapshot().Error)
 				return
 			}

@@ -21,18 +21,10 @@ type resourceIcons struct {
 
 // Saved appearances survive the removal of pinned navigation. Read the legacy
 // preference only as a fallback; all new writes store resource appearance alone.
-func readResourceIcons(query func(string, ...any) *sql.Row, environment string) (resourceIcons, error) {
+func decodeResourceIcons(raw string) (resourceIcons, error) {
 	result := resourceIcons{Icons: map[string]resourceIcon{}}
-	var raw string
-	err := query(`SELECT value FROM settings WHERE key=?`, "resource_icons:"+environment).Scan(&raw)
-	if errors.Is(err, sql.ErrNoRows) {
-		err = query(`SELECT value FROM settings WHERE key=?`, "shortcut_pins:"+environment).Scan(&raw)
-	}
-	if errors.Is(err, sql.ErrNoRows) {
+	if raw == "" {
 		return result, nil
-	}
-	if err != nil {
-		return result, err
 	}
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return result, err
@@ -72,37 +64,35 @@ func (a *App) resourceIconsHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, 400, "资源图标无效")
 			return
 		}
-		tx, err := a.Execution.Store.DB.BeginTx(r.Context(), nil)
+		var result resourceIcons
+		err := a.Execution.Store.UpdateSetting(r.Context(), "resource_icons:"+environment, "shortcut_pins:"+environment, func(raw string) (string, error) {
+			var err error
+			result, err = decodeResourceIcons(raw)
+			if err != nil {
+				return "", err
+			}
+			result.Icons[input.ID] = input.Appearance
+			encoded, err := json.Marshal(result)
+			return string(encoded), err
+		})
 		if err != nil {
 			httpx.DbError(w, err)
 			return
 		}
-		defer tx.Rollback()
-		result, err := readResourceIcons(func(q string, args ...any) *sql.Row { return tx.QueryRowContext(r.Context(), q, args...) }, environment)
-		if err != nil {
-			httpx.DbError(w, err)
-			return
-		}
-		result.Icons[input.ID] = input.Appearance
-		raw, err := json.Marshal(result)
-		if err != nil {
-			httpx.DbError(w, err)
-			return
-		}
-		if _, err = tx.ExecContext(r.Context(), `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, "resource_icons:"+environment, string(raw)); err != nil {
-			httpx.DbError(w, err)
-			return
-		}
-		if err = tx.Commit(); err != nil {
-			httpx.DbError(w, err)
-			return
-		}
+
 		httpx.WriteJSON(w, 200, result)
 		return
 	}
-	result, err := readResourceIcons(func(q string, args ...any) *sql.Row {
-		return a.Execution.Store.DB.QueryRowContext(r.Context(), q, args...)
-	}, environment)
+	raw, err := a.Execution.Store.Setting(r.Context(), "resource_icons:"+environment)
+	if errors.Is(err, sql.ErrNoRows) {
+		raw, err = a.Execution.Store.Setting(r.Context(), "shortcut_pins:"+environment)
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		httpx.DbError(w, err)
+		return
+	}
+	result, err := decodeResourceIcons(raw)
+
 	if err != nil {
 		httpx.DbError(w, err)
 		return

@@ -32,7 +32,7 @@ func (a *Service) startACPSession(startup context.Context, provider, key, finger
 			cancel()
 		}
 	}()
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
+	if err := a.Execution.Store.ReserveCreation(ctx, key, fingerprint); err != nil {
 		return nil, 500, err
 	}
 	requestCtx, end := context.WithTimeout(ctx, 20*time.Second)
@@ -77,16 +77,7 @@ func (a *Service) startACPSession(startup context.Context, provider, key, finger
 		UpdatedAt:   now,
 		Source:      "workbench",
 	}
-	err = a.Execution.Store.SaveSessionWithBindings(rec, execution.bindings)
-	if err != nil {
-		return nil, 500, err
-	}
-	if name != "" {
-		if err := a.Execution.Store.SetSessionTitle(rec.ID, name, "initial"); err != nil {
-			return nil, 500, err
-		}
-	}
-	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, rec.ID, key); err != nil {
+	if err := a.Execution.Store.SaveCreatedSession(ctx, key, rec, execution.bindings); err != nil {
 		return nil, 500, err
 	}
 	run := &ChatRun{

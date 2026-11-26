@@ -259,7 +259,7 @@ func (a *Service) neutralDirectory(ctx context.Context, key string) (string, err
 const managedDirectoryInstructions = "修改前请阅读实际工作目录中的 AGENTS.md，并在对应目录运行 Git、构建和测试。"
 
 func (a *Service) resolveCreation(ctx context.Context, target SessionTarget, key string) (executionContext, error) {
-	var out executionContext
+	out := executionContext{bindings: []model.SessionProjectBinding{}}
 	if len(target.Bindings) > maxSessionBindings {
 		return out, invalidSessionTarget("对话关联目录数量已达上限")
 	}

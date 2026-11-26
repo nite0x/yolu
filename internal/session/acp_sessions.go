@@ -386,7 +386,7 @@ func (a *Service) DriveACPChat(ctx context.Context, run *ChatRun, plan model.Lau
 			}
 			drain.Stop()
 			now := time.Now().Unix()
-			_, _ = a.Execution.Store.DB.Exec(`UPDATE sessions SET updated_at=? WHERE id=?`, now, run.session)
+			_ = a.Execution.Store.TouchSession(ctx, run.session, now)
 			run.change(func(s *ChatState) {
 				s.Busy = false
 				s.Approvals = []ChatApproval{}

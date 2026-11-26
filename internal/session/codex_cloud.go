@@ -76,7 +76,7 @@ func (a *Service) createCloudSession(ctx context.Context, key, fingerprint strin
 	if environment.ID == "" {
 		return CreationResult{}, creationFailure(409, "", "所选 Codex Cloud 环境已不可用，请刷新列表")
 	}
-	if _, err := a.Execution.Store.DB.ExecContext(ctx, `INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
+	if err := a.Execution.Store.ReserveCreation(ctx, key, fingerprint); err != nil {
 		return CreationResult{}, creationStorageFailure(err)
 	}
 	thread, err := client.Start(ctx, environment.ID)
@@ -108,8 +108,7 @@ func (a *Service) cloudChatStart(w http.ResponseWriter, r *http.Request, record 
 	}
 	// Never replay a request after its in-memory run was evicted or after a
 	// restart. Admission may already have happened even without a receipt.
-	var fingerprint string
-	err := a.Execution.Store.DB.QueryRowContext(r.Context(), `SELECT fingerprint FROM conversation_input_requests WHERE session_id=? AND request_id=?`, record.ID, key).Scan(&fingerprint)
+	fingerprint, _, err := a.Execution.Store.InputReceipt(r.Context(), record.ID, key)
 	if err == nil {
 		if fingerprint != cloudMessageFingerprint(text) {
 			httpx.WriteError(w, 409, "发送标识已用于其他消息")
@@ -146,7 +145,7 @@ func (a *Service) launchCloudTurn(record model.Session, thread store.CodexCloudS
 	if a.chatsClosing {
 		return errors.New("Yolu 正在退出，请重新打开后继续云端对话")
 	}
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_input_requests(session_id,request_id,fingerprint,status) VALUES(?,?,?,'pending')`, record.ID, requestID, cloudMessageFingerprint(text)); err != nil {
+	if err := a.Execution.Store.ReserveInput(context.Background(), record.ID, requestID, cloudMessageFingerprint(text)); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -179,7 +178,7 @@ func (a *Service) driveCloudTurn(ctx context.Context, run *ChatRun, client *code
 		})
 		return
 	}
-	_, _ = a.Execution.Store.DB.ExecContext(ctx, `UPDATE sessions SET updated_at=? WHERE id=?`, time.Now().Unix(), run.session)
+	_ = a.Execution.Store.TouchSession(ctx, run.session, time.Now().Unix())
 	run.change(func(s *ChatState) {
 		s.TurnID, s.Status = turn, "running"
 	})

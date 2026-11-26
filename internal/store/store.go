@@ -14,6 +14,8 @@ import (
 
 type Store struct{ DB *sql.DB }
 
+func (s *Store) Close() error { return s.DB.Close() }
+
 // OpenReadOnly reads saved environment metadata without running migrations or
 // starting its execution environment.
 func OpenReadOnly(dataDir string) (*Store, error) {

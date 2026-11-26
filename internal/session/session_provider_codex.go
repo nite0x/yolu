@@ -59,7 +59,7 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 	if execution.instructions != "" && !plan.YoluAssistant {
 		params["developerInstructions"] = codexDirectoryInstructions(execution.instructions) + "\n" + chatQuestionInstructions
 	}
-	if _, err := a.Execution.Store.DB.ExecContext(requestCtx, `INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
+	if err := a.Execution.Store.ReserveCreation(requestCtx, key, fingerprint); err != nil {
 		return nil, 500, err
 	}
 	if err := requestCtx.Err(); err != nil {
@@ -99,22 +99,17 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 		s.CreatedAt = time.Now().Unix()
 	}
 	s.UpdatedAt = s.CreatedAt
-	err = a.Execution.Store.SaveSessionWithBindings(model.Session{
+	record := model.Session{
 		ID: s.ID, Name: s.Name, Cwd: s.Cwd, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Source: "workbench", Permission: input.Settings.Permission, YoluAssistant: plan.YoluAssistant,
-	}, execution.bindings)
-	if err != nil {
+	}
+	if initialTitle {
+		record.TitleSource = "initial"
+	}
+	if err := a.Execution.Store.SaveCreatedSession(ctx, key, record, execution.bindings); err != nil {
 		return nil, 500, err
 	}
 	plan.Bindings, err = a.Execution.Store.SessionBindings(s.ID)
 	if err != nil {
-		return nil, 500, err
-	}
-	if initialTitle {
-		if err := a.Execution.Store.SetSessionTitle(s.ID, s.Name, "initial"); err != nil {
-			return nil, 500, err
-		}
-	}
-	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, s.ID, key); err != nil {
 		return nil, 500, err
 	}
 	run := &ChatRun{session: s.ID, cwd: s.Cwd, created: &s, client: c, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}, Notice: titleNotice}}
