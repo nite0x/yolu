@@ -11,6 +11,8 @@ export function HelpTip({ id, label, children }: { id: string; label: string; ch
 }
 
 export function setupHelpTips(root: HTMLElement) {
+  const listeners = new AbortController()
+  const options = {signal: listeners.signal}
   let active: HTMLElement | null = null
   let dismissed: Element | null = null
   let closeTimer = 0
@@ -37,34 +39,31 @@ export function setupHelpTips(root: HTMLElement) {
     tip.style.top = `${anchor.bottom + bounds.height + 8 < window.innerHeight ? anchor.bottom + 4 : Math.max(8, anchor.top - bounds.height - 4)}px`
   }
   const wrapper = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>(".help-tip") : null
-  root.addEventListener("pointerover", event => { const tip = wrapper(event.target); if (tip) open(tip) })
+  root.addEventListener("pointerover", event => { const tip = wrapper(event.target); if (tip) open(tip) }, options)
   root.addEventListener("pointerout", event => {
     const tip = wrapper(event.target)
     if (tip && !tip.contains(event.relatedTarget as Node | null)) {
       dismissed = null
       if (!tip.contains(document.activeElement)) closeTimer = window.setTimeout(close, 120)
     }
-  })
-  root.addEventListener("focusin", event => { const tip = wrapper(event.target); if (tip) open(tip) })
+  }, options)
+  root.addEventListener("focusin", event => { const tip = wrapper(event.target); if (tip) open(tip) }, options)
   root.addEventListener("focusout", event => {
     const tip = wrapper(event.target)
     if (tip && !tip.contains(event.relatedTarget as Node | null)) { dismissed = null; close() }
-  })
+  }, options)
   root.addEventListener("click", event => {
     const tip = wrapper(event.target)
     if (tip) { dismissed = null; open(tip) }
     else close()
-  })
+  }, options)
   const escape = (event: KeyboardEvent) => { if (event.key === "Escape" && active) { dismissed = active; close() } }
   const outside = (event: PointerEvent) => { if (active && !active.contains(event.target as Node)) close() }
-  document.addEventListener("keydown", escape)
-  document.addEventListener("pointerdown", outside)
-  root.addEventListener("scroll", close, true)
-  window.addEventListener("resize", close)
-  window.addEventListener("pagehide", () => {
-    close()
-    document.removeEventListener("keydown", escape)
-    document.removeEventListener("pointerdown", outside)
-    window.removeEventListener("resize", close)
-  }, { once: true })
+  document.addEventListener("keydown", escape, options)
+  document.addEventListener("pointerdown", outside, options)
+  root.addEventListener("scroll", close, {...options, capture: true})
+  window.addEventListener("resize", close, options)
+  const dispose = () => { close(); listeners.abort() }
+  window.addEventListener("pagehide", dispose, {...options, once: true})
+  return dispose
 }

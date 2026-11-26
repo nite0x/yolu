@@ -2,7 +2,9 @@ import {Badge} from "@/shared/ui/primitives/badge"
 import {uiText, uiLocale} from "@/shared/i18n"
 import {Button} from "@/shared/ui/primitives/button"
 import {NativeSelectOptGroup} from "@/shared/ui/primitives/native-select"
-import {Action, Option, StatusBadge} from "@/shared/ui/patterns"
+import {Action} from "@/shared/ui/actions/button"
+import {NativeSelectOption as Option} from "@/shared/ui/primitives/native-select"
+import {StatusBadge} from "@/shared/ui/data-display/status-badge"
 import {ChevronDown, CodeXml, FolderOpen, Terminal} from "lucide-react"
 import type {ReactNode} from "react"
 import type {GitOverview, Worktree} from "./model"
@@ -11,13 +13,13 @@ export function Branch({ children }: { children?: ReactNode }) {
   return <Badge variant="outline" className="branch rounded-md border-border bg-muted font-mono text-xs font-normal text-foreground">{children || "detached HEAD"}</Badge>
 }
 export function TreeStatus({ tree: t, pending = false, compact = false }: { tree?: Worktree; pending?: boolean; compact?: boolean }) {
-  if (!t) return <StatusBadge kind={pending ? "neutral" : "failed"}>{pending ? uiText("正在发现目录") : uiText("目录未发现")}</StatusBadge>
-  if (t.missing) return <StatusBadge kind="failed">{uiText("目录丢失")}</StatusBadge>
-  if (t.error) return <StatusBadge kind="failed">{uiText("读取失败")}</StatusBadge>
-  if (t.bare) return <StatusBadge kind="warning">{uiText("裸仓库")}</StatusBadge>
-  if (t.prunable) return <StatusBadge kind="warning">{uiText("待修复登记")}</StatusBadge>
-  if (!t.status_updated_at) return <StatusBadge kind="neutral">{uiText("正在检查")}</StatusBadge>
-  return <><StatusBadge kind={t.dirty ? "warning" : "neutral"}>{t.dirty ? uiText("{0} 项改动", t.dirty) : uiText("无未提交改动")}</StatusBadge>{!compact ? <div className="comparison status-checked-at">{uiText("上次检查")} <time data-status-path={t.path} dateTime={t.status_updated_at}>{new Date(t.status_updated_at).toLocaleTimeString(uiLocale(), { hour12: false })}</time></div> : null}</>
+  if (!t) return <StatusBadge tone={pending ? "neutral" : "error"}>{pending ? uiText("正在发现目录") : uiText("目录未发现")}</StatusBadge>
+  if (t.missing) return <StatusBadge tone="error">{uiText("目录丢失")}</StatusBadge>
+  if (t.error) return <StatusBadge tone="error">{uiText("读取失败")}</StatusBadge>
+  if (t.bare) return <StatusBadge tone="warning">{uiText("裸仓库")}</StatusBadge>
+  if (t.prunable) return <StatusBadge tone="warning">{uiText("待修复登记")}</StatusBadge>
+  if (!t.status_updated_at) return <StatusBadge tone="neutral">{uiText("正在检查")}</StatusBadge>
+  return <><StatusBadge tone={t.dirty ? "warning" : "neutral"}>{t.dirty ? uiText("{0} 项改动", t.dirty) : uiText("无未提交改动")}</StatusBadge>{!compact ? <div className="comparison status-checked-at">{uiText("上次检查")} <time data-status-path={t.path} dateTime={t.status_updated_at}>{new Date(t.status_updated_at).toLocaleTimeString(uiLocale(), { hour12: false })}</time></div> : null}</>
 }
 
 export type ProjectOpenTool = "vscode" | "idea" | "terminal"

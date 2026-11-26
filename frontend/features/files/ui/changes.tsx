@@ -1,7 +1,7 @@
 import {uiText} from "@/shared/i18n"
 import {Layers} from "lucide-react"
 import {Button} from "@/shared/ui/primitives/button"
-import {ModalHeader} from "@/shared/ui/patterns"
+import {ModalHeader} from "@/shared/ui/layout/dialog"
 
 
 

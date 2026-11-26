@@ -1,6 +1,7 @@
 import {uiText} from "@/shared/i18n"
 import {useEffect, useRef, useState} from "react"
-import {createRoot, type Root} from "react-dom/client"
+import type {Root} from "react-dom/client"
+import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {flushSync} from "react-dom"
 import {Command} from "cmdk"
 import {DropdownMenu, Popover} from "radix-ui"
@@ -8,13 +9,21 @@ import {Check, ChevronDown, ChevronsUpDown, Ellipsis, Search} from "lucide-react
 import {Toaster, toast} from "sonner"
 import {Button} from "@/shared/ui/primitives/button"
 
+const menuKeys = new WeakMap<Element, number>()
+let nextMenuKey = 0
+function menuKey(node: Element) {
+  let key = menuKeys.get(node)
+  if (key === undefined) { key = ++nextMenuKey; menuKeys.set(node, key) }
+  return key
+}
+
 type Choice = { value: string; label: string; group: string; disabled: boolean }
 type SelectModel = { label: string; value: string; disabled: boolean; hidden: boolean; required: boolean; description?: string; choices: Choice[] }
 type Mounted = { host: HTMLElement; root: Root; signature: string; dispose?: () => void }
 
 function selectModel(source: HTMLSelectElement): SelectModel {
   const label = source.labels?.[0]?.cloneNode(true) as HTMLElement | undefined
-  label?.querySelectorAll("select,input,button,.ui-select-host").forEach(node => node.remove())
+  label?.querySelectorAll("select,input,button,.ui-select-host").forEach(node => { node.remove() })
   return {
     label: source.getAttribute("aria-label") || label?.textContent?.replace(/\s*\*\s*$/, "").trim() || uiText("选择选项"),
     value: source.value,
@@ -54,8 +63,8 @@ function SearchableSelect({ source, model }: { source: HTMLSelectElement; model:
           <div className="ui-command-search"><Search aria-hidden="true" /><Command.Input placeholder={uiText("搜索{0}…", model.label)} aria-label={uiText("搜索{0}", model.label)} /></div>
           <Command.List><Command.Empty>{uiText("没有匹配的选项")}</Command.Empty>
             {groups.map(group => <Command.Group key={group} heading={group || undefined}>
-              {model.choices.filter(choice => choice.group === group).map((choice, index) => <Command.Item
-                key={`${choice.value}:${index}`} value={`${choice.label} ${choice.value}`} disabled={choice.disabled}
+              {model.choices.filter(choice => choice.group === group).map(choice => <Command.Item
+                key={choice.value} value={`${choice.label} ${choice.value}`} disabled={choice.disabled}
                 onSelect={() => { if (source.matches(":disabled")) return; source.value = choice.value; setInvalid(false); setOpen(false); source.dispatchEvent(new Event("change", { bubbles: true })); }}>
                 <Check aria-hidden="true" className={model.value === choice.value ? "" : "ui-check-hidden"} /><span>{choice.label}</span>
               </Command.Item>)}
@@ -84,7 +93,7 @@ function ActionMenu({ source, label, iconOnly }: { source: HTMLDetailsElement; l
     <DropdownMenu.Portal container={portal}>
       <DropdownMenu.Content className="shadcn-scope ui-menu-content" align="end" sideOffset={5} collisionPadding={12}
         onCloseAutoFocus={event => { const dialog = Array.from(document.querySelectorAll("dialog[open]")).at(-1); if (dialog && dialog !== source.closest("dialog")) event.preventDefault() }}>
-        {items.map((node, index) => { if (node instanceof HTMLHRElement) return <DropdownMenu.Separator key={index} className="ui-menu-separator" />; const item = node; return <DropdownMenu.Item key={index} disabled={item.disabled}
+        {items.map(node => { if (node instanceof HTMLHRElement) return <DropdownMenu.Separator key={menuKey(node)} className="ui-menu-separator" />; const item = node; return <DropdownMenu.Item key={menuKey(node)} disabled={item.disabled}
           className={`ui-menu-item ${/remove|unlink|abort/.test(item.dataset.action || "") ? "ui-menu-destructive" : ""}`}
           onSelect={() => {
             if (item.disabled) return
@@ -124,8 +133,8 @@ export function setupWorkspaceInteractions() {
         Object.defineProperty(source, "value", { configurable: true, get() { return valueDescriptor.get!.call(this) }, set(value: string) { valueDescriptor.set!.call(this, value); schedule() } })
         const focusLabel = (event: Event) => { if (!host.contains(event.target as Node)) { event.preventDefault(); host.querySelector<HTMLButtonElement>("button")?.focus() } }
         const labels = Array.from(source.labels || [])
-        labels.forEach(label => label.addEventListener("click", focusLabel)); source.addEventListener("change", schedule)
-        entry.dispose = () => { source.removeEventListener("change", schedule); labels.forEach(label => label.removeEventListener("click", focusLabel)); delete (source as unknown as Record<string, unknown>).value }
+        labels.forEach(label => { label.addEventListener("click", focusLabel) }); source.addEventListener("change", schedule)
+        entry.dispose = () => { source.removeEventListener("change", schedule); labels.forEach(label => { label.removeEventListener("click", focusLabel) }); delete (source as unknown as Record<string, unknown>).value }
       }
       const model = selectModel(source), signature = JSON.stringify(model)
       if (entry.signature !== signature) { entry.signature = signature; entry.root.render(<SearchableSelect source={source} model={model} />) }

@@ -1,7 +1,8 @@
 import {Activity, ChevronRight, Folder, GitBranchPlus, Maximize2, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, X} from "lucide-react"
 import {uiText} from "@/shared/i18n"
 import {NativeSelect, NativeSelectOption} from "@/shared/ui/primitives/native-select"
-import {Action, Feedback} from "@/shared/ui/patterns"
+import {Action} from "@/shared/ui/actions/button"
+import {Feedback} from "@/shared/ui/feedback/message"
 import {type ProjectOpenTool} from "@/entities/projects/presentation"
 import {ResourceIcon} from "@/shared/ui/resource-icons"
 import {ResourceSwitcherTrigger} from "@/shared/ui/list-controls"
@@ -94,7 +95,7 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
           <li><span className="project-summary-stat" data-tone={totalRunning ? "primary" : undefined} data-zero={!unknownSessions && !totalRunning || undefined}><Activity aria-hidden="true" /><strong>{unknownSessions ? "—" : totalRunning}</strong>{uiText("个运行中 Agent")}</span></li>
         </ul> : null}
       </div>
-      {project.error ? <Feedback variant="destructive"><p className="m-0">{uiText("项目读取失败：")}{project.error}</p><Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action></Feedback> : <>
+      {project.error ? <Feedback tone="error"><p className="m-0">{uiText("项目读取失败：")}{project.error}</p><Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action></Feedback> : <>
         <section className="project-directories-section" aria-labelledby="projectDirectoriesTitle">
           <div className="resource-section-heading project-directories-heading">
             <h3 id="projectDirectoriesTitle">{uiText("工作目录")} <span className="resource-section-count">{visible.length}</span></h3>

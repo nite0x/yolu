@@ -69,10 +69,10 @@ const display: FileDisplay = {
         if (!instances.length) container.textContent = preview.text || uiText("此区域没有文本差异。")
       }
     } catch {
-      instances.forEach(instance => instance.cleanUp())
+      instances.forEach(instance => { instance.cleanUp() })
       container.textContent = preview.text
     }
-    return () => { instances.forEach(instance => instance.cleanUp()); container.replaceChildren() }
+    return () => { instances.forEach(instance => { instance.cleanUp() }); container.replaceChildren() }
   },
 }
 export function installFileDisplay(host: Window) {

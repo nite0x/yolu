@@ -113,6 +113,25 @@ checks their types and enforces the module boundaries in `frontend/architecture.
 `internal/apitypes`; CI rejects drift with `api:check`. The complete production
 build writes sizes and content hashes to `web/ui/build-manifest.json`.
 
+The complete build checks `frontend/bundle-budgets.json` against that manifest.
+`npm run bundle:check` repeats the asset and aggregate critical-JavaScript checks;
+`npm run bundle:test` checks missing assets, invalid sizes and threshold failures.
+The critical sum covers workspace, conversation and host-layout scripts across
+their independent entry points, rather than claiming they all transfer on the
+first page. Adjust a budget deliberately with measured output and a reason.
+Mermaid keeps `/chat/mermaid.js` as its stable lazy entry and loads graph modules
+from `/chat/diagrams/` only when needed. Its entry size excludes those later
+requests. Browser regression tests render a graph under the real application CSP.
+
+Biome checks the shared foundations, application shell, transport, handwritten
+feature models/runtimes and the settings feature. Existing app/model/runtime
+formatting is retained to keep functional changes reviewable; migrated settings
+and new foundation modules use the common formatter. Generated API contracts and
+registry sources retain their upstream formatting. The control-character regex
+exception is limited to terminal-text/path sanitizers; chrome's non-form groups
+and interactive splitter keep their ARIA roles instead of form fieldsets or a
+decorative horizontal rule.
+
 `npm run web:test` combines application type checking, the web build, application tests and the `.test.cjs` suite; it does not replace the separate chat build/check/test commands. `npm run web:watch` rebuilds application assets while editing; restart the Go process to update embedded resources.
 
 Core CI and each native desktop packaging job run the pinned `govulncheck` command against the selected Go toolchain and the current vulnerability database. Reachable findings fail the job; module/package findings without a reachable call are still reported for review. Run the scan after building the embedded frontend assets.

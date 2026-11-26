@@ -68,3 +68,24 @@ test('module cycles are rejected even if every individual integration is declare
   }, policy);
   assert.match(result.errors.join('\n'), /Feature cycle: files -> git -> files/);
 });
+
+test('primitives cannot depend on composed shared components', async t => {
+  const result = await fixture(t, {
+    'shared/ui/primitives/button.tsx':`import {Field} from '../forms/field'`,
+    'shared/ui/forms/field.tsx':'export const Field = {}',
+  });
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /primitives must not import composed UI/);
+});
+
+test('the component catalog stays outside production dependencies and business features', async t => {
+  const result = await fixture(t, {
+    'shared/ui/forms/field.tsx':'export const Field = {}',
+    'features/projects/ui/view.tsx':'export const Project = {}',
+    'dev/catalog.tsx':`import {Field} from '@/shared/ui/forms/field'; import {Project} from '@/features/projects/ui/view'`,
+    'app/bootstrap.ts':`import '@/dev/catalog'`,
+  });
+  assert.equal(result.errors.length, 2);
+  assert.match(result.errors.join('\n'), /dev must not import features/);
+  assert.match(result.errors.join('\n'), /app must not import dev/);
+});

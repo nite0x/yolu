@@ -86,6 +86,29 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   await expect(approvalPane.getByText('Reviewed the selected directory.', {exact:true})).toHaveCount(2);
   await expect(approvalPane.locator('textarea.aui-composer-input')).toHaveValue('Draft kept while offline');
   await screenshot('wide');
+  // Shared foundation components are exercised through both real host entries.
+  for (const width of [1440, 760]) {
+    await page.setViewportSize({width,height:1000});
+    await page.getByRole('button', {name:'项目',exact:true}).click();
+    const projectPage = page.frameLocator('iframe.workspace-page:visible');
+    await projectPage.getByRole('button', {name:'添加项目',exact:true}).click();
+    const dialog = projectPage.locator('#projectDialog');
+    await expect(dialog).toBeVisible();
+    const pathInput = dialog.locator('#projectPath');
+    await expect(pathInput).toHaveAttribute('aria-describedby', 'projectPath-help');
+    await expect(pathInput).toHaveAttribute('required', '');
+    await expect(dialog.locator('#projectCloneURL')).toBeDisabled();
+    if (process.env.YOLU_TEST_ARTIFACT_DIR) await page.screenshot({path:path.join(process.env.YOLU_TEST_ARTIFACT_DIR, `${entry}-project-form-${width}.png`)});
+    await dialog.getByRole('button', {name:'关闭',exact:true}).click();
+    await expect(dialog).not.toBeVisible();
+    await page.getByRole('button', {name:'设置',exact:true}).click();
+    const settings = page.frameLocator('iframe.workspace-page:visible');
+    await expect(settings.locator('#appearanceTitle')).toBeVisible();
+    await expect(settings.locator('#languageSelect')).toBeVisible();
+    if (process.env.YOLU_TEST_ARTIFACT_DIR) await page.screenshot({path:path.join(process.env.YOLU_TEST_ARTIFACT_DIR, `${entry}-settings-${width}.png`)});
+    await page.getByRole('button', {name:'对话',exact:true}).click();
+    await expect((await pane(second)).locator('textarea.aui-composer-input')).toHaveValue('Draft kept while offline');
+  }
   await page.setViewportSize({width:760,height:900});
   await expect(approvalPane.locator('textarea.aui-composer-input')).toBeVisible();
   await screenshot('narrow');

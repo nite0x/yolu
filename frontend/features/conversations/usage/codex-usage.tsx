@@ -1,6 +1,6 @@
 import {uiText, uiLocale} from "@/shared/i18n"
 import {useEffect, useId, useRef, useState} from "react"
-import {createRoot} from "react-dom/client"
+import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {Popover} from "radix-ui"
 import {Gauge, ChevronRight, RefreshCw, X} from "lucide-react"
 import "./codex-usage.css"

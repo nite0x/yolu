@@ -12,5 +12,5 @@
     "esModuleInterop": true,
     "paths": { "@/*": ["./frontend/*"] }
   },
-  "include": ["frontend", "vite.config.mts"]
+  "include": ["frontend", "vite.config.mts", "vite.ui.config.mts", "scripts/ui-*.tsx"]
 }

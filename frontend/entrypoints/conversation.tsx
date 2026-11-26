@@ -4,15 +4,17 @@ import {ChatPanel} from "@/features/conversations/ui/panel"
 import "@/features/conversations/ui/chat.css";
 import {reuseValue} from "@/features/conversations/runtime/state"
 import {draftTitle} from "@/features/conversations/model/draft-title"
+import {createControllerCache} from "@/features/conversations/runtime/controller-cache"
+import {RenderBoundary} from "@/shared/ui/feedback/render-boundary"
 
 let root: Root | undefined;
 let active: ChatController | undefined;
-const controllers = new Map<string, ChatController>();
+const controllers = createControllerCache<ChatController>(8, controller => controller === active);
 let mountSequence = 0;
 let unsubscribePreview: (() => void) | undefined;
 export const bridge = {
   draftTitle: () => active && !active.getSnapshot().session ? draftTitle(active.getSnapshot().draft) : "",
-  flushDraft: () => active?.flushDraft() ?? Promise.resolve(true),
+  flushDraft: () => controllers.flush(),
   open(options: ChatOptions) {
     if (!root) root = createRoot(document.getElementById("assistantChatRoot")!);
     unsubscribePreview?.();
@@ -34,15 +36,17 @@ export const bridge = {
     };
     unsubscribePreview = controller.subscribe(publishPreview);
     publishPreview();
-    root.render(<ChatPanel key={++mountSequence} controller={controller} />);
+    root.render(<RenderBoundary key={++mountSequence}><ChatPanel controller={controller} /></RenderBoundary>);
+    void controllers.trim();
   },
-  close() { unsubscribePreview?.(); unsubscribePreview = undefined; active?.disconnect(); active = undefined; root?.render(null); },
+  close() { unsubscribePreview?.(); unsubscribePreview = undefined; active?.disconnect(); active = undefined; root?.render(null); void controllers.trim(); },
   updateOverview(overview: ChatOptions['overview']) {
     if (!active) return;
     const next = reuseValue(active.options.overview, overview);
     if (next === active.options.overview) return;
     active.options.overview = next;
-    root?.render(<ChatPanel key={mountSequence} controller={active} />);
+    const controller = active;
+    root?.render(<RenderBoundary key={mountSequence}><ChatPanel controller={controller} /></RenderBoundary>);
   },
   updateSession(session: NonNullable<ChatOptions['session']>) { active?.updateSession(session); },
 };

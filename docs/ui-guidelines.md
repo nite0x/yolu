@@ -25,6 +25,7 @@ The [frontend module guide](../frontend/README.md) defines feature ownership and
 | Conversation panel | `frontend/features/conversations/ui/conversation-panel.tsx`, `frontend/features/conversations/runtime/use-chat-reading.ts` | Shared panel, runtime lifecycle, draft synchronization, history anchors, run state and feedback |
 | Conversation content | `frontend/features/conversations/components/assistant-ui/elements/thread.aui.tsx` | Messages, Markdown, shared composer, send/stop and keyboard behavior |
 | Basic controls | `frontend/shared/ui/primitives/` | Buttons, inputs, selects, dialogs, alerts, badges and tables |
+| Composed foundations | `frontend/shared/ui/{actions,forms,feedback,layout,data-display}/` | Named actions, associated fields, shared states, dialog sections and data presentation |
 | State and persistence | `frontend/features/conversations/runtime/`, `frontend/features/conversations/list/` | Requests, drafts, history, environment identity and lifecycle |
 
 Use component-level APIs for caller-specific labels and actions. For example, `ConversationList.onSelect` lets a caller use shared rows with its own selection callback. Legacy native-session callers retain their controller attributes. The shared `Composer` accepts input labels, placeholders and limits while retaining its editor, send/stop controls and shortcut behavior.
@@ -92,6 +93,19 @@ Use the existing typography roles.
 Use `--font-sans` for application text and `--font-mono` for code and paths. Existing conversation headers and message components own their role-specific typography. Keep user content selectable and preserve its language and formatting. Brand artwork follows the separate [brand reference](brand/yolu/README.md).
 
 ## Lists, headers and forms
+
+The [shared component guide](../frontend/shared/ui/README.md) documents the
+foundation APIs and live catalog. Use `Field` for labels, help and validation;
+wrapped controls receive its props through the explicit control slot. Use
+`IconButton` for named icon actions, `PendingButton` for controlled asynchronous
+actions, and the shared dialog/section components for repeated headings and
+footers. Map business statuses to generic badge tones in the feature. Keep
+request lifetime and domain rules outside shared presentation.
+Use `createRecoverableRoot` for product React islands and `RenderBoundary` for
+explicit pane boundaries. Keep controllers and unsent data outside the failing
+subtree so retry remounts presentation without losing the draft. Settings React
+forms own their preference state; feature-local native adapters own the remaining
+forms, with host capabilities passed through the settings mount.
 
 Use `ListCreateButton` for a list's primary creation action and `ListSearch`/`ListFilter` when the workflow needs search or filtering. The shared conversation sidebar uses `ListSearch` with `variant="plain"`. Keep its search row borderless. Place the Recent and Grouped controls in the filter menu and retain active scope and filters in a visible, removable chip. Recent uses a second line for the project or directory. Keep sidebar names on one line and expose truncated values. Show non-local environment labels where needed. Other lists retain the default search field. Conversation lists use `ConversationList` for selection, timestamps, truncation and focus styling. Put resource identity and essential state in the row. Detail views carry longer explanations and secondary actions.
 

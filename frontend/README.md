@@ -27,7 +27,11 @@ frontend/
     files/                      File browser, diffs and lazy source viewer
     git/                        Git views, dialogs and interactive operations
     projects/                   Registration, scanning and directory cards
-    settings/                   Preferences, environments and diagnostics
+    settings/
+      model/                    Typed host context and settings records
+      runtime/                  Serialized saves per setting/environment scope
+      ui/                       React preferences, diagnostics and native form adapters
+      bridge.tsx                Explicit settings mount and retained presentation contract
     terminal/                   Terminal page and its presentation
   entities/
     conversations/              Catalog records, bindings, context and status rules
@@ -36,11 +40,17 @@ frontend/
   api/                          Generated Go/TypeScript transport contracts
   shared/
     ui/primitives/              shadcn controls
-    ui/                         Generic forms, lists, surfaces and resource icons
+    ui/actions/                 Named actions, icon buttons and pending buttons
+    ui/forms/                   Field associations, validation and checkboxes
+    ui/feedback/                Messages, loading and empty states
+    ui/layout/                  Dialog and section presentation
+    ui/data-display/            Status badges, tables and code previews
+    ui/                         Lists, surfaces, help and resource icons
     hooks/                      Reusable React hooks and input preference
     lib/                        Identity, preferences, resizing and utilities
     i18n/                       Localization API and catalogs
     styles/                     Theme tokens and base control styles
+  dev/                          Independent shared-component catalog
   architecture.json             Allowed dependencies and feature integrations
 ```
 
@@ -65,9 +75,18 @@ its change records. Features cannot form dependency cycles.
 Use direct imports such as `@/entities/conversations/catalog` across layers and
 relative imports within a feature. Do not create a catch-all export barrel.
 Shared controls cannot reach into a feature to fetch data or manage a run.
+Primitives cannot depend on composed UI. Developer catalog sources depend only
+on shared components and cannot be imported by production code. See the
+[shared component guide](shared/ui/README.md) for APIs, examples and checks.
 The conversation runtime tracks connection failures separately from operation
 failures: recovered reads clear only the connection error they own, preserving
 failed sends and approval errors for their explicit recovery actions.
+Conversation controllers use an LRU cache targeting eight retained owners per
+reader. Eviction waits for durable draft writes and never discards an active
+owner, an uncertain send/fork, pending approval work or unsent blocking answers.
+Failed writes retain their owner until a later successful retry. Reload checks
+flush every retained draft, including inactive conversations. Pane render
+boundaries contain component failures and retry without replacing the controller.
 Keep project-specific status, root filtering and editor actions in the project
 entity instead of adding them to generic form controls.
 
@@ -107,8 +126,12 @@ names such as `ui.js`, `page-layout.js`, `terminal.js` and `assistant.js`.
 
 ```bash
 npm run web:architecture
+npm run ui:dev
+npm run ui:check
+npm run ui:test:browser
 npm run check
 npm run build
+npm run bundle:check
 npm run app:test
 npm run chat:test
 node --test scripts/*.test.cjs
@@ -121,3 +144,10 @@ when adding a deliberate integration, and document who owns its lifecycle.
 See [development and browser verification](../docs/development.md) for the real
 Chromium workflow and [application boundaries](../docs/architecture.md) for
 backend ownership and API contract generation.
+
+Settings presentation has explicit owners: React controls appearance, language,
+send shortcuts and diagnostic reports; feature-local typed adapters own the
+remaining native forms. `web/features/settings/settings.js` only supplies host
+context and capabilities. Polling refreshes context through that mount and does
+not replace preference form state. Settings writes are serialized by scope while
+independent environments can save concurrently.

@@ -38,7 +38,7 @@ export function createHistoryLoader(options: {
       options.update({loading: !background || !initial.entries.length, historyError: ""});
       const current = () => observed.generation === options.lifecycle().generation;
       try {
-        let page = await options.request<History>(options.base() + "/history" + (cursor ? "?cursor=" + encodeURIComponent(cursor) : ""), {signal: observed.signal});
+        let page = await options.request<History>(`${options.base()}/history${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, {signal: observed.signal});
         if (!current()) return;
         if (cursor && page.next_cursor === cursor) throw new Error(uiText("历史分页游标重复"));
         let fresh = page.entries;
@@ -46,7 +46,7 @@ export function createHistoryLoader(options: {
         while (!older && page.next_cursor && (savedKeys.size > 0 && !fresh.some(e => savedKeys.has(entryKey(e))) || !options.readOnly() && page.has_user_message === false && !fresh.some(e => e.kind === "user"))) {
           if (cursors.has(page.next_cursor)) throw new Error(uiText("历史分页游标重复"));
           cursors.add(page.next_cursor);
-          page = await options.request<History>(options.base() + "/history?cursor=" + encodeURIComponent(page.next_cursor), {signal: observed.signal});
+          page = await options.request<History>(`${options.base()}/history?cursor=${encodeURIComponent(page.next_cursor)}`, {signal: observed.signal});
           if (!current()) return;
           fresh = [...page.entries, ...fresh];
         }

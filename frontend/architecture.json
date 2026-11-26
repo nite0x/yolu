@@ -6,7 +6,8 @@
     "entities": ["entities", "core", "api", "shared"],
     "core": ["core", "api", "shared"],
     "api": ["api"],
-    "shared": ["shared", "api"]
+    "shared": ["shared", "api"],
+    "dev": ["dev", "shared"]
   },
   "features": {
     "conversations": {"files": ["ui/browser.tsx", "model/changes.ts"]},

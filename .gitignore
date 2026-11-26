@@ -7,6 +7,7 @@
 /node_modules/
 /web/ui/
 /web/chat/highlight/
+/web/chat/diagrams/
 /src-tauri/target/
 /src-tauri/gen/
 /src-tauri/binaries/

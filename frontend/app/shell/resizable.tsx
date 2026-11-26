@@ -1,6 +1,7 @@
 import {uiText} from "@/shared/i18n"
 import {useLayoutEffect, useRef} from "react"
-import {createRoot, type Root} from "react-dom/client"
+import type {Root} from "react-dom/client"
+import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {flushSync} from "react-dom"
 import {Group, Panel, Separator} from "react-resizable-panels"
 

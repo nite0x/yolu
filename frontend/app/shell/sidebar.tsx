@@ -1,6 +1,6 @@
 import {uiText} from "@/shared/i18n"
 import {useEffect, useState} from "react"
-import {createRoot} from "react-dom/client"
+import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {PanelLeftClose, PanelLeftOpen, ListTodo, FolderGit2, MessagesSquare} from "lucide-react"
 import {renderToStaticMarkup} from "react-dom/server"
 import {setupSplitResize} from "@/shared/lib/split-resize"
@@ -82,12 +82,10 @@ function SidebarToggle() {
     }
   }, [])
   const label = collapsed ? uiText("展开侧栏") : uiText("收起侧栏")
-  return <>
-    <button type="button" className="sidebar-control sidebar-toggle" aria-label={label} title={label} aria-expanded={!collapsed} aria-controls="workspaceSidebar"
+  return <button type="button" className="sidebar-control sidebar-toggle" aria-label={label} title={label} aria-expanded={!collapsed} aria-controls="workspaceSidebar"
     onClick={() => setCollapsed(current => { const next = !current; try { localStorage.setItem(storageKey, String(next)) } catch { /* Keep the current window preference. */ } return next })}>
     {collapsed ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
   </button>
-  </>
 }
 export function mountWorkspaceSidebar() {
   const sidebar = document.querySelector<HTMLElement>(".sidebar")

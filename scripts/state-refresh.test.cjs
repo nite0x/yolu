@@ -17,7 +17,7 @@ function snapshot(updatedAt = '2026-10-22T05:23:13Z', refreshing = false) {
   };
 }
 
-function harness({ fullPage = false, readOnly = false } = {}) {
+function harness({ readOnly = false } = {}) {
   const elements = new Map();
   let mockDocument;
   const element = selector => {
@@ -66,17 +66,13 @@ function harness({ fullPage = false, readOnly = false } = {}) {
   });
   mockDocument = context.document;
   context.document.defaultView = context.window;
-  const scripts = fullPage
-    ? ['core/chat-input.js', 'core/appearance.js', ...[...fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8').matchAll(/<script src="\/([^"]+)" defer(?: data-ui-bundle)?><\/script>/g)]
-      // This VM exercises business scripts; component mounting is checked in a browser.
-      .filter(match => !match[0].includes('data-ui-bundle')).map(match => match[1])
-      .filter(file => !readOnly || !['features/sessions/session-chat.js', 'features/sessions/session-create.js'].includes(file))]
-    : ['ui/browser-runtime.js', 'core/core.js', 'features/projects/projects.js', 'core/app.js', 'core/resource-navigation.js'];
+  // This VM isolates state refresh. Full settings DOM flows live in app-ui.test.cjs.
+  const scripts = ['ui/browser-runtime.js', 'core/core.js', 'features/projects/projects.js', 'core/app.js', 'core/resource-navigation.js'];
   for (const file of scripts) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../web', file), 'utf8'), context, { filename: file });
   }
   vm.runInContext("renderProjectPage = (markup) => { $('#content').innerHTML = markup; };",context);
-  if (!fullPage) vm.runInContext("var environmentInventory = [];",context);
+  vm.runInContext("var environmentInventory = [];",context);
   context.readRoute();
   return {
     context, element, times, timers, requests,
@@ -165,25 +161,4 @@ test('connection failures retain the last worktree cards and recover without reb
   await h.refresh(snapshot('2026-10-22T05:23:24Z'));
   assert.equal(h.element('#content').writes, writes);
   assert.equal(h.element('#offlineBanner').hidden, true);
-});
-
-test('macOS settings show Terminal and hide WSL without discarding unsaved terminal inputs', async () => {
-  const h = harness({ fullPage: true, readOnly: true });
-  const data = snapshot();
-  data.terminal = { platform: 'darwin', settings: { kind: 'macos-terminal', style: 'macos-terminal' }, supported_kinds: ['macos-terminal', 'custom', 'auto'], supported_styles: ['command'], available: true };
-  await h.start(data);
-  assert.match(h.element('#terminalKind').innerHTML, /Terminal（macOS）/);
-  assert.doesNotMatch(h.element('#terminalKind').innerHTML, /PowerShell|Windows Terminal/);
-  assert.equal(h.element('#addEnvironment').hidden, true);
-  assert.equal(h.element('#platformLabel').textContent, 'macOS');
-  h.element('#terminalKind').value = 'custom';
-  h.element('#terminalStyle').value = 'command';
-  h.element('#terminalPath').value = '/my unsaved terminal';
-  h.context.updateTerminalFields();
-  const next = structuredClone(data);
-  next.terminal.supported_styles.push('otty'); // late capability discovery must preserve the draft.
-  await h.refresh(next);
-  assert.equal(h.element('#terminalKind').value, 'custom');
-  assert.equal(h.element('#terminalStyle').value, 'command');
-  assert.equal(h.element('#terminalPath').value, '/my unsaved terminal');
 });

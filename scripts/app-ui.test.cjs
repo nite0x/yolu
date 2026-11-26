@@ -200,11 +200,13 @@ test('folder selection cannot overlap or put a host path into a WSL project', as
   h.window.openProject(null, 'wsl-test');
   assert.equal(h.$('#chooseProjectDirectory').disabled, true);
   assert.equal(h.$('#projectDirectoryHint').hidden, false);
+  assert.equal(h.$('#projectPath').getAttribute('aria-describedby'), 'projectPath-help projectDirectoryHint');
   h.click('#chooseProjectDirectory'); await settle();
   assert.equal(h.requests.filter(r => r.url === '/api/dialogs/directory').length, 1);
   h.change('#projectEnvironmentSelect', 'local');
   assert.equal(h.$('#chooseProjectDirectory').disabled, false);
   assert.equal(h.$('#projectDirectoryHint').hidden, true);
+  assert.equal(h.$('#projectPath').getAttribute('aria-describedby'), 'projectPath-help');
 });
 
 test('Git retains the selected worktree, occupied-branch protection and source tracking', async t => {
@@ -285,7 +287,7 @@ test('merge into preview is invalidated by target or source directory changes an
   assert.equal(h.$('[data-action="git-merge-into-preview"]').disabled, false);
 });
 
-for (const readOnly of [true, false]) test(`merge conflict automatically opens AI in ${readOnly ? 'terminal' : 'sidebar'} mode and can be reopened without duplicate creation`, async t => {
+for (const readOnly of [true, false]) test(`merge conflict automatically opens AI in ${readOnly ? 'terminal' : 'sidebar'} mode and can be reopened without duplicate creation`, {timeout:30000}, async t => {
   const h = await harness(t, readOnly);
   h.setIntercept((url, options, body) => {
     const ok = data => ({ ok: true, json: async () => data });
@@ -529,9 +531,31 @@ test('appearance palettes apply immediately with rollback on failure, and langua
   assert.equal(h.$('#saveLanguage').hidden, false);
   assert.equal(h.$('#cancelLanguage').hidden, false);
   h.click('#cancelLanguage');
+  await settle();
   assert.equal(h.$('#languageSelect').value, 'zh-CN');
   assert.equal(h.$('#saveLanguage').hidden, true);
   assert.equal(h.$('#cancelLanguage').hidden, true);
+});
+
+test('macOS settings show Terminal and hide WSL without discarding unsaved terminal inputs', async t => {
+  const h = await harness(t);
+  h.data.terminal = {platform:'darwin', settings:{kind:'macos-terminal',style:'macos-terminal'}, supported_kinds:['macos-terminal','custom','auto'], supported_styles:['command'], available:true};
+  Object.assign(h.environments, {platform:'darwin', wsl_supported:false, distributions:[]});
+  await h.window.loadEnvironments();
+  await h.window.refresh();
+  await h.navigate('/settings');
+  assert.match(h.$('#terminalKind').textContent, /Terminal（macOS）/);
+  assert.doesNotMatch(h.$('#terminalKind').textContent, /PowerShell|Windows Terminal/);
+  assert.equal(h.$('#addEnvironment').hidden, true);
+  assert.equal(h.$('#platformLabel').textContent, 'macOS');
+  h.change('#terminalKind', 'custom');
+  h.change('#terminalStyle', 'command');
+  h.input('#terminalPath', '/my unsaved terminal');
+  h.data.terminal.supported_styles.push('otty');
+  await h.window.refresh();
+  assert.equal(h.$('#terminalKind').value, 'custom');
+  assert.equal(h.$('#terminalStyle').value, 'command');
+  assert.equal(h.$('#terminalPath').value, '/my unsaved terminal');
 });
 
 test('preset terminal changes save immediately while custom terminal waits for explicit submit', async t => {

@@ -3,6 +3,7 @@ import {readdir, readFile, writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {gzipSync} from 'node:zlib';
+import {verifyBundleBudgets} from './bundle-budget.mjs';
 
 // This is the complete embedded application build. Go/desktop callers must use
 // this entry so web UI, chat UI and the manifest describe the same source tree.
@@ -30,3 +31,4 @@ for (const directory of ['web/ui/', 'web/chat/']) {
   const group = files.filter(file => file.path.startsWith(directory));
   console.log(`${directory}: ${group.length} assets, ${group.reduce((sum, file) => sum + file.bytes, 0)} bytes (${group.reduce((sum, file) => sum + file.gzip_bytes, 0)} gzip)`);
 }
+await verifyBundleBudgets(root);

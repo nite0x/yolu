@@ -55,7 +55,7 @@ export function validateImages(images: readonly string[]) {
   let total = 0;
   for (const image of images) {
     const match = /^data:image\/(?:png|jpeg|gif|webp);base64,([A-Za-z0-9+/]*={0,2})$/.exec(image);
-    if (!match || !match[1]) throw new Error(uiText("图片内容无效，请重新添加"));
+    if (!match?.[1]) throw new Error(uiText("图片内容无效，请重新添加"));
     const size = match[1].length * 3 / 4 - (match[1].endsWith("==") ? 2 : match[1].endsWith("=") ? 1 : 0);
     if (size > maxImageSize) throw new Error(uiText("每张图片不能超过 4 MiB"));
     total += size;

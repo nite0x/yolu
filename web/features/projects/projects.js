@@ -432,6 +432,7 @@ function updateProjectDirectoryPicker() {
   const remote = $('#projectEnvironmentSelect').value !== 'local';
   $('#chooseProjectDirectory').disabled = remote;
   $('#projectDirectoryHint').hidden = !remote;
+  $('#projectPath').setAttribute('aria-describedby', remote ? 'projectPath-help projectDirectoryHint' : 'projectPath-help');
 }
 
 $('#projectEnvironmentSelect').addEventListener('change', updateProjectDirectoryPicker);

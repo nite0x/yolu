@@ -1,5 +1,5 @@
 import {uiText} from "@/shared/i18n"
-import {Button} from "@/shared/ui/primitives/button"
+import {PendingButton} from "@/shared/ui/actions/button"
 import {Input} from "@/shared/ui/primitives/input"
 import {Textarea} from "@/shared/ui/primitives/textarea"
 import {NativeSelect, NativeSelectOption as Option} from "@/shared/ui/primitives/native-select"
@@ -31,5 +31,5 @@ export function ElicitationFields({elicitation: e, disabled = false}: {elicitati
 
 export function ApprovalActions({approval, disabled = false, sending = false}: {approval: {choices?: ApprovalChoice[]; can_accept?: boolean; kind?: string}; disabled?: boolean; sending?: boolean}) {
   const choices = approval.choices || [{id: "decline", label: uiText("拒绝"), accepts: false}, ...(approval.can_accept ? [{id: "accept", label: approval.kind === "questions" ? uiText("提交回答") : uiText("允许一次"), accepts: true}] : [])];
-  return <div className="w-full space-y-2">{choices.filter(c => c.description).map(choice => <div key={choice.id} className="space-y-1 text-xs"><strong>{cleanText(choice.label)}</strong><pre className="m-0 max-h-28 overflow-auto whitespace-pre-wrap break-all">{cleanText(choice.description)}</pre></div>)}<div className="flex flex-wrap justify-end gap-2">{choices.map(choice => <Button key={choice.id} type={choice.accepts ? "submit" : "button"} name="decision" value={choice.id} data-chat-decision={choice.accepts ? undefined : choice.id} size="sm" variant={choice.accepts ? "default" : "outline"} disabled={disabled}>{sending ? uiText("正在提交…") : cleanText(choice.label)}</Button>)}</div></div>;
+  return <div className="w-full space-y-2">{choices.filter(c => c.description).map(choice => <div key={choice.id} className="space-y-1 text-xs"><strong>{cleanText(choice.label)}</strong><pre className="m-0 max-h-28 overflow-auto whitespace-pre-wrap break-all">{cleanText(choice.description)}</pre></div>)}<div className="flex flex-wrap justify-end gap-2">{choices.map(choice => <PendingButton pending={sending} pendingLabel={uiText("正在提交…")} key={choice.id} type={choice.accepts ? "submit" : "button"} name="decision" value={choice.id} data-chat-decision={choice.accepts ? undefined : choice.id} size="sm" variant={choice.accepts ? "default" : "outline"} disabled={disabled}>{cleanText(choice.label)}</PendingButton>)}</div></div>;
 }

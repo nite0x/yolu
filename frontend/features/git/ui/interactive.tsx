@@ -1,6 +1,8 @@
 import {uiText} from "@/shared/i18n"
 import {flushSync} from "react-dom"
-import {createRoot, type Root} from "react-dom/client"
+import type {Root} from "react-dom/client"
+import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
+import {LoadingState} from "@/shared/ui/feedback/loading-state"
 import {GitView} from "./git"
 import type {GitOverview} from "@/entities/projects/model"
 
@@ -24,7 +26,7 @@ export function mountGitView(container: HTMLElement, overview: GitOverview) {
 /** Loading and error states keep the same React owner; never write innerHTML. */
 export function resetGitView(container: HTMLElement, message = uiText("正在读取分支与远端…")) {
   const mounted = getMount(container)
-  flushSync(() => mounted.root.render(message ? <div className="git-loading" role="status">{message}</div> : null))
+  flushSync(() => mounted.root.render(message ? <LoadingState className="git-loading">{message}</LoadingState> : null))
 }
 
 export function scrollToGitSection(container: HTMLElement, section: string) {

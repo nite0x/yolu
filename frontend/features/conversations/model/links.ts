@@ -36,7 +36,7 @@ export function sourceFileReference(value: string): FileReference | null {
   const ref = fileReference(value);
   if (!ref || /^(?:https?:|mailto:)/i.test(value)) return null;
   const path = ref.path;
-  const pathLike = /^(?:\.{0,2}[\/\\]|[a-z]:[\/\\]|[^\s:]+[\/\\])/i.test(path);
+  const pathLike = /^(?:\.{0,2}[/\\]|[a-z]:[/\\]|[^\s:]+[/\\])/i.test(path);
   const fileName = /^(?:[\w@+.-]+\.(?:tsx?|jsx?|mjs|cjs|go|py|rs|java|kt|swift|vue|svelte|css|scss|html?|json|ya?ml|toml|md|txt|sql|sh|bash|xml|lock|mod|sum|png|jpe?g|gif|webp|svg)|\.[\w.-]+|Dockerfile|Makefile|LICENSE|NOTICE|Jenkinsfile|Procfile)$/i.test(path);
   const leaf = path.split(/[\\/]/).at(-1) || "";
   const hasFileName = /(?:\.[\w-]{1,16}$)|^(?:Dockerfile|Makefile|LICENSE|NOTICE|Jenkinsfile|Procfile)$/i.test(leaf);

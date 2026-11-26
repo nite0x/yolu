@@ -10,7 +10,7 @@ async function loadEnvironments() {
   const data = await api('/api/environments', { environment: 'local' });
   const previous = environmentInventory.map(environment => environment.id).join(",");
   environmentInventory = data.environments.map(environment => environment.id === 'local' ? {...environment, name:uiText('本机')} : environment);
-  codexUnregisteredDistros = data.distributions.filter(name => !data.environments.some(environment => environment.distro === name));
+  settingsController.setUnregistered(data.distributions.filter(name => !data.environments.some(environment => environment.distro === name)));
   for (const id of ['environmentSelect', 'projectEnvironment']) {
     $('#' + id).innerHTML = environmentOptions();
     $('#' + id).value = activeEnvironment;
