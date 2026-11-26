@@ -17,3 +17,6 @@ Start with the [project README](../README.md) for an overview and installation e
 - [Session architecture](session-architecture.md): scope resolution, storage, API routing and runtime behavior.
 - [Session titles](session-titles.md): initial names, generated topic titles and rename protection.
 - [Brand reference](brand/yolu/README.md): approved artwork, colors and icon generation.
+- [Application boundaries](architecture.md): frontend state ownership, pane protocol, session creation, generated contracts and build verification.
+
+- [Frontend modules](../frontend/README.md): source layout, feature ownership, entrypoints and enforced dependency rules.

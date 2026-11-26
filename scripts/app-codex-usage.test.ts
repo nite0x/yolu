@@ -5,7 +5,7 @@ import { JSDOM, VirtualConsole } from "jsdom"
 
 let bundle = ""
 before(async () => {
-  const result = await build({entryPoints:["frontend/app/codex-usage.tsx"], outfile:"quota-test.js", bundle:true, write:false, format:"iife", globalName:"Usage", jsx:"automatic", define:{"process.env.NODE_ENV":'"production"'}, plugins:[{name:"no-css",setup(b){b.onLoad({filter:/\.css$/},()=>({contents:"",loader:"css"}))}}]})
+  const result = await build({entryPoints:["frontend/features/conversations/usage/codex-usage.tsx"], outfile:"quota-test.js", bundle:true, write:false, format:"iife", globalName:"Usage", jsx:"automatic", define:{"process.env.NODE_ENV":'"production"'}, plugins:[{name:"no-css",setup(b){b.onLoad({filter:/\.css$/},()=>({contents:"",loader:"css"}))}}]})
   bundle = result.outputFiles.find(file => file.path.endsWith(".js"))!.text + "\nwindow.Usage = Usage;"
 })
 const pause = () => new Promise(r => setTimeout(r,20))

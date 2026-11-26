@@ -30,7 +30,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npm run web:build && npm run chat:build
+      - run: npm run api:check
+      - run: npm run build
       - name: Check reachable Go vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - run: go test ./...
@@ -54,8 +55,8 @@ jobs:
         with:
           go-version-file: go.mod
       - run: npm ci
-      - run: npm run web:check && npm run chat:check
-      - run: npm run web:build && npm run chat:build
+      - run: npm run check
+      - run: npm run build
       - name: Check reachable Go vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - run: node --test scripts/*.test.cjs
@@ -67,4 +68,10 @@ jobs:
           go build -o "$RUNNER_TEMP/yolu-backend" .
           node scripts/desktop-workflow-smoke.mjs "$RUNNER_TEMP/yolu-backend"
       - run: go test -race ./internal/store ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
+      - name: Install browser test runtime
+        run: npx playwright install --with-deps chromium
+      - name: Browser conversation workflows
+        run: |
+          go build -o "$RUNNER_TEMP/yolu-browser-backend" .
+          YOLU_TEST_BINARY="$RUNNER_TEMP/yolu-browser-backend" npm run browser:test
       - run: npm run desktop:check

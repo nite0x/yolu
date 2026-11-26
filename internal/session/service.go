@@ -18,6 +18,7 @@ import (
 
 type Service struct {
 	chatRuntime
+	controlCoordinator
 	Execution             *execution.Service
 	openSessions          func(context.Context) (codex.SessionClient, error)
 	openCloudSessions     func(context.Context) (codex.SessionClient, error)
@@ -33,9 +34,6 @@ type Service struct {
 	terminalConflict      func(string, string) error
 	openExternal          func(string) error
 	bridgeMu              sync.Mutex
-	controlMu             sync.RWMutex
-	controlLocksMu        sync.Mutex
-	controlLocks          map[string]*sessionControlLock
 	catalogMu             sync.Mutex
 	catalogs              map[string]*catalogEntry
 	cloudCatalogCache     *cloudCatalogEntry

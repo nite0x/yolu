@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {ChatController, conversationKey, type ChatOptions} from "../frontend/chat/controller";
-import {convertEntries, convertEntry, idleChat, readSnapshots, mergeEntries, type ChatState, type HistoryPush} from "../frontend/chat/model";
+import {ChatController, conversationKey, type ChatOptions} from "../frontend/features/conversations/runtime/controller";
+import {convertEntries, convertEntry, idleChat, readSnapshots, mergeEntries, type ChatState, type HistoryPush} from "../frontend/features/conversations/model/messages";
 
 const target = {project_id:"p",cwd:"/home/test/worktrees/p"};
 const session = {id:"thread", name:"会话", cwd:target.cwd};
@@ -788,4 +788,34 @@ test("a manual agent choice wins over a pending default-agent read", async () =>
   resolve({provider:"agy"});
   await pending;
   assert.equal(c.getSnapshot().provider,"codex");
+});
+
+test("recovered polling clears its connection failure while preserving operation errors", async () => {
+  let offline = false;
+  const controller = setup(async path => {
+    if (path.endsWith('/history')) return {session,entries:[],next_cursor:null} as any;
+    if (path.endsWith('/chat')) {
+      if (offline) throw new Error('fixture offline');
+      return idleChat() as any;
+    }
+    return {} as any;
+  });
+  controller.connect();
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    offline = true;
+    await controller.poll();
+    assert.match(controller.getSnapshot().error, /fixture offline/);
+    offline = false;
+    await controller.poll();
+    assert.equal(controller.getSnapshot().error, '');
+    offline = true;
+    await controller.poll();
+    controller.setError('Failed send: inspect the receipt before retrying');
+    await controller.poll();
+    assert.equal(controller.getSnapshot().error, 'Failed send: inspect the receipt before retrying');
+    offline = false;
+    await controller.poll();
+    assert.equal(controller.getSnapshot().error, 'Failed send: inspect the receipt before retrying');
+  } finally { controller.disconnect(); }
 });

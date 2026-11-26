@@ -5,7 +5,7 @@ import {JSDOM} from "jsdom";
 
 let bundle = "";
 before(async () => {
-  const result = await build({entryPoints: ["frontend/chat/voice-input.ts"], bundle: true, write: false, format: "iife", globalName: "VoiceTest"});
+  const result = await build({entryPoints: ["frontend/features/conversations/voice/client.ts"], bundle: true, write: false, format: "iife", globalName: "VoiceTest"});
   bundle = result.outputFiles[0].text + "\nwindow.VoiceTest = VoiceTest;";
 });
 

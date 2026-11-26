@@ -24,7 +24,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   if (navigationOnly) document.documentElement.setAttribute('data-workspace-navigation','');
   document.documentElement.setAttribute('data-workspace-page', '');
   $('#newBrowserSession').hidden = true;
-  const post = (type, detail = {}) => host.postMessage({type, ...detail}, location.origin);
+  const post = (type, detail = {}) => window.WorkHubBrowser.postPageMessage(host, location.origin, type, detail);
   function openConversationDraft({placement, projectCreate, globalCreate, environment = activeEnvironment}) {
     const view = !globalCreate && window.WorkHubConversations.current;
     const scope = projectCreate ? {kind:'project',id:projectCreate.dataset.id,environment} : view?.scope || {kind:'all'};
@@ -277,7 +277,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('workhub:parallel-command',event => {if (parallelPane && ['close','zoom'].includes(event.detail)) post('workhub:page-pane-command',{command:event.detail});});
   window.addEventListener('message', event => {
     if (event.source !== host || event.origin !== location.origin) return;
-    const message = event.data;
+    const message = window.WorkHubBrowser.readPageMessage(event.data);
+    if (!message) return;
     if (message?.type === 'workhub:terminals-changed') {void refreshConversationTerminals(true);}
     else if (message?.type === 'workhub:conversation-group' && navigationOnly) {
       autoSelect = !!message.autoSelect;

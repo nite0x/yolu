@@ -32,25 +32,17 @@ function toast(message, error = false) {
   toastTimer = setTimeout(() => { $('#toast').hidden = true; }, error ? 9000 : 4500);
 }
 
-async function api(path, options = {}) {
-  const { environment = activeEnvironment, ...requestOptions } = options;
-  const revision = environmentRevision;
-  const scoped = options.environment === undefined;
-  const init = { ...requestOptions, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token, 'X-Environment-ID': environment, ...requestOptions.headers } };
-  const shared = window.parent !== window ? window.parent?.WorkHubApp : null;
-  const response = await (shared ? shared.read(path,init) : fetch(path,init));
-  if (scoped && revision !== environmentRevision) throw new DOMException(uiText("执行环境已切换"), 'AbortError');
-  let data;
-  try { data = await response.json(); } catch { throw new Error(uiText("服务返回了无法读取的响应，请查看服务日志。")); }
-  if (scoped && revision !== environmentRevision) throw new DOMException(uiText("执行环境已切换"), 'AbortError');
-  if (!response.ok) {
-    const error = new Error([data.error && uiText(data.error), ...(data.details || []).map(detail => uiText(detail))].filter(Boolean).join('\n'));
-    error.command = data.command;
-    error.code = data.code;
-    throw error;
-  }
-  return data;
-}
+// Legacy controllers supply context; the checked module owns transport,
+// stale-response rejection and structured API errors.
+const api = window.WorkHubBrowser.createAPIClient({
+  token,
+  context: () => ({environment:activeEnvironment, revision:environmentRevision}),
+  text: message => uiText(message),
+  read: (path, init) => {
+    const shared = window.parent !== window ? window.parent?.WorkHubApp : null;
+    return shared ? shared.read(path, init) : fetch(path, init);
+  },
+});
 
 function empty(title, description, action, button) {
   return window.WorkHubUI.empty(title, description, action, button);

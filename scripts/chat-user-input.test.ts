@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {convertEntry, type Entry} from "../frontend/chat/model";
-import {userInputText} from "../frontend/chat/user-input";
+import {convertEntry, type Entry} from "../frontend/features/conversations/model/messages";
+import {userInputText} from "../frontend/features/conversations/model/user-input";
 
 const image = "/var/folders/tmp/codex-clipboard-screen.png";
 const request = "还有这个放大后的图，能手指缩放大小吗？\n\n保留 `文字` 和 <literal>。";

@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {parseFileChanges, summarizeFileChanges} from "../frontend/chat/change-summary";
-import {convertEntry} from "../frontend/chat/model";
+import {parseFileChanges, summarizeFileChanges} from "../frontend/features/conversations/model/change-summary";
+import {convertEntry} from "../frontend/features/conversations/model/messages";
 
 test("change summaries count content prefixes correctly and ignore patch metadata", () => {
   const files = parseFileChanges('src/配置 file.ts\ndiff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -8,2 +8,3 @@\n context\n-old\n+++content\n+new\n\\ No newline at end of file\nREADME.md\n@@ -1 +0,0 @@\n-removed\n');

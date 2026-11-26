@@ -1,12 +1,12 @@
-import { uiText } from "../i18n";
-import { useEffect, useRef, useState } from "react"
-import { createRoot, type Root } from "react-dom/client"
-import { flushSync } from "react-dom"
-import { Command } from "cmdk"
-import { DropdownMenu, Popover } from "radix-ui"
-import { Check, ChevronDown, ChevronsUpDown, Ellipsis, Search } from "lucide-react"
-import { Toaster, toast } from "sonner"
-import { Button } from "@/components/ui/button"
+import {uiText} from "@/shared/i18n"
+import {useEffect, useRef, useState} from "react"
+import {createRoot, type Root} from "react-dom/client"
+import {flushSync} from "react-dom"
+import {Command} from "cmdk"
+import {DropdownMenu, Popover} from "radix-ui"
+import {Check, ChevronDown, ChevronsUpDown, Ellipsis, Search} from "lucide-react"
+import {Toaster, toast} from "sonner"
+import {Button} from "@/shared/ui/primitives/button"
 
 type Choice = { value: string; label: string; group: string; disabled: boolean }
 type SelectModel = { label: string; value: string; disabled: boolean; hidden: boolean; required: boolean; description?: string; choices: Choice[] }

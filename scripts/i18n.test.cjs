@@ -6,7 +6,7 @@ const {JSDOM} = require('jsdom');
 const {MessageChannel} = require('node:worker_threads');
 const root = path.join(__dirname, '..');
 const bootstrap = fs.readFileSync(path.join(root, 'web/ui/i18n.js'), 'utf8');
-const catalog = JSON.parse(fs.readFileSync(path.join(root, 'frontend/locales/en.json'), 'utf8'));
+const catalog = JSON.parse(fs.readFileSync(path.join(root, 'frontend/shared/i18n/locales/en.json'), 'utf8'));
 function open(t, choice, languages) {
   const html = fs.readFileSync(path.join(root, 'web/index.html'), 'utf8').replace('__UI_LANGUAGE__', choice);
   const dom = new JSDOM(html, {url:'http://localhost:4317/',runScripts:'outside-only',pretendToBeVisual:true});

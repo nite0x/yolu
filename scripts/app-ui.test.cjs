@@ -166,7 +166,7 @@ test('folder selection fills the project path, preserves drafts on cancellation 
   assert.equal(h.$('#projectPath').value, result.path);
   assert.equal(h.$('#projectName').value, 'Keep this name');
   assert.equal(h.$('#projectDialog').open, true);
-  assert.equal(h.requests.find(r => r.url === '/api/dialogs/directory').options.headers['X-Environment-ID'], 'local');
+  assert.equal(new Headers(h.requests.find(r => r.url === '/api/dialogs/directory').options.headers).get('X-Environment-ID'), 'local');
   assert.equal(h.requests.some(r => r.url === '/api/projects' && r.options.method === 'POST'), false);
   result = { path: '' };
   h.click('#chooseProjectDirectory'); await settle();
@@ -2638,10 +2638,10 @@ test('grouped navigation expands by project name, saves display preferences and 
     return {project:scope.id, directory, search, statusFilter};
   };
   const previousFilters = {project:'app', directory:'/repo/app', search:'existing search', statusFilter:'waiting'};
-  post(nav,{type:'workhub:conversation-group',selected:'',split:false,target:independent});
+  post(nav,{type:'workhub:conversation-group',sessions:[],selected:'',split:false,target:independent});
   assert.deepEqual(filters(),previousFilters);
   const created = {id:'new-session',name:'Backend work',cwd:'/repo/backend',primary_project_id:'backend'};
-  post(nav,{type:'workhub:conversation-group',selected:created.id,split:false,createdConversation:true,target:{...independent,conversation:{...independent.conversation,creating:false,selected:created.id,session:created}}});
+  post(nav,{type:'workhub:conversation-group',sessions:[],selected:created.id,split:false,createdConversation:true,target:{...independent,conversation:{...independent.conversation,creating:false,selected:created.id,session:created}}});
   await settle(); await settle();
   assert.deepEqual(filters(),previousFilters);
   assert.equal(nav.$('#sessionBrowserSearch').value,'existing search');
@@ -2726,7 +2726,7 @@ test('grouped navigation expands in five-row steps, resets the preview and share
   toggle().click();
   project().querySelector('[data-action="project-conversation-new"]').click();
   nav.sessions.push(created);
-  post({type:'workhub:conversation-group',selected:created.id,split:false,createdConversation:true,target:{environment:'local',conversation:{selected:created.id,session:created}}});
+  post({type:'workhub:conversation-group',sessions:[],selected:created.id,split:false,createdConversation:true,target:{route:'/sessions',environment:'local',conversation:{selected:created.id,session:created}}});
   await settle();
   assert.equal(project().querySelector('[data-conversation-session="new-in-app"]')?.getAttribute('aria-pressed'),'true');
 });

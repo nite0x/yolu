@@ -2,19 +2,11 @@ package session
 
 import (
 	"fmt"
-	"strings"
+
+	"worktree-hub/internal/apitypes"
 )
 
-type TurnSettings struct {
-	Model                string `json:"model,omitempty"`
-	Effort               string `json:"effort,omitempty"`
-	Mode                 string `json:"mode,omitempty"`
-	Permission           string `json:"permission,omitempty"`
-	ServiceTier          string `json:"serviceTier,omitempty"`
-	UseModelEffort       bool   `json:"useModelEffort,omitempty"`
-	UseDefaultSpeed      bool   `json:"useDefaultSpeed,omitempty"`
-	UseDefaultPermission bool   `json:"useDefaultPermission,omitempty"`
-}
+type TurnSettings = apitypes.TurnSettings
 
 func newConversationSettings(settings TurnSettings, defaults conversationPreferences) TurnSettings {
 	if settings.Permission == "" && !settings.UseDefaultPermission {
@@ -35,7 +27,7 @@ func newConversationSettings(settings TurnSettings, defaults conversationPrefere
 	return settings
 }
 
-func (s TurnSettings) validateForModel(selected *chatModel) error {
+func validateSettingsForModel(s TurnSettings, selected *chatModel) error {
 	if s.ServiceTier != "" {
 		supported := false
 		for _, tier := range selected.ServiceTiers {
@@ -52,25 +44,6 @@ func (s TurnSettings) validateForModel(selected *chatModel) error {
 			}
 		}
 		return fmt.Errorf("所选模型不支持该思考强度")
-	}
-	return nil
-}
-
-func (s TurnSettings) validate() error {
-	if s.Permission != "" && s.Permission != "ask" && s.Permission != "auto" && s.Permission != "full" {
-		return fmt.Errorf("不支持的权限模式")
-	}
-	if len(s.Model) > 200 {
-		return fmt.Errorf("模型名称过长")
-	}
-	if len(s.ServiceTier) > 100 || strings.TrimSpace(s.ServiceTier) != s.ServiceTier {
-		return fmt.Errorf("不支持的响应速度")
-	}
-	if s.Mode != "" && !strings.Contains("|plan|default|accept-edits|auto|ask|code|architect|", "|"+s.Mode+"|") {
-		return fmt.Errorf("不支持的工作模式")
-	}
-	if s.Effort != "" && !strings.Contains("|none|minimal|low|medium|high|xhigh|max|ultra|", "|"+s.Effort+"|") {
-		return fmt.Errorf("不支持的思考强度")
 	}
 	return nil
 }

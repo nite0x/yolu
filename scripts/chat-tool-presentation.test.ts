@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {toolPresentation, toolGroupSummary, type ToolRecord} from "../frontend/chat/tool-presentation";
+import {toolPresentation, toolGroupSummary, type ToolRecord} from "../frontend/features/conversations/model/tool-presentation";
 
 test("native command actions distinguish reads and exploration while compound commands remain commands", () => {
   const read = {args:{command:"/bin/zsh -lc 'cat src/app.ts'",actions:[{type:"read",path:"/repo/src/app.ts"}]}, result:{status:"completed"}};

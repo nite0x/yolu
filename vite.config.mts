@@ -22,7 +22,7 @@ export default defineConfig({
     outDir: "web/ui",
     emptyOutDir: true,
     lib: {
-      entry: "frontend/main.tsx",
+      entry: "frontend/entrypoints/workspace.tsx",
       name: "WorkHubComponents",
       formats: ["iife"],
       fileName: () => "ui.js",

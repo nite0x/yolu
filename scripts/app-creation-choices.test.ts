@@ -5,7 +5,7 @@ import {JSDOM} from "jsdom"
 
 let bundle = ""
 before(async () => {
-  const result = await build({stdin:{contents:'export * from "./frontend/app/creation-choices"; export * from "./frontend/app/creation-directories"',resolveDir:process.cwd(),loader:"ts"},bundle:true,write:false,format:"iife",globalName:"Choices"})
+  const result = await build({stdin:{contents:'export * from "./frontend/features/conversations/creation/choices"; export * from "./frontend/features/conversations/creation/directories"; export * from "./frontend/entities/projects/creation"',resolveDir:process.cwd(),loader:"ts"},bundle:true,write:false,format:"iife",globalName:"Choices"})
   bundle = result.outputFiles[0].text + "\nwindow.Choices=Choices;"
 })
 function fixture() {

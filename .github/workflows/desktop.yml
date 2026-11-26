@@ -92,13 +92,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev libfuse2
       - run: npm ci
-      - run: npm run web:check && npm run web:build
+      - run: npm run check && npm run build
       - name: Check version and packaging contract
         shell: bash
         run: |
           npm run desktop:check
-          npm run chat:check
-          npm run chat:build
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             test "$GITHUB_REF_NAME" = "desktop-v$(node -p 'require("./package.json").version')"
             npm run chat:test

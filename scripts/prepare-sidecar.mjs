@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { desktopVersion, targets } from './desktop-lib.mjs';
 
-await import('./build-frontend.mjs');
+await import('./build.mjs');
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const run = (command, args, env = {}) => {

@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 require('tsx/cjs');
-const { workspaceUI } = require('../frontend/app/renderers.tsx');
+const { workspaceUI } = require('../frontend/app/bridge/workspace-ui.tsx');
 const { JSDOM } = require('jsdom');
 const markup = html => new JSDOM(html).window.document;
 
@@ -52,7 +52,7 @@ function harness({ fullPage = false, readOnly = false } = {}) {
       querySelectorAll: selector => selector === '#content time[data-status-path]' ? times : [],
       addEventListener() {}
     },
-    window: { WorkHubUI: workspaceUI, dispatchEvent() {}, addEventListener(event, handler) { if (event === 'DOMContentLoaded') ready.push(handler); } }, location: { hash: '#/projects/app', search: '' }, URLSearchParams, DOMException, CustomEvent: class {},
+    window: { WorkHubUI: workspaceUI, dispatchEvent() {}, addEventListener(event, handler) { if (event === 'DOMContentLoaded') ready.push(handler); } }, Headers, Response, URL, location: { hash: '#/projects/app', search: '' }, URLSearchParams, DOMException, CustomEvent: class {},
     setTimeout: (callback, delay) => { timers.push(delay); return timers.length; },
     clearTimeout() {}, renderSettings() {}, loadGit() {}, loadWorktree() {},
     fetch: async (url, options) => {
@@ -71,7 +71,7 @@ function harness({ fullPage = false, readOnly = false } = {}) {
       // This VM exercises business scripts; component mounting is checked in a browser.
       .filter(match => !match[0].includes('data-ui-bundle')).map(match => match[1])
       .filter(file => !readOnly || !['features/sessions/session-chat.js', 'features/sessions/session-create.js'].includes(file))]
-    : ['core/core.js', 'features/projects/projects.js', 'core/app.js', 'core/resource-navigation.js'];
+    : ['ui/browser-runtime.js', 'core/core.js', 'features/projects/projects.js', 'core/app.js', 'core/resource-navigation.js'];
   for (const file of scripts) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../web', file), 'utf8'), context, { filename: file });
   }
@@ -89,12 +89,12 @@ function harness({ fullPage = false, readOnly = false } = {}) {
 test('explicit environment calls survive navigation while old ambient calls are rejected', async () => {
   const h = harness();
   await h.refresh(snapshot());
-  const ambient = h.context.api('/api/state');
-  const explicit = h.context.api('/api/state', { environment: 'wsl-ubuntu' });
+  const ambient = vm.runInContext("api('/api/state')", h.context);
+  const explicit = vm.runInContext("api('/api/state', {environment:'wsl-ubuntu'})", h.context);
   vm.runInContext('environmentRevision += 2', h.context);
   await assert.rejects(ambient, /执行环境已切换/);
   await explicit;
-  assert.equal(h.requests.at(-1).options.headers['X-Environment-ID'], 'wsl-ubuntu');
+  assert.equal(new Headers(h.requests.at(-1).options.headers).get('X-Environment-ID'), 'wsl-ubuntu');
 });
 
 test('background refresh keeps the worktree cards and only updates the open Git status time', async () => {

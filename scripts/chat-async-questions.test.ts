@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {ChatController, type ChatOptions} from "../frontend/chat/controller";
-import {idleChat, pendingAsyncQuestion, questionDraftKey, type Entry} from "../frontend/chat/model";
+import {ChatController, type ChatOptions} from "../frontend/features/conversations/runtime/controller";
+import {idleChat, pendingAsyncQuestion, questionDraftKey, type Entry} from "../frontend/features/conversations/model/messages";
 
 const session = {id:"thread",name:"异步问询",cwd:"/workspace/project"};
 const question: Entry = {id:"question",turn_id:"turn",kind:"assistant",delivery:"async",text:"选择方案？",questions:[{id:"0",header:"问题 1",question:"选择方案？",isOther:true,options:[{label:"A（推荐）",description:""},{label:"B",description:""}]}]};

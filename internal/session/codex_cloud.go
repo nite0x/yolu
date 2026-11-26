@@ -52,22 +52,19 @@ func (a *Service) openCloudSession(ctx context.Context, id string) (*codexcloud.
 	return client, thread, err
 }
 
-func (a *Service) createCloudSession(w http.ResponseWriter, r *http.Request, key, fingerprint string, input newSessionInput, provider string) {
+func (a *Service) createCloudSession(ctx context.Context, key, fingerprint string, input newSessionInput, provider string) (CreationResult, error) {
 	if provider != model.ProviderCodex || input.Text == "" || len(input.Images) != 0 || input.Purpose != "" || input.Cwd != "" || input.Project != "" || input.Access != "" || len(input.Bindings) != 0 || input.AllowShared {
-		httpx.WriteError(w, 400, "Codex Cloud 对话使用云端环境和文字消息")
-		return
+		return CreationResult{}, creationFailure(400, "", "Codex Cloud 对话使用云端环境和文字消息")
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 90*time.Second)
 	defer cancel()
 	client, err := a.cloudClient(ctx)
 	if err != nil {
-		httpx.WriteError(w, 503, err.Error())
-		return
+		return CreationResult{}, creationFailure(503, "", err.Error())
 	}
 	environments, err := client.Environments(ctx)
 	if err != nil {
-		httpx.WriteError(w, 503, err.Error())
-		return
+		return CreationResult{}, creationFailure(503, "", err.Error())
 	}
 	var environment codexcloud.Environment
 	for _, item := range environments {
@@ -77,32 +74,27 @@ func (a *Service) createCloudSession(w http.ResponseWriter, r *http.Request, key
 		}
 	}
 	if environment.ID == "" {
-		httpx.WriteError(w, 409, "所选 Codex Cloud 环境已不可用，请刷新列表")
-		return
+		return CreationResult{}, creationFailure(409, "", "所选 Codex Cloud 环境已不可用，请刷新列表")
 	}
 	if _, err := a.Execution.Store.DB.ExecContext(ctx, `INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
-		httpx.DbError(w, err)
-		return
+		return CreationResult{}, creationStorageFailure(err)
 	}
 	thread, err := client.Start(ctx, environment.ID)
 	if err != nil {
-		httpx.WriteError(w, 503, "云端对话创建结果未确认："+err.Error())
-		return
+		return CreationResult{}, creationFailure(503, "", "云端对话创建结果未确认："+err.Error())
 	}
 	now := time.Now().Unix()
 	record := model.Session{ID: "cloud-" + thread.ID, Name: initialSessionTitle(input.Text), Cwd: thread.Cwd, Provider: model.ProviderCodexCloud, Source: "workbench", CreatedAt: now, UpdatedAt: now}
 	cloud := store.CodexCloudSession{ThreadID: thread.ID, Identity: client.Identity(), Environment: environment.Name, Model: thread.Model}
 	if err := a.Execution.Store.SaveCodexCloudSession(record, cloud, key); err != nil {
-		httpx.DbError(w, err)
-		return
+		return CreationResult{}, creationStorageFailure(err)
 	}
 	release := a.lockSessionControl(record.ID)
 	defer release()
 	if err := a.launchCloudTurn(record, cloud, client, key, input.Text); err != nil {
-		httpx.DbError(w, err)
-		return
+		return CreationResult{}, creationStorageFailure(err)
 	}
-	a.WriteCreatedSession(w, record.ID, http.StatusAccepted)
+	return CreationResult{SessionID: record.ID, Status: http.StatusAccepted}, nil
 }
 
 func (a *Service) cloudChatStart(w http.ResponseWriter, r *http.Request, record model.Session, key, text string, images []string) {

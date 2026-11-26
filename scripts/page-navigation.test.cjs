@@ -9,6 +9,7 @@ function harness(t, hash = '#/projects', {desktop = false, listWidth} = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(root,'app.html'),'utf8'), {url:'http://localhost:4317/' + hash, runScripts:'outside-only'});
   t.after(() => dom.window.close());
   const {window:w} = dom;
+  w.Response = Response;
   Object.defineProperty(w,'innerWidth',{value:1800,configurable:true});
   if (listWidth) w.localStorage.setItem('workhub:conversation-list-width:v1',String(listWidth));
   if (desktop) {
@@ -28,7 +29,7 @@ function harness(t, hash = '#/projects', {desktop = false, listWidth} = {}) {
   };
   const requests = [];
   w.fetch = async (...args) => {requests.push(args); return new Response('{}');};
-  for (const file of ['core/conversation-list-width.js','core/page-host.js']) w.eval(fs.readFileSync(path.join(root,file),'utf8'));
+  for (const file of ['ui/browser-runtime.js','core/conversation-list-width.js','core/page-host.js']) w.eval(fs.readFileSync(path.join(root,file),'utf8'));
   const frames = () => [...w.document.querySelectorAll('iframe.workspace-page')];
   const send = (frame,type,extra = {},origin = w.location.origin) => w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin,data:{type,...extra}}));
   const messages = new Map();

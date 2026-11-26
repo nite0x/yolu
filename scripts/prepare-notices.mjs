@@ -27,8 +27,8 @@ for (const [location, pkg] of Object.entries(npmLock.packages).sort(([a], [b]) =
   const override = existsSync(path.join(root, "scripts/licenses", fallback)) ? { file: fallback, source: manifest.homepage || manifest.repository?.url || `https://www.npmjs.com/package/${manifest.name}` } : undefined;
   add(`${manifest.name} ${manifest.version}`, directory, manifest.license, undefined, override);
 }
-add('shadcn/ui components', path.join(root, 'frontend'), 'MIT', 'shadcn-LICENSE.md');
-add('assistant-ui registry components', path.join(root, 'frontend/components/assistant-ui'), 'MIT', 'LICENSE');
+add('shadcn/ui components', path.join(root, 'frontend/shared/ui'), 'MIT', 'SHADCN-LICENSE.md');
+add('assistant-ui registry components', path.join(root, 'frontend/features/conversations/components/assistant-ui'), 'MIT', 'LICENSE');
 if (frontendOnly) {
   process.stdout.write(sections.join(''));
   process.exit(0);

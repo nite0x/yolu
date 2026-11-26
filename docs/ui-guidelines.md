@@ -8,22 +8,24 @@ The existing project and conversation pages are the visual reference. Before imp
 
 Native title bars, window controls, application menus and operating-system dialogs use host capabilities. The retained `data-workhub-desktop` attribute selects the shared application layout in both entry points. Native integration also supplies `data-workhub-platform` and the host bridge.
 
+The [frontend module guide](../frontend/README.md) defines feature ownership and dependency rules. Basic controls stay in `shared`; repository/conversation records and domain presentation stay in `entities`; feature state, UI and adapters stay in their owning `features` module.
+
 ## Source map
 
 | Layer | Source | Responsibility |
 | --- | --- | --- |
 | Palette | `web/core/appearance.css`, `web/core/appearance.js` | Saved palette, light/dark appearance and semantic color tokens |
 | Typography | `web/core/typography.css` | Font families, text sizes and weights |
-| Component tokens | `frontend/styles.css` | Scoped shadcn aliases, utility layers and shared imports |
+| Component tokens | `frontend/shared/styles/base.css`, `frontend/app/styles/workspace.css` | Generic tokens and application-level style composition |
 | Application frame | `web/core/chrome.css`, `desktop-frame.css`, `page-host.css` | Shared navigation, pane surfaces, elevation, gutters and host geometry |
-| Pane layout | `frontend/app/page-surface.tsx`, `page-surface.css` | Shared split layout and pane markup |
-| Lists | `frontend/app/list-controls.tsx`, `session-browser.tsx` | List headings, creation actions, search, rows, selection and date groups |
-| Working directories | `frontend/app/working-directories.tsx`, `working-directories.css` | Project directory cards, Git summaries and directory actions |
-| Conversation surface | `frontend/app/conversation-surface.tsx`, `conversation-surface.css` | Header, status, context and pane actions |
-| Conversation panel | `frontend/chat/conversation-panel.tsx`, `use-chat-reading.ts` | Shared panel, runtime lifecycle, draft synchronization, history anchors, run state and feedback |
-| Conversation content | `frontend/components/assistant-ui/elements/thread.aui.tsx` | Messages, Markdown, shared composer, send/stop and keyboard behavior |
-| Basic controls | `frontend/components/ui/` | Buttons, inputs, selects, dialogs, alerts, badges and tables |
-| State and persistence | `frontend/chat/`, `frontend/app/` controllers | Requests, drafts, history, environment identity and lifecycle |
+| Pane layout | `frontend/shared/ui/page-surface.tsx`, `page-surface.css` | Shared split layout and pane markup |
+| Lists | `frontend/shared/ui/list-controls.tsx`, `frontend/features/conversations/list/browser.tsx` | List headings, creation actions, search, rows, selection and date groups |
+| Working directories | `frontend/features/projects/ui/working-directories.tsx`, `working-directories.css` | Project directory cards, Git summaries and directory actions |
+| Conversation surface | `frontend/shared/ui/conversation-surface.tsx`, `conversation-surface.css` | Header, status, context and pane actions |
+| Conversation panel | `frontend/features/conversations/ui/conversation-panel.tsx`, `frontend/features/conversations/runtime/use-chat-reading.ts` | Shared panel, runtime lifecycle, draft synchronization, history anchors, run state and feedback |
+| Conversation content | `frontend/features/conversations/components/assistant-ui/elements/thread.aui.tsx` | Messages, Markdown, shared composer, send/stop and keyboard behavior |
+| Basic controls | `frontend/shared/ui/primitives/` | Buttons, inputs, selects, dialogs, alerts, badges and tables |
+| State and persistence | `frontend/features/conversations/runtime/`, `frontend/features/conversations/list/` | Requests, drafts, history, environment identity and lifecycle |
 
 Use component-level APIs for caller-specific labels and actions. For example, `ConversationList.onSelect` lets a caller use shared rows with its own selection callback. Legacy native-session callers retain their controller attributes. The shared `Composer` accepts input labels, placeholders and limits while retaining its editor, send/stop controls and shortcut behavior.
 
@@ -44,7 +46,7 @@ Global search keeps results in memory across dialog opens and reads saved conver
 Use `SplitLayout` when a workflow requires two simultaneously visible panes, such as browsing conversations. Use `ApplicationPane` for the list and detail surfaces. Static HTML and legacy controllers apply the same `workspace-pane` class.
 
 ```tsx
-import {ApplicationPane, SplitLayout} from "@/app/page-surface";
+import {ApplicationPane, SplitLayout} from "@/shared/ui/page-surface";
 
 <SplitLayout>
   <ApplicationPane as="aside" aria-label={listLabel}>
@@ -121,7 +123,7 @@ In a Codex draft on the local host, offer **Run in** with **Local** and **Codex 
 
 ## Conversation contract
 
-Native coding conversations render `ConversationPanel` from `frontend/chat/conversation-panel.tsx`. This component owns the runtime provider, labelled panel, header placement, message/composer area and feedback placement. It renders the shared `Thread` and `Composer`. The thread uses assistant-ui's scroll-to-bottom control.
+Native coding conversations render `ConversationPanel` from `frontend/features/conversations/ui/conversation-panel.tsx`. This component owns the runtime provider, labelled panel, header placement, message/composer area and feedback placement. It renders the shared `Thread` and `Composer`. The thread uses assistant-ui's scroll-to-bottom control.
 
 The native adapter calls `useConversationRuntime` for connection lifetime and bidirectional draft synchronization, and `useChatReading` for reading anchors, automatic history loading and scroll restoration. Controllers implement the small structural contracts consumed by these hooks. Their domain-specific identity, permissions, model communication and history ownership are supplied by the native adapter. Native attachments, questions, approvals, file access and runtime controls use the panel's explicit slots.
 
@@ -135,7 +137,7 @@ After a Codex turn completes successfully, the shared composer may show a sugges
 
 An idle Codex CLI connected to the same daemon does not disable the shared composer or require terminal handoff. Keep its terminal connection available when a Yolu turn completes. Running or waiting external turns retain their existing status and controls; an independent app-server's writer-lock conflict shows recovery guidance without ending other conversations.
 
-The shared composer exposes Codex voice dictation in both entry points. `frontend/chat/voice-input.ts` owns microphone and WebRTC lifetime, while `use-voice-input.ts` appends input transcript fragments through the existing composer runtime. Dictation preserves existing draft text and requires explicit sending after it stops. Connecting, listening, finishing and failed states stay next to the input. Hiding or unmounting the pane releases the microphone and signaling session. The local backend uses the installed Codex daemon and its login to negotiate a V3 WebRTC session. Linux desktop webviews without WebRTC use Codex's packaged `codex-voice-host` for capture and transport, and receive user transcript fragments over an authenticated local stream. Client-managed handoffs keep the recording separate from coding turns.
+The shared composer exposes Codex voice dictation in both entry points. `frontend/features/conversations/voice/client.ts` owns microphone and WebRTC lifetime, while `use-voice-input.ts` appends input transcript fragments through the existing composer runtime. Dictation preserves existing draft text and requires explicit sending after it stops. Connecting, listening, finishing and failed states stay next to the input. Hiding or unmounting the pane releases the microphone and signaling session. The local backend uses the installed Codex daemon and its login to negotiate a V3 WebRTC session. Linux desktop webviews without WebRTC use Codex's packaged `codex-voice-host` for capture and transport, and receive user transcript fragments over an authenticated local stream. Client-managed handoffs keep the recording separate from coding turns.
 
 Use the shared Markdown/message rendering, history-loading controls and run indicator. Display tools and attachments according to the runtime's actual capabilities. New-conversation headers and pane selectors use the first draft line as a temporary title without renaming a saved session; empty draft selectors use pane numbers. New conversations use a task-starting input prompt, while existing conversations use a follow-up prompt. Empty-state text should help the user start their current work. Keep release planning and implementation progress in documentation.
 

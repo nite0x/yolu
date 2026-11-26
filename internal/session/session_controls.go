@@ -133,7 +133,7 @@ func (a *Service) ChatContextHandler(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, 200, result)
 }
 func (a *Service) applyTurnSettings(ctx context.Context, c codex.LiveClient, params map[string]any, settings TurnSettings, currentModel, currentEffort string) error {
-	if err := settings.validate(); err != nil {
+	if err := settings.Validate(); err != nil {
 		return err
 	}
 	if settings.Model == "" && settings.Effort == "" && settings.Mode == "" && settings.ServiceTier == "" {
@@ -157,7 +157,7 @@ func (a *Service) applyTurnSettings(ctx context.Context, c codex.LiveClient, par
 		return fmt.Errorf("当前模型不可用，请重新选择模型")
 	}
 	model = selected.Model
-	if err := settings.validateForModel(selected); err != nil {
+	if err := validateSettingsForModel(settings, selected); err != nil {
 		return err
 	}
 	if settings.ServiceTier != "" {

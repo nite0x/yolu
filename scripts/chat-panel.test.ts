@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import {build} from "esbuild";
 import {readFileSync} from "node:fs";
 import {JSDOM, VirtualConsole} from "jsdom";
-import {idleChat, latestEntryFingerprint, type Approval, type ChatState, type Entry} from "../frontend/chat/model";
-import type {ChatOptions} from "../frontend/chat/controller";
+import {idleChat, latestEntryFingerprint, type Approval, type ChatState, type Entry} from "../frontend/features/conversations/model/messages";
+import type {ChatOptions} from "../frontend/features/conversations/runtime/controller";
 
 let bundle = "";
 before(async () => {
-  const output = await build({entryPoints:["frontend/chat/main.tsx"], bundle:true, write:false, outfile:"chat-test.js", format:"iife", globalName:"ChatTest", jsx:"automatic", define:{"process.env.NODE_ENV":'"production"'}, plugins:[{name:"test-css",setup(builder){builder.onLoad({filter:/frontend[\\/]chat[\\/]controls\.tsx$/},args=>{let contents=readFileSync(args.path,'utf8');for(const name of ['ChatStatusView','ChatControlsView']){const start=contents.indexOf('function '+name+'(');const brace=contents.indexOf(') {',start)+3;contents=contents.slice(0,brace)+' window.__widgetRenders ||= {}; window.__widgetRenders["'+name+'"] = (window.__widgetRenders["'+name+'"] || 0) + 1;'+contents.slice(brace);}return {loader:'tsx',contents};});builder.onLoad({filter:/frontend[\\/]chat[\\/]panel\.tsx$/},args=>({loader:'tsx',contents:readFileSync(args.path,'utf8').replace('export function ChatPanel({controller}: {controller: ChatController}) {','export function ChatPanel({controller}: {controller: ChatController}) { window.__panelRenders = (window.__panelRenders || 0) + 1;')}));builder.onLoad({filter:/\.css$/},()=>({contents:"",loader:"css"}));}}]});
+  const output = await build({entryPoints:["frontend/entrypoints/conversation.tsx"], bundle:true, write:false, outfile:"chat-test.js", format:"iife", globalName:"ChatTest", jsx:"automatic", define:{"process.env.NODE_ENV":'"production"'}, plugins:[{name:"test-css",setup(builder){builder.onLoad({filter:/frontend[\\/]features[\\/]conversations[\\/]ui[\\/]controls\.tsx$/},args=>{let contents=readFileSync(args.path,'utf8');for(const name of ['ChatStatusView','ChatControlsView']){const start=contents.indexOf('function '+name+'(');const brace=contents.indexOf(') {',start)+3;contents=contents.slice(0,brace)+' window.__widgetRenders ||= {}; window.__widgetRenders["'+name+'"] = (window.__widgetRenders["'+name+'"] || 0) + 1;'+contents.slice(brace);}return {loader:'tsx',contents};});builder.onLoad({filter:/frontend[\\/]features[\\/]conversations[\\/]ui[\\/]panel\.tsx$/},args=>({loader:'tsx',contents:readFileSync(args.path,'utf8').replace('export function ChatPanel({controller}: {controller: ChatController}) {','export function ChatPanel({controller}: {controller: ChatController}) { window.__panelRenders = (window.__panelRenders || 0) + 1;')}));builder.onLoad({filter:/\.css$/},()=>({contents:"",loader:"css"}));}}]});
   bundle = output.outputFiles.find(file=>file.path.endsWith(".js"))!.text + "\nwindow.ChatTest = ChatTest;";
 });
 

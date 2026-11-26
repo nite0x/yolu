@@ -14,10 +14,8 @@ See the [development guide](docs/development.md) for prerequisites and architect
 
 ```bash
 npm ci
-npm run web:check
-npm run chat:check
-npm run web:build
-npm run chat:build
+npm run check
+npm run build
 node --test scripts/*.test.cjs
 npm run app:test
 npm run chat:test

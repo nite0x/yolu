@@ -67,19 +67,24 @@ The browser-mode process runs in the foreground. Stop the test process and use i
 | `internal/codex/` | Codex protocol clients, event dispatch and relay |
 | `internal/overview/` | Read-only composition of project and terminal status |
 | `internal/platform/`, `internal/httpx/` | Platform integration and shared HTTP/security helpers |
-| `frontend/app/` | React-rendered application markup, forms, lists and conversation pane layout |
-| `frontend/chat/`, `frontend/components/assistant-ui/` | Interactive chat adapter and registry-derived message/composer components |
+| `frontend/entrypoints/`, `frontend/app/` | Build entries, explicit startup, application shell and feature adapter composition |
+| `frontend/features/` | Conversation, file, Git, project, settings and terminal modules |
+| `frontend/entities/` | Shared repository/conversation data, identity context and domain presentation |
+| `frontend/core/`, `frontend/api/` | Transport, pane protocol and generated API contracts |
+| `frontend/shared/` | Generic controls, hooks, localization, utilities and theme tokens |
 | `web/` | Embedded HTML, controllers, styles and generated UI/chat bundles |
 | `desktop/`, `src-tauri/` | Startup page, Rust host and native bundle configuration |
 | `scripts/`, `.github/workflows/` | Build, packaging, verification and CI entry points |
 
 The application composes project, session, terminal and execution services. Each execution environment has its own SQLite store, path resolution and lock coordination. Sessions bind to actual directories through `session_project_bindings`. Git remains the worktree inventory.
 
+The [frontend module guide](../frontend/README.md) defines the source tree and dependency rules enforced by `npm run web:architecture`. Entry files call explicit startup functions. Features own their rendering adapters; `frontend/app/bridge/workspace-ui.tsx` composes the browser contract.
+
 Most product components render through `renderToStaticMarkup` and `window.WorkHubUI`. Page controllers manage navigation, data, polling and dialogs. The interactive chat UI mounts through its React bridge. The page host retains one shared application document and up to three independent same-origin conversation panes. Conversation history and drafts retain their own identities across view changes.
 
-The conversation page controller delegates resource appearance to `frontend/app/resource-icons.ts` and list mechanics to `conversation-list.ts`. Appearance is environment-specific. The list module owns the bounded scroll window, keyboard positioning and DOM row reuse. `conversation-state.ts` owns scope preferences, environment caches, request generations and partial-result publication.
+The conversation page controller delegates resource appearance to `frontend/shared/lib/resource-icons.ts` and list mechanics to `frontend/features/conversations/list/list.ts`. Appearance is environment-specific. The list module owns the bounded scroll window, keyboard positioning and DOM row reuse. `frontend/features/conversations/list/state.ts` owns scope preferences, environment caches, request generations and partial-result publication.
 
-The chat controller delegates debounced, ordered draft persistence to `frontend/chat/draft-persistence.ts` and saved-history pagination to `history-loader.ts`. The history loader receives connection and live-output revisions so delayed pages cannot replace a newer turn or title. Shared controller contracts live in `controller-types.ts`; type-only dependencies do not load the controller runtime.
+The chat controller delegates debounced, ordered draft persistence to `frontend/features/conversations/runtime/draft-persistence.ts` and saved-history pagination to `history-loader.ts`. The history loader receives connection and live-output revisions so delayed pages cannot replace a newer turn or title. Shared controller contracts live in `frontend/features/conversations/runtime/contracts.ts`; type-only dependencies do not load the controller runtime.
 
 The page bridge, environment controls and legacy history controls access shared conversation state through `window.WorkHubConversations`. They must not depend on page-local variables for the selected view or page mode.
 
@@ -89,13 +94,11 @@ Agent defaults live under `conversation_defaults:v1` in the selected environment
 
 ## Build and check
 
-Build both embedded frontend bundles before invoking Go directly:
+Build the complete embedded frontend before invoking Go directly. The canonical module boundaries are documented in [Application boundaries](architecture.md):
 
 ```bash
-npm run web:check
-npm run chat:check
-npm run web:build
-npm run chat:build
+npm run check
+npm run build
 node --test scripts/*.test.cjs
 npm run app:test
 npm run chat:test
@@ -104,6 +107,11 @@ go vet ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 npm run desktop:check
 ```
+
+The shared request client and pane protocol live in `frontend/core`. `web:check`
+checks their types and enforces the module boundaries in `frontend/architecture.json`. Generate transport types with `npm run api:generate` after editing
+`internal/apitypes`; CI rejects drift with `api:check`. The complete production
+build writes sizes and content hashes to `web/ui/build-manifest.json`.
 
 `npm run web:test` combines application type checking, the web build, application tests and the `.test.cjs` suite; it does not replace the separate chat build/check/test commands. `npm run web:watch` rebuilds application assets while editing; restart the Go process to update embedded resources.
 
@@ -119,6 +127,22 @@ go test -race ./internal/store ./internal/project \
 ```
 
 These checks use temporary repositories, local Git remotes, separate data directories and a deterministic Codex fixture. They do not establish that real model requests work. The exact Linux/macOS core matrix is in [.github/workflows/checks.yml](../.github/workflows/checks.yml).
+
+### Real browser regression checks
+
+```bash
+npx playwright install --with-deps chromium
+npm run build
+go build -o bin/yolu-browser-backend .
+YOLU_TEST_BINARY="$PWD/bin/yolu-browser-backend" npm run browser:test
+```
+
+These Linux/macOS tests start an isolated backend with temporary Git repositories,
+SQLite data and the deterministic Codex daemon fixture. They exercise draft
+retention, split panes, navigation, offline editing, approval recovery and narrow
+layouts in Chromium. They do not send model requests. To use an existing Chromium
+installation, set `YOLU_BROWSER_EXECUTABLE` to its absolute path. Native title-bar
+commands and platform webview differences still require desktop verification.
 
 ### Desktop lifecycle checks
 
@@ -230,9 +254,9 @@ Follow [the shared UI guidelines](ui-guidelines.md) for the component inventory,
 
 ## Localization
 
-Application text uses `uiText` from `frontend/i18n.ts`. The source message is the Simplified Chinese fallback; English translations live in `frontend/locales/en.json`. Interpolation uses numbered placeholders with values supplied separately, so user content is not translated or reordered accidentally.
+Application text uses `uiText` from `frontend/shared/i18n/index.ts`. The source message is the Simplified Chinese fallback; English translations live in `frontend/shared/i18n/locales/en.json`. Interpolation uses numbered placeholders with values supplied separately, so user content is not translated or reordered accidentally.
 
-The shared bootstrap is built from `frontend/i18n-runtime.ts` to `web/ui/i18n.js` and copied to the bundled desktop startup page. It runs before application, chat and terminal controllers. Static HTML labels must be explicitly marked with `data-i18n`; the runtime never walks or rewrites arbitrary conversation, file or terminal contents. Use `uiLocale()` for locale-dependent formatting in components that can also render without a browser.
+The shared bootstrap is built from `frontend/entrypoints/i18n.ts` to `web/ui/i18n.js` and copied to the bundled desktop startup page. It runs before application, chat and terminal controllers. Static HTML labels must be explicitly marked with `data-i18n`; the runtime never walks or rewrites arbitrary conversation, file or terminal contents. Use `uiLocale()` for locale-dependent formatting in components that can also render without a browser.
 
 The application-local `GET`/`PUT /api/settings/language` endpoint stores `system`, `en` or `zh-CN` under `ui_language:v1` in the settings table. It uses the existing authentication/CSRF checks and bypasses WSL environment routing. Page responses embed the saved preference, allowing restoration across random desktop ports without depending on browser storage.
 
