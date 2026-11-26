@@ -13,7 +13,7 @@ export interface DraftRecord {
  assistant_request?: {request_id: string; text: string; context?: {environment_id: string; project_id?: string}; settings?: AssistantTurnSettings};
  questions?: Record<string, Record<string, QuestionDraft>>;
 }
-export const draftStorageKey = (key: string) => "workhub:chat-draft:v1:" + key;
+export const draftStorageKey = (key: string) => `workhub:chat-draft:v1:${key}`;
 export function readLocalDraft(key:string): DraftRecord | undefined {
  try {const value = JSON.parse(localStorage.getItem(draftStorageKey(key)) || "null"); return validDraft(value) ? value : undefined;} catch {return undefined;}
 }

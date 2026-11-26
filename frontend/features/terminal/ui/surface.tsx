@@ -1,5 +1,5 @@
 import {uiText} from "@/shared/i18n"
-import {createRoot} from "react-dom/client"
+import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {createPortal, flushSync} from "react-dom"
 import {ALargeSmall, ArrowRight, Bot, Minus, MoreHorizontal, Plus, RefreshCw, Search, Terminal, X} from "lucide-react"
 import {ConversationCreationIntro, ConversationHeader, ConversationIconButton, ConversationPaneButtons, ConversationStatusBadge, ConversationWorkingContext} from "@/shared/ui/conversation-surface"

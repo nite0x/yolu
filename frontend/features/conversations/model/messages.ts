@@ -39,7 +39,7 @@ export function latestEntryFingerprint(entries: Entry[]): string {
   const content = JSON.stringify([tail.kind, tail.text, tail.command, tail.output, tail.images]);
   let hash = 2166136261;
   for (let i = 0; i < content.length; i++) hash = Math.imul(hash ^ content.charCodeAt(i), 16777619);
-  return entryKey(tail) + ":" + (hash >>> 0).toString(16);
+  return `${entryKey(tail)}:${(hash >>> 0).toString(16)}`;
 }
 export const cleanText = (value?: string | null) => String(value ?? "").replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
 export function mergeEntries(saved: Entry[], live: Entry[]) {
@@ -97,7 +97,7 @@ export function convertEntries(entries: Entry[]): ThreadMessageLike[] {
       const parts = typeof message.content === "string" ? [{type: "text" as const, text: message.content}] : message.content;
       for (const part of parts) {
         const last = content.at(-1);
-        if (last?.type === "text" && part.type === "text") content[content.length - 1] = {...last, text: last.text + "\n\n" + part.text};
+        if (last?.type === "text" && part.type === "text") content[content.length - 1] = {...last, text: `${last.text}\n\n${part.text}`};
         else content.push(part);
       }
       messages[messages.length - 1] = {...previous, content, status: previous.status?.type === "running" || message.status?.type === "running" ? {type: "running"} : message.status};
@@ -118,8 +118,7 @@ export async function readSnapshots<T = ChatState>(response: Response, receive: 
     while (true) {
       const {value, done} = await reader.read();
       buffer += decoder.decode(value, {stream: !done});
-      let boundary: RegExpExecArray | null;
-      while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
+      for (let boundary = /\r?\n\r?\n/.exec(buffer); boundary; boundary = /\r?\n\r?\n/.exec(buffer)) {
         const event = buffer.slice(0, boundary.index);
         buffer = buffer.slice(boundary.index + boundary[0].length);
         const data = event.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");

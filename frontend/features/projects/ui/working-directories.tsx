@@ -1,6 +1,8 @@
 import {Check, ChevronDown, ChevronRight, CircleAlert, CodeXml, Copy, Files, Folder, FolderOpen, GitBranch, GitCommitHorizontal, Layers, MessageSquare, MoreHorizontal, Pencil, Plus, Terminal} from "lucide-react"
 import {uiLocale, uiText} from "@/shared/i18n"
-import {Action, Feedback, StatusBadge} from "@/shared/ui/patterns"
+import {Action} from "@/shared/ui/actions/button"
+import {Feedback} from "@/shared/ui/feedback/message"
+import {StatusBadge} from "@/shared/ui/data-display/status-badge"
 import {Branch, projectOpenLabels, TreeStatus, type ProjectOpenTool} from "@/entities/projects/presentation"
 import {conversationPathKey} from "@/shared/lib/workspace-identity"
 import {conversationStatusMatches} from "@/entities/conversations/status"
@@ -74,7 +76,7 @@ export function ProjectConversationRows({project, sessions, directoryLabels}: {
           <strong>{session.name || uiText("未命名对话")}</strong>
           <span>{session.provider === "agy" ? "Antigravity" : "Codex"}{context ? ` · ${context}` : ""}</span>
         </span>
-        {waiting || running ? <StatusBadge kind={waiting ? "warning" : "primary-tag"}>{waiting ? uiText("待确认") : uiText("运行中")}</StatusBadge> : null}
+        {waiting || running ? <StatusBadge tone={waiting ? "warning" : "accent"}>{waiting ? uiText("待确认") : uiText("运行中")}</StatusBadge> : null}
         {timestamp ? <time dateTime={new Date(timestamp * 1000).toISOString()}>{sessionTime(timestamp)}</time> : null}
         <ChevronRight className="project-conversation-enter" aria-hidden="true" />
       </Action>
@@ -116,7 +118,7 @@ export function WorkingDirectoryCard({project, tree, name, primary, tool, state,
           <div className="directory-identity-main">
             <Folder aria-hidden="true" />
             <h4 title={name}>{name}</h4>
-            {primary ? <StatusBadge kind="primary-tag">{uiText("主仓库")}</StatusBadge> : null}
+            {primary ? <StatusBadge tone="accent">{uiText("主仓库")}</StatusBadge> : null}
             <Branch><GitBranch aria-hidden="true" /><span title={branch}>{branch}</span></Branch>
             {usable ? <><DirectoryLocalStatus tree={tree} project={project} name={name} /><GitSyncStatus tree={tree} compact /></> : <TreeStatus tree={tree} compact />}
           </div>
@@ -149,7 +151,7 @@ export function WorkingDirectoryCard({project, tree, name, primary, tool, state,
             aria-label={state.expanded ? uiText("收起 {0}", name) : uiText("展开 {0}", name)}><ChevronDown aria-hidden="true" /></Action>
         </div>
       </div>
-      {issue ? <Feedback variant="destructive" className="directory-recovery"><p><CircleAlert aria-hidden="true" />{tree.error || uiText("检查 Worktree 目录是否仍在原位置。")}</p><Action action="project-refresh" {...target}>{uiText("重新检查")}</Action></Feedback> : null}
+      {issue ? <Feedback tone="error" className="directory-recovery"><p><CircleAlert aria-hidden="true" />{tree.error || uiText("检查 Worktree 目录是否仍在原位置。")}</p><Action action="project-refresh" {...target}>{uiText("重新检查")}</Action></Feedback> : null}
     </div>
     <div id={panel} className="directory-card-expanded" hidden={!state.expanded}>{state.expanded ? <>
       <div className="directory-sections" role="group" aria-label={name}>{sections.map(([value, label, count]) =>
@@ -211,9 +213,9 @@ function DirectoryLocalStatus({tree, project, name}: {tree: Worktree; project: s
   const committed = !tree.detached && !!tree.upstream && tree.sync_available && (tree.sync_ahead || 0) > 0
   return <div className="directory-local-status">
     {tree.dirty ? <Action action="changes-open" id={project} data-path={tree.path} variant="ghost" className="directory-changes-link" aria-label={uiText("查看 {0} 的 {1} 项改动", name, tree.dirty)}>
-      <StatusBadge kind="warning"><Pencil aria-hidden="true" />{uiText("有改动")} {tree.dirty}</StatusBadge>
+      <StatusBadge tone="warning"><Pencil aria-hidden="true" />{uiText("有改动")} {tree.dirty}</StatusBadge>
     </Action> : !committed ? <span className="directory-status-clean" title={uiText("工作目录干净，无未提交改动")}><Check aria-hidden="true" />{uiText("干净")}</span> : null}
-    {committed ? <span title={uiText("已有 {0} 个提交待推送", tree.sync_ahead)}><StatusBadge kind="primary-tag"><GitCommitHorizontal aria-hidden="true" />{uiText("已提交")}</StatusBadge></span> : null}
+    {committed ? <span title={uiText("已有 {0} 个提交待推送", tree.sync_ahead)}><StatusBadge tone="accent"><GitCommitHorizontal aria-hidden="true" />{uiText("已提交")}</StatusBadge></span> : null}
   </div>
 }
 
@@ -223,7 +225,7 @@ function GitSyncStatus({tree, compact = false}: {tree: Worktree; compact?: boole
   const diverged = sync_available && !!upstream && !detached && (sync_ahead > 0 || sync_behind > 0)
   if (compact && detached && !operation) return null
   return <div className="directory-sync" title={uiText("同步数量基于本地最近获取的上游记录；获取远端后更新。")}>
-    {!compact || !detached ? (diverged ? <StatusBadge kind="neutral">
+    {!compact || !detached ? (diverged ? <StatusBadge tone="neutral">
       <span className="directory-sync-summary"><code title={upstream}>{upstream}</code>
         <span className="directory-sync-counts" aria-label={uiText("待推送 {0} 个提交，待拉取 {1} 个提交", sync_ahead, sync_behind)} title={uiText("↑ 待推送 {0} · ↓ 待拉取 {1}{2}", sync_ahead, sync_behind, sync_ahead && sync_behind ? uiText(" · 已分歧") : "")}>
           <span data-active={sync_ahead > 0}>↑{sync_ahead}</span><span data-active={sync_behind > 0}>↓{sync_behind}</span>
@@ -236,6 +238,6 @@ function GitSyncStatus({tree, compact = false}: {tree: Worktree; compact?: boole
         </span> : <span title={uiText("上游不可用，请获取远端")}>{uiText("暂不可用")}</span>}
       </span> : detached ? uiText("游离 HEAD") : uiText("未设置上游")}
     </span>) : null}
-    {operation ? <StatusBadge kind="warning">{operation === "merge" ? uiText("合并进行中{0}", conflicts?.length ? uiText(" · {0} 个冲突文件", conflicts.length) : uiText(" · 等待完成提交")) : uiText("{0} 进行中", operation)}</StatusBadge> : null}
+    {operation ? <StatusBadge tone="warning">{operation === "merge" ? uiText("合并进行中{0}", conflicts?.length ? uiText(" · {0} 个冲突文件", conflicts.length) : uiText(" · 等待完成提交")) : uiText("{0} 进行中", operation)}</StatusBadge> : null}
   </div>
 }

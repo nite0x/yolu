@@ -5,7 +5,13 @@ import {Card} from "@/shared/ui/primitives/card"
 import {Button} from "@/shared/ui/primitives/button"
 import {Input} from "@/shared/ui/primitives/input"
 import {TableCell, TableRow} from "@/shared/ui/primitives/table"
-import {Action, Check, DataTable, Feedback, Field, NativeSelect, Option, StatusBadge} from "@/shared/ui/patterns"
+import {Action} from "@/shared/ui/actions/button"
+import {Check} from "@/shared/ui/forms/check"
+import {DataTable} from "@/shared/ui/data-display/table"
+import {Feedback} from "@/shared/ui/feedback/message"
+import {Field} from "@/shared/ui/forms/field"
+import {NativeSelect, NativeSelectOption as Option} from "@/shared/ui/primitives/native-select"
+import {StatusBadge} from "@/shared/ui/data-display/status-badge"
 import {Branch, SourceOptions} from "@/entities/projects/presentation"
 import type {GitOverview} from "@/entities/projects/model"
 
@@ -67,7 +73,7 @@ export function GitView({ overview: v }: { overview: GitOverview }) {
         </Section> : null}
         <Section title={uiText("全部分支")} description={uiText("{0} 个本地 · {1} 个远端", local.length, remote.length)}>
           <div className="git-branch-search"><Search aria-hidden="true" /><Input id="gitBranchSearch" value={query} onChange={event => setQuery(event.target.value)} type="search" aria-label={uiText("搜索分支、上游或工作目录")} placeholder={uiText("搜索分支、上游或工作目录")} /></div>
-          <DataTable label={uiText("Git 分支")} headers={[uiText("分支 / 提交 / 跟踪"), uiText("占用的 Worktree"), uiText("操作")]}>{matching.length ? matching.map(b => <TableRow key={b.ref}><TableCell className="align-top whitespace-normal"><div className="flex flex-wrap items-center gap-2"><Branch>{b.name}</Branch><StatusBadge kind={b.kind === "remote" ? "neutral" : "primary-tag"}>{b.kind === "remote" ? uiText("远端") : uiText("本地")}</StatusBadge></div><div className="comparison">{b.commit.slice(0, 8)}{b.upstream ? uiText(" · 跟踪 {0}", b.upstream) : ""}</div></TableCell><TableCell className="align-top whitespace-normal">{b.worktrees.length ? b.worktrees.map(path => <div key={path} className="path">{path}</div>) : <span className="quiet">{uiText("未检出")}</span>}</TableCell><TableCell className="align-top"><Action action="git-use-source" data-ref={b.ref}>{uiText("以此创建分支")}</Action></TableCell></TableRow>) : <TableRow><TableCell colSpan={3} className="whitespace-normal">{query ? uiText("没有匹配的分支，试试其他名称。") : uiText("尚无分支记录，请先获取远端或在终端创建初始提交。")}</TableCell></TableRow>}</DataTable>
+          <DataTable label={uiText("Git 分支")} headers={[uiText("分支 / 提交 / 跟踪"), uiText("占用的 Worktree"), uiText("操作")]}>{matching.length ? matching.map(b => <TableRow key={b.ref}><TableCell className="align-top whitespace-normal"><div className="flex flex-wrap items-center gap-2"><Branch>{b.name}</Branch><StatusBadge tone={b.kind === "remote" ? "neutral" : "accent"}>{b.kind === "remote" ? uiText("远端") : uiText("本地")}</StatusBadge></div><div className="comparison">{b.commit.slice(0, 8)}{b.upstream ? uiText(" · 跟踪 {0}", b.upstream) : ""}</div></TableCell><TableCell className="align-top whitespace-normal">{b.worktrees.length ? b.worktrees.map(path => <div key={path} className="path">{path}</div>) : <span className="quiet">{uiText("未检出")}</span>}</TableCell><TableCell className="align-top"><Action action="git-use-source" data-ref={b.ref}>{uiText("以此创建分支")}</Action></TableCell></TableRow>) : <TableRow><TableCell colSpan={3} className="whitespace-normal">{query ? uiText("没有匹配的分支，试试其他名称。") : uiText("尚无分支记录，请先获取远端或在终端创建初始提交。")}</TableCell></TableRow>}</DataTable>
         </Section>
       </section>
 

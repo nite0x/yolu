@@ -10,7 +10,7 @@ export function reuseValue<T>(previous: T, next: T): T {
   for (const key of keys) {
     const value = reuseValue(before[key], after[key]);
     (result as Record<string, unknown>)[key] = value;
-    if (!Object.prototype.hasOwnProperty.call(before, key) || value !== before[key]) equal = false;
+    if (!Object.hasOwn(before, key) || value !== before[key]) equal = false;
   }
   return equal ? previous : result as T;
 }

@@ -2,7 +2,7 @@ import {Command} from "cmdk"
 import {FolderGit2, MessageSquare, Search, X} from "lucide-react"
 import {useEffect, useState, useSyncExternalStore} from "react"
 import {flushSync} from "react-dom"
-import {createRoot} from "react-dom/client"
+import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {Button} from "@/shared/ui/primitives/button"
 import {uiText} from "@/shared/i18n"
 import {isGeneralConversationDirectory} from "@/entities/conversations/context"
@@ -196,7 +196,7 @@ function SearchPanel({ source, recent, close, select }: { source: ReturnType<typ
     <div className="global-search-field">
       <Search aria-hidden="true" />
       <Command.Input placeholder={uiText("搜索项目和对话…")} value={query} onValueChange={setQuery} autoComplete="off" />
-      <kbd aria-hidden="true">{shortcut}</kbd>
+      <kbd>{shortcut}</kbd>
       <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label={uiText("关闭")} title={uiText("关闭")}><X aria-hidden="true" /></Button>
     </div>
     <Command.List className="global-search-list" label={uiText("搜索结果")}>

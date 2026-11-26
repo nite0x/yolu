@@ -7,6 +7,7 @@ import tailwindcss from "@tailwindcss/vite";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 await mkdir(path.join(root, "web/chat"), {recursive: true});
 await rm(path.join(root, "web/chat/highlight"), {recursive: true, force: true});
+await rm(path.join(root, "web/chat/diagrams"), {recursive: true, force: true});
 const bundle = {absWorkingDir: root, bundle: true, minify: true, format: "esm", target: ["es2022"], jsx: "automatic", define: {"process.env.NODE_ENV": '"production"'}, legalComments: "linked", metafile: true,
   plugins: [{name: "css-built-by-vite", setup(builder) {
     builder.onLoad({filter: /\.css$/}, () => ({contents: "", loader: "css"}));
@@ -14,7 +15,7 @@ const bundle = {absWorkingDir: root, bundle: true, minify: true, format: "esm", 
 };
 const results = await Promise.all([
   build({...bundle, entryPoints: ["frontend/entrypoints/conversation.tsx"], outfile: "web/chat/assistant.js"}),
-  build({...bundle, entryPoints: ["frontend/features/conversations/components/assistant-ui/elements/mermaid-renderer.ts"], outfile: "web/chat/mermaid.js"}),
+  build({...bundle, entryPoints: {mermaid: "frontend/features/conversations/components/assistant-ui/elements/mermaid-renderer.ts"}, outdir: "web/chat", splitting: true, chunkNames: "diagrams/[name]-[hash]"}),
   build({...bundle, entryPoints: ["frontend/features/conversations/components/assistant-ui/elements/code-highlight.ts"], outdir: "web/chat/highlight", splitting: true}),
 ]);
 // Official registry components ship Tailwind classes. Compile their stylesheet

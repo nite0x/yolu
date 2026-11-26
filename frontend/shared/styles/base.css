@@ -6,6 +6,7 @@
 @import "../ui/conversation-surface.css";
 @import "../ui/page-surface.css";
 @source "../../";
+@source not "../../dev";
 /* dark: follows the saved Yolu palette, not prefers-color-scheme. */
 @custom-variant dark (&:where([data-color-scheme=dark], [data-color-scheme=dark] *));
 
@@ -90,6 +91,7 @@ pre, .changes-text, .changes-text *, .file-preview-path,
 .shadcn-scope :where(select, input, textarea) { color: var(--foreground); }
 
 /* Keep shadcn form controls neutral and aligned, unaffected by legacy .field rules. */
+.ui-label-group { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .shadcn-scope .field { color: var(--foreground); font-size: 13px; font-weight: 500; }
 .shadcn-scope .field [data-slot="label"] { color: var(--foreground); font-size: 13px; font-weight: 500; }
 .shadcn-scope .field :is([data-slot="input"], [data-slot="textarea"], [data-slot="native-select"]) {

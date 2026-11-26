@@ -63,6 +63,9 @@ export async function checkFrontendArchitecture(root, rules) {
       const targetName = path.relative(root, target).split(path.sep).join('/');
       const [targetLayer, targetFeature, ...inside] = targetName.split('/');
       if (!rules.layers[layer].includes(targetLayer)) errors.push(`${name}: ${layer} must not import ${targetName}`);
+      if (name.startsWith('shared/ui/primitives/') && targetName.startsWith('shared/ui/') && !targetName.startsWith('shared/ui/primitives/')) {
+        errors.push(`${name}: primitives must not import composed UI ${targetName}`);
+      }
       if (layer === 'features' && targetLayer === 'features' && targetFeature !== feature) {
         const publicFiles = rules.features[feature]?.[targetFeature] || [];
         if (!publicFiles.includes(inside.join('/'))) errors.push(`${name}: ${targetName} is not an allowed feature integration`);

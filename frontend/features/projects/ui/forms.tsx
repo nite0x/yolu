@@ -1,7 +1,12 @@
 import {uiText} from "@/shared/i18n"
 import {Button} from "@/shared/ui/primitives/button"
+import {LoadingState} from "@/shared/ui/feedback/loading-state"
 import {Input} from "@/shared/ui/primitives/input"
-import {Feedback, Field, ModalFooter, ModalHeader, NativeSelect, Option, Preview} from "@/shared/ui/patterns"
+import {Feedback} from "@/shared/ui/feedback/message"
+import {Field} from "@/shared/ui/forms/field"
+import {ModalFooter, ModalHeader} from "@/shared/ui/layout/dialog"
+import {NativeSelect, NativeSelectOption as Option} from "@/shared/ui/primitives/native-select"
+import {Preview} from "@/shared/ui/data-display/code-preview"
 import "./project-form.css"
 
 export function ProjectForm() {
@@ -13,16 +18,16 @@ export function ProjectForm() {
       <Field id="projectCloneDirectory" label={uiText("新文件夹名")} required help={uiText("在存放目录下新建此文件夹；已有目录不会被覆盖。")}><Input id="projectCloneDirectory" disabled autoComplete="off" placeholder="repo" /></Field>
       <p className="dialog-description">{uiText("克隆失败时会保留剩余文件。若克隆完成但登记失败，可切换到登记本地仓库后重试。")}</p>
     </div>
-    <Field id="projectPath" label={uiText("仓库目录")} required help={uiText("选择本机 Git 仓库主目录，或填写项目所在环境中的绝对路径。")}><div className="flex flex-wrap gap-2"><Input className="min-w-0 flex-1 basis-60" id="projectPath" name="path" required autoComplete="off" placeholder={uiText("填写仓库主目录的绝对路径")} /><Button type="button" variant="outline" id="chooseProjectDirectory">{uiText("选择文件夹…")}</Button></div><small id="projectDirectoryHint" className="text-xs text-muted-foreground" hidden>{uiText("WSL 项目请手动填写 Linux 绝对路径，例如 /home/用户名/projects/app。")}</small></Field>
+    <Field id="projectPath" label={uiText("仓库目录")} required help={uiText("选择本机 Git 仓库主目录，或填写项目所在环境中的绝对路径。")}>{control => <><div className="flex flex-wrap gap-2"><Input className="min-w-0 flex-1 basis-60" {...control} name="path" autoComplete="off" placeholder={uiText("填写仓库主目录的绝对路径")} /><Button type="button" variant="outline" id="chooseProjectDirectory">{uiText("选择文件夹…")}</Button></div><small id="projectDirectoryHint" className="text-xs text-muted-foreground" hidden>{uiText("WSL 项目请手动填写 Linux 绝对路径，例如 /home/用户名/projects/app。")}</small></>}</Field>
     <div id="projectNameField"><Field id="projectName" label={uiText("项目名称")} help={uiText("建议使用简短、可辨识的项目名称。")}><Input id="projectName" name="name" maxLength={80} placeholder={uiText("留空则使用仓库目录名")} /></Field></div>
     <section id="projectScanResults" aria-live="polite" aria-label={uiText("发现的仓库")} hidden />
-    <Feedback id="projectError" variant="destructive" hidden /></div>
+    <Feedback id="projectError" tone="error" hidden /></div>
     <ModalFooter><Button type="button" variant="outline" id="projectRescan" hidden>{uiText("重新扫描")}</Button><Button type="submit" id="projectSubmit">{uiText("添加并扫描")}</Button></ModalFooter>
   </form>
 }
 
 export function WorktreeForm() {
-  return <><ModalHeader id="worktreeTitle" title={uiText("创建 Worktree")} /><p className="dialog-description" id="worktreeProject" /><div id="worktreeLoading" className="loading" role="status">{uiText("正在读取分支…")}</div><Feedback id="worktreeError" variant="destructive" hidden />
+  return <><ModalHeader id="worktreeTitle" title={uiText("创建 Worktree")} /><p className="dialog-description" id="worktreeProject" /><LoadingState id="worktreeLoading" className="loading">{uiText("正在读取分支…")}</LoadingState><Feedback id="worktreeError" tone="error" hidden />
     <form id="worktreeForm" hidden>
       <Field id="worktreeSlug" label={uiText("工作标识")} required help={uiText("用于 Worktree 目录名。")}><Input id="worktreeSlug" name="slug" required maxLength={64} pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}" placeholder={uiText("例如：order-approval")} /></Field>
       <Field id="worktreeMode" label={uiText("分支方式")}><NativeSelect id="worktreeMode" name="mode"><Option value="new">{uiText("新建分支")}</Option><Option value="existing">{uiText("使用已有本地分支")}</Option></NativeSelect></Field>

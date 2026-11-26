@@ -1,6 +1,7 @@
 import {uiText} from "@/shared/i18n"
 import {useEffect, useLayoutEffect, useRef, useState} from "react"
-import {createRoot, type Root} from "react-dom/client"
+import type {Root} from "react-dom/client"
+import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {flushSync} from "react-dom"
 import {ArrowLeft, ArrowRight, Ellipsis, FolderGit2, MessageSquare, Search, RefreshCw, Settings, SquarePen, SquareSplitHorizontal, Ticket} from "lucide-react"
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/shared/ui/primitives/tooltip"
@@ -26,9 +27,10 @@ function PaneSeparator({ index, frames, container, resize }: PaneProps & {index:
     },
     resize:width => resize(index, width),
   }), [index, frame, adjacent, container, resize])
-  return <div ref={ref} role="separator" tabIndex={0} aria-orientation="vertical" aria-label={uiText("调整第 {0} 栏宽度", index + 1)} className="workspace-pane-resize" style={{gridColumn:index * 2 + 2, gridRow:1}} />
+  return <div ref={ref} role="separator" aria-valuenow={0} tabIndex={0} aria-orientation="vertical" aria-label={uiText("调整第 {0} 栏宽度", index + 1)} className="workspace-pane-resize" style={{gridColumn:index * 2 + 2, gridRow:1}} />
 }
 function PaneHeaders(props: PaneProps) {
+  // biome-ignore lint/suspicious/noArrayIndexKey: Dividers are identified by their fixed pane position.
   return <>{Array.from({length:props.count - 1}, (_, index) => <PaneSeparator key={`resize-${index}`} {...props} index={index} />)}</>
 }
 
@@ -109,7 +111,7 @@ function WindowChrome(props: WindowChromeProps) {
     {props.search && <Tooltip>
       <TooltipTrigger asChild><button type="button" className="window-search-trigger" aria-label={uiText("全局搜索")} aria-haspopup="dialog" aria-controls="globalSearch"
         aria-keyshortcuts="Meta+K Control+K" onClick={event => props.search?.(event.currentTarget)}>
-        <Search size={16} aria-hidden="true" /><span>{uiText("搜索或跳转…")}</span><kbd aria-hidden="true">{navigator.platform.startsWith("Mac") ? "⌘ K" : "Ctrl K"}</kbd>
+        <Search size={16} aria-hidden="true" /><span>{uiText("搜索或跳转…")}</span><kbd>{navigator.platform.startsWith("Mac") ? "⌘ K" : "Ctrl K"}</kbd>
       </button></TooltipTrigger>
       <TooltipContent side="bottom" className="window-header-tooltip">{uiText("搜索项目和对话…")}</TooltipContent>
     </Tooltip>}

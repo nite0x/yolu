@@ -9,8 +9,8 @@ export function changePathLabel(path: string, paths: FileChangePaths) {
   const normalized = fullPath.replace(/\\/g, "/");
   const key = directoryKey(normalized);
   const matchRoot = (roots: readonly string[]) => roots.filter(Boolean).map(root => ({
-    prefix: root.replace(/\\/g, "/").replace(/\/+$/, "") + "/", key: directoryKey(root),
-  })).filter(root => key.startsWith(root.key === "/" ? "/" : root.key + "/"))
+    prefix: `${root.replace(/\\/g, "/").replace(/\/+$/, "")}/`, key: directoryKey(root),
+  })).filter(root => key.startsWith(root.key === "/" ? "/" : `${root.key}/`))
     .sort((a, b) => b.prefix.length - a.prefix.length)[0]?.prefix;
   // Prefer the actual project root even when the chat runs in a subdirectory.
   const root = matchRoot(paths.projectRoots) || matchRoot([paths.cwd || "", ...(paths.additionalDirectories || [])]);

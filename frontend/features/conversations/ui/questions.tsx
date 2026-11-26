@@ -1,6 +1,7 @@
 import {uiText} from "@/shared/i18n"
 import {useEffect, useRef, useState, useSyncExternalStore} from "react"
 import {ArrowUpIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon} from "lucide-react"
+import {PendingButton, IconButton} from "@/shared/ui/actions/button"
 import {Button} from "@/shared/ui/primitives/button"
 import {Input} from "@/shared/ui/primitives/input"
 import {Textarea} from "@/shared/ui/primitives/textarea"
@@ -72,9 +73,9 @@ export function QuestionComposer({approval, controller}: {approval: Approval; co
     <div className="chat-question-actions">
       <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => void controller.answer(approval, "decline", {})}>{uiText("跳过问询")}</Button>
       <div className="chat-question-navigation">
-        {questions.length > 1 && <><Button type="button" variant="ghost" size="icon-sm" aria-label={uiText("上一个问题")} disabled={disabled || index === 0} onClick={() => {setIndex(index - 1); setError("");}}><ChevronLeftIcon /></Button><Button type="button" variant="ghost" size="icon-sm" aria-label={uiText("下一个问题")} disabled={disabled || index === questions.length - 1} onClick={() => {setIndex(index + 1); setError("");}}><ChevronRightIcon /></Button></>}
+        {questions.length > 1 && <><IconButton size="icon-sm" label={uiText("上一个问题")} disabled={disabled || index === 0} onClick={() => {setIndex(index - 1); setError("");}}><ChevronLeftIcon /></IconButton><IconButton size="icon-sm" label={uiText("下一个问题")} disabled={disabled || index === questions.length - 1} onClick={() => {setIndex(index + 1); setError("");}}><ChevronRightIcon /></IconButton></>}
         <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => void controller.stop()}>{uiText("停止本轮")}</Button>
-        {index < questions.length - 1 ? <Button key="next" type="button" size="sm" disabled={disabled || !answerText(question, draft)} onClick={event => {event.preventDefault(); setIndex(index + 1); setError("");}}>{uiText("下一题")}<ChevronRightIcon /></Button> : <Button key="submit" type="submit" size="sm" disabled={disabled}>{state.answering === approval.id ? uiText("提交中…") : uiText("提交回答{0}", questions.length > 1 ? `（${completed}/${questions.length}）` : "")}<ArrowUpIcon /></Button>}
+        {index < questions.length - 1 ? <Button key="next" type="button" size="sm" disabled={disabled || !answerText(question, draft)} onClick={event => {event.preventDefault(); setIndex(index + 1); setError("");}}>{uiText("下一题")}<ChevronRightIcon /></Button> : <PendingButton key="submit" type="submit" size="sm" pending={state.answering === approval.id} pendingLabel={uiText("提交中…")} disabled={disabled}>{uiText("提交回答{0}", questions.length > 1 ? `（${completed}/${questions.length}）` : "")}<ArrowUpIcon /></PendingButton>}
       </div>
     </div>
   </form>;

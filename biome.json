@@ -1,0 +1,107 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.9/schema.json",
+  "files": {
+    "includes": [
+      "frontend/shared/ui/actions/**",
+      "frontend/shared/ui/forms/**",
+      "frontend/shared/ui/feedback/**",
+      "frontend/shared/ui/layout/**",
+      "frontend/shared/ui/data-display/**",
+      "frontend/dev/**",
+      "frontend/app/**/*.ts",
+      "frontend/app/**/*.tsx",
+      "frontend/core/**",
+      "frontend/features/*/model/**/*.ts",
+      "frontend/features/*/runtime/**/*.ts",
+      "frontend/features/settings/**",
+      "scripts/ui-*.tsx",
+      "vite.ui.config.mts"
+    ]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "lineWidth": 110
+  },
+  "javascript": {
+    "formatter": {
+      "semicolons": "asNeeded",
+      "bracketSpacing": false
+    }
+  },
+  "linter": {
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "frontend/app/**",
+        "frontend/core/**",
+        "frontend/features/*/model/**",
+        "frontend/features/*/runtime/**"
+      ],
+      "formatter": {
+        "enabled": false
+      },
+      "assist": {
+        "enabled": false
+      },
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "frontend/shared/ui/actions/**",
+        "frontend/shared/ui/forms/**",
+        "frontend/shared/ui/feedback/**",
+        "frontend/shared/ui/layout/**",
+        "frontend/shared/ui/data-display/**",
+        "frontend/dev/**",
+        "frontend/features/settings/**",
+        "frontend/features/conversations/runtime/controller-cache.ts"
+      ],
+      "formatter": {
+        "enabled": true
+      },
+      "assist": {
+        "enabled": true
+      }
+    },
+    {
+      "includes": [
+        "frontend/features/conversations/model/links.ts",
+        "frontend/features/conversations/model/messages.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noControlCharactersInRegex": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["frontend/app/shell/layout.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off"
+          }
+        }
+      }
+    }
+  ]
+}

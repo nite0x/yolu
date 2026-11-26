@@ -24,7 +24,7 @@ export function createDraftPersistence(options: {
     cacheDraft(key, record);
     writes = writes.then(async () => {
       try {
-        await options.request("/api/conversation-drafts?key=" + encodeURIComponent(key), {method: "POST", body: JSON.stringify(record)});
+        await options.request(`/api/conversation-drafts?key=${encodeURIComponent(key)}`, {method: "POST", body: JSON.stringify(record)});
         lastWriteSucceeded = true;
         options.notice("");
       } catch {
@@ -42,6 +42,7 @@ export function createDraftPersistence(options: {
   }
   return {
     restore, persist, write,
+    dispose() { clearTimeout(timer) },
     async flush() { persist(); await writes; return lastWriteSucceeded; },
     changed() {
       revision++;
@@ -52,7 +53,7 @@ export function createDraftPersistence(options: {
     async load() {
       const observed = revision;
       try {
-        const saved = await options.request<unknown>("/api/conversation-drafts?key=" + encodeURIComponent(options.key()));
+        const saved = await options.request<unknown>(`/api/conversation-drafts?key=${encodeURIComponent(options.key())}`);
         if (options.connected() && revision === observed && validDraft(saved) && saved.updated >= updated && !options.submitting()) restore(saved);
       } catch { options.notice(uiText("暂时无法恢复本地草稿，将在下次保存时重试")); }
     },

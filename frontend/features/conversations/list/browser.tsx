@@ -6,7 +6,8 @@ import {ListCreateButton, ListFilter, ListSearch} from "@/shared/ui/list-control
 import {Button} from "@/shared/ui/primitives/button"
 import {Input} from "@/shared/ui/primitives/input"
 import {Label} from "@/shared/ui/primitives/label"
-import {Check as Checkbox, NativeSelect} from "@/shared/ui/patterns"
+import {Check as Checkbox} from "@/shared/ui/forms/check"
+import {NativeSelect} from "@/shared/ui/primitives/native-select"
 import {SessionHistoryPanel} from "./sessions"
 import {type Session} from "@/entities/conversations/catalog"
 

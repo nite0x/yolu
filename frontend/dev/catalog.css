@@ -1,0 +1,101 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--yolu-canvas);
+  color: var(--yolu-foreground);
+  font: 14px / 1.5 var(--font-sans, sans-serif);
+}
+main {
+  width: min(960px, 100%);
+  margin: auto;
+  padding: 24px;
+}
+h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.catalog-heading,
+.catalog-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.catalog-heading {
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+section {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+form {
+  display: grid;
+  gap: 20px;
+}
+.catalog-row > input {
+  flex: 1;
+  min-width: 120px;
+}
+dialog {
+  width: min(480px, calc(100% - 32px));
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  color: var(--foreground);
+}
+dialog::backdrop {
+  background: #0006;
+}
+.dialog-header,
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dialog-footer {
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+.help-tip {
+  position: relative;
+  display: inline-flex;
+}
+.help-tip-trigger {
+  display: inline-flex;
+  border: 0;
+  padding: 4px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.help-tip-trigger svg {
+  width: 14px;
+  height: 14px;
+}
+.help-tip-content {
+  position: fixed;
+  margin: 0;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+}
+@media (max-width: 600px) {
+  main {
+    padding: 12px;
+  }
+  section {
+    padding: 16px;
+  }
+}

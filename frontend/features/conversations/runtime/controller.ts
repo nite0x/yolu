@@ -157,7 +157,7 @@ export class ChatController {
     const flags: {native_permissions?:boolean; allow_shared?:boolean} = {};
     for (;;) {
       try {
-        await this.options.request(this.base() + "/resume", {method: "POST",body:JSON.stringify(flags)});
+        await this.options.request(`${this.base()}/resume`, {method: "POST",body:JSON.stringify(flags)});
         return;
       } catch (error) {
         const {code,message} = error as {code?:string;message:string};
@@ -252,13 +252,31 @@ export class ChatController {
     this.historyRetryAt = 0; this.historyPollAt = 0;
     if (this.snapshot.terminal) this.update({terminal: {...this.snapshot.terminal, connected: false}});
   }
+  async prepareForEviction() {
+    const state = this.snapshot;
+    if (this.connected || state.submitting || state.answering || state.stopping || state.managing || this.openingApproval || this.pending || this.submitted || this.forkRequest) return false;
+    if (this.options.readOnly) return true;
+    // Blocking answers are intentionally kept in memory rather than durable drafts.
+    if ([...this.questionDrafts.keys()].some(key => !key.startsWith('["async",'))) return false;
+    if (!this.options.persistDraft) return !state.draft && !this.draftAttachments.length && !this.questionDrafts.size;
+    return this.flushDraft();
+  }
+  dispose() {
+    this.disconnect();
+    this.draftPersistence.dispose();
+    this.draftAttachments = [];
+    this.questionDrafts.clear(); this.resolvedQuestions.clear(); this.echoes.clear();
+    this.snapshot = {...this.snapshot, entries: [], chat: idleChat(), draft: ""};
+    this.viewSnapshot = undefined; this.activitySnapshot = undefined;
+    this.listeners.clear();
+  }
   history(older = false, background = false) { return this.historyLoader.load(older, background); }
   private async watchHistory() {
     if (!this.connected || !this.options.readOnly || !this.snapshot.session || this.streamAbort || !this.visible() || Date.now() < this.historyRetryAt) return;
     const generation = this.generation;
     const abort = new AbortController(); this.streamAbort = abort;
     try {
-      const response = await this.options.stream(this.base() + "/history/events", abort.signal);
+      const response = await this.options.stream(`${this.base()}/history/events`, abort.signal);
       if (!response.headers.get("Content-Type")?.startsWith("text/event-stream")) throw new Error(uiText("服务未返回实时事件流"));
       await readSnapshots<HistoryPush>(response, terminal => {
         if (generation !== this.generation || abort.signal.aborted) return;
@@ -320,7 +338,7 @@ export class ChatController {
     this.polling = true;
     const observedRun = this.snapshot.chat.id;
     try {
-      const chat = await this.options.request<ChatState>(this.base() + "/chat", {signal: this.readAbort?.signal});
+      const chat = await this.options.request<ChatState>(`${this.base()}/chat`, {signal: this.readAbort?.signal});
       if (generation === this.generation && (this.snapshot.chat.id === observedRun || chat.id === this.snapshot.chat.id)) {
         this.connectionRecovered();
         this.apply(chat);
@@ -346,9 +364,9 @@ export class ChatController {
     const abort = new AbortController(); this.streamAbort = abort; this.streamRun = id;
     const generation = this.generation;
     try {
-      const response = await this.options.stream(this.base() + "/chat/events?run=" + encodeURIComponent(id), abort.signal);
+      const response = await this.options.stream(`${this.base()}/chat/events?run=${encodeURIComponent(id)}`, abort.signal);
       await readSnapshots(response, chat => { if (generation === this.generation && !abort.signal.aborted) { this.connectionRecovered(); this.apply(chat); } });
-    } catch (error) { if (!abort.signal.aborted && generation === this.generation) this.connectionFailed(uiText("实时连接暂时断开，将自动重连，不会重复发送消息。")); }
+    } catch { if (!abort.signal.aborted && generation === this.generation) this.connectionFailed(uiText("实时连接暂时断开，将自动重连，不会重复发送消息。")); }
     finally { if (this.streamAbort === abort) this.streamRun = undefined; }
   }
   send = async (text: string, images: string[] = [], restoreDraftOnError = true, update: SessionTarget = {}) => {
@@ -376,7 +394,7 @@ export class ChatController {
     const pending = samePending ? this.pending! : {text: messageText, ...(images.length ? {images} : {}), ...(createProvider ? {provider: createProvider} : {}), ...target, request_id: crypto.randomUUID(), settings, ...(steering ? {turn_id:before.chat.turn_id} : {})};
     this.pending = pending;
     const attachments = this.draftAttachments;
-    const entry: Entry = {id: "local:" + pending.request_id, turn_id: "local:" + pending.request_id, kind: "user", text: messageText, ...(images.length ? {images} : {})};
+    const entry: Entry = {id: `local:${pending.request_id}`, turn_id: `local:${pending.request_id}`, kind: "user", text: messageText, ...(images.length ? {images} : {})};
     this.echoes.set(pending.request_id, {entry, known: new Set(mergeEntries(before.entries, before.chat.entries).map(entryKey)), turn: steering ? before.chat.turn_id : undefined, steering});
     // Preserve the current live turn before appending a steering message.
     this.update({submitting: true, error: "", entries: [...mergeEntries(before.entries, before.chat.entries), entry]});
@@ -384,7 +402,7 @@ export class ChatController {
     try {
       let chat: ChatState;
       if (steering) {
-        const result = await this.options.request<{chat:ChatState;accepted:string}>(this.base()+"/chat/steer", {method:"POST",body:JSON.stringify({text: messageText,images,request_id:pending.request_id,turn_id:pending.turn_id})});
+        const result = await this.options.request<{chat:ChatState;accepted:string}>(`${this.base()}/chat/steer`, {method:"POST",body:JSON.stringify({text: messageText,images,request_id:pending.request_id,turn_id:pending.turn_id})});
         if (result.accepted !== pending.request_id) throw new Error(uiText("补充消息未确认，草稿已保留"));
         chat = result.chat;
       } else if (!before.session) {
@@ -393,7 +411,7 @@ export class ChatController {
         const session = {...result.session, provider: result.session.provider || createdProvider};
         this.update({session, provider: createdProvider, capabilities: defaultCapabilities(createdProvider, isCloudSession(session))}); this.options.created(session); chat = result.chat;
       } else {
-        chat = await this.options.request<ChatState>(this.base() + "/chat", {method: "POST", body: JSON.stringify({text: messageText, ...(images.length ? {images} : {}), request_id: pending.request_id, ...(target.allow_shared ? {allow_shared: true} : {}), ...(Object.keys(settings).length ? {settings} : {})})});
+        chat = await this.options.request<ChatState>(`${this.base()}/chat`, {method: "POST", body: JSON.stringify({text: messageText, ...(images.length ? {images} : {}), request_id: pending.request_id, ...(target.allow_shared ? {allow_shared: true} : {}), ...(Object.keys(settings).length ? {settings} : {})})});
       }
       this.settleAttachments(attachments);
       this.pending = undefined; if (!steering) this.submitted = {id: chat.id, text, attachments}; this.apply(chat); this.draftChanged();
@@ -403,7 +421,7 @@ export class ChatController {
       // Recover an acknowledged turn after a lost POST response. Never resend it.
       if (before.session) {
         try {
-          const chat = await this.options.request<ChatState>(this.base() + "/chat");
+          const chat = await this.options.request<ChatState>(`${this.base()}/chat`);
           if ((!steering && chat.id === pending.request_id) || (steering && chat.accepted_inputs?.includes(pending.request_id))) { this.settleAttachments(attachments); this.pending = undefined; if (!steering) this.submitted = {id: chat.id, text, attachments}; this.apply(chat); this.draftChanged();
       if (steering && !chat.busy) void this.history();
       if (!before.session) this.clearCreationDraft(); return; }
@@ -464,7 +482,7 @@ export class ChatController {
     }
     try {
       const optionsPath = provider === "agy" ? "/api/agents/chat-options?provider=agy" : "/api/codex/chat-options";
-      const [catalog,context] = await Promise.all([this.options.readOnly ? Promise.resolve({models:[],modes:[]}) : this.options.request<{models:ChatModel[];modes:string[];defaults?:ConversationDefaults;capabilities?:ProviderCapabilities}>(optionsPath),this.snapshot.session ? this.options.request<ChatContext>(this.base()+"/context") : Promise.resolve(undefined)]);
+      const [catalog,context] = await Promise.all([this.options.readOnly ? Promise.resolve({models:[],modes:[]}) : this.options.request<{models:ChatModel[];modes:string[];defaults?:ConversationDefaults;capabilities?:ProviderCapabilities}>(optionsPath),this.snapshot.session ? this.options.request<ChatContext>(`${this.base()}/context`) : Promise.resolve(undefined)]);
       if (normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider) !== provider) return;
       this.update({models:catalog.models||[],modes:catalog.modes||[],defaults:("defaults" in catalog ? catalog.defaults : undefined)||{},capabilities:("capabilities" in catalog && catalog.capabilities) ? catalog.capabilities : defaultCapabilities(provider),context});
     } catch(error){if (normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider) === provider) this.update({error:(error as Error).message});}
@@ -488,7 +506,7 @@ export class ChatController {
     this.update({managing:true,error:""});
     if(action==="fork" && this.forkRequest?.turn!==turn)this.forkRequest={id:crypto.randomUUID(),turn};
     try {
-      const result=await this.options.request<{session:Session}>(this.base()+"/manage",{method:"POST",body:JSON.stringify({action,name,turn_id:turn,request_id:action==="fork"?this.forkRequest?.id:undefined})});
+      const result=await this.options.request<{session:Session}>(`${this.base()}/manage`,{method:"POST",body:JSON.stringify({action,name,turn_id:turn,request_id:action==="fork"?this.forkRequest?.id:undefined})});
       if(action!=="fork")this.update({session:{...this.snapshot.session,...result.session}});
       else this.forkRequest=undefined;
       this.options.managed?.(result.session,action);
@@ -500,7 +518,7 @@ export class ChatController {
     if (!this.snapshot.chat.can_handoff || this.snapshot.chat.busy || this.snapshot.submitting) return;
     this.handoffID ||= crypto.randomUUID();
     this.update({submitting: true, error: ""});
-    try { this.apply(await this.options.request<ChatState>(this.base() + "/chat/handoff", {method: "POST", body: JSON.stringify({request_id: this.handoffID})})); }
+    try { this.apply(await this.options.request<ChatState>(`${this.base()}/chat/handoff`, {method: "POST", body: JSON.stringify({request_id: this.handoffID})})); }
     catch (error) { this.update({error: (error as Error).message}); }
     finally { this.update({submitting: false}); }
   };
@@ -510,7 +528,7 @@ export class ChatController {
     const {chat, stopping} = this.snapshot;
     if (!chat.busy || !chat.id || stopping) return;
     this.update({stopping: true, error: ""});
-    try { this.apply(await this.options.request<ChatState>(this.base() + "/chat/stop", {method: "POST", body: JSON.stringify({run_id: chat.id})})); }
+    try { this.apply(await this.options.request<ChatState>(`${this.base()}/chat/stop`, {method: "POST", body: JSON.stringify({run_id: chat.id})})); }
     catch (error) { this.update({error: (error as Error).message}); }
     finally { this.update({stopping: false}); }
   };
@@ -520,7 +538,7 @@ export class ChatController {
     if (this.openingApproval || stopping || !chat.busy || chat.status === "stopping") return;
     this.openingApproval = true;
     this.update({error: ""});
-    try { await this.options.request(this.base() + "/chat/approval/open", {method: "POST", body: JSON.stringify({run_id: chat.id, approval_id: approval.id})}); }
+    try { await this.options.request(`${this.base()}/chat/approval/open`, {method: "POST", body: JSON.stringify({run_id: chat.id, approval_id: approval.id})}); }
     catch (error) { this.update({error: (error as Error).message}); }
     finally { this.openingApproval = false; }
   };
