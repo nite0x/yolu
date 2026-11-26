@@ -34,7 +34,6 @@ func (a *Service) StartTurn(ctx context.Context, session string, input StartTurn
 	if previous := a.ChatFor(record.ID); previous != nil {
 		snapshot := previous.snapshot()
 		if snapshot.ID == input.RequestID {
-			a.prepareHistoryMedia(record.ID, snapshot.Entries)
 			return snapshot, 200, nil
 		}
 		if snapshot.Busy {

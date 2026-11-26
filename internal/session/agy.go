@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"worktree-hub/internal/agy"
-	"worktree-hub/internal/codex"
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
@@ -33,7 +32,7 @@ func (a *Service) acpOptionsCatalog(ctx context.Context, provider string, refres
 	if provider == model.ProviderCursor {
 		return a.cursorOptionsCatalog(ctx, refresh)
 	}
-	fallback := agy.OptionCatalog{Models: []codex.ChatModel{}, Modes: agy.DefaultModes}
+	fallback := agy.OptionCatalog{Models: []model.ChatModel{}, Modes: agy.DefaultModes}
 	if a.Execution.Remote != nil {
 		return fallback, fmt.Errorf("暂不支持在远端 WSL 环境运行 Antigravity 对话")
 	}

@@ -1,34 +1,19 @@
 package codex
 
-import "fmt"
-
-type ChatModel struct {
-	ID            string             `json:"id"`
-	Model         string             `json:"model"`
-	Name          string             `json:"displayName"`
-	Default       bool               `json:"isDefault"`
-	DefaultEffort string             `json:"defaultReasoningEffort"`
-	ServiceTiers  []ModelServiceTier `json:"serviceTiers,omitempty"`
-	Efforts       []struct {
-		Effort string `json:"reasoningEffort"`
-	} `json:"supportedReasoningEfforts"`
-}
-
-type ModelServiceTier struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
+import (
+	"fmt"
+	"worktree-hub/internal/model"
+)
 
 // ListModels reads the complete model catalog from the current Codex runtime.
-func ListModels(call func(string, any, any) error) ([]ChatModel, error) {
-	models := []ChatModel{}
+func ListModels(call func(string, any, any) error) ([]model.ChatModel, error) {
+	models := []model.ChatModel{}
 	params := map[string]any{}
 	seen := map[string]bool{}
 	for {
 		var page struct {
-			Data []ChatModel `json:"data"`
-			Next *string     `json:"nextCursor"`
+			Data []model.ChatModel `json:"data"`
+			Next *string           `json:"nextCursor"`
 		}
 		if err := call("model/list", params, &page); err != nil {
 			return nil, err

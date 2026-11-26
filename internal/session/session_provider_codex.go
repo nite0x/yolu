@@ -482,3 +482,20 @@ func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.L
 		}
 	}
 }
+
+func steerCodex(ctx context.Context, client codex.LiveClient, session, turn, request, text string, images []string) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	var result struct {
+		TurnID string `json:"turnId"`
+	}
+	if err := client.Call(ctx, "turn/steer", map[string]any{
+		"threadId": session, "expectedTurnId": turn, "clientUserMessageId": request, "input": chatTurnInput(text, images),
+	}, &result); err != nil {
+		return err
+	}
+	if result.TurnID != turn {
+		return errors.New("Codex 未确认当前轮次")
+	}
+	return nil
+}

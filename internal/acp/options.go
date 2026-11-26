@@ -3,11 +3,11 @@ package acp
 import (
 	"strings"
 
-	"worktree-hub/internal/codex"
+	"worktree-hub/internal/model"
 )
 
 type OptionCatalog struct {
-	Models           []codex.ChatModel
+	Models           []model.ChatModel
 	Modes            []string
 	CurrentModel     string
 	CurrentEffort    string
@@ -41,7 +41,7 @@ func effortList(values []string) []struct {
 // and legacy models/modes fields.
 func CatalogFromSetup(setup SessionSetupResult) OptionCatalog {
 	cat := OptionCatalog{
-		Models:           []codex.ChatModel{},
+		Models:           []model.ChatModel{},
 		Modes:            []string{},
 		HasConfigOptions: len(setup.ConfigOptions) > 0,
 	}
@@ -82,7 +82,7 @@ func CatalogFromSetup(setup SessionSetupResult) OptionCatalog {
 				if name == "" {
 					name = v.Value
 				}
-				cat.Models = append(cat.Models, codex.ChatModel{
+				cat.Models = append(cat.Models, model.ChatModel{
 					ID:            v.Value,
 					Model:         v.Value,
 					Name:          name,
@@ -108,7 +108,7 @@ func CatalogFromSetup(setup SessionSetupResult) OptionCatalog {
 			if name == "" {
 				name = id
 			}
-			cat.Models = append(cat.Models, codex.ChatModel{
+			cat.Models = append(cat.Models, model.ChatModel{
 				ID:            id,
 				Model:         id,
 				Name:          name,

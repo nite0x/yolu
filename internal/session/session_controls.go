@@ -2,13 +2,8 @@ package session
 
 import (
 	"context"
-	"crypto/sha256"
-	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"worktree-hub/internal/codex"
@@ -28,7 +23,7 @@ type ChatContext struct {
 	Sandbox                 any                     `json:"sandbox,omitempty"`
 	AdditionalDirectories   []string                `json:"additional_directories"`
 }
-type chatModel = codex.ChatModel
+type chatModel = model.ChatModel
 
 func (a *Service) ChatOptionsHandler(w http.ResponseWriter, r *http.Request) {
 	provider := r.URL.Query().Get("provider")
@@ -202,96 +197,4 @@ func (a *Service) applyTurnSettings(ctx context.Context, c codex.LiveClient, par
 		params["collaborationMode"] = map[string]any{"mode": settings.Mode, "settings": map[string]any{"model": model, "reasoning_effort": effort, "developer_instructions": nil}}
 	}
 	return nil
-}
-
-// Steer receipts are stored before the RPC. An ambiguous transport failure must
-// never cause an automatic duplicate input, even after a backend restart.
-func (a *Service) ChatSteerHandler(w http.ResponseWriter, r *http.Request) {
-	releaseControl := a.lockSessionControl(r.PathValue("session"))
-	defer releaseControl()
-	var input struct {
-		Text      string   `json:"text"`
-		Images    []string `json:"images"`
-		RequestID string   `json:"request_id"`
-		TurnID    string   `json:"turn_id"`
-	}
-	if !httpx.DecodeLimit(w, r, &input, chatRequestLimit) {
-		return
-	}
-	input.Text = strings.TrimSpace(input.Text)
-	if input.RequestID == "" || len(input.RequestID) > 100 || input.TurnID == "" || len(input.TurnID) > 200 || (input.Text == "" && len(input.Images) == 0) || len(input.Text) > 64000 {
-		httpx.WriteError(w, 400, "请输入补充消息并提供当前轮次及发送标识")
-		return
-	}
-	if err := validateChatImages(input.Images); err != nil {
-		httpx.WriteError(w, 400, err.Error())
-		return
-	}
-	record, ok := a.requestSession(w, r)
-	if !ok {
-		return
-	}
-	if model.IsACPProvider(model.NormalizeProvider(record.Provider)) {
-		httpx.WriteError(w, 400, model.ProviderName(record.Provider)+" 对话暂不支持运行中补充引导，请等待本轮完成或停止后发送")
-		return
-	}
-	raw, _ := json.Marshal(input)
-	fingerprint := fmt.Sprintf("%x", sha256.Sum256(raw))
-	previous, status, err := a.Execution.Store.InputReceipt(r.Context(), record.ID, input.RequestID)
-	run := a.ChatFor(record.ID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		httpx.DbError(w, err)
-		return
-	}
-	if err == nil {
-		if previous != fingerprint {
-			httpx.WriteError(w, 409, "发送标识已用于其他补充消息")
-			return
-		}
-		if status != "accepted" {
-			httpx.WriteError(w, 409, "补充消息的投递结果未确认，请查看历史后再操作，不会自动重复投递")
-			return
-		}
-		state := ChatState{Status: "idle", Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}
-		if run != nil {
-			state = run.snapshot()
-		}
-		httpx.WriteJSON(w, 200, map[string]any{"chat": state, "accepted": input.RequestID})
-		return
-	}
-	if run == nil {
-		httpx.WriteError(w, 409, "本轮已结束，请作为下一条消息发送")
-		return
-	}
-	state := run.snapshot()
-	if !state.Busy || state.TurnID != input.TurnID || (state.Status != "running" && state.Status != "waiting") {
-		httpx.WriteError(w, 409, "当前轮次已变化，请刷新状态后发送")
-		return
-	}
-	run.mu.Lock()
-	client, _ := run.connection.(codex.LiveClient)
-	run.mu.Unlock()
-	if client == nil {
-		httpx.WriteError(w, 409, "对话仍在连接，请稍后发送")
-		return
-	}
-	if err := a.Execution.Store.ReserveInput(r.Context(), record.ID, input.RequestID, fingerprint); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	ctx, end := context.WithTimeout(r.Context(), 15*time.Second)
-	defer end()
-	var result struct {
-		TurnID string `json:"turnId"`
-	}
-	if err := client.Call(ctx, "turn/steer", map[string]any{"threadId": record.ID, "expectedTurnId": input.TurnID, "clientUserMessageId": input.RequestID, "input": chatTurnInput(input.Text, input.Images)}, &result); err != nil || result.TurnID != input.TurnID {
-		httpx.WriteError(w, 409, "补充消息未确认，请检查历史后再操作；草稿已保留")
-		return
-	}
-	if err := a.Execution.Store.AcceptInput(context.WithoutCancel(r.Context()), record.ID, input.RequestID); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	run.change(func(s *ChatState) { s.AcceptedInputs = append(s.AcceptedInputs, input.RequestID) })
-	httpx.WriteJSON(w, 200, map[string]any{"chat": run.snapshot(), "accepted": input.RequestID})
 }

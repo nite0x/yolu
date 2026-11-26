@@ -180,6 +180,9 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 		writeConversationError(w, err)
 		return
 	}
+	if status == http.StatusOK {
+		a.prepareHistoryMedia(r.PathValue("session"), state.Entries)
+	}
 	httpx.WriteJSON(w, status, state)
 }
 

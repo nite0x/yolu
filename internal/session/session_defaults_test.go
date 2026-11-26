@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/model"
 )
 
 type nativeDefaultsClient struct{ *fakeLiveClient }
@@ -61,7 +62,7 @@ func preferencesCatalog(a *App) {
 		return &fakeSessionClient{request: func(method string, _ map[string]any) (any, error) {
 			return map[string]any{"data": []any{
 				map[string]any{"model": "gpt-6.1-sol"},
-				map[string]any{"model": "model", "isDefault": true, "supportedReasoningEfforts": []map[string]string{{"reasoningEffort": "high"}}, "serviceTiers": []codex.ModelServiceTier{{ID: "fast"}}},
+				map[string]any{"model": "model", "isDefault": true, "supportedReasoningEfforts": []map[string]string{{"reasoningEffort": "high"}}, "serviceTiers": []model.ModelServiceTier{{ID: "fast"}}},
 			}}, nil
 		}}, nil
 	}

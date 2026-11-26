@@ -219,17 +219,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		run.mu.Lock()
 		client, _ := run.connection.(codex.LiveClient)
 		run.mu.Unlock()
-		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-		defer cancel()
-		var result struct {
-			TurnID string `json:"turnId"`
-		}
-		if client == nil {
-			err = fmt.Errorf("对话仍在连接")
-		} else {
-			err = client.Call(ctx, "turn/steer", map[string]any{"threadId": record.ID, "expectedTurnId": current.TurnID, "clientUserMessageId": requestID, "input": chatTurnInput(text, nil)}, &result)
-		}
-		if err != nil || result.TurnID != current.TurnID {
+		if client == nil || steerCodex(r.Context(), client, record.ID, current.TurnID, requestID, text, nil) != nil {
 			httpx.WriteError(w, 409, "回答未确认，请检查历史后再操作；已保留你的选择")
 			return
 		}

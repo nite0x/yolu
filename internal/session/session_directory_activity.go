@@ -179,7 +179,7 @@ func writeBindingConflict(w http.ResponseWriter, conflict *directoryWriteConflic
 		apitypes.APIErrorResponse
 		Conflicts []directoryConflict `json:"conflicts"`
 	}{
-		APIErrorResponse: apitypes.APIErrorResponse{Error: directoryConflictMessage, Code: "directory_conflict", ConflictDirectory: conflict.Directory},
+		APIErrorResponse: apitypes.APIErrorResponse{Error: directoryConflictMessage, Code: "directory_conflict", ConflictDirectory: conflict.Directory, RequestID: w.Header().Get("X-Request-ID")},
 		Conflicts:        conflict.Conflicts,
 	})
 }
