@@ -81,6 +81,9 @@ func (a *Service) CreateSession(ctx context.Context, input CreateSessionInput) (
 	if !errors.Is(err, sql.ErrNoRows) {
 		return CreationResult{}, creationStorageFailure(err)
 	}
+	if input.CloudEnvironment != "" {
+		return a.createCloudSession(ctx, key, fingerprint, input, provider)
+	}
 	defaults, err := a.conversationPreferencesForProvider(ctx, provider)
 	if err != nil {
 		return CreationResult{}, creationStorageFailure(err)

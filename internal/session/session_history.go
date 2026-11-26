@@ -312,6 +312,10 @@ func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	if record.Provider == model.ProviderCodexCloud {
+		a.cloudHistory(w, r, record)
+		return
+	}
 	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
 		history, err := a.readAgySessionHistory(r.Context(), record)
 		if err != nil {

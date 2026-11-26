@@ -26,5 +26,6 @@ export interface Snapshot {
   error: string; historyError: string; loading: boolean; submitting: boolean; stopping: boolean;
   answering: string | null; cursor: string | null;
   draftRestore: number; settings: TurnSettings; defaults: ConversationDefaults; context?: ChatContext; models: ChatModel[]; modes: string[]; optionsLoading: boolean; draftNotice: string; search: string; searching: boolean; searchError: string; managing: boolean;
+  cloudEnvironment?: string;
   terminal?: HistoryPush;
 }

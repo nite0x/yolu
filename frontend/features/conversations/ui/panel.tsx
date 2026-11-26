@@ -9,6 +9,7 @@ import {TooltipIconButton} from "../components/assistant-ui/elements/tooltip-ico
 import {Alert, AlertDescription} from "@/shared/ui/primitives/alert"
 import {Button} from "@/shared/ui/primitives/button"
 import {Card, CardContent, CardFooter, CardHeader, CardTitle} from "@/shared/ui/primitives/card"
+import {Label} from "@/shared/ui/primitives/label"
 import {Input} from "@/shared/ui/primitives/input"
 import {NativeSelect, NativeSelectOption} from "@/shared/ui/primitives/native-select"
 import {ChatController} from "../runtime/controller"
@@ -92,6 +93,41 @@ function ConversationCreationSetup({children}: {children?: React.ReactNode}) {
   return <div className="chat-creation-setup"><div ref={slot} />{children}</div>;
 }
 
+function CloudEnvironmentFields({controller, selected, disabled}: {controller: ChatController; selected?: string; disabled: boolean}) {
+  const [environments, setEnvironments] = useState<{id: string; name: string; shared: boolean}[] | null>(null);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const cloud = selected !== undefined;
+  useEffect(() => {
+    if (!cloud) return;
+    const abort = new AbortController();
+    setError("");
+    setEnvironments(null);
+    void controller.options.request<{id: string; name: string; shared: boolean}[]>("/api/codex/cloud-environments", {signal:abort.signal}).then(rows => {
+      if (abort.signal.aborted) return;
+      setEnvironments(rows);
+      const previous = controller.getSnapshot().cloudEnvironment;
+      if (previous && !rows.some(row => row.id === previous)) controller.setCloudEnvironment("");
+    }).catch(error => { if (!abort.signal.aborted) setError((error as Error).message); });
+    return () => abort.abort();
+  }, [controller, cloud, retry]);
+  return <div className="grid w-full max-w-[400px] gap-3">
+    <div className="grid gap-1.5"><Label htmlFor="chat-execution-location">{uiText("执行位置")}</Label>
+      <NativeSelect id="chat-execution-location" disabled={disabled} value={cloud ? "cloud" : "local"} onChange={event => controller.setCloudEnvironment(event.target.value === "cloud" ? "" : undefined)}>
+        <NativeSelectOption value="local">{uiText("本机")}</NativeSelectOption>
+        <NativeSelectOption value="cloud">Codex Cloud</NativeSelectOption>
+      </NativeSelect>
+    </div>
+    {cloud && <div className="grid gap-1.5"><Label htmlFor="chat-cloud-environment">{uiText("云端环境")}</Label>
+      <NativeSelect id="chat-cloud-environment" disabled={disabled || !environments?.length} value={environments?.some(row => row.id === selected) ? selected : ""} onChange={event => controller.setCloudEnvironment(event.target.value)}>
+        <NativeSelectOption value="">{uiText(error ? "无法读取云端环境" : !environments ? "正在读取云端环境…" : environments.length ? "选择云端环境" : "没有可用的云端环境")}</NativeSelectOption>
+        {environments?.map(environment => <NativeSelectOption key={environment.id} value={environment.id}>{environment.shared ? uiText("{0}（工作区共享）", environment.name) : environment.name}</NativeSelectOption>)}
+      </NativeSelect>
+      {error && <div className="flex items-center gap-2"><p role="alert" className="m-0 text-sm text-destructive">{error}</p><Button type="button" size="xs" variant="outline" onClick={() => setRetry(value => value+1)}>{uiText("重试")}</Button></div>}
+    </div>}
+  </div>;
+}
+
 const ChatRunIndicator = memo(function ChatRunIndicator({controller, portal}: {controller: ChatController; portal: React.RefObject<HTMLElement | null>}) {
   const state = useChatState(controller, s => ({stopping:s.stopping,submitting:s.submitting,chat:{busy:s.chat.busy,status:s.chat.status,external:s.chat.external,notice:s.chat.notice}}));
   if (controller.options.readOnly || (!state.chat.busy && !state.submitting && !state.stopping)) return null;
@@ -152,6 +188,13 @@ export function ChatPanel({controller}: {controller: ChatController}) {
     panel.current?.querySelector<HTMLButtonElement>('[data-chat-menu-trigger]')?.focus();
   };
   const state = useSyncExternalStore(controller.subscribe, controller.getViewSnapshot);
+  const cloud = controller.isCloud();
+  useLayoutEffect(() => {
+    const form = document.getElementById("sessionCreationSetup");
+    if (!form || !cloud) return;
+    form.setAttribute("data-codex-cloud", "");
+    return () => form.removeAttribute("data-codex-cloud");
+  }, [cloud]);
   const attachments = useMemo(() => new ChatAttachmentAdapter((name, data) => controller.options.request("/api/chat-attachments", {method: "POST", body: JSON.stringify({name, data})})), [controller]);
   const directories = useSessionDirectories(controller,state.session,state.provider,state.chat.busy || state.submitting);
   const question = !readOnly ? controller.question() : undefined;
@@ -167,13 +210,13 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   // old repository entry rather than retain it as an alternate branch.
   const messageRepository = useMemo(() => ExportedMessageRepository.fromArray(messages), [messages]);
   const runtime = useConversationRuntime<ThreadMessage>(controller, {
-    adapters: {attachments},
+    adapters: cloud ? {} : {attachments},
     messageRepository,
     isRunning: state.chat.busy || state.submitting,
     isLoading: state.loading && messages.length === 0,
     hasEarlier: !!state.cursor,
     onLoadEarlier: () => controller.history(true),
-    isSendDisabled: directories.preparing || !!state.chat.external && (state.chat.busy || state.chat.status === "unknown") || !controller.canSend() || !!state.chat.blocked || state.submitting || !!state.session?.archived || (state.chat.busy && (!state.capabilities.steer || !state.chat.turn_id || !["running","waiting"].includes(state.chat.status))),
+    isSendDisabled: !cloud && directories.preparing || !!state.chat.external && (state.chat.busy || state.chat.status === "unknown") || !controller.canSend() || !!state.chat.blocked || state.submitting || !!state.session?.archived || (state.chat.busy && (!state.capabilities.steer || !state.chat.turn_id || !["running","waiting"].includes(state.chat.status))),
     onNew: async message => {
       reading.latest();
       const text = message.content.filter(p => p.type === "text").map(p => p.text).join("\n");
@@ -181,7 +224,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       controller.draftAttachments = message.attachments || [];
       // The composer returns failed submissions to its draft. Let it own that
       // restoration, then mirror the result below so text is never appended twice.
-      try { await directories.send(text, images); } catch (error) {
+      try { if (cloud) await controller.send(text, images, false); else await directories.send(text, images); } catch (error) {
         if (!panel.current && !controller.getSnapshot().draft) controller.setDraft(text);
         controller.setError((error as Error).message);
         throw new MessageNotSentError((error as Error).message);
@@ -192,6 +235,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   const reading = useChatReading(controller, runtime.thread);
   useEffect(() => {
     const composer = runtime.thread.composer;
+    if (cloud) return;
     for (const attachment of controller.draftAttachments) {
       if (composer.getState().attachments.some(a => a.id === attachment.id)) continue;
       const restored = attachment.content ? {id: attachment.id, type: attachment.type, name: attachment.name, contentType: attachment.contentType, content: attachment.content} : attachment.file;
@@ -203,7 +247,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
     });
     const unsubscribeErrors = composer.unstable_on("attachmentAddError", event => controller.setError(event.message));
     return () => { unsubscribe(); unsubscribeErrors(); };
-  }, [controller, runtime, state.draftRestore]);
+  }, [controller, runtime, cloud, state.draftRestore]);
   const path = (state.chat.busy ? state.chat.context?.cwd : directories.cwd) || state.context?.cwd || state.session?.cwd || directories.target.cwd || "";
   const displayPath = isGeneralConversationDirectory(path) ? uiText("普通对话") : path;
   const context = conversationContext(path, controller.options.overview, state.session?.primary_project_id || directories.target.project_id);
@@ -233,11 +277,11 @@ export function ChatPanel({controller}: {controller: ChatController}) {
         actions={<>
             {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
             {!readOnly && state.session && controller.options.newConversation && <TooltipIconButton tooltip={uiText("新建对话")} aria-label={uiText("新建对话")} onClick={controller.options.newConversation}><PlusIcon /></TooltipIconButton>}
-            <ChatFileToggle />
+            {!cloud && <ChatFileToggle />}
             <ChatSessionMenu controller={controller} portal={panel} onSearch={() => setSearchOpen(true)} />
             <ParallelPaneControls />
         </>}
-        context={!state.session && document.getElementById("sessionBrowserDirectoryChoices") ? <button type="button" className="creation-header-directory" aria-label={uiText("选择工作目录")} aria-haspopup="dialog" aria-expanded={false} aria-controls="sessionBrowserDirectoryChoices-popover" aria-keyshortcuts="Meta+Shift+D Control+Shift+D" title={[contextTitle, displayPath].filter(Boolean).join("\n")} onClick={event => document.dispatchEvent(new CustomEvent("workhub:creation-directory", {detail:event.currentTarget}))}>
+        context={cloud ? <span className="chat-workspace-project">{"Codex Cloud" + (state.session?.cloud_environment ? " · " + state.session.cloud_environment : "")}</span> : !state.session && document.getElementById("sessionBrowserDirectoryChoices") ? <button type="button" className="creation-header-directory" aria-label={uiText("选择工作目录")} aria-haspopup="dialog" aria-expanded={false} aria-controls="sessionBrowserDirectoryChoices-popover" aria-keyshortcuts="Meta+Shift+D Control+Shift+D" title={[contextTitle, displayPath].filter(Boolean).join("\n")} onClick={event => document.dispatchEvent(new CustomEvent("workhub:creation-directory", {detail:event.currentTarget}))}>
           <span className="conversation-context-summary">{contextSummary}</span><ChevronDownIcon aria-hidden="true" />
         </button> : <ConversationWorkingContext trigger={contextSummary} triggerTitle={contextTitle || undefined} header={directories.header}>
           {directories.context}
@@ -260,7 +304,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
             {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
           </div>
         </ConversationWorkingContext>}>
-        {directories.dialog}
+        {!cloud && directories.dialog}
         {state.session && <ChatSearch controller={controller} container={reading.container} open={searchOpen} onClose={closeSearch} />}
       </ConversationHeader>}
       onKeyDownCapture={event => {
@@ -272,11 +316,11 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       beforeThread={state.historyError && <Alert variant="destructive" className="shrink-0 rounded-none"><AlertDescription>{state.historyError}</AlertDescription></Alert>}
       thread={{
         dockComposer: !readOnly,
-        emptyState: !readOnly && !state.session && <ConversationCreationSetup>{directories.creation}</ConversationCreationSetup>,
-        composerStatus: !readOnly && <>{directories.composer}<div className="chat-composer-status">{feedback}<ChatRunIndicator controller={controller} portal={panel} /></div></>, components: chatComponents,
+        emptyState: !readOnly && !state.session && <ConversationCreationSetup>{!cloud && directories.creation}{controller.options.environment === "local" && state.provider === "codex" && <CloudEnvironmentFields controller={controller} selected={state.cloudEnvironment} disabled={state.submitting} />}</ConversationCreationSetup>,
+        composerStatus: !readOnly && <>{!cloud && !occupied && directories.composer}<div className="chat-composer-status">{feedback}<ChatRunIndicator controller={controller} portal={panel} /></div></>, components: chatComponents,
         autoFocus: !!controller.options.focusComposer && !readOnly && !state.session && !document.documentElement.hasAttribute("data-workspace-inactive"), readOnly,
-        composer: question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined,
-        composerControls: <ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />,
+        composer: occupied ? null : question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined,
+        composerControls: cloud ? undefined : <ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />,
       }}
       composerInput={{placeholder: uiText(state.session ? "补充说明、询问进展，或交代下一步…" : "描述你要完成的任务…")}}
       composerPrediction={!readOnly && state.provider === "codex" && !state.submitting && !state.chat.busy && !state.chat.external && !state.session?.archived && !state.chat.blocked && state.chat.status === "completed" && state.chat.prediction?.source_turn_id === state.chat.turn_id && entries.at(-1)?.turn_id === state.chat.turn_id ? state.chat.prediction : undefined}

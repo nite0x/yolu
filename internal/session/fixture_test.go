@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"worktree-hub/internal/acp"
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
@@ -39,6 +40,10 @@ func testApp(t *testing.T) *App {
 		t.Fatal(err)
 	}
 	a.Projects.CredentialHelper = ""
+	a.openCloudSessions = nil
+	a.openAgy = func(context.Context, ...string) (acp.Client, acp.InitializeResult, error) {
+		return nil, acp.InitializeResult{}, fmt.Errorf("Antigravity is mocked in tests")
+	}
 	a.openTitleLive = func(context.Context) (codex.LiveClient, error) {
 		return nil, fmt.Errorf("title generation is mocked in tests")
 	}

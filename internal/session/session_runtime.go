@@ -47,7 +47,7 @@ func (a *chatRuntime) CloseChats() {
 		title.cancel()
 	}
 	for _, run := range runs {
-		if run.snapshot().Busy {
+		if run.provider != model.ProviderCodexCloud && run.snapshot().Busy {
 			_ = run.interrupt()
 		}
 		run.cancel()

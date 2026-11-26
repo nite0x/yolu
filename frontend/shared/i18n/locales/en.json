@@ -1,4 +1,12 @@
 {
+  "执行位置": "Run in",
+  "云端环境": "Cloud environment",
+  "{0}（工作区共享）": "{0} (workspace shared)",
+  "无法读取云端环境": "Could not load cloud environments",
+  "正在读取云端环境…": "Loading cloud environments…",
+  "选择云端环境": "Select a cloud environment",
+  "没有可用的云端环境": "No cloud environments available",
+  "Codex Cloud 对话目前支持文字消息": "Codex Cloud conversations currently support text messages",
   "页面导航": "Page navigation",
   "后退": "Back",
   "前进": "Forward",

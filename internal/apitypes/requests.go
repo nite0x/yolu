@@ -28,18 +28,19 @@ type DirectoryBindingInput struct {
 }
 
 type CreateSessionInput struct {
-	Text        string                  `json:"text"`
-	Project     string                  `json:"project_id"`
-	Cwd         string                  `json:"cwd"`
-	RequestID   string                  `json:"request_id"`
-	Purpose     string                  `json:"purpose"`
-	MergeHead   string                  `json:"merge_head"`
-	Provider    string                  `json:"provider"`
-	Images      []string                `json:"images"`
-	Settings    TurnSettings            `json:"settings"`
-	Bindings    []DirectoryBindingInput `json:"bindings,omitempty"`
-	Access      string                  `json:"access,omitempty"`
-	AllowShared bool                    `json:"allow_shared,omitempty"`
+	CloudEnvironment string                  `json:"cloud_environment,omitempty"`
+	Text             string                  `json:"text"`
+	Project          string                  `json:"project_id"`
+	Cwd              string                  `json:"cwd"`
+	RequestID        string                  `json:"request_id"`
+	Purpose          string                  `json:"purpose"`
+	MergeHead        string                  `json:"merge_head"`
+	Provider         string                  `json:"provider"`
+	Images           []string                `json:"images"`
+	Settings         TurnSettings            `json:"settings"`
+	Bindings         []DirectoryBindingInput `json:"bindings,omitempty"`
+	Access           string                  `json:"access,omitempty"`
+	AllowShared      bool                    `json:"allow_shared,omitempty"`
 }
 
 func (s TurnSettings) Validate() error {

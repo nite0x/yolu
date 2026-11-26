@@ -50,7 +50,22 @@ func (a *Service) SearchSessionsHandler(w http.ResponseWriter, r *http.Request) 
 	default:
 		provider = ""
 	}
-	sessions, err := a.Execution.Store.Sessions()
+	var cloudIdentity string
+	if provider == "" && a.openCloudSessions != nil {
+		hasCloud, err := a.Execution.Store.HasCodexCloudSessions()
+		if err != nil {
+			httpx.DbError(w, err)
+			return
+		}
+		if hasCloud {
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			if client, err := a.cloudClient(ctx); err == nil {
+				cloudIdentity = client.Identity()
+			}
+		}
+	}
+	sessions, err := a.Execution.Store.SessionsForCloudIdentity(cloudIdentity)
 	if err != nil {
 		httpx.DbError(w, err)
 		return

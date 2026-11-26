@@ -29,7 +29,7 @@ function conversationTerminalItems(view) {
     && (view.scope.kind !== 'project' || row.project_id === view.scope.id)
     && (view.scope.kind !== 'directory' || conversationPathKey(row.cwd) === conversationPathKey(view.scope.cwd))
     && (!view.directory || conversationEnvironmentKey('local',conversationPathKey(row.cwd)) === view.directory || conversationPathKey(row.cwd) === conversationPathKey(view.directory)))
-    .map(row => ({id:row.id,browser_key:conversationTerminalKey(row.id),environment_id:'local',environment_name:environmentName('local'),name:row.name,cwd:row.cwd,updated_at:row.created_at,chat_status:'running',terminal:{projectID:row.project_id,cwd:row.cwd,sessionID:row.session_id,bindingID:row.binding_id,attached:row.attached}}));
+    .map(row => ({id:row.id,browser_key:conversationTerminalKey(row.id),environment_id:'local',environment_name:environmentName('local'),name:row.name,cwd:row.cwd,updated_at:row.created_at,terminal:{projectID:row.project_id,cwd:row.cwd,sessionID:row.session_id,bindingID:row.binding_id,attached:row.attached}}));
 }
 function refreshConversationTerminals(force = false) {
   if (sessionReadOnly || !conversationVisible() || document.documentElement.hasAttribute('data-workspace-conversation')) return;
@@ -268,6 +268,7 @@ function conversationDirectories(scope = conversationState.current?.scope, envir
       const data = conversationOverview(environment);
       data.projects.forEach(projectDirs);
       for (const session of conversationItems(environment)) {
+        if (session.provider === 'codex-cloud') continue;
         if (!window.WorkHubUI.isGeneralConversationDirectory(session.cwd)) add(session.cwd, session.cwd, {cwd:session.cwd}, false, 2);
       }
     }
@@ -369,10 +370,10 @@ function renderConversationList() {
   const text = view.search.trim().toLowerCase();
   const annotatedItems = items.map(session => {
     const overview = conversationOverview(session.environment_id || activeEnvironment);
-    const context = window.WorkHubUI.conversationContext(session.cwd, overview, session.primary_project_id);
+    const context = window.WorkHubUI.conversationContext(session.cwd, session.provider === 'codex-cloud' ? undefined : overview, session.primary_project_id);
     return {...(session.terminal ? session : sessionWithUnread(session)), context};
   });
-  const matching = annotatedItems.filter(session => !text || [session.name, session.terminal ? uiText("终端") : '', session.cwd, session.environment_name, session.context.project, session.context.branch].join(' ').toLowerCase().includes(text));
+  const matching = annotatedItems.filter(session => !text || [session.name, session.terminal ? uiText("终端") : '', session.cwd, session.provider === 'codex-cloud' ? 'Codex Cloud' : session.environment_name, session.cloud_environment, session.context.project, session.context.branch].join(' ').toLowerCase().includes(text));
   const statusFilter = view.statusFilter || 'all';
   const filtered = !!text || statusFilter !== 'all' || view.archived;
   if (filtered) {
@@ -639,8 +640,9 @@ function showConversationSelection() {
   const view = conversationState.current;
   if (!view || !conversationVisible() || window.WorkHubPage?.navigationOnly) return;
   const session = view.creating ? null : conversationSelectedSession(view);
-  const fileContext = session?.cwd ? window.WorkHubUI.conversationContext(session.cwd, conversationOverview(session.environment_id || activeEnvironment), session.primary_project_id) : null;
-  conversationFiles.setContext(session?.cwd ? {session: session.id, path: session.cwd, environment: session.environment_id || activeEnvironment, project: fileContext?.projectID, additionalDirectories: session.additional_directories} : undefined);
+  const localCwd = session?.provider !== 'codex-cloud' && session?.cwd;
+  const fileContext = localCwd ? window.WorkHubUI.conversationContext(localCwd, conversationOverview(session.environment_id || activeEnvironment), session.primary_project_id) : null;
+  conversationFiles.setContext(localCwd ? {session: session.id, path: localCwd, environment: session.environment_id || activeEnvironment, project: fileContext?.projectID, additionalDirectories: session.additional_directories} : undefined);
   if (view.creating && !view.target || !view.creating && !session) {
     closeSessionHistory(false);
     $('#sessionBrowserEmpty').hidden = false;
@@ -680,7 +682,7 @@ function showConversationSelection() {
       window.dispatchEvent(new CustomEvent('workhub:session-loaded'));
     },
     created(created) {
-      window.WorkHubUI.recordCreationDirectory(view.creationDirectory, created.id);
+      if (created.provider !== 'codex-cloud') window.WorkHubUI.recordCreationDirectory(view.creationDirectory, created.id);
       conversationRequests.invalidate(environment);
       created = conversationTaggedSession(created, environment);
       conversationState.record(environment, [created]);
@@ -775,6 +777,7 @@ function conversationCreationDirectories(view) {
       const branch = project.worktrees?.find(tree => conversationPathKey(tree.path) === conversationPathKey(project.path))?.branch || '';
       const key = conversationEnvironmentKey(entry.id, conversationPathKey(project.path));
       for (const session of conversationItems(entry.id)) {
+        if (session.provider === 'codex-cloud') continue;
         if (session.primary_project_id === project.id || conversationPathKey(session.cwd) === conversationPathKey(project.path)) window.WorkHubUI.recordCreationDirectory(key, session.id, (session.created_at || 0) * 1000);
       }
       const name = project.name + (entry.id !== 'local' ? ' · ' + environmentName(entry.id) : '');

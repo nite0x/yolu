@@ -3,7 +3,7 @@ import type {ChatOptions, SessionTarget, Snapshot} from "./contracts"
 import {uiText} from "@/shared/i18n"
 import {createHistoryLoader} from "./history-loader"
 import {createDraftPersistence} from "./draft-persistence"
-import {defaultCapabilities, entryKey, idleChat, latestEntryFingerprint, mergeEntries, newConversationSettings, normalizeProvider, pendingAsyncQuestion, questionDraftKey, readSnapshots, type AgentProvider, type Approval, type ChatState, type Entry, type HistoryPush, type ProviderCapabilities, type Session, type QuestionDraft} from "../model/messages"
+import {defaultCapabilities, entryKey, idleChat, isCloudSession, latestEntryFingerprint, mergeEntries, newConversationSettings, normalizeProvider, pendingAsyncQuestion, questionDraftKey, readSnapshots, type AgentProvider, type Approval, type ChatState, type Entry, type HistoryPush, type ProviderCapabilities, type Session, type QuestionDraft} from "../model/messages"
 import type {ConversationDefaults} from "../model/settings"
 import {draftFiles, draftImages, readLocalDraft, restoreFiles, restoreImages, type DraftRecord} from "./drafts"
 import type {TurnSettings, ChatContext, ChatModel} from "../model/messages"
@@ -81,7 +81,7 @@ export class ChatController {
   };
   constructor(public options: ChatOptions) {
     const initialProvider = normalizeProvider(options.session?.provider);
-    this.snapshot = {session: options.session, provider: initialProvider, capabilities: defaultCapabilities(initialProvider), entries: [], chat: idleChat(), project: options.target?.project_id || "", draft: "", error: "", historyError: "", loading: false, submitting: false, stopping: false, answering: null, cursor: null, draftRestore: 0, settings: {}, defaults: {}, models: [], modes: [], optionsLoading: false, draftNotice: "", search: "", searching:false, searchError:"", managing:false};
+    this.snapshot = {session: options.session, provider: initialProvider, capabilities: defaultCapabilities(initialProvider, isCloudSession(options.session)), entries: [], chat: idleChat(), project: options.target?.project_id || "", draft: "", error: "", historyError: "", loading: false, submitting: false, stopping: false, answering: null, cursor: null, draftRestore: 0, settings: {}, defaults: {}, models: [], modes: [], optionsLoading: false, draftNotice: "", search: "", searching:false, searchError:"", managing:false};
     this.historyLoader = createHistoryLoader({
       request: (path, init) => this.options.request(path, init),
       base: () => this.base(),
@@ -89,7 +89,10 @@ export class ChatController {
       lifecycle: () => ({connected:this.connected, visible:this.visible(), generation:this.generation, revision:this.historyRevision, sessionRevision:this.sessionRevision, signal:this.readAbort?.signal}),
       readOnly: () => !!this.options.readOnly,
       update: patch => this.update(patch),
-      loaded: session => this.options.loaded?.(session),
+      loaded: session => {
+        if (isCloudSession(session)) this.updateSession(session);
+        this.options.loaded?.(session);
+      },
       synchronized: () => { this.historyNeedsSync = false; },
     });
     this.draftPersistence = createDraftPersistence({
@@ -98,7 +101,7 @@ export class ChatController {
       enabled: () => !!this.options.persistDraft && !this.options.readOnly,
       connected: () => this.connected,
       submitting: () => this.snapshot.submitting,
-      capture: () => ({text:this.snapshot.draft, images:draftImages(this.draftAttachments), files:draftFiles(this.draftAttachments), ...(this.snapshot.session ? {} : {provider: this.snapshot.provider}), settings:this.snapshot.settings, project:this.snapshot.project, reading:this.reading, questions:Object.fromEntries([...this.questionDrafts].filter(([key]) => key.startsWith('["async",')))}),
+      capture: () => ({text:this.snapshot.draft, images:draftImages(this.draftAttachments), files:draftFiles(this.draftAttachments), ...(this.snapshot.session ? {} : {provider: this.snapshot.provider, cloudEnvironment: this.snapshot.cloudEnvironment}), settings:this.snapshot.settings, project:this.snapshot.project, reading:this.reading, questions:Object.fromEntries([...this.questionDrafts].filter(([key]) => key.startsWith('["async",')))}),
       restore: record => this.restoreDraft(record),
       notice: draftNotice => this.update({draftNotice}),
     });
@@ -148,7 +151,7 @@ export class ChatController {
     if (echo) this.update({entries: this.snapshot.entries.filter(e => e.id !== echo.entry.id)});
   }
   private base() { return `/api/sessions/${encodeURIComponent(this.snapshot.session!.id)}`; }
-  canSend = () => !this.options.readOnly && !this.snapshot.session?.archived && (!!this.snapshot.session || !this.snapshot.optionsLoading);
+  canSend = () => !this.options.readOnly && !this.snapshot.session?.archived && (!!this.snapshot.session || this.snapshot.cloudEnvironment !== "" && !this.snapshot.optionsLoading);
   resume = async () => {
     if (!this.snapshot.session) return;
     const flags: {native_permissions?:boolean; allow_shared?:boolean} = {};
@@ -176,10 +179,18 @@ export class ChatController {
   setError = (error: string) => this.update({error});
   updateSession = (session: Session) => {
     if (this.snapshot.session?.id === session.id) {
-      const provider = normalizeProvider(session.provider || this.snapshot.provider);
-      this.update({session: {...this.snapshot.session, ...session, provider}, provider, capabilities: defaultCapabilities(provider)});
+      const merged = {...this.snapshot.session, ...session, provider: session.provider || this.snapshot.session.provider};
+      const provider = normalizeProvider(merged.provider || this.snapshot.provider);
+      this.update({session: merged, provider, capabilities: defaultCapabilities(provider, isCloudSession(merged))});
     }
   };
+  setCloudEnvironment = (cloudEnvironment?: string) => {
+    if (this.snapshot.session || this.snapshot.submitting) return;
+    if (cloudEnvironment !== undefined) this.providerChosen = true;
+    this.update({cloudEnvironment, error: ""});
+    this.draftChanged();
+  };
+  isCloud = () => isCloudSession(this.snapshot.session) || this.snapshot.cloudEnvironment !== undefined;
   setProvider = (provider: AgentProvider) => {
     this.providerChosen = true;
     if (this.snapshot.session || this.snapshot.submitting) return;
@@ -361,6 +372,7 @@ export class ChatController {
   send = async (text: string, images: string[] = [], restoreDraftOnError = true, update: SessionTarget = {}) => {
     if (this.options.readOnly || this.snapshot.chat.external && (this.snapshot.chat.busy || this.snapshot.chat.status === "unknown")) return;
     text = text.trim();
+    if (this.isCloud() && (images.length || this.draftAttachments.length)) throw new Error(uiText("Codex Cloud 对话目前支持文字消息"));
     const messageText = [text, ...draftFiles(this.draftAttachments).map(f=>f.text)].filter(Boolean).join("\n\n");
     this.dismissPrediction();
     const before = this.snapshot;
@@ -369,15 +381,17 @@ export class ChatController {
     if (before.submitting || (steering && (!before.capabilities.steer || !before.chat.turn_id || !["running","waiting"].includes(before.chat.status))) || before.chat.blocked || !this.canSend()) throw new Error(uiText("当前暂不能发送，草稿已保留，请稍后重试"));
     try { validateImages(images); }
     catch (error) { this.update({error: (error as Error).message}); throw error; }
-    const target: SessionTarget = before.session ? {allow_shared:update.allow_shared} : {...this.options.target, ...update};
+    const target: SessionTarget = before.session ? {allow_shared:update.allow_shared}
+      : before.cloudEnvironment !== undefined ? {cloud_environment:before.cloudEnvironment} : {...this.options.target, ...update};
+    const settings = this.isCloud() ? {} : before.settings;
     const createProvider: AgentProvider | undefined = !before.session && before.provider === "agy" ? "agy" : undefined;
-    const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.cwd === target.cwd
+    const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.cwd === target.cwd && this.pending.cloud_environment === target.cloud_environment
       && this.pending.provider === createProvider && this.pending.access === target.access && this.pending.allow_shared === target.allow_shared
       && JSON.stringify(this.pending.bindings) === JSON.stringify(target.bindings)
       && (this.pending.images || []).length === images.length
       && images.every((image, i) => image === this.pending?.images?.[i])
-      && this.pending?.turn_id === (steering ? before.chat.turn_id : undefined) && (steering || JSON.stringify(this.pending?.settings || {}) === JSON.stringify(before.settings));
-    const pending = samePending ? this.pending! : {text: messageText, ...(images.length ? {images} : {}), ...(createProvider ? {provider: createProvider} : {}), ...target, request_id: crypto.randomUUID(), settings: before.settings, ...(steering ? {turn_id:before.chat.turn_id} : {})};
+      && this.pending?.turn_id === (steering ? before.chat.turn_id : undefined) && (steering || JSON.stringify(this.pending?.settings || {}) === JSON.stringify(settings));
+    const pending = samePending ? this.pending! : {text: messageText, ...(images.length ? {images} : {}), ...(createProvider ? {provider: createProvider} : {}), ...target, request_id: crypto.randomUUID(), settings, ...(steering ? {turn_id:before.chat.turn_id} : {})};
     this.pending = pending;
     const attachments = this.draftAttachments;
     const entry: Entry = {id: `local:${pending.request_id}`, turn_id: `local:${pending.request_id}`, kind: "user", text: messageText, ...(images.length ? {images} : {})};
@@ -394,10 +408,10 @@ export class ChatController {
       } else if (!before.session) {
         const result = await this.options.request<{session: Session; chat: ChatState}>("/api/sessions/new", {method: "POST", body: JSON.stringify(pending satisfies CreateSessionInput)});
         const createdProvider = normalizeProvider(result.session.provider || before.provider);
-        const session = {...result.session, provider: createdProvider};
-        this.update({session, provider: createdProvider, capabilities: defaultCapabilities(createdProvider)}); this.options.created(session); chat = result.chat;
+        const session = {...result.session, provider: result.session.provider || createdProvider};
+        this.update({session, provider: createdProvider, capabilities: defaultCapabilities(createdProvider, isCloudSession(session))}); this.options.created(session); chat = result.chat;
       } else {
-        chat = await this.options.request<ChatState>(`${this.base()}/chat`, {method: "POST", body: JSON.stringify({text: messageText, ...(images.length ? {images} : {}), request_id: pending.request_id, ...(target.allow_shared ? {allow_shared: true} : {}), ...(Object.keys(before.settings).length ? {settings:before.settings} : {})})});
+        chat = await this.options.request<ChatState>(`${this.base()}/chat`, {method: "POST", body: JSON.stringify({text: messageText, ...(images.length ? {images} : {}), request_id: pending.request_id, ...(target.allow_shared ? {allow_shared: true} : {}), ...(Object.keys(settings).length ? {settings} : {})})});
       }
       this.settleAttachments(attachments);
       this.pending = undefined; if (!steering) this.submitted = {id: chat.id, text, attachments}; this.apply(chat); this.draftChanged();
@@ -433,7 +447,7 @@ export class ChatController {
     }
     if (record.provider) this.providerChosen = true;
     const restoredProvider = !this.snapshot.session && record.provider ? normalizeProvider(record.provider) : this.snapshot.provider;
-    this.update({draft:record.text,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
+    this.update({draft:record.text,cloudEnvironment:!this.snapshot.session && restoredProvider === "codex" && typeof record.cloudEnvironment === "string" ? record.cloudEnvironment : undefined,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
   }
   private loadDraft() { return this.draftPersistence.load(); }
   private draftChanged() { this.draftPersistence.changed(); }
@@ -460,6 +474,12 @@ export class ChatController {
       } catch { /* Older backends retain the built-in Codex default. */ }
     }
     const provider = normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider);
+    if (isCloudSession(this.snapshot.session)) {
+      try { this.update({context:await this.options.request<ChatContext>(this.base()+"/context")}); }
+      catch (error) { this.update({error:(error as Error).message}); }
+      finally { this.update({optionsLoading:false}); }
+      return;
+    }
     try {
       const optionsPath = provider === "agy" ? "/api/agents/chat-options?provider=agy" : "/api/codex/chat-options";
       const [catalog,context] = await Promise.all([this.options.readOnly ? Promise.resolve({models:[],modes:[]}) : this.options.request<{models:ChatModel[];modes:string[];defaults?:ConversationDefaults;capabilities?:ProviderCapabilities}>(optionsPath),this.snapshot.session ? this.options.request<ChatContext>(`${this.base()}/context`) : Promise.resolve(undefined)]);

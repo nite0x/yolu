@@ -77,6 +77,15 @@ func (a *Service) ChatContextHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if record.Provider == model.ProviderCodexCloud {
+		cloud, err := a.Execution.Store.CodexCloudSession(record.ID)
+		if err != nil {
+			httpx.DbError(w, err)
+			return
+		}
+		httpx.WriteJSON(w, 200, ChatContext{Cwd: record.Cwd, Model: cloud.Model})
+		return
+	}
 	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
 		result := ChatContext{Cwd: record.Cwd, AdditionalDirectories: record.AdditionalDirectories}
 		if run := a.ChatFor(record.ID); run != nil {

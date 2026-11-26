@@ -22,6 +22,7 @@ export interface DirectoryBindingInput {
 }
 
 export interface CreateSessionInput {
+  cloud_environment?: string
   text?: string
   project_id?: string
   cwd?: string

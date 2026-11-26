@@ -2673,6 +2673,28 @@ test('grouped navigation expands by project name, saves display preferences and 
   assert.equal(nav.$('[data-conversation-session="new-session"]'),null);
 });
 
+test('Cloud conversations appear above local projects and open in the shared reader', async t => {
+  const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
+  nav.sessions.push({id:'cloud-task',provider:'codex-cloud',cloud_environment:'apix',name:'Cloud task',cwd:'/repo/app',updated_at:1});
+  const post = data => nav.window.dispatchEvent(new nav.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+  post({type:'workhub:page-navigation'});
+  post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+  await settle(); await settle();
+  const group = () => nav.$('#sessionBrowserList [data-conversation-group]');
+  assert.equal(group().dataset.conversationGroup,'codex-cloud');
+  assert.equal(group().querySelector('.session-workspace-name').textContent,'Codex Cloud');
+  const row = '[data-conversation-session="cloud-task"]';
+  assert.equal(nav.window.document.querySelectorAll(row).length,1);
+  assert.match(group().querySelector(row).textContent,/apix/);
+  nav.click('[data-conversation-group-toggle="codex-cloud"]');
+  assert.equal(nav.$(row),null);
+  nav.click('[data-conversation-group-toggle="codex-cloud"]');
+  nav.click(row); await settle();
+  assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-select').snapshot.conversation.selected,'cloud-task');
+  nav.click('[data-conversation-list-mode="recent"]');
+  assert.match(nav.$(row).textContent,/Codex Cloud · apix/);
+});
+
 test('grouped navigation expands in five-row steps, resets the preview and shares one list with independent conversations', async t => {
   const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
   const post = data => nav.window.dispatchEvent(new nav.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
@@ -2792,7 +2814,7 @@ test('search group overrides preserve saved expansion, explain matches and suppo
   assert.equal(group('App').getAttribute('aria-expanded'),'false');
 });
 
-test('running terminals share the conversation list, retain scope and reconnect by process identity', async t => {
+test('live terminals share the conversation list without chat activity and reconnect by process identity', async t => {
  const host=pageHost(t), rows=[
   {id:'session-1',name:'Terminal Shell',project_id:'app',cwd:'/workspace/workspace/app',state:'running',attached:false,created_at:Math.floor(Date.now()/1000)},
   {id:'other',name:'Other project',project_id:'backend',cwd:'/workspace/other/backend',state:'running',attached:false,created_at:1},
@@ -2806,7 +2828,7 @@ test('running terminals share the conversation list, retain scope and reconnect 
  const terminal=()=>h.$('[data-conversation-terminal="session-1"]');
  assert(terminal());assert.equal(terminal().querySelector('.session-browser-item-kind'),null);
  assert.equal(terminal().querySelector('.session-browser-item-heading .sr-only').textContent,'终端');
- assert.equal(terminal().querySelector('.session-browser-item-status').getAttribute('aria-label'),'运行中');
+ assert.equal(terminal().querySelector('.session-browser-item-status').hidden,true);
  assert.equal(h.$('[data-conversation-terminal="other"]'),null);
  assert.equal(h.$('[data-conversation-terminal="ended"]'),null);
  assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/2 个对话/);
@@ -2823,7 +2845,7 @@ test('running terminals share the conversation list, retain scope and reconnect 
  h.input('#sessionBrowserSearch','终端');assert(terminal());assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/1 \/ 2 个对话/);
  h.input('#sessionBrowserSearch','no match');assert.equal(terminal(),null);
  h.input('#sessionBrowserSearch','');
- h.click('[data-conversation-status="running"]');assert(terminal());
+ h.click('[data-conversation-status="running"]');assert.equal(terminal(),null);
  h.click('[data-conversation-status="waiting"]');assert.equal(terminal(),null);
  h.click('[data-conversation-status="all"]');
  const add=h.$('[data-conversation-parallel][data-conversation-terminal="session-1"]');add.click();
@@ -2843,6 +2865,10 @@ test('running terminals share the conversation list, retain scope and reconnect 
  assert.equal(terminal(),null,'running terminals do not appear among archived UI conversations');
  h.$('#sessionBrowserArchived').checked=false;h.$('#sessionBrowserArchived').dispatchEvent(new h.window.Event('change',{bubbles:true}));await settle();
  rows[0].attached=true;post({type:'workhub:terminals-changed'});await settle();assert.equal(terminal().querySelector('.session-browser-item-status').getAttribute('aria-label'),'已打开');
+ h.click('[data-conversation-status="running"]');assert.equal(terminal(),null);
+ h.click('[data-conversation-status="all"]');
+ rows[0].attached=false;post({type:'workhub:terminals-changed'});await settle();
+ assert.equal(terminal().querySelector('.session-browser-item-status').hidden,true,'closing the terminal view clears its indicator while the process remains reconnectable');
  rows[0].state='exited';post({type:'workhub:terminals-changed'});await settle();assert.equal(terminal(),null);
  assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/1 个对话/);
 });

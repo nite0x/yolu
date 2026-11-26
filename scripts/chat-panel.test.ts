@@ -2263,8 +2263,9 @@ test("predictions from another turn, running turns, archived sessions and other 
   }
 });
 
-test("occupied conversations use the recovery card, preserve the draft and fork through the existing action", async () => {
-  let current = {...idleChat(),status:"conflict",error:"writer lock held",notice:"technical writer details"};
+test("occupied conversations hide the composer, preserve the draft and offer recovery actions", async () => {
+  let current = idleChat();
+  const conflict = {...idleChat(),status:"conflict",error:"writer lock held",notice:"technical writer details"};
   let forked = false;
   const h = mount(true,[],{request:async(path,init)=>{
     const body=init?.body ? JSON.parse(String(init.body)) : undefined;
@@ -2274,17 +2275,30 @@ test("occupied conversations use the recovery card, preserve the draft and fork 
     return current as any;
   }});
   try {
-    await until(()=>h.w.document.querySelector('.chat-occupied'));
+    await until(h.input);
     h.type('保留尚未发送的消息');await tick();
+    current = conflict;
+    h.w.dispatchEvent(new h.w.Event('workhub:page-visibility'));
+    await until(()=>h.w.document.querySelector('.chat-occupied'));
     const card=h.w.document.querySelector('.chat-occupied')!;
     assert.match(card.textContent || '',/已在另一个应用中打开/);
+    assert(!h.w.document.querySelector('.aui-composer-root'));
     assert(!h.w.document.querySelector('.chat-feedback [role=alert]'),'ownership failure is represented once');
     const actions=[...card.querySelectorAll<HTMLButtonElement>('button')];
     assert.equal(actions[0].textContent,'重试');assert.equal(actions[1].textContent,'创建聊天分支');
     actions[1].click();await until(()=>forked);
-    assert.equal(h.input().value,'保留尚未发送的消息');
-    h.type('');current=idleChat();actions[0].click();
-    await until(()=>!h.w.document.querySelector('.chat-occupied'));
+    current=idleChat();
+    h.w.dispatchEvent(new h.w.Event('workhub:page-visibility'));
+    await until(()=>h.input()?.value==='保留尚未发送的消息');
+
+    h.type('');await tick();
+    current=conflict;
+    h.w.dispatchEvent(new h.w.Event('workhub:page-visibility'));
+    await until(()=>h.w.document.querySelector('.chat-occupied'));
+    current=idleChat();
+    h.w.document.querySelector<HTMLButtonElement>('.chat-occupied button')!.click();
+    await until(h.input);
+    assert(!h.w.document.querySelector('.chat-occupied'));
     assert.deepEqual(h.errors,[]);
   } finally {h.dispose();}
 });
