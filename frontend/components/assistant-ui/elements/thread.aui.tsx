@@ -145,6 +145,7 @@ const taskAwareGroupBy = (
 };
 
 export type ThreadProps = {
+  /** Use null to hide the composer while keeping its status visible. */
   composer?: ReactNode;
   composerStatus?: ReactNode;
   composerControls?: ReactNode;
@@ -230,6 +231,7 @@ const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
 }) => {
   const { Welcome = ThreadWelcome } = useContext(ThreadComponentsContext);
   const docked = !isEmpty || dockComposer;
+  const showComposer = !readOnly && composer !== null;
 
   return (
     <ThreadPrimitive.Root
@@ -283,11 +285,11 @@ const ThreadRoot: FC<ThreadProps & {isEmpty: boolean; autoFocus: boolean}> = ({
           >
             <ThreadScrollToBottom behavior={managedScroll ? "instant" : undefined} />
             {composerStatus}
-            {!readOnly && !composer && <ThreadFollowupSuggestions />}
-            {!readOnly && (composer ?? <Composer autoFocus={autoFocus} controls={composerControls} leadingControls={composerLeadingControls} />)}
+            {showComposer && !composer && <ThreadFollowupSuggestions />}
+            {showComposer && (composer ?? <Composer autoFocus={autoFocus} controls={composerControls} leadingControls={composerLeadingControls} />)}
             {/* An empty suggestions wrapper still adds a footer gap and shifts
                 the centered composer when the first character removes it. */}
-            <AuiIf condition={(s) => !readOnly && !composer && isNewChatView(s) && s.composer.isEmpty && s.thread.suggestions.length > 0}>
+            <AuiIf condition={(s) => showComposer && !composer && isNewChatView(s) && s.composer.isEmpty && s.thread.suggestions.length > 0}>
               <ThreadSuggestions />
             </AuiIf>
           </ThreadPrimitive.ViewportFooter>

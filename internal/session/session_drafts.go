@@ -58,9 +58,10 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 			Type string `json:"contentType"`
 			Text string `json:"text"`
 		} `json:"files,omitempty"`
-		Provider string       `json:"provider,omitempty"`
-		Settings TurnSettings `json:"settings"`
-		Reading  struct {
+		CloudEnvironment *string      `json:"cloudEnvironment,omitempty"`
+		Provider         string       `json:"provider,omitempty"`
+		Settings         TurnSettings `json:"settings"`
+		Reading          struct {
 			Top    float64 `json:"top"`
 			Bottom bool    `json:"bottom"`
 			Anchor string  `json:"anchor"`
@@ -79,6 +80,10 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if !model.SupportedProvider(draft.Provider) {
 		httpx.WriteError(w, 400, "草稿中的对话引擎不受支持")
+		return
+	}
+	if draft.CloudEnvironment != nil && len(*draft.CloudEnvironment) > 512 {
+		httpx.WriteError(w, 400, "云端环境标识无效")
 		return
 	}
 	if len(draft.Text) > 128000 || len(draft.Project) > 200 || len(draft.Reading.Anchor) > 1000 || len(draft.Reading.Latest) > 2000 || draft.Updated <= 0 {

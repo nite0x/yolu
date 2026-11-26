@@ -1,8 +1,9 @@
 package model
 
 const (
-	ProviderCodex = "codex"
-	ProviderAgy   = "agy"
+	ProviderCodex      = "codex"
+	ProviderAgy        = "agy"
+	ProviderCodexCloud = "codex-cloud"
 )
 
 func NormalizeProvider(provider string) string {
@@ -34,7 +35,7 @@ type ProviderCapabilities struct {
 }
 
 func CapabilitiesForProvider(provider string) ProviderCapabilities {
-	if NormalizeProvider(provider) == ProviderAgy {
+	if NormalizeProvider(provider) != ProviderCodex {
 		return ProviderCapabilities{ActivityEvents: true}
 	}
 	return ProviderCapabilities{Steer: true, Fork: true, Handoff: true, RateLimits: true, Voice: true, MultipleDirectories: true, DynamicDirectoryAccess: true, NativePermissionRequests: true, ActivityEvents: true, EnforceReadOnlyDirectories: true}
@@ -48,6 +49,7 @@ type Session struct {
 	Archived              bool     `json:"archived"`
 	ID                    string   `json:"id"`
 	Provider              string   `json:"provider,omitempty"`
+	CloudEnvironment      string   `json:"cloud_environment,omitempty"`
 	Permission            string   `json:"permission,omitempty"`
 	Name                  string   `json:"name"`
 	TitleSource           string   `json:"title_source,omitempty"`

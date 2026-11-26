@@ -122,8 +122,8 @@ func (a *Service) queryScope(r *http.Request) (sessionScope, error) {
 	return scope, nil
 }
 
-func (a *Service) cachedScope(scope sessionScope) ([]model.Session, error) {
-	all, err := a.Execution.Store.Sessions()
+func (a *Service) cachedScope(scope sessionScope, cloudIdentity string) ([]model.Session, error) {
+	all, err := a.Execution.Store.SessionsForCloudIdentity(cloudIdentity)
 	if err != nil {
 		return nil, err
 	}

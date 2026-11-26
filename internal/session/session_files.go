@@ -40,6 +40,10 @@ func (a *Service) SessionFileHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if record.Provider == model.ProviderCodexCloud {
+		httpx.WriteError(w, 409, "请通过云端对话访问云端文件")
+		return
+	}
 	line := 1
 	if raw := r.URL.Query().Get("line"); raw != "" {
 		var err error
@@ -72,6 +76,10 @@ func (a *Service) SessionFileHandler(w http.ResponseWriter, r *http.Request) {
 func (a *Service) SessionFilesHandler(w http.ResponseWriter, r *http.Request) {
 	record, ok := a.requestSession(w, r)
 	if !ok {
+		return
+	}
+	if record.Provider == model.ProviderCodexCloud {
+		httpx.WriteError(w, 409, "请通过云端对话访问云端文件")
 		return
 	}
 	if file := r.URL.Query().Get("file"); platform.AbsoluteWorkspacePath(file) {

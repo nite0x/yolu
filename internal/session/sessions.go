@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"worktree-hub/internal/codex"
@@ -114,7 +115,17 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	titleObservedAt := time.Now().UnixNano()
 	archived := r.URL.Query().Get("archived") == "true"
-	cached, err := a.cachedScope(scope)
+	force := r.URL.Query().Get("refresh") == "1"
+	var cloudIdentity string
+	var cloudErr error
+	var scans sync.WaitGroup
+	if scope.paths == nil && scope.cwd == "" && a.openCloudSessions != nil {
+		scans.Go(func() { cloudIdentity, cloudErr = a.cloudCatalog(r.Context(), force) })
+	}
+	found, codexErr := a.sessionCatalog(r.Context(), scope, archived, force)
+	agyFound, agyErr := a.scanAgyCatalog(r.Context(), scope, archived)
+	scans.Wait()
+	cached, err := a.cachedScope(scope, cloudIdentity)
 	if err != nil {
 		httpx.DbError(w, err)
 		return
@@ -130,6 +141,9 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		filtered := cached[:0]
 		for _, s := range cached {
 			if s.Archived == archived {
+				if s.Provider == model.ProviderCodexCloud {
+					s.Available = true
+				}
 				a.decorateSessionActivity(&s)
 				filtered = append(filtered, s)
 			}
@@ -137,12 +151,6 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		cached = filtered
 		respond(cached, cause)
 	}
-	found := map[string]codex.Session{}
-	agyFound := map[string]model.Session{}
-	var codexErr error
-	found, codexErr = a.sessionCatalog(r.Context(), scope, archived, r.URL.Query().Get("refresh") == "1")
-	var agyErr error
-	agyFound, agyErr = a.scanAgyCatalog(r.Context(), scope, archived)
 	if codexErr != nil && len(agyFound) == 0 && (agyErr != nil || !hasProviderSessions(cached, model.ProviderAgy)) {
 		failure(codexErr)
 		return
@@ -158,7 +166,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		if s.Archived != archived {
 			continue
 		}
-		if model.NormalizeProvider(s.Provider) == model.ProviderAgy {
+		if model.NormalizeProvider(s.Provider) != model.ProviderCodex {
 			continue
 		}
 		if _, ok := found[s.ID]; ok {
@@ -187,7 +195,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	sessions, err := a.cachedScope(scope)
+	sessions, err := a.cachedScope(scope, cloudIdentity)
 	if err != nil {
 		httpx.DbError(w, err)
 		return
@@ -200,6 +208,11 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sessions = filtered
 	for i := range sessions {
+		if sessions[i].Provider == model.ProviderCodexCloud {
+			sessions[i].Available = true
+			a.decorateSessionActivity(&sessions[i])
+			continue
+		}
 		if model.NormalizeProvider(sessions[i].Provider) == model.ProviderAgy {
 			_, listed := agyFound[sessions[i].ID]
 			sessions[i].Available = listed || archived || a.ChatFor(sessions[i].ID) != nil || sessions[i].Source == "workbench"
@@ -221,7 +234,10 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		a.decorateSessionActivity(&sessions[i])
 	}
-	respond(sessions, nil)
+	if !hasProviderSessions(cached, model.ProviderCodexCloud) {
+		cloudErr = nil
+	}
+	respond(sessions, cloudErr)
 }
 
 func hasProviderSessions(sessions []model.Session, provider string) bool {
@@ -244,6 +260,10 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	record, ok := a.requestSession(w, r)
 	if !ok {
+		return
+	}
+	if record.Provider == model.ProviderCodexCloud {
+		httpx.WriteError(w, 409, "请在 Yolu 中继续 Codex Cloud 对话")
 		return
 	}
 	id := record.ID

@@ -4,7 +4,7 @@ import { defaultShortcutIcon, presetShortcutIcons, type ShortcutIcon } from "./s
 import { conversationStatusMatches } from "./conversation-list"
 import { conversationEnvironmentKey, conversationPathKey } from "./conversation-runtime"
 
-type CollectionKind = "project" | "independent"
+type CollectionKind = "project" | "independent" | "cloud"
 export const projectConversationPreview = 2
 export const projectConversationStep = 5
 
@@ -78,6 +78,16 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
   }
   const groups = new Map<string, { group: ConversationGroup; sessions: Session[] }>()
   const filed = new Set<string>()
+  const cloud = sessions.filter(session => session.provider === "codex-cloud")
+  if (cloud.length) {
+    const key = "codex-cloud"
+    for (const session of cloud) filed.add(sessionIdentity(session))
+    groups.set(key, { group: {
+      key, name: "Codex Cloud", collection: "cloud", environment: "",
+      containsSelection: cloud.some(session => sessionIdentity(session) === options.selected),
+      collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
+    }, sessions: cloud })
+  }
   const directories = options.navigator?.directories || []
   const appearances = distinguishProjectBadges(directories)
   let selectedInProject = false
@@ -85,6 +95,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
     const {cwd, environment, projectID, projectName, projectRoot} = directory
     const path = conversationPathKey(cwd)
     const matchesDirectory = (session: Session) => {
+      if (session.provider === "codex-cloud") return false
       if ((session.environment_id || "local") !== environment) return false
       const owner = session.primary_project_id || session.terminal?.projectID || session.context?.projectID
       return owner ? owner === projectID && (!!projectRoot || conversationPathKey(session.cwd) === path) : conversationPathKey(session.cwd) === path
@@ -108,11 +119,12 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
       const key = "independent"
       const name = uiText("未绑定项目")
       groups.set(key, {group:{key, name, collection:"independent", environment:"", icon:{icon:"folder", color:"slate"}, identity:key, iconName:name,
-        containsSelection:options.selectedSession ? !selectedInProject : independent.some(session => sessionIdentity(session) === options.selected),
+        containsSelection:options.selectedSession ? options.selectedSession.provider !== "codex-cloud" && !selectedInProject : independent.some(session => sessionIdentity(session) === options.selected),
         collapsed:options.collapsed.includes(key), total:0, shown:0, showContext:true}, sessions:independent})
     }
   } else {
     for (const session of sessions) {
+      if (filed.has(sessionIdentity(session))) continue
       const environment = session.environment_id || "local"
       const projectID = session.primary_project_id || session.terminal?.projectID || session.context?.projectID
       const key = projectID ? JSON.stringify([environment,"project",projectID]) : "independent"

@@ -66,6 +66,10 @@ The conversation header lists directories with branch, access and validation sta
 
 When two active agents can write to the same directory, Yolu asks for explicit confirmation to share it. Choose an independent worktree to isolate the checkouts. Read-only and dynamic access depend on the provider and live protocol. Inspect the directory's reported status before sending, and answer an agent's structured access request in the conversation when supported.
 
+### Codex Cloud conversations
+
+In **New conversation**, select Codex, set **Run in** to **Codex Cloud**, and choose a cloud environment. Yolu lists environments available to the ChatGPT login in the host’s Codex CLI. Send a text message to start the cloud conversation. The **Codex Cloud** group at the top of the grouped conversation list shows conversations accessible in that login and workspace, including conversations started outside Yolu. Open a conversation to read its history or continue in the same cloud workspace. Codex Cloud manages its repositories and permissions. This integration uses the native Cloud preview protocol and supports text messages.
+
 ### Voice dictation
 
 Select the microphone button in a conversation to dictate into the current draft. Allow microphone access when prompted. Select **Stop dictation**, review or edit the text, then send it. Existing draft text is retained. Closing the pane stops recording.

@@ -348,6 +348,10 @@ func (a *Service) SessionHistoryEventsHandler(w http.ResponseWriter, r *http.Req
 		}
 		return controller.Flush()
 	}
+	if record.Provider == model.ProviderCodexCloud {
+		_ = emit(HistoryPush{Connected: false, Entries: []HistoryEntry{}})
+		return
+	}
 	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
 		_ = emit(HistoryPush{Connected: false, Entries: []HistoryEntry{}, Message: "Antigravity 暂不支持终端实时同步，请刷新历史查看进展"})
 		return

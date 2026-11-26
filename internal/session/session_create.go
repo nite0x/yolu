@@ -18,18 +18,19 @@ import (
 )
 
 type newSessionInput struct {
-	Text        string         `json:"text"`
-	Project     string         `json:"project_id"`
-	Cwd         string         `json:"cwd"`
-	RequestID   string         `json:"request_id"`
-	Purpose     string         `json:"purpose"`
-	MergeHead   string         `json:"merge_head"`
-	Provider    string         `json:"provider"`
-	Images      []string       `json:"images"`
-	Settings    TurnSettings   `json:"settings"`
-	Bindings    []bindingInput `json:"bindings,omitempty"`
-	Access      string         `json:"access,omitempty"`
-	AllowShared bool           `json:"allow_shared,omitempty"`
+	Text             string         `json:"text"`
+	Project          string         `json:"project_id"`
+	Cwd              string         `json:"cwd"`
+	RequestID        string         `json:"request_id"`
+	Purpose          string         `json:"purpose"`
+	MergeHead        string         `json:"merge_head"`
+	Provider         string         `json:"provider"`
+	Images           []string       `json:"images"`
+	Settings         TurnSettings   `json:"settings"`
+	Bindings         []bindingInput `json:"bindings,omitempty"`
+	Access           string         `json:"access,omitempty"`
+	CloudEnvironment string         `json:"cloud_environment,omitempty"`
+	AllowShared      bool           `json:"allow_shared,omitempty"`
 }
 
 var (
@@ -102,6 +103,10 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		httpx.DbError(w, err)
+		return
+	}
+	if input.CloudEnvironment != "" {
+		a.createCloudSession(w, r, key, fingerprint, input, provider)
 		return
 	}
 	defaults, err := a.conversationPreferencesForProvider(r.Context(), provider)

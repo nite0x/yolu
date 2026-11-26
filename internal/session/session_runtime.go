@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"worktree-hub/internal/model"
 )
 
 // chatRuntime owns in-memory turns and their title workers. Connection adapters
@@ -44,7 +46,7 @@ func (a *chatRuntime) CloseChats() {
 		title.cancel()
 	}
 	for _, run := range runs {
-		if run.snapshot().Busy {
+		if run.provider != model.ProviderCodexCloud && run.snapshot().Busy {
 			_ = run.interrupt()
 		}
 		run.cancel()

@@ -30,7 +30,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	switch input.Action {
 	case "pin", "unpin":
-		if err := a.Execution.Store.OrganizeSession(record.ID, input.Action == "pin", record.Archived); err != nil {
+		if err := a.Execution.Store.SetSessionPinned(record.ID, input.Action == "pin"); err != nil {
 			httpx.DbError(w, err)
 			return
 		}
@@ -40,9 +40,9 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, 400, "请输入 1–160 字的对话名称")
 			return
 		}
-		if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
+		if model.NormalizeProvider(record.Provider) != model.ProviderCodex {
 			if input.Action == "fork" {
-				httpx.WriteError(w, 400, "Antigravity 对话暂不支持从历史分叉")
+				httpx.WriteError(w, 400, "此对话暂不支持从历史分叉")
 				return
 			}
 			if input.Action == "archive" && a.ChatBusy(record.ID) {

@@ -337,6 +337,44 @@ test("a project worktree creates a conversation without a workspace", async () =
 });
 
 
+test("Cloud creation sends the selected environment without the local worktree or permissions", async () => {
+  const requests: Array<{path:string; body:Record<string, unknown>}> = [];
+  const c = new ChatController({
+    session:null, target:{project_id:"project",cwd:"/repo/worktree"}, environment:"local",
+    created(){}, close(){}, stream:async()=>new Response(),
+    request:async(path,options)=>{
+      requests.push({path,body:JSON.parse(String(options?.body))});
+      return {session:{...session,id:"cloud-thread",provider:"codex-cloud",cloud_environment:"apix"},chat:idleChat()} as any;
+    }
+  });
+  c.setSettings({permission:"full",model:"local-only"});
+  c.setCloudEnvironment("");
+  assert.equal(c.canSend(),false);
+  c.setCloudEnvironment("cloud-config-apix");
+  await c.send("Cloud smoke test", [], true, {cwd:"/repo/new-worktree",access:"write",allow_shared:true});
+  assert.equal(requests[0].path,"/api/sessions/new");
+  assert.equal(requests[0].body.cloud_environment,"cloud-config-apix");
+  for (const field of ["cwd","project_id","access","allow_shared","bindings"]) assert.equal(requests[0].body[field],undefined);
+  assert.deepEqual(requests[0].body.settings,{});
+  assert.equal(c.getSnapshot().session?.cloud_environment,"apix");
+  assert.equal(c.getSnapshot().session?.provider,"codex-cloud");
+  assert.equal(c.getSnapshot().capabilities.handoff,false);
+});
+
+test("an imported Cloud conversation without an environment name uses Cloud controls", async () => {
+  const calls: string[] = [];
+  const cloud = {...session,provider:"codex-cloud" as const};
+  const c = new ChatController({session:cloud,environment:"local",created(){},close(){},stream:async()=>new Response(),request:async(path)=>{
+    calls.push(path);
+    return {} as any;
+  }});
+  c.updateSession({...cloud,name:"Updated"});
+  await c.loadOptions();
+  assert.equal(c.isCloud(),true);
+  assert.equal(c.getSnapshot().capabilities.handoff,false);
+  assert.deepEqual(calls,["/api/sessions/thread/context"]);
+});
+
 test("conversation identity depends on environment and session, while new drafts depend on the target", () => {
  const options: ChatOptions = {target,session,environment:"local",request:async()=>({} as any),stream:async()=>new Response(),created(){},close(){}};
  assert.equal(conversationKey(options),conversationKey({...options,target:{project_id:"other",cwd:"/other"}}));

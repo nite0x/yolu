@@ -492,6 +492,10 @@ func (a *Service) MutateBindingHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if record.Provider == model.ProviderCodexCloud {
+		httpx.WriteError(w, 409, "云端目录由 Codex Cloud 环境管理")
+		return
+	}
 	if err := a.checkBindingMutation(r.Context(), record); err != nil {
 		writeBindingError(w, err)
 		return

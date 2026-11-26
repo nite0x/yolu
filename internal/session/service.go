@@ -20,6 +20,7 @@ type Service struct {
 	chatRuntime
 	Execution             *execution.Service
 	openSessions          func(context.Context) (codex.SessionClient, error)
+	openCloudSessions     func(context.Context) (codex.SessionClient, error)
 	sessionPool           *codex.SessionPool
 	codexInstaller        codex.Installer
 	openLive              func(context.Context) (codex.LiveClient, error)
@@ -37,6 +38,7 @@ type Service struct {
 	controlLocks          map[string]*sessionControlLock
 	catalogMu             sync.Mutex
 	catalogs              map[string]*catalogEntry
+	cloudCatalogCache     *cloudCatalogEntry
 	rateLimitsMu          sync.Mutex
 	rateLimits            *RateLimitsResponse
 	bridges               map[string]*terminalBridge
@@ -65,6 +67,7 @@ func New(environment *execution.Service) *Service {
 	} else {
 		s.sessionPool = codex.NewSessionPool()
 		s.openSessions = s.sessionPool.Open
+		s.openCloudSessions = s.openSessions
 	}
 	s.openTitleLive = s.openLive
 	return s

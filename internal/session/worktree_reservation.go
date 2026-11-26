@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/model"
 )
 
 // ReserveWorktree excludes chat/terminal starts until a directory removal is
@@ -58,7 +59,7 @@ func (a *Service) ReserveWorktree(ctx context.Context, path string) (func(), err
 	}
 	known := map[string]bool{}
 	for _, s := range records {
-		if !uses(s.Cwd, s.AdditionalDirectories) {
+		if s.Provider == model.ProviderCodexCloud || !uses(s.Cwd, s.AdditionalDirectories) {
 			continue
 		}
 		known[s.ID] = true

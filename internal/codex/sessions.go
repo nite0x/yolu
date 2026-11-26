@@ -30,15 +30,17 @@ type Session struct {
 		Type        string   `json:"type"`
 		ActiveFlags []string `json:"activeFlags,omitempty"`
 	} `json:"status,omitempty"`
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Preview     string `json:"preview"`
-	Cwd         string `json:"cwd"`
-	CreatedAt   int64  `json:"createdAt"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	HistoryMode string `json:"historyMode,omitempty"`
-	Model       string `json:"model,omitempty"`
-	Effort      string `json:"reasoningEffort,omitempty"`
+	ID               string `json:"id"`
+	CloudEnvironment string `json:"cloud_environment,omitempty"`
+	Provider         string `json:"provider,omitempty"`
+	Name             string `json:"name"`
+	Preview          string `json:"preview"`
+	Cwd              string `json:"cwd"`
+	CreatedAt        int64  `json:"createdAt"`
+	UpdatedAt        int64  `json:"updatedAt"`
+	HistoryMode      string `json:"historyMode,omitempty"`
+	Model            string `json:"model,omitempty"`
+	Effort           string `json:"reasoningEffort,omitempty"`
 }
 
 type SessionPage struct {

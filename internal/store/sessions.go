@@ -26,7 +26,11 @@ CREATE TABLE IF NOT EXISTS session_organization (session_id TEXT PRIMARY KEY REF
 CREATE TABLE IF NOT EXISTS conversation_drafts (key TEXT PRIMARY KEY,payload TEXT NOT NULL,updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS conversation_input_requests (session_id TEXT NOT NULL,request_id TEXT NOT NULL,fingerprint TEXT NOT NULL,status TEXT NOT NULL,PRIMARY KEY(session_id,request_id));
 CREATE TABLE IF NOT EXISTS conversation_create_requests (
- request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, session_id TEXT NOT NULL DEFAULT '');`)
+ request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, session_id TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS codex_cloud_sessions (
+ session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+ thread_id TEXT NOT NULL, account_identity TEXT NOT NULL, environment_name TEXT NOT NULL, model TEXT NOT NULL);
+`)
 	if err != nil {
 		return err
 	}
@@ -127,7 +131,7 @@ func (s *Store) ObserveSessionTitle(id, name string) (bool, error) {
 func scanSession(scan func(...any) error) (model.Session, error) {
 	var v model.Session
 	var directories string
-	err := scan(&v.ID, &v.Name, &v.Cwd, &v.CreatedAt, &v.UpdatedAt, &v.Source, &v.LastSyncedAt, &directories, &v.Pinned, &v.Archived, &v.TitleSource, &v.TitleChangedAt, &v.Provider, &v.Permission)
+	err := scan(&v.ID, &v.Name, &v.Cwd, &v.CreatedAt, &v.UpdatedAt, &v.Source, &v.LastSyncedAt, &directories, &v.Pinned, &v.Archived, &v.TitleSource, &v.TitleChangedAt, &v.Provider, &v.Permission, &v.CloudEnvironment)
 	if err == nil {
 		v.Provider = model.NormalizeProvider(v.Provider)
 		err = json.Unmarshal([]byte(directories), &v.AdditionalDirectories)
@@ -135,14 +139,24 @@ func scanSession(scan func(...any) error) (model.Session, error) {
 	return v, err
 }
 
-const sessionColumns = `id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,COALESCE((SELECT pinned FROM session_organization WHERE session_id=sessions.id),0),COALESCE((SELECT archived FROM session_organization WHERE session_id=sessions.id),0),title_source,title_changed_at,provider,permission`
+const sessionColumns = `id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,COALESCE((SELECT pinned FROM session_organization WHERE session_id=sessions.id),0),COALESCE((SELECT archived FROM session_organization WHERE session_id=sessions.id),0),title_source,title_changed_at,provider,permission,COALESCE((SELECT environment_name FROM codex_cloud_sessions WHERE session_id=sessions.id),'')`
 
 func (s *Store) Session(id string) (model.Session, error) {
 	return scanSession(s.DB.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id=?`, id).Scan)
 }
 
 func (s *Store) Sessions() ([]model.Session, error) {
-	rows, err := s.DB.Query(`SELECT ` + sessionColumns + ` FROM sessions ORDER BY updated_at DESC,id`)
+	return s.listSessions("")
+}
+
+func (s *Store) SessionsForCloudIdentity(identity string) ([]model.Session, error) {
+	return s.listSessions(` WHERE provider<>'codex-cloud' OR EXISTS (
+		SELECT 1 FROM codex_cloud_sessions WHERE session_id=sessions.id AND account_identity<>''
+		AND account_identity=? )`, identity)
+}
+
+func (s *Store) listSessions(filter string, args ...any) ([]model.Session, error) {
+	rows, err := s.DB.Query(`SELECT `+sessionColumns+` FROM sessions`+filter+` ORDER BY updated_at DESC,id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -171,6 +185,12 @@ func (s *Store) SaveSessionDirectories(id string, directories []string) error {
 
 func (s *Store) OrganizeSession(id string, pinned, archived bool) error {
 	_, err := s.DB.Exec(`INSERT INTO session_organization(session_id,pinned,archived,updated_at) VALUES(?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET pinned=excluded.pinned,archived=excluded.archived,updated_at=excluded.updated_at`, id, pinned, archived, time.Now().UnixMilli())
+	return err
+}
+
+func (s *Store) SetSessionPinned(id string, pinned bool) error {
+	_, err := s.DB.Exec(`INSERT INTO session_organization(session_id,pinned) VALUES(?,?)
+	 ON CONFLICT(session_id) DO UPDATE SET pinned=excluded.pinned`, id, pinned)
 	return err
 }
 

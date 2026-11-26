@@ -23,6 +23,7 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sessions/{session}/open-link", s.SessionExternalLinkHandler)
 	mux.HandleFunc("GET /api/conversation-drafts", s.DraftHandler)
 	mux.HandleFunc("POST /api/conversation-drafts", s.DraftHandler)
+	mux.HandleFunc("GET /api/codex/cloud-environments", s.CloudEnvironmentsHandler)
 	mux.HandleFunc("GET /api/codex/chat-options", s.ChatOptionsHandler)
 	mux.HandleFunc("GET /api/agents/chat-options", s.ChatOptionsHandler)
 	mux.HandleFunc("GET /api/codex/rate-limits", s.RateLimitsHandler)

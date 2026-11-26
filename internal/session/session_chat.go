@@ -67,6 +67,7 @@ type ChatState struct {
 type ChatRun struct {
 	mu                     sync.Mutex
 	provider               string
+	cloudInterrupt         func(context.Context, string) error
 	state                  ChatState
 	session, cwd           string
 	client                 codex.LiveClient
@@ -123,7 +124,7 @@ func (a *Service) ChatStateHandler(w http.ResponseWriter, r *http.Request) {
 	if run := a.ChatFor(r.PathValue("session")); run != nil {
 		state = run.snapshot()
 	}
-	if !state.Busy && model.NormalizeProvider(record.Provider) != model.ProviderAgy {
+	if !state.Busy && model.NormalizeProvider(record.Provider) == model.ProviderCodex {
 		// An unaccepted send has no turn ID. Its error must survive polling an
 		// older completed rollout, so the composer can restore the failed draft.
 		// A running/waiting native turn still owns its live controls.
@@ -148,7 +149,7 @@ func (a *Service) ChatStateHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if !state.Busy && model.NormalizeProvider(record.Provider) != model.ProviderAgy {
+	if !state.Busy && model.NormalizeProvider(record.Provider) == model.ProviderCodex {
 		state.Blocked = ""
 		state.CanHandoff = false
 		if err := a.chatTerminalConflict(record.ID); err != nil {
@@ -197,7 +198,7 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if model.NormalizeProvider(record.Provider) != model.ProviderAgy {
+	if model.NormalizeProvider(record.Provider) == model.ProviderCodex {
 		if external, ok := a.externalActivity(r.Context(), record.ID); ok && (external.Status == "running" || external.Status == "waiting") && !a.ChatBusy(record.ID) {
 			httpx.WriteError(w, 409, "此对话仍在原生 Codex 中运行，请在原窗口继续或等待完成")
 			return
@@ -213,6 +214,10 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if model.NormalizeProvider(record.Provider) == model.ProviderAgy && input.Settings.ServiceTier != "" {
 		httpx.WriteError(w, 400, "所选对话引擎不支持设置响应速度")
+		return
+	}
+	if record.Provider == model.ProviderCodexCloud {
+		a.cloudChatStart(w, r, record, input.RequestID, input.Text, input.Images)
 		return
 	}
 	planCtx := execution.WithClient(r.Context(), a.Execution.Remote)
@@ -616,6 +621,14 @@ func (run *ChatRun) interrupt() error {
 	run.mu.Unlock()
 	if provider == model.ProviderAgy {
 		return run.interruptAgy()
+	}
+	if provider == model.ProviderCodexCloud {
+		if id == "" {
+			return fmt.Errorf("云端尚未确认本轮消息")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		return run.cloudInterrupt(ctx, id)
 	}
 	if client == nil || id == "" {
 		run.cancel()

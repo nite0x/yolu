@@ -200,8 +200,7 @@ export function ConversationPanel({
             {...thread}
             managedScroll
             composer={
-              thread.composer ??
-              (composerInput ? (
+              thread.composer === undefined && composerInput ? (
                 <Composer
                   autoFocus={!!thread.autoFocus}
                   input={composerInput}
@@ -210,7 +209,7 @@ export function ConversationPanel({
                   controls={thread.composerControls}
                   leadingControls={thread.composerLeadingControls}
                 />
-              ) : undefined)
+              ) : thread.composer
             }
           />
         </div>
