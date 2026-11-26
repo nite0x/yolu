@@ -39,7 +39,9 @@ function createStyleInstaller() {
 const display: FileDisplay = {
   render(container, preview, split) {
     const installStyles = createStyleInstaller()
-    const options = { theme: "pierre-light" as const, themeType: "light" as const, overflow: "scroll" as const, onPostRender: installStyles }
+    const appearance = container.ownerDocument.documentElement
+    const themeType = () => appearance.dataset.colorScheme === "dark" ? "dark" as const : "light" as const
+    const options = { theme: {light: "pierre-light", dark: "pierre-dark"}, themeType: themeType(), overflow: "scroll" as const, onPostRender: installStyles }
     const instances: (File | FileDiff)[] = []
     try {
       if (preview.format === "file") {
@@ -69,10 +71,16 @@ const display: FileDisplay = {
         if (!instances.length) container.textContent = preview.text || uiText("此区域没有文本差异。")
       }
     } catch {
-      instances.forEach(instance => { instance.cleanUp() })
+      instances.splice(0).forEach(instance => { instance.cleanUp() })
       container.textContent = preview.text
     }
-    return () => { instances.forEach(instance => { instance.cleanUp() }); container.replaceChildren() }
+    // Theme changes update the existing renderer without replacing its reading
+    // position or selected lines. Follow the owning pane's saved appearance.
+    const observer = new MutationObserver(() => {
+      for (const instance of instances) instance.setThemeType(themeType())
+    })
+    observer.observe(appearance, {attributes: true, attributeFilter: ["data-color-scheme"]})
+    return () => { observer.disconnect(); instances.forEach(instance => { instance.cleanUp() }); container.replaceChildren() }
   },
 }
 export function installFileDisplay(host: Window) {

@@ -19,6 +19,7 @@ export function createDraftPersistence(options: {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let writes = Promise.resolve();
   let lastWriteSucceeded = true;
+  let disposed = false;
   function restore(record: DraftRecord) { updated = record.updated; options.restore(record); }
   function write(key: string, record: DraftRecord) {
     cacheDraft(key, record);
@@ -26,27 +27,27 @@ export function createDraftPersistence(options: {
       try {
         await options.request(`/api/conversation-drafts?key=${encodeURIComponent(key)}`, {method: "POST", body: JSON.stringify(record)});
         lastWriteSucceeded = true;
-        options.notice("");
+        if (!disposed) options.notice("");
       } catch {
         lastWriteSucceeded = false;
-        options.notice(uiText("草稿暂未保存到后台，连接恢复后会重试，请保持页面打开"));
-        if (options.connected()) { clearTimeout(timer); timer = setTimeout(persist, 5000); }
+        if (!disposed) options.notice(uiText("草稿暂未保存到后台，连接恢复后会重试，请保持页面打开"));
+        if (!disposed && options.connected()) { clearTimeout(timer); timer = setTimeout(persist, 5000); }
       }
     });
   }
   function persist() {
     clearTimeout(timer);
-    if (!options.enabled()) return;
+    if (disposed || !options.enabled()) return;
     updated = Math.max(Date.now(), updated + 1);
     write(options.key(), {...options.capture(), updated});
   }
   return {
     restore, persist, write,
-    dispose() { clearTimeout(timer) },
+    dispose() { disposed = true; clearTimeout(timer) },
     async flush() { persist(); await writes; return lastWriteSucceeded; },
     changed() {
       revision++;
-      if (!options.enabled()) return;
+      if (disposed || !options.enabled()) return;
       clearTimeout(timer);
       timer = setTimeout(persist, 350);
     },
@@ -54,8 +55,8 @@ export function createDraftPersistence(options: {
       const observed = revision;
       try {
         const saved = await options.request<unknown>(`/api/conversation-drafts?key=${encodeURIComponent(options.key())}`);
-        if (options.connected() && revision === observed && validDraft(saved) && saved.updated >= updated && !options.submitting()) restore(saved);
-      } catch { options.notice(uiText("暂时无法恢复本地草稿，将在下次保存时重试")); }
+        if (!disposed && options.connected() && revision === observed && validDraft(saved) && saved.updated >= updated && !options.submitting()) restore(saved);
+      } catch { if (!disposed) options.notice(uiText("暂时无法恢复本地草稿，将在下次保存时重试")); }
     },
   };
 }

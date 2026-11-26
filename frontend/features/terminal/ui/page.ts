@@ -22,14 +22,22 @@ export function mountTerminalPage() {
   const customTerminal = element<HTMLDetailsElement>("customTerminal")
   const startCustom = element<HTMLButtonElement>("startTerminal")
   const executable = element<HTMLInputElement>("customExecutable"), argsInput = element<HTMLTextAreaElement>("customArgs"), envInput = element<HTMLTextAreaElement>("customEnv"), nameInput = element<HTMLInputElement>("customName")
-  const host = window.parent, token = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')!.content
+  const metadata = (name: string) => {
+    const node = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)
+    if (!node) throw new Error(`Missing terminal metadata: ${name}`)
+    return node.content
+  }
+  const host = window.parent, token = metadata("csrf-token")
   const post = <K extends keyof PageMessages>(type: K, extra: PageMessages[K] = {} as PageMessages[K]) => postPageMessage(host, location.origin, type, extra)
   let saved: Snapshot = {route:"/terminals", environment:"local", title:uiText("新建终端"), terminal:{}}
+  const listeners = new AbortController()
+  const listenerOptions = {signal:listeners.signal}
   let active = false, disposed = false, restoring = true, savingProfile = false
   let startingProfile: string | undefined
   let projects: Project[] = [], profiles: TerminalProfile[] = [], customProfiles: TerminalProfile[] = [], rows: TerminalInfo[] = []
   let term: Terminal | undefined, fit: FitAddon | undefined, search: SearchAddon | undefined, socket: WebSocket | undefined
-  let current: TerminalInfo | undefined, seq = 0, generation = 0, retry: ReturnType<typeof setTimeout> | undefined, reconnecting = false
+  let current: TerminalInfo | undefined, seq = 0, generation = 0, retry: ReturnType<typeof setTimeout> | undefined
+  let connectingGeneration: number | undefined
   let restoreRevision = 0, busy = false, finished = false, lastSize = ""
   const terminalFonts = document.fonts?.load('14px "JetBrains Mono Variable"').catch(() => []) ?? Promise.resolve([])
   const storedFontSize = Number(conversationDefaults.get("terminal-font-size"))
@@ -50,12 +58,14 @@ export function mountTerminalPage() {
 
   // xterm generates scoped renderer styles. Give those styles this page's CSP
   // nonce instead of relaxing style-src for the entire application.
-  const nonce = document.querySelector<HTMLMetaElement>('meta[name="style-nonce"]')!.content
-  document.createElement = new Proxy(document.createElement, {apply(target, owner, args) {
+  const nonce = metadata("style-nonce")
+  const createElement = document.createElement
+  const createNoncedElement = new Proxy(createElement, {apply(target, owner, args) {
     const node = Reflect.apply(target, owner, args) as HTMLElement
     if (node.tagName === "STYLE") node.setAttribute("nonce", nonce)
     return node
   }})
+  document.createElement = createNoncedElement
 
   const request = createAPIClient({token, context: () => ({environment:saved.environment, revision:restoreRevision}), read:(path, options) => fetch(path, options), text:uiText})
   function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
@@ -63,11 +73,13 @@ export function mountTerminalPage() {
   }
 
   function feedback(message = "", nearAction = false) {
+    if (disposed) return
     const node = element(!current && !restoring ? "terminalLaunchFeedback" : "terminalFeedback")
     node.textContent = message; node.hidden = !message
     if (message && nearAction) node.scrollIntoView?.({block:"nearest"})
   }
   function status(message: string) {
+    if (disposed) return
     element("terminalStatus").textContent = message
     element("terminalStatusBadge").dataset.state = message.includes(uiText("失败")) || message === uiText("未连接") ? "failed" : message.startsWith(uiText("已退出")) ? "completed" : message === uiText("已连接") ? "running" : "starting"
   }
@@ -159,7 +171,7 @@ export function mountTerminalPage() {
   async function refreshRows() { rows = await api<TerminalInfo[]>("/api/terminals"); if (!disposed) showRows() }
 
   function measure() {
-    if (!active || !term || !fit || element("terminalConsole").hidden || !element("terminalScreen").clientWidth) return
+    if (disposed || !active || !term || !fit || element("terminalConsole").hidden || !element("terminalScreen").clientWidth) return
     const dimensions = fit.proposeDimensions()
     if (!dimensions || !element("terminalScreen").clientHeight) return
     term.resize(Math.max(2,Math.min(500,dimensions.cols)), Math.max(1,Math.min(300,dimensions.rows)))
@@ -171,7 +183,7 @@ export function mountTerminalPage() {
   function send(value: unknown) {if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(value))}
   function disconnect() {
     ++generation; clearTimeout(retry); retry = undefined
-    if (socket) {socket.onclose = null; socket.close(); socket = undefined}
+    if (socket) {socket.onopen = null; socket.onmessage = null; socket.onerror = null; socket.onclose = null; socket.close(); socket = undefined}
   }
   function terminalTheme(): ITheme {
     const style = getComputedStyle(document.documentElement)
@@ -187,7 +199,7 @@ export function mountTerminalPage() {
       brightBlue:color("bright-blue", "#bacbff"), brightMagenta:"#d7bff7", brightCyan:"#b0e1e9", brightWhite:"#f0f3fc",
     }
   }
-  window.addEventListener("yolu:appearance", () => { if (term) term.options.theme = terminalTheme() })
+  window.addEventListener("yolu:appearance", () => { if (term) term.options.theme = terminalTheme() }, listenerOptions)
 
   function createTerminal() {
     if (term) return
@@ -224,34 +236,36 @@ export function mountTerminalPage() {
     requestAnimationFrame(measure)
   }
   async function connect() {
-    if (!current || disposed || reconnecting || finished) return
-    reconnecting = true; disconnect(); busy = false
+    if (!current || !term || disposed || connectingGeneration === generation || finished) return
+    const display = term
+    disconnect(); busy = false
     lastSize = ""
     const revision = generation, id = current.id
+    connectingGeneration = revision
     try {
       // Reconnect only after queued output has been parsed, so its sequence is
       // acknowledged exactly once even if the socket closed during term.write.
-      if (term) await new Promise<void>(resolve => term!.write("", resolve))
+      await new Promise<void>(resolve => display.write("", resolve))
       const auth = await api<{ticket: string}>(`/api/terminals/${encodeURIComponent(id)}/ticket`, "POST", {})
       if (disposed || revision !== generation) return
       const url = new URL(`/terminal-stream/${encodeURIComponent(id)}`, location.href); url.protocol = location.protocol === "https:" ? "wss:" : "ws:"
       const ws = new WebSocket(url); socket = ws; status(uiText("正在连接…"))
-      ws.onopen = () => {ws.send(JSON.stringify({ticket:auth.ticket, since:seq})); measure()}
+      ws.onopen = () => {if (disposed || revision !== generation || socket !== ws) return; ws.send(JSON.stringify({ticket:auth.ticket, since:seq})); measure()}
       ws.onmessage = event => {
-        if (revision !== generation || disposed) return
+        if (revision !== generation || disposed || term !== display) return
         const message = JSON.parse(event.data)
         if (message.type === "output") {
           status(uiText("已连接")); const bytes = Uint8Array.from(atob(message.data), c => c.charCodeAt(0))
-          term!.write(bytes, () => {seq = message.seq; if (socket === ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:"ack", seq}))})
-        } else if (message.type === "gap") {term!.reset(); seq = message.seq; feedback(message.message)}
+          display.write(bytes, () => {if (disposed || term !== display) return; seq = message.seq; if (socket === ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:"ack", seq}))})
+        } else if (message.type === "gap") {display.reset(); seq = message.seq; feedback(message.message)}
         else if (message.type === "exit") terminalExited(message.exit_code)
         else if (message.type === "busy" || message.type === "error") {busy = true; status(uiText("未连接")); feedback(message.message)}
       }
       ws.onclose = () => {if (disposed || revision !== generation || finished || busy) return; status(uiText("连接中断，正在重连…")); retry = setTimeout(() => void connect(), 1500)}
-      ws.onerror = () => status(uiText("连接失败"))
+      ws.onerror = () => {if (!disposed && revision === generation && socket === ws) status(uiText("连接失败"))}
       status(uiText("已连接")); if (active) term?.focus()
     } catch (error) {if (!disposed && revision === generation) {status(uiText("未连接")); feedback((error as Error).message)}}
-    finally {reconnecting = false}
+    finally {if (connectingGeneration === revision) connectingGeneration = undefined}
   }
   async function showTerminal(info: TerminalInfo) {
     if (current?.id === info.id && term) return
@@ -268,6 +282,7 @@ export function mountTerminalPage() {
     createTerminal(); publish(); await connect()
   }
   async function restore(value: PageSnapshot) {
+    if (disposed) return
     const revision = ++restoreRevision; restoring = true; saved = {...value, environment:value.environment || "local", title:value.title || uiText("终端"), terminal:{...value.terminal}}
     feedback()
     syncLauncher()
@@ -324,7 +339,7 @@ export function mountTerminalPage() {
     feedback()
     try {
       if (!executable.value.trim()) throw new Error(uiText("请填写可执行文件"))
-      const id = profileSelect.value.startsWith("custom-") ? profileSelect.value : "custom-" + crypto.randomUUID()
+      const id = profileSelect.value.startsWith("custom-") ? profileSelect.value : `custom-${crypto.randomUUID()}`
       const profile: TerminalProfile = {id, name:nameInput.value.trim() || executable.value.trim(), executable:executable.value.trim(), args:parsedArgs(), available:true}
       const result = await api<TerminalProfile>("/api/terminal-profiles", "POST", profile)
       if (disposed) return
@@ -394,12 +409,17 @@ export function mountTerminalPage() {
     })
   }
 
-  document.addEventListener("pointerdown", () => post("workhub:page-focus"), true)
-  document.addEventListener("focusin", () => post("workhub:page-focus"))
-  function dispose() {if (disposed) return; disposed = true; ++restoreRevision; disconnect(); resize.disconnect(); term?.dispose(); clearInterval(poll); terminalTools.unmount(); unmountSurface()}
-  window.addEventListener("pagehide", dispose)
+  document.addEventListener("pointerdown", () => post("workhub:page-focus"), {...listenerOptions,capture:true})
+  document.addEventListener("focusin", () => post("workhub:page-focus"), listenerOptions)
+  function dispose() {
+    if (disposed) return
+    disposed = true; ++restoreRevision; listeners.abort(); disconnect(); resize.disconnect(); term?.dispose(); term = undefined; fit = undefined; search = undefined; clearInterval(poll)
+    terminalTools.unmount(); unmountSurface()
+    if (document.createElement === createNoncedElement) document.createElement = createElement
+  }
+  window.addEventListener("pagehide", dispose, {...listenerOptions,once:true})
   window.addEventListener("message", event => {
-    if (event.source !== host || event.origin !== location.origin || !event.data) return
+    if (disposed || event.source !== host || event.origin !== location.origin || !event.data) return
     const message = readPageMessage(event.data)
     if (!message) return
     if (message.type === "workhub:page-restore") {active = !!message.active; void restore(message.snapshot)}
@@ -414,7 +434,7 @@ export function mountTerminalPage() {
       element("zoomTerminal").dataset.zoomed = String(!!message.zoomed)
     } else if (message.type === "workhub:page-closing") dispose()
     else if (message.type === "workhub:page-navigate" && typeof message.route === "string") post("workhub:page-open", {snapshot:{route:message.route, environment:saved.environment}})
-  })
+  }, listenerOptions)
   const poll = setInterval(() => {if (active && !current && !restoring && !disposed && saved.environment === "local") void refreshRows().catch(() => {})}, 5000)
   ;(window as Window & {WorkHubPage?: object}).WorkHubPage = {snapshot, canClose:() => !startingProfile && !savingProfile, dispose, get restoring() {return restoring}}
   context()

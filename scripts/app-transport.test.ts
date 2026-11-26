@@ -85,3 +85,15 @@ test('page boundaries ignore malformed state, routes, commands and layout payloa
   postPageMessage({postMessage:message => {sent.push(message)}}, 'http://localhost', 'workhub:page-ready', {})
   assert.deepEqual(sent, [{type:'workhub:page-ready'}])
 })
+
+test('explicit freshness and no-store reads bypass shared response retention', async () => {
+  let calls = 0
+  const cache = createRequestCache(async () => Response.json({revision:++calls}))
+  await cache.read('/api/state')
+  for (const mode of ['no-store', 'reload', 'no-cache'] as const) {
+    const first = await (await cache.read('/api/state', {cache:mode})).json()
+    const second = await (await cache.read('/api/state', {cache:mode})).json()
+    assert.notEqual(first.revision, second.revision)
+  }
+  assert.equal(calls, 7)
+})

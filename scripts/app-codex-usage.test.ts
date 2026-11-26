@@ -16,7 +16,7 @@ function fixture(handler:(path:string, init:RequestInit)=>Promise<unknown>, hidd
   const dom=new JSDOM('<meta name="csrf-token" content="test-token"><aside><footer class="sidebar-footer"></footer></aside>',{url:"http://localhost",runScripts:"dangerously",pretendToBeVisual:true,virtualConsole:console})
   const w=dom.window
   if(hidden) w.document.documentElement.setAttribute("data-workspace-inactive","")
-  Object.assign(w,{ResizeObserver:class{observe(){} unobserve(){} disconnect(){}},fetch:async(path:string,init:RequestInit)=>({ok:true,json:async()=>handler(path,init)})})
+  Object.assign(w,{Headers,ResizeObserver:class{observe(){} unobserve(){} disconnect(){}},fetch:async(path:string,init:RequestInit)=>({ok:true,json:async()=>handler(path,init)})})
   w.eval(bundle)
   let dispose=(w as any).Usage.mountCodexUsage(w.document.querySelector("aside"))
   return {w,errors,remount(){dispose();dispose=(w as any).Usage.mountCodexUsage(w.document.querySelector("aside"))},close(){dispose();dom.window.close()}}

@@ -31,10 +31,11 @@ function loadDisplay() {
 }
 
 function Preview({ preview, split, id }: { preview: FilePreview; split: boolean; id: string }) {
-  const target = useRef<HTMLDivElement>(null)
+  const target = useRef<HTMLElement>(null)
   const [error, setError] = useState("")
   useEffect(() => {
-    const container = target.current!
+    const container = target.current
+    if (!container) return
     let active = true
     let dispose: (() => void) | undefined
     setError("")
@@ -55,15 +56,20 @@ function Preview({ preview, split, id }: { preview: FilePreview; split: boolean;
     })
     return () => { active = false; dispose?.(); container.replaceChildren() }
   }, [preview, split])
-  return <>{error && <p role="status" className="quiet">{error}{uiText("，已显示纯文本内容。")}</p>}<div ref={target} id={id} className="changes-text" tabIndex={0} aria-label={uiText("只读文件内容与差异")} /></>
+  return <>
+    {error && <p role="status" className="quiet">{error}{uiText("，已显示纯文本内容。")}</p>}
+    {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to focus and scroll this read-only file viewport. */}
+    <section ref={target} id={id} className="changes-text" tabIndex={0} aria-label={uiText("只读文件内容与差异")} />
+  </>
 }
 
 function ImagePreview({ preview, id }: { preview: FilePreview; id: string }) {
   const [failed, setFailed] = useState(false)
   const source = /^data:image\/(png|jpeg|gif|webp);base64,/.test(preview.data_url || "") ? preview.data_url : undefined
-  return <div id={id} className="changes-text file-image-preview" tabIndex={0} aria-label={uiText("只读图片预览")}>
+  // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to focus and scroll this read-only image viewport.
+  return <section id={id} className="changes-text file-image-preview" tabIndex={0} aria-label={uiText("只读图片预览")}>
     {failed || !source ? <p role="alert">{uiText("图片无法显示，文件可能已损坏。")}</p> : <img src={source} alt={preview.name} onError={() => setFailed(true)} />}
-  </div>
+  </section>
 }
 
 function DirectoryTree({ directory = "", selected, choose, request, endpoint, environment, depth = 0 }: {
@@ -75,11 +81,13 @@ function DirectoryTree({ directory = "", selected, choose, request, endpoint, en
   useEffect(() => {
     const segments = selected.split("/").slice(0, -1)
     const parents = segments.map((_, index) => segments.slice(0, index + 1).join("/"))
-    setExpanded(values => [...new Set([...values, ...parents])])
+    setExpanded(values => parents.every(parent => values.includes(parent)) ? values : [...new Set([...values, ...parents])])
   }, [selected])
   useEffect(() => {
     const abort = new AbortController()
     let active = true
+    setData(undefined)
+    setError("")
     void request<Directory>(`${endpoint}&${new URLSearchParams({dir: directory})}`, { environment, signal: abort.signal })
       .then(value => { if (active) setData(value) })
       .catch(error => { if (active) setError(error instanceof Error ? error.message : String(error)) })
@@ -104,7 +112,8 @@ function FileBrowser({ project, session, binding, git = !!project, path, environ
   const [files, setFiles] = useState<ChangedFile[]>([])
   const [selected, setSelected] = useState("")
   const [preview, setPreview] = useState<FilePreview>()
-  const [error, setError] = useState("")
+  const [listingError, setListingError] = useState("")
+  const [previewError, setPreviewError] = useState("")
   const [loading, setLoading] = useState(false)
   const [listing, setListing] = useState(false)
   const [refresh, setRefresh] = useState(0)
@@ -116,14 +125,15 @@ function FileBrowser({ project, session, binding, git = !!project, path, environ
     if (reference) { setMode(reference.mode || "all"); setSelected(reference.path) }
   }, [reference])
   const bindingEndpoint = session && binding ? `/api/sessions/${encodeURIComponent(session)}/bindings` : ""
-  const previewEndpoint = mode === "all" ? filesEndpoint : bindingEndpoint ? `${bindingEndpoint}/${encodeURIComponent(binding!)}/diff` : `${endpoint}/changes`
-  const query = new URLSearchParams({ path })
+  const previewEndpoint = mode === "all" ? filesEndpoint : bindingEndpoint ? `${bindingEndpoint}/${encodeURIComponent(binding || "")}/diff` : `${endpoint}/changes`
+  const query = new URLSearchParams({ path }).toString()
   const visible = files.filter(file => mode === "index" ? !file.untracked && file.index !== " " && file.index !== "?" : file.untracked || file.working !== " ")
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The refresh counter explicitly reloads this resource without changing its API URL.
   useEffect(() => {
-    if (mode === "all") return
+    if (mode === "all") { setListingError(""); return }
     let active = true
     const abort = new AbortController()
-    setListing(true); setError("")
+    setListing(true); setListingError("")
     const load = bindingEndpoint
       ? request<{bindings:{id:string; branch?:string; git?:{files?:ChangedFile[]}}[]}>(bindingEndpoint, {environment,signal:abort.signal})
         .then(({bindings}) => {
@@ -136,26 +146,29 @@ function FileBrowser({ project, session, binding, git = !!project, path, environ
       setFiles(data.files); setBranch(data.branch)
       const choices = data.files.filter(file => mode === "index" ? !file.untracked && file.index !== " " && file.index !== "?" : file.untracked || file.working !== " ")
       setSelected(value => choices.some(file => file.path === value) ? value : choices[0]?.path || "")
-    }).catch(error => { if (active) setError(error instanceof Error ? error.message : String(error)) })
+    }).catch(error => { if (active) setListingError(error instanceof Error ? error.message : String(error)) })
       .finally(() => { if (active) setListing(false) })
     return () => { active = false; abort.abort() }
-  }, [endpoint, bindingEndpoint, binding, path, environment, mode, refresh, request])
+  }, [endpoint, bindingEndpoint, binding, query, environment, mode, refresh, request])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The refresh counter explicitly reloads this resource without changing its API URL.
   useEffect(() => {
     setPreview(undefined)
+    setPreviewError("")
     if (!selected) { setLoading(false); return }
     let active = true
     const abort = new AbortController()
-    setLoading(true); setError("")
+    setLoading(true)
     const params = new URLSearchParams({ path, file: selected, mode })
     void request<FilePreview>(`${previewEndpoint}?${params}`, { environment, signal: abort.signal }).then(data => {
       if (active) setPreview({ ...data, name: selected, format: mode === "all" && data.format !== "image" ? "file" : data.format, line: reference?.path === selected ? reference.line : undefined })
-    }).catch(error => { if (active) setError(error instanceof Error ? error.message : String(error)) })
+    }).catch(error => { if (active) setPreviewError(error instanceof Error ? error.message : String(error)) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false; abort.abort() }
   }, [previewEndpoint, path, environment, mode, selected, refresh, request, reference])
+  const error = [listingError, previewError].filter(Boolean).join("\n")
   return <div className="file-browser" data-mode={mode}>
     <p id={`${idPrefix}Context`} className="dialog-description break-all" title={path}>{path}{branch ? ` · ${branch}` : ""}{" "}{uiText("· 只读")}</p>
-    <div className="changes-controls"><label htmlFor={`${idPrefix}Mode`}>{uiText("查看")}</label><NativeSelect id={`${idPrefix}Mode`} value={mode} onChange={event => { setMode(event.target.value); setSelected(""); setFiles([]); setPreview(undefined); setError("") }}>
+    <div className="changes-controls"><label htmlFor={`${idPrefix}Mode`}>{uiText("查看")}</label><NativeSelect id={`${idPrefix}Mode`} value={mode} onChange={event => { setMode(event.target.value); setSelected(""); setFiles([]); setPreview(undefined); setListingError(""); setPreviewError("") }}>
       <Option value="all">{uiText("全部文件")}</Option>{git && <><Option value="working">{uiText("未暂存改动（含未跟踪）")}</Option><Option value="index">{uiText("修改文件 · 暂存区")}</Option></>}
     </NativeSelect><Button type="button" variant="outline" id={`${idPrefix}Refresh`} onClick={() => setRefresh(value => value + 1)}>{uiText("刷新")}</Button>
       <label htmlFor={`${idPrefix}Layout`}>{uiText("差异布局")}</label><NativeSelect id={`${idPrefix}Layout`} value={split ? "split" : "unified"} onChange={event => setSplit(event.target.value === "split")} disabled={mode === "all"}><Option value="split">{uiText("并排")}</Option><Option value="unified">{uiText("统一")}</Option></NativeSelect>
@@ -165,7 +178,7 @@ function FileBrowser({ project, session, binding, git = !!project, path, environ
       {mode === "all" ? <>{reference && /^(?:\/|[a-z]:[\\/])/i.test(reference.path) && <Button type="button" variant={selected === reference.path ? "secondary" : "ghost"} className="h-auto w-full justify-start whitespace-normal text-left break-all" data-change-file={reference.path} aria-pressed={selected === reference.path} onClick={() => setSelected(reference.path)}><FileTypeIcon path={reference.path} /><span>{reference.path}</span></Button>}<DirectoryTree key={refresh} selected={selected} choose={setSelected} request={request} endpoint={`${filesEndpoint}?${query}`} environment={environment} /></> : listing ? <p role="status">{uiText("正在读取改动文件…")}</p> : <div className="changes-file-list">{visible.length ? visible.map(file => <Button type="button" key={file.path} variant={file.path === selected ? "secondary" : "ghost"} className="h-auto w-full justify-start whitespace-normal text-left break-all" data-change-file={file.path} aria-pressed={file.path === selected} onClick={() => setSelected(file.path)}><FileTypeIcon path={file.path} /><code className="shrink-0 browser-change-status" data-status={file.untracked || file.index === "A" ? "added" : file.index === "D" || file.working === "D" ? "deleted" : "modified"}>{file.untracked ? "??" : `${file.index}${file.working}`}</code><span>{file.previous ? `${file.previous} → ` : ""}{file.path}</span></Button>) : <p className="quiet">{uiText("此区域没有改动。")}</p>}</div>}
     </nav>}><div className="min-w-0 browser-content"><p id={`${idPrefix}Truncated`} role="status" hidden={!preview?.truncated}>{uiText("差异超过 256 KiB，已显示部分纯文本；请在 IDE 中查看完整内容。")}</p>
       {selected && <p className="file-preview-path" title={preview?.path || selected}>{preview?.path || selected}</p>}
-      {preview ? preview.format === "image" ? <ImagePreview key={selected + refresh} preview={preview} id={`${idPrefix}Text`} /> : <Preview preview={preview} split={split} id={`${idPrefix}Text`} /> : <div id={`${idPrefix}Text`} className="changes-text" role="status">{loading ? uiText("正在读取文件…") : error ? uiText("无法预览此文件，请在 IDE 中打开。") : mode === "all" ? uiText("选择文件查看内容。") : uiText("选择修改文件查看差异。")}</div>}
+      {preview ? preview.format === "image" ? <ImagePreview key={selected + refresh} preview={preview} id={`${idPrefix}Text`} /> : <Preview preview={preview} split={split} id={`${idPrefix}Text`} /> : <div id={`${idPrefix}Text`} className="changes-text" role="status">{loading ? uiText("正在读取文件…") : previewError ? uiText("无法预览此文件，请在 IDE 中打开。") : mode === "all" ? uiText("选择文件查看内容。") : uiText("选择修改文件查看差异。")}</div>}
     </div></FileSplit><p id={`${idPrefix}Error`} role="alert" hidden={!error}>{error}</p>
   </div>
 }
@@ -174,5 +187,8 @@ const mounts = new WeakMap<HTMLElement, ReturnType<typeof createRoot>>()
 export function mountFileBrowser(container: HTMLElement, props?: BrowserProps) {
   let root = mounts.get(container)
   if (!root) { root = createRoot(container); mounts.set(container, root) }
-  flushSync(() => root.render(props ? <FileBrowser {...props} /> : null))
+  // Each retained mount owns one directory resource. References within that
+  // resource preserve the reading UI; a different resource starts cleanly.
+  const resource = props && JSON.stringify([props.environment, props.session ? ["session", props.session, props.binding] : ["project", props.project], props.path])
+  flushSync(() => root.render(props ? <FileBrowser key={resource} {...props} /> : null))
 }

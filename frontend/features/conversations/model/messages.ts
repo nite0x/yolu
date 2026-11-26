@@ -30,7 +30,7 @@ export interface Session { id: string; provider?: import("./settings").AgentProv
 export const isCloudSession = (session?: Session | null) => session?.provider === "codex-cloud" || !!session?.cloud_environment;
 export {defaultCapabilities, newConversationSettings, normalizeProvider, type AgentProvider, type PermissionMode, type ProviderCapabilities, type TurnSettings} from "./settings";
 export interface ChatContext {model?:string;reasoningEffort?:string;mode?:string;serviceTier?:string;cwd?:string;approvalPolicy?:unknown;approvalsReviewer?:string;sandbox?:{type?:string;writableRoots?:string[];networkAccess?:boolean};additional_directories?:string[]}
-export interface ChatModel {id:string;model:string;displayName:string;isDefault:boolean;defaultReasoningEffort:string;supportedReasoningEfforts?:{reasoningEffort:string}[];serviceTiers?:{id:string;name:string;description:string}[]}
+export type {ChatModel} from "./settings";
 export const entryKey = (e: Entry) => JSON.stringify([e.turn_id, e.id]);
 // A compact read marker also detects a reply growing while its item ID stays the same.
 export function latestEntryFingerprint(entries: Entry[]): string {
