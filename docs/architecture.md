@@ -61,23 +61,43 @@ observers and streams; the backend remains responsible for the run. Retain the
 same-origin iframe isolation until measured performance justifies another
 rendering arrangement.
 
-## Session creation
+## Backend ownership
 
-`session.Service.CreateSession` is an application use case callable without
-HTTP. It validates input, checks durable creation receipts, resolves bindings,
-reserves directories and selects the provider adapter. The HTTP adapter only
-decodes input, translates failures and reads the resulting session for output.
+| Owner | Responsibilities |
+| --- | --- |
+| `app` | HTTP and desktop startup, environment selection, authentication, and shutdown |
+| `session` command methods | Session creation, turn admission and steering, stopping, approval and saved binding changes |
+| `session.chatRuntime` | Current and closing workers, display retention, provider startup and title task lifetimes |
+| `codex`, `acp`, `codexcloud` | Provider transport and protocol operations |
+| `agy`, `cursor` | ACP executable discovery, credentials and provider-specific model options |
+| `project` | Repository registration, Git actions and independent worktree lifecycle |
+| `execution` | Environment-scoped tools, filesystem access and checkout admission claims |
+| `store` | SQLite queries, durable receipts, transaction boundaries and historical recovery |
 
-`session_provider_codex.go` and `session_provider_acp.go` own provider startup and
-their connection lifetime. `chatRuntime` owns active runs and title workers;
-`controlCoordinator` owns per-session serialization and the cleanup gate.
-Preserve the lock order documented in `session_control.go`. Provider-specific
-capabilities remain explicit instead of pretending both protocols support the
-same operations.
+HTTP handlers translate inputs and outcomes for the command methods. Provider
+drivers project events into the conversation state and own their connections
+through protocol cleanup. Codex and ACP keep distinct turn settings and startup
+results. Both use the same run registry and approval reply capability. ACP
+history and live prompts share update decoding and RPC event draining. Catalogs
+use the shared model representation in `internal/model`.
 
 Creation fingerprints keep their original JSON representation and field order.
-An uncertain provider mutation leaves a durable receipt and is never retried
-implicitly. A caller disconnect does not cancel an accepted run.
+The store publishes the local session index, bindings or native directory
+metadata, and the creation receipt in one transaction after the provider call.
+A pending receipt survives ambiguous provider outcomes and prevents automatic
+resubmission. The same admission principle applies to ordinary turns, steering,
+asynchronous answers and cloud input. Only storage code issues SQLite queries in production.
+
+## Backend lifecycle
+
+HTTP observers inherit request cancellation. An admitted provider turn owns its
+own lifetime and continues after a pane disconnects. Application shutdown cancels
+server request contexts so open SSE connections can drain promptly. The runtime
+closes admission, detaches cloud observers, requests parallel interruption of
+managed local and remote turns and waits up to three seconds in total for its
+runs, startup and title workers. Remote execution and storage close after the
+session service. Closing a Tauri window retains the detached backend according
+to the existing native host contract.
 
 ## API contracts and diagnostics
 

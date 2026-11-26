@@ -60,11 +60,11 @@ The browser-mode process runs in the foreground. Stop the test process and use i
 | --- | --- |
 | `main.go`, `internal/app/` | Entry point, service composition, routing, environments and process lifecycle |
 | `internal/project/` | Repository registration, Git operations, worktree status and cleanup |
-| `internal/session/` | Codex sessions, history, chat, approvals, questions, drafts and titles |
+| `internal/session/` | Provider-neutral conversation commands, directory intent, history projection, live chat, approvals, drafts and titles |
 | `internal/terminal/` | Managed embedded terminal processes |
 | `internal/execution/` | Environment execution, files, Git transport, locks and WSL helper |
 | `internal/store/`, `internal/model/` | SQLite migrations, metadata import/export and shared models |
-| `internal/codex/` | Codex protocol clients, event dispatch and relay |
+| `internal/codex/`, `internal/acp/`, `internal/codexcloud/` | Provider protocol clients and lifecycle operations |
 | `internal/overview/` | Read-only composition of project and terminal status |
 | `internal/platform/`, `internal/httpx/` | Platform integration and shared HTTP/security helpers |
 | `frontend/entrypoints/`, `frontend/app/` | Build entries, explicit startup, application shell and feature adapter composition |
@@ -141,7 +141,7 @@ Core CI also runs the isolated conversation workflow and race checks:
 ```bash
 go build -o bin/yolu-backend .
 node scripts/desktop-workflow-smoke.mjs bin/yolu-backend
-go test -race ./internal/store ./internal/project \
+go test -race ./internal/acp ./internal/codex ./internal/store ./internal/project \
   ./internal/session ./internal/terminal ./internal/execution ./internal/app
 ```
 

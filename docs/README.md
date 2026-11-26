@@ -19,4 +19,5 @@ Start with the [project README](../README.md) for an overview and installation e
 - [Brand reference](brand/yolu/README.md): approved artwork, colors and icon generation.
 - [Application boundaries](architecture.md): frontend state ownership, pane protocol, session creation, generated contracts and build verification.
 
+- [Backend overhaul verification](backend-overhaul.md) records the baseline, review findings and measurements.
 - [Frontend modules](../frontend/README.md): source layout, feature ownership, entrypoints and enforced dependency rules.
