@@ -1,5 +1,4 @@
 'use strict';
-const desktopListWidth = window.WorkHubListWidth;
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
 
 
@@ -15,8 +14,6 @@ function environmentName(id = activeEnvironment) {
 }
 const state = { view: 'sessions', projects: [], selectedProject: null, root: '', terminal: {}, busy: false, refreshing: false, loaded: false };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const badge = (kind, text) => window.WorkHubUI.badge(kind, text);
-const branch = value => window.WorkHubUI.branch(value);
 const allTrees = () => state.projects.flatMap(p => p.worktrees);
 let toastTimer;
 function toast(message, error = false) {
@@ -43,14 +40,6 @@ const api = window.WorkHubBrowser.createAPIClient({
     return shared ? shared.read(path, init) : fetch(path, init);
   },
 });
-
-function empty(title, description, action, button) {
-  return window.WorkHubUI.empty(title, description, action, button);
-}
-
-function treeState(t, pending = false) {
-  return window.WorkHubUI.treeState(t, pending);
-}
 
 const operations = window.WorkHubUI.createOperations();
 const conversationRequests = window.WorkHubUI.createSessionRequests();

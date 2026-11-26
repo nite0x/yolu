@@ -280,10 +280,6 @@ function conversationDirectories(scope = conversationState.current?.scope, envir
   }
   return result;
 }
-function conversationFilteredDirectories(view = conversationState.current) {
-  const dirs = conversationDirectories(view.scope);
-  return view.directory ? dirs.filter(d => d.key === view.directory) : dirs;
-}
 function conversationScopeName(scope) {
   if (scope.kind === 'all') return uiText("全部对话");
   const data = conversationOverview(conversationScopeEnvironment(scope));

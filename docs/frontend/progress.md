@@ -46,3 +46,12 @@ Finish initial independent findings, remove confirmed dead code, consolidate sha
 - Integration completed: legacy221, real app Chromium6, catalog Chromium/axe1, production build and Go embed build passed. Extra actual PTY shell/output/reconnect/resize exercise passed for browser and desktop chrome.
 - Round 1 report and ledger recorded; next: start round 2 only after this round's commit.
 - Test harness correction: an earlier parallel build removed generated assets during legacy test startup; reran all 221 after build and passed. Initial drag-order test depended on backend enumeration; seeded its saved starting order without changing movement/persistence assertions; all 6 browser tests passed.
+
+## Review round 2
+
+- Round 1 commit: `e60c004`; round-2 baseline: `e60c004`. Fresh read-only `review_round2` inspected source/diff across all features and ran independent app50/chat168/UI20/chat types plus real file/Git/worktree and terminal exercises.
+- Root's additional classic-controller scan found R2-001 P2: eight unused lexical aliases/functions. Independent reference/dynamic/native checks confirmed it; root removed only those declarations (18 lines), preserving public adapter contracts.
+- Independently closed R2-001 after syntax/diff checks, history/chat22, adapter15 and rebuilt-binary resources/terminal Chromium4 passed. Confirmed/fixed/independently closed1/1/1. Product behavior defects0; open P0/P1=0.
+- Retained actual resources and terminal browser exercises with real renderer/PTY assertions; strengthened terminal tests based on reviewer advice and registered fixture cleanup immediately.
+- Native execution unavailable: no Cargo/Rust compiler and missing GTK/WebKit pkg-config dependencies. Use real browser + desktop-chrome simulations; do not claim native Tauri or physical microphone verification.
+- Next: commit round2, then fresh final independent round3 and final quality gates.
