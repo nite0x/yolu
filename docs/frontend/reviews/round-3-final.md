@@ -42,7 +42,15 @@ Independent architecture 10, graph 187 sources/6 features, draft/splitter/transp
 - Fix: one shared fixture writer publishes unique same-directory temporary files via atomic rename and cleans temporary files. All four live writers use it; pre-launch initial setup remains direct. No retries, skips or relaxed assertions.
 - Validation: new deterministic test forces a concurrent read between writer truncation and byte output. Original writer fails1 with empty JSON; current writer passes1, preserving unrelated RPC log writes. Reviewer independently reran both, checked all writer callers and syntax/diff checks, and reviewed resource-repeat2 passes. **Closed**.
 
-Confirmed/fixed/independently closed: **4/4/4**, all P2; P0/P1: **0/0**. No open finding or product defect remains. Commit: round-3 commit containing these fixes; exact SHA appears in the final report/progress and Git history.
+### R3-005 — accessibility audit sampled a theme transition (P2)
+
+- Module/location: catalog verification, `scripts/ui-browser.test.mjs:40-45`; discovered by the post-review full gate at `b6cfbbc`.
+- Evidence: the full run failed dark 1280px button contrast. Independent controlled checks found 13 violations at 25% of the same theme color transitions and zero at completion. Under identical transitions held at 25% then resumed after 1200ms, the original test fails and the corrected test passes.
+- Cause/impact: the test asserted the requested theme but sampled colors before finite transitions settled, causing a nondeterministic accessibility result. Steady palette colors were valid; no product token change was justified.
+- Fix: assert the requested document appearance and await real finite `Animation.finished` promises before unchanged axe assertions. Infinite loading indicators remain running and audited. No sleeps, CSS overrides, skipped rules or relaxed expectations in the retained test.
+- Validation: root normal catalog1 passes all four theme/width cases; reviewer independently compared old/current tests under the same controlled delayed transition and directly checked midpoint/completion contrast. **Closed**.
+
+Confirmed/fixed/independently closed: **5/5/5**, all P2; P0/P1: **0/0**. No open finding or product defect remains. The initial four fixes are in `b6cfbbc`; the final synchronization follow-up is recorded by the final report and Git history. This continuation was required when the final gate exposed another valid issue, despite three review rounds already having run.
 
 Rejected candidate: Pierre's DOM names unified layout `single`; expecting the literal `unified` attribute was a test-author assumption, not a product defect. It was corrected before classifying R3-003.
 

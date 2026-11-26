@@ -4,8 +4,8 @@
 
 - Original baseline: `4e9ff1790708dfae10545a2fabfe89e519350843`.
 - Branch: `codex/frontend-overhaul`; no pre-existing user edits (uploaded task files excluded).
-- Phase: primary refactoring and all three serial independent review/fix cycles complete; final post-review quality gates pending.
-- Reviews: round1 closed at `e60c004`; round2 closed at `1adb140`; round3 independently closed four P2 findings at baseline `1adb140`, with fixes in the round3 commit. All five review findings are fixed and independently verified.
+- Phase: implementation, all three serial independent review/fix cycles and final full quality gates passed; final report and remote review handoff pending.
+- Reviews: round1 closed at `e60c004`; round2 closed at `1adb140`; round3 independently closed five P2 findings (including the final-gate timing follow-up). All six review findings are fixed and independently verified.
 - Initial read-only agents: `audit_state` (data/state/lifecycle); `audit_components` (components/styles/modules). These are not post-refactor review rounds.
 
 ## Decisions
@@ -18,7 +18,7 @@ See [audit](audit.md) for established baseline. Logs are temporary `/tmp/yolu-ba
 
 ## Next
 
-Complete final post-review check/build/test/diff/scope gates, reconcile final reports, then push the independent branch and create a draft PR. Do not merge main.
+Commit final reports, restore generated bundle artifacts, verify a clean source worktree, then push the independent branch and create a draft PR. Do not merge main.
 
 ## Safe cleanup
 
@@ -65,5 +65,15 @@ Complete final post-review check/build/test/diff/scope gates, reconcile final re
 - R3-001 independently closed after header/baseline/Next reconciliation. R3-002 confirmed test false-positive under blocked lazy viewer; strengthened actual renderer/mode/computed-theme checks now fail under that fault.
 - Stronger checks revealed R3-003 effective theme remained light. Root synchronizes adopted CSS after theme setter; independent normal browser/desktop2 pass, fault-injected blocked viewer2 correctly fail. Classified P2 visual mismatch and fully fixed.
 - R3-004 actual fixture JSON truncation race fixed through shared atomic snapshots across all4 live writes. Deterministic current1 pass / old writer1 fail, independently repeated; real resources repeat2 pass. No retries/skips/weakening.
-- Round3 confirmed/fixed/independently closed4/4/4, all P2. Total review findings5, all closed; open P0/P1/P2=0. Independent source/graph/syntax/targeted checks pass.
+- At initial round3 closure, confirmed/fixed/independently closed4/4/4. A final-gate follow-up (below) added R3-005; final round3 totals are5/5/5, all P2.
 - Next: commit this completed third round; execute final full post-review quality gate before delivery.
+
+## Final post-review gates
+
+- Round3 source/fix commit: `b6cfbbc`.
+- `npm run check` passed: API contracts, architecture10 (187 sources/6 features), full TS/TSX Biome (182 checked files), UI20, both strict TS configurations and bundle3.
+- Production frontend build, independent catalog build and Go embed build passed; critical JavaScript767752 bytes gzip, budget passed.
+- App50, chat168, legacy222 (including atomic fixture regression), actual application Chromium10 and catalog Chromium1 passed. Total484 tests across these non-overlapping suites plus architecture/UI/bundle counts.
+- Initial catalog final run sampled in-flight theme colors. R3-005 test-only fix awaits finite transitions; same unchanged axe checks pass. Independent old/current fault comparison: old fails/current passes; steady colors0 violations. All six confirmed review findings are fixed and independently closed.
+- Source scope/diff checks pass; no Go/database/protocol/Tauri native changes. Generated tracked chat bundles will be restored after test consumers finish, as required by the no-generated-artifacts rule.
+- Logs: `/tmp/yolu-delivery-*.log`, corrected catalog `/tmp/yolu-delivery-catalog-browser-fixed.log`; screenshots `/tmp/yolu-delivery-screenshots`.

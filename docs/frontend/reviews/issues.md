@@ -6,7 +6,7 @@ Each confirmed finding records ID, round, module, priority, file/location, evide
 | --- | --- | --- | --- | --- | --- |
 | 1 | `eb901ad` | Architecture/component/quality | 0 / 0 / 0 | 0 | [Architecture](round-1-architecture.md) |
 | 2 | `e60c004` | Behavior/state/lifecycle | 1 / 1 / 1 (P2) | 0 | [Behavior](round-2-behavior.md) |
-| 3 | `1adb140` | Final independent full quality | 4 / 4 / 4 (P2) | 0 | [Final review](round-3-final.md) |
+| 3 | `1adb140` | Final independent full quality | 5 / 5 / 5 (P2) | 0 | [Final review](round-3-final.md) |
 
 Initial implementation findings and their fixes are documented in [audit](../audit.md) and [progress](../progress.md); they are not falsely counted as discoveries from the post-refactor reviews.
 
@@ -17,4 +17,6 @@ Initial implementation findings and their fixes are documented in [audit](../aud
 - **R3-003 (P2, closed):** live file/Diff theme updates now resynchronize CSP-compatible adopted styles without remounting.
 - **R3-004 (P2, closed):** all live fixture snapshots publish atomically; deterministic concurrent-read test fails against original writer and passes after fix.
 
-Full locations, evidence, causes, impact, reproduction, actual fixes, validation and independent closure are in [round 3](round-3-final.md). Review totals: **5 confirmed / 5 fixed / 5 independently closed**, all P2; **0 open P0/P1/P2**. No defect was reclassified to defer its fix. Final report records exact review commit SHAs.
+Full locations, evidence, causes, impact, reproduction, actual fixes, validation and independent closure are in [round 3](round-3-final.md). Review totals: **6 confirmed / 6 fixed / 6 independently closed**, all P2; **0 open P0/P1/P2**. No defect was reclassified to defer its fix. Final report records exact review commit SHAs.
+
+- **R3-005 (P2, closed):** catalog axe checks await finite theme transitions; independent controlled old/current comparisons prove the timing fix without changing product colors or accessibility assertions.
