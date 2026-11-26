@@ -60,6 +60,7 @@ func BenchmarkChatEventsIdle(b *testing.B) {
 			entries[i].Questions = []ChatQuestion{{ID: "question", Question: "Choose an option"}}
 		}
 	}
+	var waits int64
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		a.chats["session"] = &ChatRun{session: "session", state: ChatState{ID: "display", Busy: true, Entries: entries}}
@@ -80,6 +81,7 @@ func BenchmarkChatEventsIdle(b *testing.B) {
 		time.Sleep(550 * time.Millisecond)
 		cancel()
 		viewers.Wait()
-		b.ReportMetric(float64(a.Execution.Store.DB.Stats().WaitCount-before), "sqlite-waits/op")
+		waits += a.Execution.Store.DB.Stats().WaitCount - before
 	}
+	b.ReportMetric(float64(waits)/float64(b.N), "sqlite-waits/op")
 }

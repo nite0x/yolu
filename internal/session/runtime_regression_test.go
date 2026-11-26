@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -213,5 +215,30 @@ func TestCompletedTurnWinsOverLateStopFailure(t *testing.T) {
 	close(client.finished)
 	if err := <-result; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestChatFrameRetriesTransientMediaWithoutTurnMutation(t *testing.T) {
+	a := testApp(t)
+	folder := filepath.Join(a.Execution.DataDir, "history-images")
+	if err := os.WriteFile(folder, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	run := &ChatRun{session: "session", state: ChatState{ID: "display", Busy: true, Entries: []HistoryEntry{
+		{Kind: "assistant", Images: []string{"data:image/png;base64," + generatedPNG}},
+	}}}
+	ctx := context.Background()
+	frame, _, err := a.chatFrame(ctx, run)
+	if err != nil || frame.retryAt.IsZero() || !strings.Contains(string(frame.data), "图片暂不可读取") {
+		t.Fatalf("transient image failure was cached: %+v %v", frame, err)
+	}
+	if err := os.Remove(folder); err != nil {
+		t.Fatal(err)
+	}
+	frame.retryAt = time.Now().Add(-time.Second)
+	recovered, _, err := a.chatFrame(ctx, run)
+	if err != nil || recovered.revision != frame.revision || !recovered.retryAt.IsZero() ||
+		!strings.Contains(string(recovered.data), "/workhub-generated-images/") {
+		t.Fatalf("media was not retried independently of the run: %+v %v", recovered, err)
 	}
 }

@@ -40,7 +40,7 @@ jobs:
         run: |
           go build -o "$RUNNER_TEMP/yolu-backend" .
           node scripts/desktop-workflow-smoke.mjs "$RUNNER_TEMP/yolu-backend"
-      - run: go test -race ./internal/store ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
+      - run: go test -race ./internal/acp ./internal/codex ./internal/store ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
 
   core:
     runs-on: ubuntu-22.04
@@ -68,7 +68,7 @@ jobs:
         run: |
           go build -o "$RUNNER_TEMP/yolu-backend" .
           node scripts/desktop-workflow-smoke.mjs "$RUNNER_TEMP/yolu-backend"
-      - run: go test -race ./internal/store ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
+      - run: go test -race ./internal/acp ./internal/codex ./internal/store ./internal/project ./internal/session ./internal/terminal ./internal/execution ./internal/app
       - name: Install browser test runtime
         run: npx playwright install --with-deps chromium
       - name: Browser conversation workflows

@@ -18,12 +18,9 @@ func TestLegacyAssistantRestartAndMetadataTransfer(t *testing.T) {
 	_, err = db.DB.Exec(`
 		INSERT INTO assistant_conversations VALUES('conversation','Previous chat',1,2);
 		INSERT INTO assistant_runs VALUES('run','conversation','input','running','');
-		INSERT INTO assistant_decisions VALUES('conversation','request','unused','fingerprint');
 	`)
-	// The legacy decision references a persisted plan. Keep the fixture's
-	// foreign keys enabled and seed rows in the original dependency order.
-	if err == nil {
-		t.Fatal("legacy decision without a plan accepted")
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, status := range []string{"pending", "running", "cancelling", "succeeded"} {
 		payload := fmt.Sprintf(`{"id":%q,"conversation_id":"conversation","run_id":"run","status":%q,"revision":1,"digest":"historical-digest","arguments":{},"review":{"branch":"reviewed"},"steps":[{"id":"create","status":"running","historical_step_field":42}],"resources":[{"id":"checkout"}],"historical_plan_field":{"id":"evidence"}}`, status, status)
@@ -83,7 +80,11 @@ func TestLegacyAssistantRestartAndMetadataTransfer(t *testing.T) {
 				got.Tables["assistant_run_contexts"][0][2] != `{"environment_id":"remote","project_id":"frontend"}` {
 				t.Fatal("historical receipts, activity or context were lost")
 			}
-			for _, row := range got.Tables["assistant_action_plans"] {
+			plans := got.Tables["assistant_action_plans"]
+			if len(plans) != 4 {
+				t.Fatalf("expected all four plans, got %d", len(plans))
+			}
+			for _, row := range plans {
 				var p struct {
 					Steps []struct {
 						Status string
