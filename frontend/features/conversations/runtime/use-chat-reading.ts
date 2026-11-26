@@ -1,0 +1,100 @@
+import {useLayoutEffect, useRef} from "react"
+import type {ThreadRuntime} from "@assistant-ui/react"
+import type {DraftRecord} from "./drafts"
+
+export interface ConversationReadingController {
+  reading: DraftRecord["reading"];
+  opening: boolean;
+  subscribe: (listener: () => void) => () => void;
+  latestMessage: () => string;
+  readingChanged: () => void;
+  getReadingSnapshot: () => {entries: readonly unknown[]; liveEntries?: readonly unknown[]; loading: boolean; historyError: string; cursor: unknown};
+}
+
+// Track a message anchor so reflow and prepending history preserve the text in view.
+export function useChatReading(controller: ConversationReadingController, thread: ThreadRuntime) {
+  const container = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const viewport = container.current?.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
+    if (!viewport) return;
+    let frame = 0;
+    let restoring = false;
+    let initialized = false;
+    let disposed = false;
+    const visible = () => !disposed && viewport.isConnected && !!viewport.ownerDocument.documentElement && !viewport.ownerDocument.documentElement.hasAttribute('data-workspace-inactive') && !viewport.closest('[hidden]') && (typeof viewport.checkVisibility !== 'function' || viewport.checkVisibility());
+    const messages = () => [...viewport.querySelectorAll<HTMLElement>('[data-chat-message-id]')];
+    const loadEarlier = () => {
+      const state = controller.getReadingSnapshot();
+      if (!initialized || restoring || !visible() || controller.opening || state.loading || state.historyError || !state.cursor) return;
+      // Prefetch before the reader reaches the top, after restoring the anchor.
+      // A short page can keep filling the viewport, but opening a long thread
+      // at its latest message must not fetch its entire history.
+      const fits = viewport.scrollHeight <= viewport.clientHeight;
+      if (viewport.scrollTop <= 240 && (!controller.reading.bottom || fits || viewport.scrollTop <= 1)) {
+        // The normal 80px bottom tolerance also covers the top of a nearly
+        // full viewport. Loading there must preserve its anchor, not its bottom.
+        if (!fits) controller.reading.bottom = false;
+        void thread.loadEarlier();
+      }
+    };
+    const record = () => {
+      if (restoring || !initialized || !visible()) return;
+      const bottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 80;
+      const top = viewport.getBoundingClientRect().top;
+      const anchor = messages().find(node => node.getBoundingClientRect().bottom > top);
+      controller.reading = {top: viewport.scrollTop, bottom, anchor: anchor?.dataset.chatMessageId || "", offset: anchor ? anchor.getBoundingClientRect().top - top : 0, latest: bottom ? controller.latestMessage() : controller.reading.latest};
+      controller.readingChanged();
+    };
+    const onScroll = () => { record(); loadEarlier(); };
+    const restore = () => {
+      frame = 0;
+      if (!visible()) return;
+      const saved = controller.reading;
+      const anchor = messages().find(node => node.dataset.chatMessageId === saved.anchor);
+      restoring = true;
+      viewport.scrollTop = saved.bottom ? viewport.scrollHeight : anchor ? viewport.scrollTop + anchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - saved.offset : saved.top;
+      restoring = false;
+      if (!controller.opening) {
+        initialized = true;
+        if (saved.bottom) saved.latest = controller.latestMessage();
+      }
+      loadEarlier();
+    };
+    const schedule = () => { if (!frame && visible()) frame = requestAnimationFrame(restore); };
+    const layout = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.phase === 'before') record();
+      else if (detail?.visible) schedule();
+    };
+    const observer = new MutationObserver(schedule);
+    observer.observe(viewport.querySelector('[data-slot="aui_message-group"]') || viewport, {childList: true, subtree: true, characterData: true});
+    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
+    resize?.observe(viewport);
+    if (viewport.firstElementChild) resize?.observe(viewport.firstElementChild);
+    viewport.addEventListener('scroll', onScroll, {passive: true});
+    window.addEventListener('workhub:chat-layout', layout);
+    let previous = controller.getReadingSnapshot();
+    let opening = controller.opening;
+    const unsubscribe = controller.subscribe(() => {
+      const next = controller.getReadingSnapshot();
+      if (next.entries !== previous.entries || next.liveEntries !== previous.liveEntries || next.loading !== previous.loading || next.cursor !== previous.cursor || opening !== controller.opening) schedule();
+      previous = next; opening = controller.opening;
+    });
+    schedule();
+    return () => {
+      record(); disposed = true; cancelAnimationFrame(frame); observer.disconnect(); resize?.disconnect();
+      viewport.removeEventListener('scroll', onScroll); window.removeEventListener('workhub:chat-layout', layout);
+      unsubscribe();
+    };
+  }, [controller, thread]);
+  const latest = () => {
+    controller.reading.bottom = true;
+    controller.reading.latest = controller.latestMessage();
+    controller.readingChanged();
+    const viewport = container.current?.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
+    // Override any browser/CSS smooth animation: intermediate scroll events
+    // must never turn an explicit latest request back into an old-message anchor.
+    if (viewport) viewport.scrollTo({top:viewport.scrollHeight, behavior:"instant"});
+  };
+  return {container, latest};
+}

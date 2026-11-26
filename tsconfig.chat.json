@@ -1,5 +1,12 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": {"allowImportingTsExtensions":true},
-  "include":["frontend/chat/**/*.ts","frontend/chat/**/*.tsx"]
+  "compilerOptions": {
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "frontend/features/conversations/**/*.ts",
+    "frontend/features/conversations/**/*.tsx",
+    "frontend/entrypoints/conversation.tsx",
+    "frontend/shared/types/**/*.d.ts"
+  ]
 }

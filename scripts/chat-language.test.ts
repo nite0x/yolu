@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {createDraftPersistence} from "../frontend/chat/draft-persistence";
+import {createDraftPersistence} from "../frontend/features/conversations/runtime/draft-persistence";
 
 function fixture(request: <T>(path:string,options?:RequestInit)=>Promise<T>) {
  let notice="";

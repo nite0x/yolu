@@ -74,6 +74,8 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   await context.setOffline(false);
   await recoveredSave;
   await expect(split.locator('textarea.aui-composer-input')).toHaveValue('Draft kept while offline');
+  await expect((await pane(first)).getByRole('alert').filter({hasText:/状态读取失败|Failed to fetch/})).toHaveCount(0);
+  await expect(split.getByRole('alert').filter({hasText:/状态读取失败|Failed to fetch/})).toHaveCount(0);
   // Approval ownership stays with the original conversation while panes switch.
   await app.request(`/api/sessions/${second}/chat`, 'POST', {text:'[request-directory]',request_id:'browser-approval'});
   await page.getByRole('button', {name:'项目',exact:true}).click();
@@ -81,6 +83,7 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   const approvalPane = await pane(second);
   await approvalPane.locator('button[type="submit"]').filter({hasText:/允许|Allow|Accept/}).first().click({timeout:20000});
   await expect.poll(async () => (await app.request(`/api/sessions/${second}/chat`)).busy, {timeout:15000}).toBe(false);
+  await expect(approvalPane.getByText('Reviewed the selected directory.', {exact:true})).toHaveCount(2);
   await expect(approvalPane.locator('textarea.aui-composer-input')).toHaveValue('Draft kept while offline');
   await screenshot('wide');
   await page.setViewportSize({width:760,height:900});

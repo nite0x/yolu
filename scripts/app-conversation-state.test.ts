@@ -1,7 +1,7 @@
 import {test} from "node:test"
 import assert from "node:assert/strict"
-import {createConversationState} from "../frontend/app/conversation-state"
-import {conversationEnvironmentKey} from "../frontend/app/conversation-runtime"
+import {createConversationState} from "../frontend/features/conversations/list/state"
+import {conversationEnvironmentKey} from "../frontend/shared/lib/workspace-identity"
 
 function fixture() {
   const cache = new Map<string, string>()

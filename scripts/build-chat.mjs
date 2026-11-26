@@ -13,16 +13,16 @@ const bundle = {absWorkingDir: root, bundle: true, minify: true, format: "esm", 
   }}],
 };
 const results = await Promise.all([
-  build({...bundle, entryPoints: ["frontend/chat/main.tsx"], outfile: "web/chat/assistant.js"}),
-  build({...bundle, entryPoints: ["frontend/components/assistant-ui/elements/mermaid-renderer.ts"], outfile: "web/chat/mermaid.js"}),
-  build({...bundle, entryPoints: ["frontend/components/assistant-ui/elements/code-highlight.ts"], outdir: "web/chat/highlight", splitting: true}),
+  build({...bundle, entryPoints: ["frontend/entrypoints/conversation.tsx"], outfile: "web/chat/assistant.js"}),
+  build({...bundle, entryPoints: ["frontend/features/conversations/components/assistant-ui/elements/mermaid-renderer.ts"], outfile: "web/chat/mermaid.js"}),
+  build({...bundle, entryPoints: ["frontend/features/conversations/components/assistant-ui/elements/code-highlight.ts"], outdir: "web/chat/highlight", splitting: true}),
 ]);
 // Official registry components ship Tailwind classes. Compile their stylesheet
 // independently so chat:build doesn't depend on a preceding application UI build.
 await buildCSS({
   root, configFile: false, plugins: [tailwindcss()],
   build: {outDir: "web/chat", emptyOutDir: false, rollupOptions: {
-    input: "frontend/chat/style.css", output: {assetFileNames: "assistant.css"},
+    input: "frontend/features/conversations/ui/chat.css", output: {assetFileNames: "assistant.css"},
   }},
 });
 const packages = new Map();
@@ -38,7 +38,7 @@ for (const input of [...results.flatMap(result => Object.keys(result.metafile.in
   if (!texts.length) texts.push(await readFile(path.join(root, "scripts/licenses", pkg.name.replaceAll("/", "_") + ".txt"), "utf8"));
   packages.set(match[1], `\n${"=".repeat(72)}\n${pkg.name} ${pkg.version}\nLicense: ${pkg.license}\n${texts.join("\n").replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "").trimEnd()}\n`);
 }
-const registryLicenses = `\nOfficial assistant-ui registry sources\n${await readFile(path.join(root, "frontend/components/assistant-ui/LICENSE"), "utf8")}\nOfficial shadcn UI sources\n${await readFile(path.join(root, "frontend/shadcn-LICENSE.md"), "utf8")}`;
+const registryLicenses = `\nOfficial assistant-ui registry sources\n${await readFile(path.join(root, "frontend/features/conversations/components/assistant-ui/LICENSE"), "utf8")}\nOfficial shadcn UI sources\n${await readFile(path.join(root, "frontend/shared/ui/SHADCN-LICENSE.md"), "utf8")}`;
 await writeFile(path.join(root,"web/chat/THIRD-PARTY-NOTICES.txt"), ("Yolu conversation UI — browser dependency licenses\n" + registryLicenses + [...packages].sort(([a],[b])=>a.localeCompare(b)).map(([,text])=>text).join("")).trimEnd() + "\n");
 const legalPath = path.join(root, "web/chat/assistant.js.LEGAL.txt");
 await writeFile(legalPath, (await readFile(legalPath, "utf8")).replace(/\r\n/g, "\n").replace(/^[ \t]+/gm, "").trimEnd() + "\n");

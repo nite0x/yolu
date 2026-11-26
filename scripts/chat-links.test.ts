@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {fileReference, chatURLTransform, sourceFileReference} from "../frontend/chat/links";
+import {fileReference, chatURLTransform, sourceFileReference} from "../frontend/features/conversations/model/links";
 
 test("chat file links preserve native paths and line references", () => {
   for (const [href, path, line] of [

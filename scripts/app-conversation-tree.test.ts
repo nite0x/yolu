@@ -1,7 +1,7 @@
 import {test} from "node:test"
 import assert from "node:assert/strict"
-import {conversationTree} from "../frontend/app/conversation-tree"
-import type {Session} from "../frontend/app/sessions"
+import {conversationTree} from "../frontend/features/conversations/list/tree"
+import type {Session} from "../frontend/entities/conversations/catalog"
 
 const directory = (projectID: string, environment = "local") => ({
   key:JSON.stringify([environment,projectID]), cwd:"/repo/" + projectID, environment,

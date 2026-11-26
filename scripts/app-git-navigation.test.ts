@@ -8,7 +8,7 @@ import { JSDOM } from "jsdom"
 
 const repository = fileURLToPath(new URL("../", import.meta.url))
 const bundle = buildSync({
-  entryPoints: [fileURLToPath(new URL("../frontend/app/git-interactive.tsx", import.meta.url))],
+  entryPoints: [fileURLToPath(new URL("../frontend/features/git/ui/interactive.tsx", import.meta.url))],
   absWorkingDir: repository, bundle: true, write: false, format: "iife", globalName: "GitUITest",
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
 }).outputFiles[0].text

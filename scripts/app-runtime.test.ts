@@ -1,8 +1,8 @@
 import {test} from "node:test"
 import assert from "node:assert/strict"
-import {createOperations} from "../frontend/app/operations"
-import {createSessionRequests} from "../frontend/app/session-requests"
-import {conversationPathKey,conversationEnvironmentKey} from "../frontend/app/conversation-runtime"
+import {createOperations} from "../frontend/app/model/operations"
+import {createSessionRequests} from "../frontend/features/conversations/list/requests"
+import {conversationPathKey,conversationEnvironmentKey} from "../frontend/shared/lib/workspace-identity"
 
 test("operation ownership is per environment and resource, and completion cannot release a newer operation", () => {
   const operations=createOperations()

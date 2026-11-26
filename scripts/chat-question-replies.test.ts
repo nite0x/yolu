@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {convertEntry, type Entry} from "../frontend/chat/model";
-import {readQuestionReplies} from "../frontend/chat/question-replies";
+import {convertEntry, type Entry} from "../frontend/features/conversations/model/messages";
+import {readQuestionReplies} from "../frontend/features/conversations/model/question-replies";
 
 const replies = [
   {questionItemId: '["request_user_input_async","call_1",0]', question: '这次是准备发布到哪个环境？我先按“新加坡生产环境，相对现有 master 发布版本”整理差异。', answer: "T3 测试环境"},

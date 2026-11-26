@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 require('tsx/cjs');
-const { workspaceUI } = require('../frontend/app/renderers.tsx');
+const { workspaceUI } = require('../frontend/app/bridge/workspace-ui.tsx');
 
 function harness() {
   const elements = new Map();

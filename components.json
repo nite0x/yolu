@@ -5,7 +5,7 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "frontend/styles.css",
+    "css": "frontend/shared/styles/base.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""
@@ -15,10 +15,10 @@
     "@assistant-ui": "https://r.assistant-ui.com/styles/{style}/{name}.json"
   },
   "aliases": {
-    "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
+    "components": "@/shared/ui",
+    "utils": "@/shared/lib/utils",
+    "ui": "@/shared/ui/primitives",
+    "lib": "@/shared/lib",
+    "hooks": "@/shared/hooks"
   }
 }

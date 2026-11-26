@@ -1,4 +1,4 @@
-import type {APIErrorResponse} from "../api/contracts"
+import type {APIErrorResponse} from "@/api/contracts"
 import type {ReadRequest} from "./request-cache"
 
 export class APIError extends Error {

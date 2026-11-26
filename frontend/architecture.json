@@ -1,0 +1,19 @@
+{
+  "layers": {
+    "entrypoints": ["app", "features", "entities", "core", "api", "shared"],
+    "app": ["app", "features", "entities", "core", "api", "shared"],
+    "features": ["features", "entities", "core", "api", "shared"],
+    "entities": ["entities", "core", "api", "shared"],
+    "core": ["core", "api", "shared"],
+    "api": ["api"],
+    "shared": ["shared", "api"]
+  },
+  "features": {
+    "conversations": {"files": ["ui/browser.tsx", "model/changes.ts"]},
+    "files": {},
+    "git": {},
+    "projects": {},
+    "settings": {},
+    "terminal": {}
+  }
+}

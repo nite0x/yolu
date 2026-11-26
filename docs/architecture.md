@@ -6,6 +6,16 @@ and directory coordination. Worktree lifetime remains independent of a
 conversation. See [session architecture](session-architecture.md) for identities,
 provider ownership and persistence semantics.
 
+## Frontend modules
+
+The [frontend module guide](../frontend/README.md) documents the complete directory
+map. `frontend/entrypoints` selects build/startup boundaries; `app` composes the
+shell and per-feature adapters; `features` owns business UI and runtime; `entities`
+owns shared project/conversation records and rules; `core` and `api` own transport;
+`shared` owns generic controls, localization and utilities. The manifest in
+`frontend/architecture.json` rejects reversed dependencies, undeclared feature
+integrations and feature cycles during `web:check`.
+
 ## Frontend ownership
 
 | Owner | State and responsibilities |
@@ -19,7 +29,7 @@ Static React views supply markup; native page controllers own their DOM and
 listeners. Interactive React islands own their mounted subtrees. Do not
 attach a second state owner or replace an island's DOM from a native controller.
 When moving more controller logic, add checked TypeScript modules under
-`frontend/core` or the existing feature directory; keep the remaining JavaScript
+`frontend/features` or `frontend/core` according to ownership; keep the remaining JavaScript
 as integration glue. A full framework rewrite is not required to cross this
 boundary.
 
@@ -96,7 +106,7 @@ SHA-256 hashes. The manifest has no timestamps and can be compared across builds
 Use its per-entry measurements before introducing shared runtime chunks or
 changing pane isolation.
 
-`frontend/` contains component and module sources; `web/core` and `web/features`
+`frontend/` contains the layered component and module sources; `web/core` and `web/features`
 contain the remaining native controllers and styles. `web/ui` and
 `web/chat/highlight` are ignored build outputs. Existing checked-in chat bundles
 are distribution snapshots, not edit targets; regenerate them from their source.

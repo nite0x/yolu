@@ -10,7 +10,7 @@ await build({ root: fileURLToPath(new URL('../', import.meta.url)), ...(watch ? 
 
 const runtimeOptions = {
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
-  entryPoints: ['frontend/core/browser-runtime.ts'], outfile: 'web/ui/browser-runtime.js',
+  entryPoints: ['frontend/entrypoints/browser-runtime.ts'], outfile: 'web/ui/browser-runtime.js',
   bundle: true, format: 'iife', target: ['es2022'], minify: true,
 };
 if (watch) {
@@ -24,7 +24,7 @@ if (watch) {
 // assets are local and embedded by Go; the viewer loads only when opened.
 const viewerOptions = {
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
-  entryPoints: { 'file-display': 'frontend/app/file-display.ts' },
+  entryPoints: { 'file-display': 'frontend/entrypoints/file-display.ts' },
   outdir: 'web/ui/files', bundle: true, splitting: true, format: 'esm',
   target: ['es2022'], minify: true, legalComments: 'linked',
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },
@@ -38,7 +38,7 @@ if (watch) {
 
 const layoutOptions = {
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
-  entryPoints: ['frontend/app/page-layout.tsx'],
+  entryPoints: ['frontend/entrypoints/layout.ts'],
   outfile: 'web/ui/page-layout.js', bundle: true, format: 'iife',
   globalName: 'WorkHubLayout', target: ['es2022'], jsx: 'automatic',
   minify: true, legalComments: 'linked',
@@ -55,7 +55,7 @@ if (watch) {
 // the initial application bundle and bundle all assets locally.
 const terminalOptions = {
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
-  entryPoints: ['frontend/app/terminal.ts'],
+  entryPoints: ['frontend/entrypoints/terminal.ts'],
   outfile: 'web/ui/terminal.js', bundle: true, format: 'iife',
   loader: { '.woff2': 'file' }, assetNames: 'fonts/[name]-[hash]',
   target: ['es2022'], jsx: 'automatic', minify: true, legalComments: 'linked',
@@ -71,7 +71,7 @@ if (watch) {
 // Load the shared locale before application, terminal and chat controllers.
 await buildModule({
   absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
-  entryPoints: ['frontend/i18n-runtime.ts'], outfile: 'web/ui/i18n.js',
+  entryPoints: ['frontend/entrypoints/i18n.ts'], outfile: 'web/ui/i18n.js',
   bundle: true, format: 'iife', target: ['es2022'], minify: true,
 });
 
