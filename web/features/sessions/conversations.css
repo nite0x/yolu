@@ -299,14 +299,27 @@ html[data-workspace-conversation] .ui-narrow-list{display:none!important}
 }
 .session-collection-actions :is(a, button) { width: var(--session-row-action-size); height: var(--session-row-action-size); }
 .session-collection-actions :is(a, button) svg { width: 14px; height: 14px; }
+.session-collection-actions > span { display: flex; align-items: center; }
+.session-collection-actions [data-project-reorder] { cursor: grab; }
+.session-collection-actions [data-project-reorder]:active { cursor: grabbing; }
+.session-collection-actions:not(:has([data-project-reorder][aria-expanded="true"])) .session-project-move-actions,
+.session-collection-actions:has([data-project-reorder][aria-expanded="true"]) .session-collection-default-actions { display: none; }
+.session-browser-group[data-project-dragging] { opacity: .55; }
+.session-browser-group[data-collection="project"] { position: relative; }
+.session-browser-group[data-project-drop]::after {
+  content: ""; position: absolute; z-index: 1; pointer-events: none;
+  inset-inline: 0; height: 2px; border-radius: 2px; background: var(--primary);
+}
+.session-browser-group[data-project-drop="before"]::after { inset-block-start: -4px; }
+.session-browser-group[data-project-drop="after"]::after { inset-block-end: -4px; }
 [data-hide-project-counts] .session-collection-count,
 [data-hide-project-icons] .session-collection-toggle > :is(.shortcut-badge, .session-collection-fallback-icon) { display: none; }
 @media (hover: hover) {
-  .session-collection-heading:has(> .session-collection-actions):not(:hover, :has(:focus-visible)) {
+  .session-collection-heading:has(> .session-collection-actions):not(:hover, :focus-within, [data-project-dragging] > *, :has([data-project-reorder][aria-expanded="true"])) {
     --session-group-action-display: none;
     --session-group-toggle-inset: var(--session-row-inset);
   }
-  .session-collection-heading:has(> .session-collection-actions):is(:hover, :has(:focus-visible)) .session-collection-count { display: none; }
+  .session-collection-heading:has(> .session-collection-actions):is(:hover, :focus-within, [data-project-dragging] > *, :has([data-project-reorder][aria-expanded="true"])) .session-collection-count { display: none; }
 }
 @media (hover: none) and (pointer: coarse) {
   .session-browser-groups, .session-browser-items-flat { --session-row-action-size: 44px; }

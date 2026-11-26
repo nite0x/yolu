@@ -141,6 +141,9 @@ export function patchConversationList(list: HTMLElement, markup: string) {
         menu.classList.toggle("ui-native-menu", node.classList.contains("ui-native-menu"))
         menu.open = (node as HTMLDetailsElement).open
       }
+      if (node.matches(".session-collection-heading") && node.querySelector('[data-project-reorder][aria-expanded="true"]')) {
+        incoming.querySelector("[data-project-reorder]")?.setAttribute("aria-expanded", "true")
+      }
       if (node !== incoming && !node.isEqualNode(incoming)) {
         if (node.matches(".session-browser-groups,.session-browser-group,.session-browser-items,li")) {
           node.className = incoming.className

@@ -3,14 +3,17 @@ package web
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
+	"html"
 	"net/http"
 	"strings"
 )
 
 type UISettings struct {
-	Language     string
-	ColorTheme   string
-	SendShortcut string
+	Language                 string
+	ColorTheme               string
+	SendShortcut             string
+	ConversationProjectOrder []string
 }
 
 // ValidColorTheme reports whether a saved appearance choice may be written into
@@ -78,6 +81,7 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 		choice := "system"
 		theme := "mint"
 		sendShortcut := "enter"
+		var projectOrder []string
 		if len(settings) > 0 {
 			preferences := settings[0]()
 			if preferences.Language == "en" || preferences.Language == "zh-CN" {
@@ -89,6 +93,7 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 			if preferences.SendShortcut == "ctrlEnter" {
 				sendShortcut = preferences.SendShortcut
 			}
+			projectOrder = preferences.ConversationProjectOrder
 		}
 		page = strings.ReplaceAll(page, "__UI_LANGUAGE__", choice)
 		page = strings.ReplaceAll(page, "__UI_COLOR_THEME__", theme)
@@ -100,6 +105,11 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 			page = strings.ReplaceAll(page, `<script src="/features/sessions/session-chat.js" defer></script>`, "")
 			page = strings.ReplaceAll(page, `<script src="/features/sessions/session-create.js" defer></script>`, "")
 		}
-		_, _ = w.Write([]byte(strings.ReplaceAll(page, "__SESSION_MODE__", mode)))
+		page = strings.ReplaceAll(page, "__SESSION_MODE__", mode)
+		if pageName == "index.html" {
+			order, _ := json.Marshal(projectOrder)
+			page = strings.ReplaceAll(page, "__CONVERSATION_PROJECT_ORDER__", html.EscapeString(string(order)))
+		}
+		_, _ = w.Write([]byte(page))
 	})
 }

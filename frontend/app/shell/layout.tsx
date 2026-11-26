@@ -83,30 +83,32 @@ function WindowChrome(props: WindowChromeProps) {
       : refreshResult === "failed" ? uiText("Git 状态刷新失败，请重试") : ""
   const appMenu = props.appMenu
   return <TooltipProvider delayDuration={450}><div className="window-header-row">
-    <div className="window-header-leading">
-      <nav className="window-destinations" aria-label={uiText("主导航")}>
-        {destinations.map(({view, label, Icon}) => <Tooltip key={view}>
-          <TooltipTrigger asChild><button type="button" className="window-utility-button"
-            data-view={view} aria-label={uiText(label)} aria-current={props.activeView === view ? "page" : undefined}
-            disabled={!props.ready} onClick={() => props.navigate(view)}><Icon aria-hidden="true" /></button></TooltipTrigger>
-          <TooltipContent side="bottom" className="window-header-tooltip">{uiText(label)}</TooltipContent>
-        </Tooltip>)}
-      </nav>
+    <div className="window-header-start">
+      <div className="window-header-leading">
+        <nav className="window-destinations" aria-label={uiText("主导航")}>
+          {destinations.map(({view, label, Icon}) => <Tooltip key={view}>
+            <TooltipTrigger asChild><button type="button" className="window-utility-button"
+              data-view={view} aria-label={uiText(label)} aria-current={props.activeView === view ? "page" : undefined}
+              disabled={!props.ready} onClick={() => props.navigate(view)}><Icon aria-hidden="true" /></button></TooltipTrigger>
+            <TooltipContent side="bottom" className="window-header-tooltip">{uiText(label)}</TooltipContent>
+          </Tooltip>)}
+        </nav>
+        {props.createConversation && <div className="window-conversation-actions" role="group" aria-label={uiText("对话创建")}>
+          <button type="button" className="window-utility-button" aria-label={uiText("新建对话")}
+            title={uiText("在当前栏新建对话")} disabled={!props.canCreateConversation} onClick={() => props.createConversation?.("current")}>
+            <SquarePen aria-hidden="true" />
+          </button>
+          <button type="button" className="window-utility-button" aria-label={uiText("在右侧分栏新建")}
+            title={props.canCreateConversation && !props.canSplitConversation ? uiText("最多支持三栏，请先打开对话并留出空栏") : uiText("在右侧分栏新建")}
+            disabled={!props.canCreateConversation || !props.canSplitConversation} onClick={() => props.createConversation?.("split")}>
+            <SquareSplitHorizontal aria-hidden="true" />
+          </button>
+        </div>}
+      </div>
       <div className="window-history" role="group" aria-label={uiText("页面导航")}>
         <button type="button" className="window-utility-button" aria-label={uiText("后退")} title={uiText("后退")} aria-keyshortcuts="Alt+ArrowLeft Meta+[" disabled={!props.canGoBack} onClick={props.back}><ArrowLeft aria-hidden="true" /></button>
         <button type="button" className="window-utility-button" aria-label={uiText("前进")} title={uiText("前进")} aria-keyshortcuts="Alt+ArrowRight Meta+]" disabled={!props.canGoForward} onClick={props.forward}><ArrowRight aria-hidden="true" /></button>
       </div>
-      {props.createConversation && <div className="window-conversation-actions" role="group" aria-label={uiText("对话创建")}>
-        <button type="button" className="window-utility-button" aria-label={uiText("新建对话")}
-          title={uiText("在当前栏新建对话")} disabled={!props.canCreateConversation} onClick={() => props.createConversation?.("current")}>
-          <SquarePen aria-hidden="true" />
-        </button>
-        <button type="button" className="window-utility-button" aria-label={uiText("在右侧分栏新建")}
-          title={props.canCreateConversation && !props.canSplitConversation ? uiText("最多支持三栏，请先打开对话并留出空栏") : uiText("在右侧分栏新建")}
-          disabled={!props.canCreateConversation || !props.canSplitConversation} onClick={() => props.createConversation?.("split")}>
-          <SquareSplitHorizontal aria-hidden="true" />
-        </button>
-      </div>}
     </div>
     {props.search && <Tooltip>
       <TooltipTrigger asChild><button type="button" className="window-search-trigger" aria-label={uiText("全局搜索")} aria-haspopup="dialog" aria-controls="globalSearch"

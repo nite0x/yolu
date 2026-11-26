@@ -321,6 +321,23 @@ const conversationList = window.WorkHubUI.createConversationList({
   render: () => renderConversationList(),
   remember: () => rememberConversationView(),
 });
+const conversationProjectOrdering = window.WorkHubUI.createConversationProjectOrdering({
+  list: $('#sessionBrowserList'),
+  status: $('#sessionProjectOrderStatus'),
+  initialOrder: $('meta[name="conversation-project-order"]').content,
+  groups: () => ({
+    order: conversationState.current?.projectGroupOrder || [],
+    visible: conversationState.current?.projectGroups || [],
+  }),
+  refresh: focusKey => {
+    renderConversationList();
+    if (!focusKey) return;
+    const index = conversationState.current?.listRows.findIndex(row => row.kind === 'group' && row.group.key === focusKey);
+    focusConversationListIndex(index);
+  },
+  save: order => api('/api/settings/conversation-project-order',{method:'PUT',environment:'local',body:JSON.stringify({order})}),
+  saveFailed: () => toast(uiText("无法保存项目顺序"),true),
+});
 const conversationBatchSize = conversationList.batchSize;
 function resetConversationListWindow(view = conversationState.current) { conversationList.reset(view); }
 let conversationListScrollFrame = 0;
@@ -384,17 +401,18 @@ function renderConversationList() {
   const sessions = matching.filter(s => conversationStatusMatches(s, statusFilter)).sort((a,b) =>
     (recent ? 0 : Number(!!b.pinned)-Number(!!a.pinned)) || (b.updated_at||0)-(a.updated_at||0));
   const selected = window.WorkHubPage?.navigationOnly ? window.WorkHubPage.parallelSelected : view.creating ? null : view.selected;
+  const projectDirectories = sidebarMode === 'grouped' ? conversationEnvironments().flatMap(entry =>
+    conversationOverview(entry.id).projects.map(project => ({cwd:project.path, key:conversationEnvironmentKey(entry.id, conversationPathKey(project.path)),
+      environment:entry.id, environmentName:environmentName(entry.id), name:project.name, projectID:project.id, projectName:project.name, projectRoot:true,
+      appearance:resourceAppearance(entry.id, 'project:' + project.id, project.path)}))) : [];
+  view.projectGroupOrder = window.WorkHubUI.conversationProjectOrder(projectDirectories, conversationProjectOrdering.order);
   view.listItems = sessions;
   view.listRows = window.WorkHubUI.conversationTree(sessions, {
     recent,
     showYoluAssistant: !sessionReadOnly && view.scope.kind === 'all' && !view.directory && !filtered && (!view.environmentFilter || view.environmentFilter === 'local'),
     navigator: sidebarMode === 'grouped' ? {
-      directories: conversationEnvironments().flatMap(entry => {
-        if (view.environmentFilter && view.environmentFilter !== entry.id) return [];
-        return conversationOverview(entry.id).projects.map(project => ({cwd:project.path, key:conversationEnvironmentKey(entry.id, conversationPathKey(project.path)),
-          environment:entry.id, environmentName:environmentName(entry.id), name:project.name, projectID:project.id, projectName:project.name, projectRoot:true,
-          appearance:resourceAppearance(entry.id, 'project:' + project.id, project.path)}));
-      }),
+      directories: projectDirectories.filter(directory => !view.environmentFilter || view.environmentFilter === directory.environment),
+      projectOrder: view.projectGroupOrder,
     } : undefined,
     selected,
     selectedSession: selected ? annotatedItems.find(session => conversationSessionKey(session) === selected) : undefined,
@@ -403,6 +421,7 @@ function renderConversationList() {
   if (view.locateSelection) groupState.collapsedGroups = groupState.collapsedGroups.filter(key => !view.listRows.some(row => row.kind === 'session' && row.group.key === key && conversationSessionKey(row.session) === view.locateSelection));
   const groupToggle = $('#sessionToggleAllGroups');
   const groups = sidebarMode === 'grouped' ? view.listRows.filter(row => row.kind === 'group') : [];
+  view.projectGroups = groups.filter(row => row.group.collection === 'project').map(row => row.group);
   const expand = groups.length > 0 && groups.every(row => row.group.collapsed);
   const toggleLabel = expand ? uiText("全部展开") : uiText("全部收起");
   groupToggle.hidden = !groups.length;
@@ -434,7 +453,7 @@ function renderConversationList() {
   const list = $('#sessionBrowserList');
   list.setAttribute('aria-busy',String(initialLoading || view.loading));
   const rows = view.listRows.slice(start, end);
-  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, sidebarMode, parallel:!!sidebarMode, parallelSessions:window.WorkHubPage?.parallelSessions || [], parallelFull:!!window.WorkHubPage?.parallelFull, selected, search:text, showDirectory: showContext, showContext, loading: initialLoading, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
+  const props = { sessions: rows.filter(row => row.kind === 'session').map(row => row.session), rows, sidebarMode, projectGroups:view.projectGroups.map(group => group.key), parallel:!!sidebarMode, parallelSessions:window.WorkHubPage?.parallelSessions || [], parallelFull:!!window.WorkHubPage?.parallelFull, selected, search:text, showDirectory: showContext, showContext, loading: initialLoading, filtered: !!text || !!filterCount || statusFilter !== 'all', error: false, canCreate: !$('#newBrowserSession').disabled };
   const emptyError = !!view.error && !items.length && !view.loading;
   const renderKey = JSON.stringify([new Date().toDateString(), emptyError, props, before, after, loaded, sessions.length]);
   if (conversationListRenderKeys.get(list) !== renderKey) {

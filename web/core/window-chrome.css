@@ -46,16 +46,17 @@ html[data-workhub-desktop] .workhub-window-controls button {
 html[data-workhub-platform=macos] .window-header-row { --window-search-reserve: 820px; }
 html[data-workhub-platform=macos] .window-header-leading { padding-inline-start: 81px; }
 
-.window-header-leading, .window-destinations, .window-history, .window-conversation-actions {
+.window-header-start, .window-header-leading, .window-destinations, .window-history, .window-conversation-actions {
   display: flex;
   align-items: center;
   flex: none;
 }
 
-.window-header-leading { gap: 10px; justify-self: start; }
+.window-header-start { justify-content: space-between; gap: 8px; }
+.window-header-leading { gap: 10px; }
 .window-destinations, .window-history, .window-conversation-actions { gap: 2px; }
-:is(.window-history, .window-conversation-actions) { position: relative; padding-inline-start: 8px; }
-:is(.window-history, .window-conversation-actions)::before {
+.window-conversation-actions { position: relative; padding-inline-start: 8px; }
+.window-conversation-actions::before {
   content: "";
   position: absolute;
   inset-inline-start: 0;
@@ -222,7 +223,7 @@ html[data-workhub-platform=windows] .workhub-window-controls {
   pointer-events: none;
 }
 .window-refresh-status[data-result=failed] { color: var(--yolu-warning); }
-.window-header-leading .window-utility-button { width: 32px; min-width: 32px; height: 32px; padding: 0; }
+.window-header-start .window-utility-button { width: 32px; min-width: 32px; height: 32px; padding: 0; }
 @media (max-width: 700px) {
   .window-header-row { --window-search-width: 28px; }
   .window-search-trigger { padding: 0; justify-content: center; }
@@ -234,10 +235,10 @@ html[data-workhub-platform=windows] .workhub-window-controls {
 }
 @media (max-width: 420px) {
   .window-header-row { gap: 2px; padding-inline: 2px; }
-  .window-header-leading { gap: 3px; }
+  .window-header-start, .window-header-leading { gap: 3px; }
   .window-destinations, .window-history, .window-conversation-actions, .window-utilities { gap: 1px; }
-  :is(.window-history, .window-conversation-actions) { padding-inline-start: 4px; }
-  .window-header-leading .window-utility-button { width: 26px; min-width: 26px; }
+  .window-conversation-actions { padding-inline-start: 4px; }
+  .window-header-start .window-utility-button { width: 26px; min-width: 26px; }
 }
 @media (pointer: coarse) {
   html[data-workhub-desktop]:not([data-workhub-platform]) { --workspace-window-header-height: 48px; }

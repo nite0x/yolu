@@ -42,10 +42,18 @@ interface TreeOptions {
   showYoluAssistant?: boolean
   navigator?: {
     directories: NavigatorDirectory[]
+    projectOrder?: string[]
   }
 }
 
 const sessionIdentity = (session: Session) => session.browser_key || conversationEnvironmentKey(session.environment_id || "local", session.id)
+const projectGroupKey = (directory: NavigatorDirectory) => JSON.stringify([directory.environment, "project", directory.projectID || conversationPathKey(directory.cwd)])
+
+export function conversationProjectOrder(directories: NavigatorDirectory[], saved: string[] = []) {
+  const isYolu = (directory: NavigatorDirectory) => (directory.projectName || directory.name).trim().toLowerCase() === "yolu"
+  const defaults = [...directories.filter(isYolu), ...directories.filter(directory => !isYolu(directory))]
+  return [...new Set([...saved, ...defaults.map(projectGroupKey)])]
+}
 
 function distinguishProjectBadges(directories: NavigatorDirectory[]) {
   const appearances = new Map<NavigatorDirectory, ShortcutIcon>()
@@ -103,6 +111,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
   }
   const directories = options.navigator?.directories || []
   const appearances = distinguishProjectBadges(directories)
+  const projectGroups = new Map<string, { group: ConversationGroup; sessions: Session[] }>()
   let selectedInProject = false
   for (const directory of directories) {
     const {cwd, environment, projectID, projectName, projectRoot} = directory
@@ -118,14 +127,18 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
     for (const session of matching) filed.add(sessionIdentity(session))
     if (options.selectedSession && matchesDirectory(options.selectedSession)) selectedInProject = true
     if (!matching.length) continue
-    const key = JSON.stringify([environment, "project", projectID || path])
+    const key = projectGroupKey(directory)
     const name = projectName || directory.name
     const href = projectID ? `#/projects/${encodeURIComponent(projectID)}` : undefined
-    groups.set(key, {group: {key, name, environment, environmentName:directory.environmentName, collapsed:options.collapsed.includes(key), total:0, shown:0, showContext:false,
+    projectGroups.set(key, {group: {key, name, environment, environmentName:directory.environmentName, collapsed:options.collapsed.includes(key), total:0, shown:0, showContext:false,
       collection:"project", projectID, projectPath:cwd, href, icon:appearances.get(directory) || directory.appearance, identity:projectID ? `project:${projectID}` : directory.key, iconName:directory.name,
       containsSelection:options.selectedSession ? matchesDirectory(options.selectedSession) : matching.some(session => sessionIdentity(session) === options.selected)}, sessions:matching})
   }
   if (options.navigator) {
+    for (const key of conversationProjectOrder(directories, options.navigator.projectOrder)) {
+      const project = projectGroups.get(key)
+      if (project) groups.set(key, project)
+    }
     const independent = sessions.filter(session => !filed.has(sessionIdentity(session)))
       .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))
     if (independent.length) {

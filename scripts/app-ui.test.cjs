@@ -10,7 +10,7 @@ const { JSDOM } = require('jsdom');
 const web = path.join(__dirname, '../web');
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
 
-async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pins = {}, storage = {}, storageUnavailable = false, width = 1024, route = '/projects/app', intercept: initialIntercept, pageHost, desktop = false, sharedNavigation = false} = {}) {
+async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pins = {}, storage = {}, storageUnavailable = false, projectOrder = [], width = 1024, route = '/projects/app', intercept: initialIntercept, pageHost, desktop = false, sharedNavigation = false} = {}) {
   const tree = (path, branch) => ({ path, branch, dirty: 0, status_updated_at: '2026-10-23T06:00:00Z' });
   const app = { id: 'app', name: 'App', folder: 'app', path: '/repo/app', worktrees: [tree('/repo/app', 'master'), tree('/workspace/workspace/app', 'feature/workspace')] };
   const backend = { id: 'backend', name: 'Backend', folder: 'backend', path: '/repo/backend', worktrees: [tree('/repo/backend', 'master')] };
@@ -29,7 +29,10 @@ async function harness(t, readOnly = true, {origin = 'http://localhost:4317', pi
     { name: 'origin/master', ref: 'refs/remotes/origin/master', kind: 'remote', commit: '12345678', worktrees: [] },
   ] });
   const query = sharedNavigation ? '?app-page=shared-navigation&app-navigation=1&app-desktop=1' : '';
-  const dom = new JSDOM(fs.readFileSync(path.join(web, 'index.html'), 'utf8').replaceAll('__UI_LANGUAGE__', 'zh-CN').replace('__SESSION_MODE__', readOnly ? 'read-only' : 'interactive'), { url: origin + '/' + query + '#' + route, runScripts: 'outside-only', pretendToBeVisual: true });
+  const html = fs.readFileSync(path.join(web, 'index.html'), 'utf8').replaceAll('__UI_LANGUAGE__', 'zh-CN')
+    .replace('__CONVERSATION_PROJECT_ORDER__', JSON.stringify(projectOrder).replaceAll('"','&quot;'))
+    .replace('__SESSION_MODE__', readOnly ? 'read-only' : 'interactive');
+  const dom = new JSDOM(html, { url: origin + '/' + query + '#' + route, runScripts: 'outside-only', pretendToBeVisual: true });
   const channels = [];
   t.after(() => { if (dom.window.WorkHubPage) dom.window.WorkHubPage.dispose(); else dom.window.dispatchEvent(new dom.window.Event('pagehide')); dom.window.close(); for (const channel of channels) { channel.port1.close(); channel.port2.close(); } });
   const { window } = dom;
@@ -2693,6 +2696,63 @@ test('Cloud conversations appear above local projects and open in the shared rea
   assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-select').snapshot.conversation.selected,'cloud-task');
   nav.click('[data-conversation-list-mode="recent"]');
   assert.match(nav.$(row).textContent,/Codex Cloud · apix/);
+});
+
+test('project group ordering defaults to Yolu, preserves hidden slots and survives reopening', async t => {
+  const host = pageHost(t);
+  async function open(projectOrder) {
+    const nav = await harness(t,false,{pageHost:host.window,projectOrder});
+    nav.data.projects.push({id:'yolu',name:'yolu',path:'/repo/yolu',worktrees:[]});
+    nav.sessions.push(
+      {id:'backend-session',name:'Backend planning',cwd:'/repo/backend',primary_project_id:'backend'},
+      {id:'yolu-session',name:'Yolu review',cwd:'/repo/yolu',primary_project_id:'yolu'},
+    );
+    const post = data => nav.window.dispatchEvent(new nav.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
+    post({type:'workhub:page-navigation'});
+    post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
+    await settle(); await settle();
+    return nav;
+  }
+  const names = nav => [...nav.document.querySelectorAll('[data-collection="project"] .session-workspace-name')].map(node => node.textContent);
+  const project = (nav, name) => nav.$(`[data-collection="project"][aria-label="${name}"]`);
+  const nav = await open();
+  assert.deepEqual(names(nav),['yolu','App','Backend']);
+  project(nav,'Backend').querySelector('[data-conversation-group-toggle]').click();
+  const source = project(nav,'yolu').querySelector('[data-project-reorder]');
+  const target = project(nav,'Backend').querySelector('.session-collection-heading');
+  const dataTransfer = {setData() {}};
+  const drag = (node, type) => {
+    const event = new nav.window.MouseEvent(type,{bubbles:true,cancelable:true,clientY:10});
+    Object.defineProperty(event,'dataTransfer',{value:dataTransfer});
+    node.dispatchEvent(event);
+  };
+  drag(source,'dragstart');
+  drag(target,'dragover');
+  assert.equal(project(nav,'Backend').dataset.projectDrop,'after');
+  drag(target,'drop');
+  assert.deepEqual(names(nav),['App','Backend','yolu']);
+  assert.equal(project(nav,'Backend').querySelector('[data-conversation-group-toggle]').getAttribute('aria-expanded'),'false');
+  assert.equal(nav.$('[data-project-drop], [data-project-dragging]'),null);
+
+  nav.input('#sessionBrowserSearch','billing');
+  assert.deepEqual(names(nav),['App']);
+  assert.equal(nav.$('[data-project-reorder]'),null);
+  nav.input('#sessionBrowserSearch','review');
+  assert.deepEqual(names(nav),['App','yolu']);
+  const grip = project(nav,'App').querySelector('[data-project-reorder]');
+  grip.click();
+  assert.equal(grip.getAttribute('aria-expanded'),'true');
+  project(nav,'App').querySelector('[data-project-move="1"]').click();
+  assert.deepEqual(names(nav),['yolu','App']);
+  assert.equal(nav.document.activeElement,project(nav,'App').querySelector('[data-conversation-group-toggle]'));
+  nav.input('#sessionBrowserSearch','');
+  assert.deepEqual(names(nav),['yolu','Backend','App']);
+  await settle();
+  const writes = nav.requests.filter(request => request.url === '/api/settings/conversation-project-order');
+  assert.equal(writes.length,2);
+  assert.equal(writes[1].options.method,'PUT');
+  const reopened = await open(writes[1].body.order);
+  assert.deepEqual(names(reopened),['yolu','Backend','App']);
 });
 
 test('grouped navigation expands in five-row steps, resets the preview and shares one list with independent conversations', async t => {

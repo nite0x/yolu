@@ -1,7 +1,8 @@
 import {renderToStaticMarkup} from "react-dom/server"
 import {ConversationList, ConversationScopes} from "./list/browser"
 import {createConversationState} from "./list/state"
-import {conversationTree, projectConversationStep} from "./list/tree"
+import {conversationProjectOrder, conversationTree, projectConversationStep} from "./list/tree"
+import {createConversationProjectOrdering} from "./list/project-order"
 import {createConversationList, patchConversationList} from "./list/list"
 import {setupConversationResize} from "./list/resize"
 import {createSessionRequests} from "./list/requests"
@@ -13,7 +14,7 @@ import {readElicitation} from "./model/approval"
 import {effortLabel, findChatModel, permissionChoices, serviceTierLabel} from "./model/settings"
 
 export const conversationUI = {
-  createConversationState, conversationTree, projectConversationStep,
+  createConversationState, conversationTree, projectConversationStep, conversationProjectOrder, createConversationProjectOrdering,
   createConversationList, patchConversationList,
   renderCreationChoices, resetCreationChoices, recordCreationDirectory,
   setupConversationResize, createSessionRequests, createConversationFiles,

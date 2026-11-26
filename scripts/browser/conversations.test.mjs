@@ -147,6 +147,11 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   // Shared foundation components are exercised through both real host entries.
   for (const width of [1440, 760]) {
     await page.setViewportSize({width,height:1000});
+    const history = await page.locator('.window-history').boundingBox();
+    const search = await page.locator('.window-search-trigger').boundingBox();
+    assert(history && search);
+    const searchGap = search.x - (history.x + history.width);
+    assert(searchGap >= 0 && searchGap <= 16, `Expected history beside search at ${width}px, got ${searchGap}px`);
     await page.getByRole('button', {name:'项目',exact:true}).click();
     const projectPage = page.frameLocator('iframe.workspace-page:visible');
     await projectPage.getByRole('button', {name:'添加项目',exact:true}).click();
