@@ -66,9 +66,9 @@ func (a *Service) StartTurn(ctx context.Context, session string, input StartTurn
 	if err := validateProviderBindings(record.Provider, plan); err != nil {
 		return ChatState{}, 0, conversationFailure(409, "", err.Error())
 	}
-	releaseDirectories, conflicts := a.reserveDirectories("session:"+record.ID, record.ID, plan)
-	if releaseDirectories == nil {
-		return ChatState{}, 0, directoryConflictFailure(conflicts)
+	releaseDirectories, err := a.reserveDirectories("session:"+record.ID, record.ID, plan)
+	if err != nil {
+		return ChatState{}, 0, err
 	}
 	defer releaseDirectories()
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))

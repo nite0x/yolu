@@ -68,9 +68,6 @@ func (a *App) Close() error {
 		if a.Terminals != nil {
 			a.Terminals.Close()
 		}
-		if a.Execution.Remote != nil {
-			a.Execution.Remote.Close()
-		}
 		a.Sessions.Close()
 		a.Projects.Close()
 		a.closeErr = a.Execution.Close()

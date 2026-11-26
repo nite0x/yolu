@@ -117,9 +117,9 @@ func (a *Service) CreateSession(ctx context.Context, input CreateSessionInput) (
 		return CreationResult{}, conversationFailure(409, "unsupported_bindings", err.Error())
 	}
 	target.plan.YoluAssistant = input.YoluAssistant
-	releaseDirectories, conflict := a.reserveDirectories("create:"+key, "", target.plan)
-	if releaseDirectories == nil {
-		return CreationResult{}, directoryConflictFailure(conflict)
+	releaseDirectories, err := a.reserveDirectories("create:"+key, "", target.plan)
+	if err != nil {
+		return CreationResult{}, err
 	}
 	defer releaseDirectories()
 	startup, finish, err := a.beginCreation(ctx)

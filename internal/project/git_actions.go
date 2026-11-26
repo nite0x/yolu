@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
+	"worktree-hub/internal/platform"
 )
 
 type gitIssueKind string
@@ -46,7 +48,7 @@ func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction)
 	if a.Execution.Closing.Load() {
 		return nil, gitIssue(gitUnavailable, "后台正在退出")
 	}
-	p, err := a.RegisteredProject(ctx, id)
+	p, err := a.Execution.Store.Project(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, gitIssue(gitMissing, "项目不存在")
 	}
@@ -55,6 +57,14 @@ func (a *Service) PerformGitAction(ctx context.Context, id string, in GitAction)
 	}
 	unlock := a.lockGit(p.CommonDir)
 	defer unlock()
+	current, err := a.RegisteredProject(ctx, id)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, gitIssue(gitInspection, err.Error())
+	}
+	if err != nil || !platform.SameWorkspacePath(current.CommonDir, p.CommonDir) {
+		return nil, gitIssue(gitConflict, "项目登记已变化，请刷新后重试")
+	}
+	p = current
 	// Only Git actions for this repository serialize; network waits never hold
 	// the environment's metadata lock.
 	v, err := InspectGit(ctx, p)

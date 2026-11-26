@@ -110,7 +110,10 @@ func (a *Service) CreateProjectWorktree(ctx context.Context, id string, in Creat
 	}
 	directory := platform.JoinWorkspacePath(a.Execution.Root, in.Slug)
 	target := platform.JoinWorkspacePath(directory, p.Folder)
-	releaseTarget := a.lockWorktreeTarget(target)
+	releaseTarget, err := a.Execution.Directories.ReserveCheckout(target)
+	if err != nil {
+		return nil, &OperationError{Status: 409, Message: err.Error()}
+	}
 	defer releaseTarget()
 	resolved, err := execution.Eval(ctx, a.Execution.Root)
 	if err != nil || !platform.SameWorkspacePath(resolved, a.Execution.Root) || !platform.Within(a.Execution.Root, directory) || !platform.Within(directory, target) {
@@ -137,6 +140,9 @@ func (a *Service) CreateProjectWorktree(ctx context.Context, id string, in Creat
 	// Recheck after mkdir; a pre-existing parent may contain other directories.
 	if resolved, err := execution.Eval(ctx, directory); err != nil || !platform.SameWorkspacePath(resolved, directory) {
 		return nil, &OperationError{Status: 409, Message: "工作目录已变化，停止创建"}
+	}
+	if _, err := execution.Stat(ctx, target, false); !errors.Is(err, os.ErrNotExist) {
+		return nil, &OperationError{Status: 409, Message: "目标目录已存在或无法检查，不会覆盖：" + target}
 	}
 	args := []string{"worktree", "add"}
 	if in.Mode == "new" {

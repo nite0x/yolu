@@ -284,9 +284,9 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 	p.AllowShared = input.AllowShared
 	launchScope := p
 	launchScope.ManagedBindings = false
-	releaseDirectories, conflicts := a.reserveDirectories("terminal:"+id, id, launchScope)
-	if releaseDirectories == nil {
-		writeBindingConflict(w, conflicts)
+	releaseDirectories, err := a.reserveDirectories("terminal:"+id, id, launchScope)
+	if err != nil {
+		writeConversationError(w, err)
 		return
 	}
 	defer releaseDirectories()

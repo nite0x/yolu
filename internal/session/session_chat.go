@@ -273,6 +273,9 @@ func (a *Service) StopTurn(ctx context.Context, session, id string) (ChatState, 
 	if started && !queued {
 		if err := run.interrupt(); err != nil {
 			run.restoreAfterStopFailure()
+			if state := run.snapshot(); !state.Busy {
+				return state, nil
+			}
 			return ChatState{}, conversationFailure(503, "stop_unconfirmed", "停止请求未确认："+err.Error())
 		}
 	}

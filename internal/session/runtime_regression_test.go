@@ -170,3 +170,48 @@ func TestCompletedRunsHaveBoundedRetention(t *testing.T) {
 		t.Fatal("completed-run retention failed")
 	}
 }
+
+type lateInterruptErrorClient struct {
+	*fakeLiveClient
+	interrupt chan struct{}
+	finished  chan struct{}
+}
+
+func (c *lateInterruptErrorClient) Call(ctx context.Context, method string, params any, out any) error {
+	if method != "turn/interrupt" {
+		return c.fakeLiveClient.Call(ctx, method, params, out)
+	}
+	close(c.interrupt)
+	select {
+	case <-c.finished:
+		return errors.New("provider had already finished")
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func TestCompletedTurnWinsOverLateStopFailure(t *testing.T) {
+	a, _, fixture, endpoint := chatFixture(t)
+	client := &lateInterruptErrorClient{fakeLiveClient: fixture, interrupt: make(chan struct{}), finished: make(chan struct{})}
+	a.openLive = func(context.Context) (codex.LiveClient, error) { return client, nil }
+	startFakeChat(t, a, endpoint)
+	result := make(chan error, 1)
+	go func() {
+		state, err := a.StopTurn(context.Background(), "session", "request1")
+		if err == nil && (state.Status != "completed" || state.Busy) {
+			err = errors.New("late interrupt replaced completion")
+		}
+		result <- err
+	}()
+	select {
+	case <-client.interrupt:
+	case <-time.After(time.Second):
+		t.Fatal("stop did not invoke provider")
+	}
+	fixture.event("turn/completed", map[string]any{"turn": map[string]any{"id": "turn", "status": "completed"}})
+	awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
+	close(client.finished)
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+}

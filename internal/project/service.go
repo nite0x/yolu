@@ -3,7 +3,6 @@ package project
 
 import (
 	"context"
-	"strings"
 	"sync"
 
 	"worktree-hub/internal/execution"
@@ -41,24 +40,15 @@ type operationLock struct {
 }
 
 func (s *Service) lockGit(common string) func() {
-	return s.lockOperation("repository:" + common)
-}
 
-func (s *Service) lockWorktreeTarget(target string) func() {
-	// Windows is case-insensitive. On case-sensitive filesystems conservative
-	// serialization is harmless for differently cased target names.
-	return s.lockOperation("target:" + strings.ToLower(target))
-}
-
-func (s *Service) lockOperation(key string) func() {
 	s.locksMu.Lock()
 	if s.locks == nil {
 		s.locks = make(map[string]*operationLock)
 	}
-	entry := s.locks[key]
+	entry := s.locks[common]
 	if entry == nil {
 		entry = &operationLock{}
-		s.locks[key] = entry
+		s.locks[common] = entry
 	}
 	entry.refs++
 	s.locksMu.Unlock()
@@ -68,7 +58,7 @@ func (s *Service) lockOperation(key string) func() {
 		s.locksMu.Lock()
 		entry.refs--
 		if entry.refs == 0 {
-			delete(s.locks, key)
+			delete(s.locks, common)
 		}
 		s.locksMu.Unlock()
 	}

@@ -50,6 +50,11 @@ func (a *Service) ApproveTurn(ctx context.Context, session string, input TurnApp
 		return ChatState{}, conversationFailure(400, "", err.Error())
 	}
 	if pending.Kind == "project_access" && choice.Accepts {
+		releaseCheckout, err := a.Execution.Directories.UseDirectories(grant.binding.Directory)
+		if err != nil {
+			return ChatState{}, conversationFailure(409, "directory_changing", err.Error())
+		}
+		defer releaseCheckout()
 		a.directoryStarts.Lock()
 		defer a.directoryStarts.Unlock()
 		if grant.binding.Access == model.SessionBindingWrite && choice.ID != "accept_shared" && len(a.directoryConflictsLocked(grant.binding.Directory, session)) != 0 {

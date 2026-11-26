@@ -139,6 +139,13 @@ func (a *Service) driveACPTurn(ctx context.Context, run *ChatRun, plan model.Lau
 	defer a.finishRun(run)
 	defer run.finishLocalTurn()
 
+	c, _ := run.connection.(acp.Client)
+	loaded := initial != nil
+	defer func() {
+		if c != nil {
+			acp.CloseSession(c, run.session, loaded && run.provider != model.ProviderCursor && ctx.Err() == nil)
+		}
+	}()
 	if a.Execution.Remote != nil {
 		run.fail("暂不支持在远端 WSL 环境运行 " + model.ProviderName(run.provider) + " 对话")
 		return
@@ -153,7 +160,6 @@ func (a *Service) driveACPTurn(ctx context.Context, run *ChatRun, plan model.Lau
 		return
 	}
 
-	c, _ := run.connection.(acp.Client)
 	replay := newACPUpdateReducer()
 	var setup acp.SessionSetupResult
 	if initial != nil {
@@ -187,11 +193,10 @@ func (a *Service) driveACPTurn(ctx context.Context, run *ChatRun, plan model.Lau
 			} else {
 				run.fail("无法恢复 " + model.ProviderName(run.provider) + " 对话：" + err.Error())
 			}
-			c.Close()
 			return
 		}
+		loaded = true
 	}
-	defer acp.CloseSession(c, run.session, run.provider != model.ProviderCursor)
 
 	cat := a.acpCatalogFromSetup(run.provider, setup)
 	if err := applyACPTurnSettings(ctx, c, run.session, &cat, run.settings); err != nil {

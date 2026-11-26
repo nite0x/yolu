@@ -590,6 +590,11 @@ func (a *Service) ChangeDirectoryBinding(ctx context.Context, id, bindingID stri
 	if err != nil {
 		return record, bindingFailure(err)
 	}
+	releaseCheckout, err := a.Execution.Directories.UseDirectories(v.Directory)
+	if err != nil {
+		return record, conversationFailure(409, "directory_changing", err.Error())
+	}
+	defer releaseCheckout()
 	a.directoryStarts.Lock()
 	conflicts := []directoryConflict{}
 	if v.Access == model.SessionBindingWrite {
@@ -667,6 +672,15 @@ func (a *Service) bindProjectReferences(ctx context.Context, record model.Sessio
 	if err := validateBindingSet(bindings); err != nil {
 		return err
 	}
+	paths := make([]string, len(additions))
+	for i, addition := range additions {
+		paths[i] = addition.Directory
+	}
+	release, err := a.Execution.Directories.UseDirectories(paths...)
+	if err != nil {
+		return err
+	}
+	defer release()
 	return a.Execution.Store.InsertSessionBindings(record.ID, append(existing, additions...))
 }
 

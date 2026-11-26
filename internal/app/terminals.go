@@ -215,6 +215,12 @@ func (a *App) createTerminalHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 409, err.Error())
 		return
 	}
+	release, err := a.Execution.Directories.UseDirectories(path)
+	if err != nil {
+		httpx.WriteErrorCode(w, 409, "directory_changing", err.Error())
+		return
+	}
+	defer release()
 	input.Cwd = path
 	s, err := a.Terminals.Start(input)
 	if err != nil {

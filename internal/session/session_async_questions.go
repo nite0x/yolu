@@ -194,9 +194,9 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, 409, err.Error())
 			return
 		}
-		release, conflicts := a.reserveDirectories("answer:"+record.ID, record.ID, plan)
-		if release == nil {
-			writeBindingConflict(w, conflicts)
+		release, err := a.reserveDirectories("answer:"+record.ID, record.ID, plan)
+		if err != nil {
+			writeConversationError(w, err)
 			return
 		}
 		defer release()

@@ -120,8 +120,10 @@ func (a *Service) handleDirectoryPermission(ctx context.Context, run *ChatRun, e
 		ThreadID string `json:"threadId"`
 		TurnID   string `json:"turnId"`
 	}
-	state := run.snapshot()
-	if len(event.ID) == 0 || json.Unmarshal(event.Params, &header) != nil || header.ThreadID != run.session || header.TurnID != state.TurnID {
+	run.mu.Lock()
+	turn := run.state.TurnID
+	run.mu.Unlock()
+	if len(event.ID) == 0 || json.Unmarshal(event.Params, &header) != nil || header.ThreadID != run.session || header.TurnID != turn {
 		return false
 	}
 	if event.Method != "item/permissions/requestApproval" {
@@ -181,13 +183,20 @@ func (a *Service) handleDirectoryPermission(ctx context.Context, run *ChatRun, e
 		if platform.SameWorkspacePath(b.Directory, dir) {
 			v.ID, v.Role = b.ID, b.Role
 			if b.Access == model.SessionBindingWrite || b.Access == request.Access {
+				release, err := a.Execution.Directories.UseDirectories(dir)
+				if err != nil {
+					return deny(err.Error())
+				}
+				defer release()
 				run.mu.Lock()
-				configured := run.configured[dir].access
-				run.mu.Unlock()
-				if configured == model.SessionBindingWrite || configured == request.Access {
+				configured := run.configured[dir]
+				if run.state.Busy && !run.stopRequested && configured.id == b.ID && configured.updatedAt == b.UpdatedAt &&
+					(configured.access == model.SessionBindingWrite || configured.access == request.Access) {
 					_ = run.connection.Reply(event.ID, nativeDirectoryGrant(dir, request.Access))
+					run.mu.Unlock()
 					return true
 				}
+				run.mu.Unlock()
 			}
 			continue
 		}
