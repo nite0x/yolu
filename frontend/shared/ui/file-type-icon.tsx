@@ -12,8 +12,8 @@ const types = {
 } as const
 
 export function FileTypeIcon({ path }: { path: string }) {
-  const name = path.replace(/\\/g, "/").split("/").pop()!.toLowerCase()
-  const extension = name.split(".").pop()! as keyof typeof types
+  const name = (path.replace(/\\/g, "/").split("/").pop() || "").toLowerCase()
+  const extension = (name.split(".").pop() || "") as keyof typeof types
   const kind = name.startsWith(".env") || name === "dockerfile" ? "config" : types[extension] || "code"
   const label = kind === "typescript" ? "TS" : kind === "javascript" ? "JS" : kind === "go" ? "Go" : kind === "python" ? "Py" : undefined
   const Icon = kind === "react" ? Atom : kind === "json" ? FileJson : kind === "config" ? FileCog : kind === "style" ? Palette : kind === "image" ? FileImage : kind === "shell" ? Terminal : kind === "document" ? FileText : kind === "archive" ? FileArchive : FileCode

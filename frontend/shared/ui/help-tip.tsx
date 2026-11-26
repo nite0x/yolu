@@ -1,6 +1,6 @@
 import {uiText} from "../i18n"
 import {Info} from "lucide-react"
-import {type ReactNode} from "react"
+import type {ReactNode} from "react"
 
 // Static markup keeps controller-owned help text available while the tip is closed.
 export function HelpTip({ id, label, children }: { id: string; label: string; children: ReactNode }) {
@@ -19,17 +19,17 @@ export function setupHelpTips(root: HTMLElement) {
   const close = () => {
     window.clearTimeout(closeTimer)
     if (!active) return
-    const tip = active.querySelector<HTMLElement>(".help-tip-content")!
-    tip.hidePopover?.()
-    tip.hidden = true
+    const tip = active.querySelector<HTMLElement>(".help-tip-content")
+    tip?.hidePopover?.()
+    if (tip) tip.hidden = true
     active = null
   }
   const open = (wrapper: HTMLElement) => {
     window.clearTimeout(closeTimer)
     if (active === wrapper || dismissed === wrapper) return
     close()
-    const tip = wrapper.querySelector<HTMLElement>(".help-tip-content")!
-    if (!tip.textContent?.trim()) return
+    const tip = wrapper.querySelector<HTMLElement>(".help-tip-content")
+    if (!tip?.textContent?.trim()) return
     active = wrapper
     tip.hidden = false
     tip.showPopover?.()
@@ -57,9 +57,9 @@ export function setupHelpTips(root: HTMLElement) {
     if (tip) { dismissed = null; open(tip) }
     else close()
   }, options)
-  const escape = (event: KeyboardEvent) => { if (event.key === "Escape" && active) { dismissed = active; close() } }
+  const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && active) { dismissed = active; close() } }
   const outside = (event: PointerEvent) => { if (active && !active.contains(event.target as Node)) close() }
-  document.addEventListener("keydown", escape, options)
+  document.addEventListener("keydown", onEscape, options)
   document.addEventListener("pointerdown", outside, options)
   root.addEventListener("scroll", close, {...options, capture: true})
   window.addEventListener("resize", close, options)

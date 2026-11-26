@@ -3,7 +3,7 @@ import {uiText} from "@/shared/i18n"
 import {NativeSelect, NativeSelectOption} from "@/shared/ui/primitives/native-select"
 import {Action} from "@/shared/ui/actions/button"
 import {Feedback} from "@/shared/ui/feedback/message"
-import {type ProjectOpenTool} from "@/entities/projects/presentation"
+import type {ProjectOpenTool} from "@/entities/projects/presentation"
 import {ResourceIcon} from "@/shared/ui/resource-icons"
 import {ResourceSwitcherTrigger} from "@/shared/ui/list-controls"
 import {conversationPathKey} from "@/shared/lib/workspace-identity"
@@ -95,8 +95,7 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
           <li><span className="project-summary-stat" data-tone={totalRunning ? "primary" : undefined} data-zero={!unknownSessions && !totalRunning || undefined}><Activity aria-hidden="true" /><strong>{unknownSessions ? "—" : totalRunning}</strong>{uiText("个运行中 Agent")}</span></li>
         </ul> : null}
       </div>
-      {project.error ? <Feedback tone="error"><p className="m-0">{uiText("项目读取失败：")}{project.error}</p><Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action></Feedback> : <>
-        <section className="project-directories-section" aria-labelledby="projectDirectoriesTitle">
+      {project.error ? <Feedback tone="error"><p className="m-0">{uiText("项目读取失败：")}{project.error}</p><Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action></Feedback> : <section className="project-directories-section" aria-labelledby="projectDirectoriesTitle">
           <div className="resource-section-heading project-directories-heading">
             <h3 id="projectDirectoriesTitle">{uiText("工作目录")} <span className="resource-section-count">{visible.length}</span></h3>
             {items.length > 1 ? <div className="project-directory-controls">
@@ -115,19 +114,18 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
               </NativeSelect></span>
             </div> : null}
           </div>
-          {visible.length ? <div className="working-directory-cards" aria-label={uiText("项目工作目录")}>{visible.map(({tree, name, primary, state, related}) =>
-            <WorkingDirectoryCard key={tree.path} project={project.id} tree={tree} name={name} tool={tool} primary={primary} state={state} sessions={related} conversations={conversations} readOnly={readOnly} />)}</div>
+          {visible.length ? <section className="working-directory-cards" aria-label={uiText("项目工作目录")}>{visible.map(({tree, name, primary, state, related}) =>
+            <WorkingDirectoryCard key={tree.path} project={project.id} tree={tree} name={name} tool={tool} primary={primary} state={state} sessions={related} conversations={conversations} readOnly={readOnly} />)}</section>
             : <div className="project-detail-empty" role="status">{items.length ? <>
               {filter === "active" && unknownSessions ? <ProjectConversationFeedback conversations={conversations} project={project.id} /> : uiText("没有符合筛选条件的工作目录")}
               <Action action="project-directory-reset" id={project.id} data-detail-focus="directory-filter">{uiText("查看全部目录")}</Action>
             </> : <>{project.refreshing ? uiText("正在发现工作目录…") : uiText("尚未发现工作目录，请检查项目路径后重新扫描。")}
               {!project.refreshing ? <Action action="project-refresh" id={project.id}>{uiText("重新检查")}</Action> : null}</>}
             </div>}
-        </section>
-
-      </>}
+        </section>}
     </div>
-    <div id="projectFilesResize" className="reading-splitter project-files-resize" role="separator" tabIndex={0} aria-label={uiText("调整文件预览区域大小")} aria-orientation="vertical" hidden />
+    {/* biome-ignore lint/a11y/useSemanticElements: This focusable splitter uses pointer and keyboard resizing, rather than a static horizontal rule. */}
+    <div id="projectFilesResize" className="reading-splitter project-files-resize" role="separator" aria-valuenow={0} tabIndex={0} aria-label={uiText("调整文件预览区域大小")} aria-orientation="vertical" hidden />
     <aside id="projectFilesPane" className="project-files-pane" aria-label={uiText("文件与改动")} hidden>
       <header className="project-files-heading">
         <h3>{uiText("文件与改动")}</h3>

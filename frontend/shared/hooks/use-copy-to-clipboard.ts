@@ -9,7 +9,7 @@ export type UseCopyToClipboardOptions = {
 function copyWithSelection(value: string) {
   const active = document.activeElement;
   const selection = document.getSelection();
-  const ranges = Array.from({ length: selection?.rangeCount ?? 0 }, (_, index) => selection!.getRangeAt(index));
+  const ranges = selection ? Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index)) : [];
   const field = document.createElement("textarea");
   field.value = value;
   field.readOnly = true;
@@ -26,7 +26,7 @@ function copyWithSelection(value: string) {
     if (active instanceof HTMLElement) active.focus({ preventScroll: true });
     if (ranges.length) {
       selection?.removeAllRanges();
-      ranges.forEach(range => selection?.addRange(range));
+      ranges.forEach(range => { selection?.addRange(range); });
     }
   }
 }

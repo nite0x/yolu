@@ -7,7 +7,7 @@ import {Branch, projectOpenLabels, TreeStatus, type ProjectOpenTool} from "@/ent
 import {conversationPathKey} from "@/shared/lib/workspace-identity"
 import {conversationStatusMatches} from "@/entities/conversations/status"
 import {sessionTime} from "@/entities/conversations/presentation"
-import {type Session} from "@/entities/conversations/catalog"
+import type {Session} from "@/entities/conversations/catalog"
 import type {Worktree} from "@/entities/projects/model"
 import {compactWorkspacePath} from "@/shared/lib/workspace-path"
 
@@ -154,10 +154,10 @@ export function WorkingDirectoryCard({project, tree, name, primary, tool, state,
       {issue ? <Feedback tone="error" className="directory-recovery"><p><CircleAlert aria-hidden="true" />{tree.error || uiText("检查 Worktree 目录是否仍在原位置。")}</p><Action action="project-refresh" {...target}>{uiText("重新检查")}</Action></Feedback> : null}
     </div>
     <div id={panel} className="directory-card-expanded" hidden={!state.expanded}>{state.expanded ? <>
-      <div className="directory-sections" role="group" aria-label={name}>{sections.map(([value, label, count]) =>
+      <fieldset className="directory-sections m-0 min-w-0 border-x-0 border-t-0 p-0" aria-label={name}>{sections.map(([value, label, count]) =>
         <Action key={value} action="project-directory-section" {...target} data-section={value} data-detail-focus={`section:${value}`} variant="ghost" aria-pressed={section === value}>
           {label}{count ? <span className="directory-tab-count">{count}</span> : null}
-        </Action>)}</div>
+        </Action>)}</fieldset>
       <div className="directory-section-content">
         {section === "changes" ? <DirectoryChanges tree={tree} project={project} usable={usable} /> : section === "git" ? <DirectoryGit tree={tree} project={project} usable={usable} /> : <>
           <ProjectConversationRows project={project} sessions={previewSessions} />
@@ -227,13 +227,13 @@ function GitSyncStatus({tree, compact = false}: {tree: Worktree; compact?: boole
   return <div className="directory-sync" title={uiText("同步数量基于本地最近获取的上游记录；获取远端后更新。")}>
     {!compact || !detached ? (diverged ? <StatusBadge tone="neutral">
       <span className="directory-sync-summary"><code title={upstream}>{upstream}</code>
-        <span className="directory-sync-counts" aria-label={uiText("待推送 {0} 个提交，待拉取 {1} 个提交", sync_ahead, sync_behind)} title={uiText("↑ 待推送 {0} · ↓ 待拉取 {1}{2}", sync_ahead, sync_behind, sync_ahead && sync_behind ? uiText(" · 已分歧") : "")}>
+        <span role="img" className="directory-sync-counts" aria-label={uiText("待推送 {0} 个提交，待拉取 {1} 个提交", sync_ahead, sync_behind)} title={uiText("↑ 待推送 {0} · ↓ 待拉取 {1}{2}", sync_ahead, sync_behind, sync_ahead && sync_behind ? uiText(" · 已分歧") : "")}>
           <span data-active={sync_ahead > 0}>↑{sync_ahead}</span><span data-active={sync_behind > 0}>↓{sync_behind}</span>
         </span>
       </span>
     </StatusBadge> : <span className="directory-sync-inline" data-synced={synced || undefined}>
       {upstream && !detached ? <span className="directory-sync-summary"><code title={upstream}>{upstream}</code>
-        {sync_available ? <span className="directory-sync-counts" aria-label={uiText("待推送 {0} 个提交，待拉取 {1} 个提交", sync_ahead, sync_behind)} title={uiText("↑ 待推送 {0} · ↓ 待拉取 {1}{2}", sync_ahead, sync_behind, "")}>
+        {sync_available ? <span role="img" className="directory-sync-counts" aria-label={uiText("待推送 {0} 个提交，待拉取 {1} 个提交", sync_ahead, sync_behind)} title={uiText("↑ 待推送 {0} · ↓ 待拉取 {1}{2}", sync_ahead, sync_behind, "")}>
           <span data-active={false}>↑{sync_ahead}</span><span data-active={false}>↓{sync_behind}</span>
         </span> : <span title={uiText("上游不可用，请获取远端")}>{uiText("暂不可用")}</span>}
       </span> : detached ? uiText("游离 HEAD") : uiText("未设置上游")}
