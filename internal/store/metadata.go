@@ -16,14 +16,7 @@ type metadataTable struct{ Name, Columns string }
 
 // Explicit columns make import independent of platform and future additive
 // schema migrations. No SQL identifiers supplied by a client are executed.
-var metadataTables = []metadataTable{
-	{"assistant_conversations", "id,title,created_at,updated_at"},
-	{"assistant_runs", "id,conversation_id,input,status,error_code"},
-	{"assistant_messages", "id,conversation_id,run_id,role,text"},
-	{"assistant_action_plans", "id,conversation_id,run_id,status,payload,created_at,updated_at"},
-	{"assistant_decisions", "conversation_id,request_id,plan_id,fingerprint"},
-	{"assistant_tool_calls", "id,conversation_id,run_id,capability,status,result,created_at"},
-	{"assistant_run_contexts", "conversation_id,run_id,context"},
+var metadataTables = append(legacyAssistantTables, []metadataTable{
 	{"projects", "id,name,path,common_dir,folder,created_at"},
 	{"settings", "key,value"},
 	{"sessions", "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,title_source,title_changed_at,provider,bindings_managed,yolu_assistant,permission"},
@@ -35,7 +28,7 @@ var metadataTables = []metadataTable{
 	{"conversation_async_answers", "session_id,item_id,turn_id,fingerprint,status,request_id"},
 	{"conversation_drafts", "key,payload,updated_at"},
 	{"conversation_create_requests", "request_id,fingerprint,session_id"},
-}
+}...)
 
 type MetadataSnapshot struct {
 	Tables map[string][][]any `json:"tables"`
@@ -173,10 +166,7 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 			}
 		}
 	}
-	if _, err := tx.Exec(`UPDATE assistant_runs SET status='interrupted',error_code='interrupted' WHERE status='running'`); err != nil {
-		return err
-	}
-	if err := interruptAssistantPlans(tx); err != nil {
+	if err := recoverLegacyAssistant(tx); err != nil {
 		return err
 	}
 	// Older exports contain the session index but no directory bindings.
