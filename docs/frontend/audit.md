@@ -34,7 +34,7 @@ Projects own registration, scanning, directory cards and worktree forms. Git own
 | --- | --- | --- | --- |
 | A01 | P1 | `scripts/frontend-architecture.mjs` only builds a feature-level graph; same-feature and core/shared file cycles are invisible | Check resolved source-file graph and test it |
 | A02 | P1 | `biome.json` includes settings and selected runtime/foundation directories, omitting projects, Git, file UI, conversation UI and terminal UI | Expand lint across owned frontend; preserve meaningful checks |
-| A03 | P2 | `frontend/shared/ui/page-surface.tsx` is unreachable from all build entries and tests (Knip plus repository search) | Remove unused wrappers; retain used CSS contract |
+| A03 | P2 | `frontend/shared/ui/page-surface.tsx` is unreachable from all build entries and tests (Knip plus repository search) | Remove unused wrappers/styles; retain live `workspace-pane` contract |
 | A04 | P2 | jscpd found 6 clones / 107 duplicated lines across 212 analyzed sources, predominantly two diagnostics renderers | Compose shared diagnostic presentation, retain provider differences |
 | A05 | P1 | `features/conversations/list/resize.ts` repeats pointer/keyboard bounds and leaves window listeners beyond owner lifetime | Reuse existing splitter and expose disposal |
 | A06 | P1 | File browser `DirectoryTree` retains `data`/`error` on endpoint changes and shares list/preview error state | Resource identity and request ownership regression checks |
@@ -57,4 +57,4 @@ jscpd used a 12-line minimum. Similar provider diagnostics have genuine shared p
 - `npm run build`: passed; critical JavaScript 766447 bytes gzip.
 - Chromium component catalog with axe, light/dark and 1280/390 widths: passed.
 - Initial `npm run check` could not use `/usr/bin/go` (a different program). Downloaded SHA-256-verified Go 1.26.11 into `/tmp/yolu-toolchain`; API contract check then passed. No repository/backend files changed.
-- Full legacy tests and real application browser baseline are running; see progress for final results.
+- Baseline legacy suite: 221 passed; real Go-hosted application Chromium suite: 6 passed across browser and desktop-chrome entries. Screenshots are under `/tmp/yolu-baseline-screenshots`.

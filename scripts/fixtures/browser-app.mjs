@@ -65,7 +65,7 @@ export async function startBrowserApp(binary, fixtureRoot = os.tmpdir()) {
     const project = await request('/api/projects','POST',{name:'Browser fixture',path:repository});
     const fixtureData = JSON.parse(await readFile(state, 'utf8'));
     fixtureData.assistantLink = '#/projects/' + project.id + '?' + new URLSearchParams({environment:'local',directory:repository});
-    await writeFile(state, JSON.stringify(fixtureData));
+    fixture.writeSnapshot(state, fixtureData);
     const sessions = [];
     for (const [index, text] of ['First conversation','Second conversation'].entries()) {
       const result = await request('/api/sessions/new','POST',{project_id:project.id,cwd:repository,request_id:`browser-${index}`,text,allow_shared:true});

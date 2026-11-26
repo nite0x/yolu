@@ -3,6 +3,19 @@
 const fs = require('node:fs');
 const readline = require('node:readline');
 
+let snapshotSequence = 0;
+function writeSnapshot(file, data) {
+  // Daemon CLI processes read the same path while protocol completions write.
+  // Publish a complete snapshot so readers never observe a truncated JSON file.
+  const temporary = `${file}.${process.pid}.${++snapshotSequence}.tmp`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(data));
+    fs.renameSync(temporary, file);
+  } finally {
+    fs.rmSync(temporary, {force:true});
+  }
+}
+
 function protocol(fixtureFile) {
   const read = () => JSON.parse(fs.readFileSync(fixtureFile, 'utf8'));
   let nextThread = 0;
@@ -40,7 +53,7 @@ function protocol(fixtureFile) {
         const thread = { id: 'desktop-fixture-' + ++nextThread, cwd: params.cwd, name: '', preview: '', createdAt: now, updatedAt: now, status: { type: 'idle' } };
         if (!params.ephemeral) {
           data.sessions.push(thread);
-          fs.writeFileSync(fixtureFile, JSON.stringify(data));
+          writeSnapshot(fixtureFile, data);
         }
         result = { thread, cwd: params.cwd, activePermissionProfile: params.permissions ? { id: params.permissions } : undefined };
         break;
@@ -49,7 +62,7 @@ function protocol(fixtureFile) {
       case 'thread/read': result = { thread: session() }; break;
       case 'thread/name/set': {
         if (session()) session().name = params.name;
-        fs.writeFileSync(fixtureFile, JSON.stringify(data));
+        writeSnapshot(fixtureFile, data);
         result = {};
         break;
       }
@@ -78,7 +91,7 @@ function protocol(fixtureFile) {
             snapshot.turns ??= {};
             snapshot.turns[threadId] ??= [];
             snapshot.turns[threadId].push({ ...turn, status: 'completed', items: [user, reply] });
-            fs.writeFileSync(fixtureFile, JSON.stringify(snapshot));
+            writeSnapshot(fixtureFile, snapshot);
           }
           send({ method: 'item/completed', params: { threadId, turnId: id, item: reply } });
           send({ method: 'turn/completed', params: { threadId, turn: { ...turn, status: 'completed' } } });
@@ -110,7 +123,7 @@ function protocol(fixtureFile) {
   };
 }
 
-module.exports = { protocol };
+module.exports = { protocol, writeSnapshot };
 
 if (require.main === module) {
   const fixtureFile = process.argv[2];

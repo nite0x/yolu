@@ -23,14 +23,23 @@ for (const entry of ['browser','desktop-chrome']) test(`${entry} preserves file 
   await card.locator('[data-action="changes-open"][data-mode="all"]').click();
   await f.locator('[data-change-file="README.md"]').click();
   await expect(f.locator('#projectFilesText')).toContainText('Updated fixture content');
+  const viewer = f.locator('#projectFilesText diffs-container');
+  // A bounded plain-text fallback is valid product behavior, but must not
+  // satisfy the regression that specifically verifies the lazy renderer.
+  await expect(viewer).toHaveCount(1);
+  await expect(viewer.locator('pre')).toContainText('Updated fixture content');
+  await expect(viewer).toHaveCSS('color-scheme', 'light');
   await expect(f.locator('#projectFilesError')).toBeHidden();
   await f.locator('#projectFilesMode').selectOption('working');
   await expect(f.locator('#projectFilesText')).toContainText('Updated fixture content');
+  await expect(viewer.locator('pre')).toHaveAttribute('data-diff-type', 'split');
   await expect(f.locator('#projectFilesError')).toBeHidden();
   await f.locator('#projectFilesLayout').selectOption('unified');
   await expect(f.locator('#projectFilesText')).toContainText('Updated fixture content');
+  await expect(viewer.locator('pre')).toHaveAttribute('data-diff-type', 'single');
   await page.evaluate(()=>window.YoluTheme.apply('dark'));
   await expect(f.locator('html')).toHaveAttribute('data-color-scheme','dark');
+  await expect(viewer).toHaveCSS('color-scheme', 'dark');
   await expect(f.locator('#projectFilesText')).toContainText('Updated fixture content');
   for(const width of [1440,760]) {
    await page.setViewportSize({width,height:900});

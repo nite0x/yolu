@@ -4,8 +4,8 @@
 
 - Original baseline: `4e9ff1790708dfae10545a2fabfe89e519350843`.
 - Branch: `codex/frontend-overhaul`; no pre-existing user edits (uploaded task files excluded).
-- Phase: initial audit complete; safe cleanup and implementation beginning.
-- Post-refactor review rounds: not started. Must execute all three serially.
+- Phase: primary refactoring and all three serial independent review/fix cycles complete; final post-review quality gates pending.
+- Reviews: round1 closed at `e60c004`; round2 closed at `1adb140`; round3 independently closed four P2 findings at baseline `1adb140`, with fixes in the round3 commit. All five review findings are fixed and independently verified.
 - Initial read-only agents: `audit_state` (data/state/lifecycle); `audit_components` (components/styles/modules). These are not post-refactor review rounds.
 
 ## Decisions
@@ -14,11 +14,11 @@ Keep actual `frontend/{app,features,entities,core,api,shared}` organization and 
 
 ## Validation
 
-See [audit](audit.md) for established baseline. Logs are temporary `/tmp/yolu-baseline-*.log` files. Node checks, build, app/chat tests and component Chromium baseline passed; legacy tests and Go application browser baseline pending. Verified Go 1.26.11 is installed outside the repository; prefix commands with `PATH=/tmp/yolu-toolchain/go/bin:$PATH`. Chromium is `/usr/bin/chromium`.
+See [audit](audit.md) for established baseline. Logs are temporary `/tmp/yolu-baseline-*.log` files. Baseline Node checks/build, app40/chat167/UI10/legacy221, architecture7/bundle3, application Chromium6 and catalog Chromium1 all passed. Verified Go 1.26.11 is installed outside the repository; prefix commands with `PATH=/tmp/yolu-toolchain/go/bin:$PATH`. Chromium is `/usr/bin/chromium`.
 
 ## Next
 
-Finish initial independent findings, remove confirmed dead code, consolidate shared presentation, resolve resource/state issues and strengthen automated boundaries. Then full validation, three serial review/fix/verify/commit rounds and final gates.
+Complete final post-review check/build/test/diff/scope gates, reconcile final reports, then push the independent branch and create a draft PR. Do not merge main.
 
 ## Safe cleanup
 
@@ -37,7 +37,7 @@ Finish initial independent findings, remove confirmed dead code, consolidate sha
 - Conversation list reuses shared splitter with explicit teardown. Removed unreachable project-resizer branch and styles.
 - Draft decode rejects malformed reading state and ignores damaged image records. Disposal cannot schedule retry/restore callbacks. Cloud draft restore retains capability restrictions. Explicit freshness reads bypass shared retention; quota uses shared API errors/transport.
 - Source graph check now detects all file cycles; eliminated original settings/messages type cycle. Full frontend TS/TSX Biome enabled without globally disabling recommended rules; actual accessibility/correctness fixes plus explained local analyzer exceptions.
-- Current validation: `npm run check` passed; app 50 passed; UI 20 passed; focused data/splitter 12 passed. Full rebuilt application browser and 221 legacy regressions running. Three review rounds still not started.
+- Integration validation completed: check passed; app50/UI20/chat168/legacy221/application Chromium6/catalog Chromium1 passed. At this integration checkpoint the three review rounds had not started; their outcomes follow below.
 
 ## Review round 1
 
@@ -55,3 +55,15 @@ Finish initial independent findings, remove confirmed dead code, consolidate sha
 - Retained actual resources and terminal browser exercises with real renderer/PTY assertions; strengthened terminal tests based on reviewer advice and registered fixture cleanup immediately.
 - Native execution unavailable: no Cargo/Rust compiler and missing GTK/WebKit pkg-config dependencies. Use real browser + desktop-chrome simulations; do not claim native Tauri or physical microphone verification.
 - Next: commit round2, then fresh final independent round3 and final quality gates.
+
+## Review round 3
+
+- Baseline: `1adb140`; independent fresh `review_round3` rechecks the entire original-to-current diff and actual owners, previous closures, test quality, engineering scope and documentation.
+- R3-001 P2 confirmed: progress header and Next still described initial audit/reviews-not-started after appended completion records. Root corrected them to the actual phase. Final completion reconciliation remains pending gates/reviewer closure.
+- Final pipeline: check -> production frontend build -> catalog build -> Go embed build; test consumers start only after output generation finishes.
+
+- R3-001 independently closed after header/baseline/Next reconciliation. R3-002 confirmed test false-positive under blocked lazy viewer; strengthened actual renderer/mode/computed-theme checks now fail under that fault.
+- Stronger checks revealed R3-003 effective theme remained light. Root synchronizes adopted CSS after theme setter; independent normal browser/desktop2 pass, fault-injected blocked viewer2 correctly fail. Classified P2 visual mismatch and fully fixed.
+- R3-004 actual fixture JSON truncation race fixed through shared atomic snapshots across all4 live writes. Deterministic current1 pass / old writer1 fail, independently repeated; real resources repeat2 pass. No retries/skips/weakening.
+- Round3 confirmed/fixed/independently closed4/4/4, all P2. Total review findings5, all closed; open P0/P1/P2=0. Independent source/graph/syntax/targeted checks pass.
+- Next: commit this completed third round; execute final full post-review quality gate before delivery.
