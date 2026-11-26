@@ -142,3 +142,7 @@ The first integration browser run exposed a geometry-readiness gap in the existi
 Final integrated gates (authoritative delivery results): API drift + strict TypeScript + full TS/TSX Biome passed; architecture10, shared UI21, application50, conversation171, classic/controller222, application Chromium12 (including two new upstream Cursor lifecycles), catalog Chromium/axe1 and bundle3 all passed: **490 tests total**. Production frontend and Go embed builds passed; critical JavaScript768753 gzip bytes, existing budgets passed. Component catalog production build had passed previously and its sources are unchanged by integration. No generated artifacts are authored by this PR.
 
 Logs: `/tmp/yolu-cursor-{check,build,go,app,chat,legacy}.log`, `/tmp/yolu-cursor-browser-ready.log`, `/tmp/yolu-cursor-catalog.log`. Screenshots: `/tmp/yolu-cursor-screenshots`. Earlier484-test metrics remain historical evidence for the original baseline, not the latest integration total. Native Tauri and physical microphone remain unverified as above.
+
+## Published handoff
+
+Draft PR [#2](https://github.com/nite0x/yolu/pull/2) is published and attached to the chat. GitHub confirmed it is a draft and conflict-free after integrating current main. Source integration commit: `e6edf453cfaf3388a33a52dfd0cf83664253ec5b`; preceding final-evidence documentation commit: `2c9d472710d0739ab120155558341aea183865d1`. Final metadata-only documentation follows without changing tested product code. Main has not been merged and no deployment was performed.

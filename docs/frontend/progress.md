@@ -4,7 +4,7 @@
 
 - Original baseline: `4e9ff1790708dfae10545a2fabfe89e519350843`.
 - Branch: `codex/frontend-overhaul`; no pre-existing user edits (uploaded task files excluded).
-- Phase: refactor, all three independent reviews, final gates and additional upstream Cursor integration review/revalidation complete; final merge commit and draft update pending.
+- Phase: complete. All code, three independent review/fix cycles, final gates and additional upstream Cursor integration review are committed and published in Draft PR #2.
 - Reviews: round1 closed at `e60c004`; round2 closed at `1adb140`; round3 independently closed five P2 findings (including the final-gate timing follow-up). All six review findings are fixed and independently verified.
 - Initial read-only agents: `audit_state` (data/state/lifecycle); `audit_components` (components/styles/modules). These are not post-refactor review rounds.
 
@@ -18,7 +18,7 @@ See [audit](audit.md) for established baseline. Logs are temporary `/tmp/yolu-ba
 
 ## Next
 
-Commit the verified merge with upstream `7399171`, push the independent branch, confirm Draft PR #2 is conflict-free and record the handoff. Main remains unmerged. Do not merge main.
+No implementation or verification work remains. Draft PR #2 awaits human review; do not merge or deploy without a separate request. Main remains unmerged. Do not merge main.
 
 ## Safe cleanup
 
@@ -102,3 +102,11 @@ Commit the verified merge with upstream `7399171`, push the independent branch, 
 - Final check/build/Go/app50/chat171/UI21/legacy222/browser12/catalog1/architecture10/bundle3 all pass:490 tests. Critical gzip768753 bytes, budget passes. Logs/screenshots use `/tmp/yolu-cursor-*`.
 - Drag test readiness now requires seeded1/2/1 rows and idle-list before geometry; original drop/save/reload assertions preserved and independently pass.
 - Restored generated chat artifacts to upstream versions; authored diff has zero backend/native/generated-output changes relative to integrated main. Updated final report with historical484 vs current490 distinction.
+
+## Published draft handoff
+
+- Draft PR: https://github.com/nite0x/yolu/pull/2 (attached to this chat).
+- Upstream integration merge: `e6edf453cfaf3388a33a52dfd0cf83664253ec5b`; upstream base: `739917135559f1fcad434e5781e1869b25b35307`.
+- GitHub confirmed draft=true and mergeable=true after the source push; main remains unmerged. PR description now reports current490-test validation and Cursor integration.
+- All6 mandatory-review findings independently closed; additional integration review has no confirmed source defects. Native Tauri and physical microphone remain explicitly unverified.
+- Final documentation-only handoff commit records this state; no product code changed after the490-test gates.
