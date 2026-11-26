@@ -24,6 +24,14 @@ export function mountSettings(host: SettingsHost) {
           results={results.map((result) => ({...result, error: result.error || undefined}))}
         />,
       ),
+    cursor: (container, results) =>
+      render(
+        container,
+        <AgyDiagnosticsResults
+          provider="cursor"
+          results={results.map((result) => ({...result, error: result.error || undefined}))}
+        />,
+      ),
   })
 }
 

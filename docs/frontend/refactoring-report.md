@@ -1,6 +1,6 @@
 # Frontend refactoring report
 
-Original baseline: `4e9ff1790708dfae10545a2fabfe89e519350843`. Independent branch: `codex/frontend-overhaul`. Final source and review state: `8c6f87c1df306d07e0d17663bee92abb3eda759e`. Implementation, three serial independent review cycles and final quality gates are complete. All six confirmed review findings are fixed and independently closed. No confirmed open P0/P1/P2 remains.
+Original baseline: `4e9ff1790708dfae10545a2fabfe89e519350843`. Independent branch: `codex/frontend-overhaul`. Original-baseline reviewed source: `8c6f87c1df306d07e0d17663bee92abb3eda759e`. This branch subsequently integrates upstream Cursor commit `739917135559f1fcad434e5781e1869b25b35307`; final integration gates pass490 tests as detailed below. Implementation, three serial independent review cycles and final quality gates are complete. All six confirmed review findings are fixed and independently closed. No confirmed open P0/P1/P2 remains.
 
 ## Delivered scope
 
@@ -21,7 +21,7 @@ Yolu already had useful feature layers and shared primitives. The refactor retai
 
 Projects include registration, scanning, directory details and worktrees; Git retains overview/operations/selection; files retain tree, Diff, images and fullscreen reading; conversations include assistant, approvals, messages, drafts, streaming, history, voice and quota; settings and terminal preserve their existing flows. Workspace is shell composition and Issues remains the external tracker. No invented workspace/task business system was added. Git presentation already used the appropriate shared primitives, so it was audited and regression-tested without gratuitous redesign.
 
-No Go business code, database/schema/migrations, backend runtime/domain behavior, API protocol or Tauri native implementation changed. Browser and desktop chrome continue using shared frontend code. No shortcuts, preference keys, public asset names or active adapter contracts changed.
+This PR authors no Go business, database/schema/migration, backend runtime/domain, API protocol or Tauri native changes relative to integrated main `7399171`. The upstream Cursor backend is imported unchanged. Browser and desktop chrome continue using shared frontend code. No shortcuts, preference keys, public asset names or active adapter contracts changed.
 
 ## Deletions and consolidation
 
@@ -34,7 +34,7 @@ No Go business code, database/schema/migrations, backend runtime/domain behavior
 
 Component details: [inventory](component-inventory.md). Final boundaries and lifecycle contracts: [architecture](architecture.md), [conventions](conventions.md), [source map](../../frontend/README.md), [shared UI](../../frontend/shared/ui/README.md).
 
-## Measured results
+## Original-baseline measured results
 
 | Measurement | Baseline | Final |
 | --- | ---: | ---: |
@@ -68,7 +68,7 @@ Round 1 found no verified defect and retained complete coverage/evidence. Round 
 
 Severity totals: P0=0, P1=0, P2=6; confirmed/fixed/independently closed=6/6/6. No finding was downgraded to defer a fix. No unresolved backend-dependent blocker was found. The mistaken expectation that Pierre uses DOM `unified` rather than `single` was rejected before classifying the real theme issue; live CSS/runtime dependency candidates were also rejected as dead code. See [issue ledger](reviews/issues.md) and [round 1](reviews/round-1-architecture.md), [round 2](reviews/round-2-behavior.md), [round 3](reviews/round-3-final.md) for locations, evidence, reproduction, fixes and closure.
 
-## Final quality gates
+## Original-baseline final quality gates
 
 Executed after the round-3 product fixes, using Node24.22.3/npm11.19.1 and verified Go1.26.11. No build ran while tests consumed its generated output.
 
@@ -106,7 +106,7 @@ Actual native Tauri launch/installer behavior is **not verified**: this environm
 
 Persistent lint covers every frontend TS/TSX source. Active classic page scripts retain shared-global HTML loading and receive syntax, whole-document reference and integration checks; their standalone module-lint false positives are not misreported as a clean module-lint run. Intentional Tailwind/CSP bridge styles remain; CSS is validated through actual builds/rendering rather than an incompatible generic parser. These boundaries are documented, not hidden by globally disabled rules.
 
-Generated assets were built and embedded for verification, then restored/excluded from commits as requested. Run `npm ci` and `npm run build` before compiling a backend or desktop package. Temporary audit tools, task uploads, logs, binaries and fixtures were not committed. The final source worktree is clean. This branch is for draft human review and has not been merged into main.
+Generated assets were built and embedded for verification, then restored/excluded from commits as requested. Run `npm ci` and `npm run build` before compiling a backend or desktop package. Temporary audit tools, task uploads, logs, binaries and fixtures were not committed. Generated artifacts are excluded from the authored diff. This branch is for draft human review and has not been merged into main.
 
 ## Implementation and review commits
 
@@ -127,4 +127,18 @@ Final documentation/handoff commits and the complete immutable history are avail
 
 ## Delivery
 
-All code and review work is complete. The independent branch is ready for the draft review handoff; its URL is recorded in progress and returned to the user after publication.
+Draft review: https://github.com/nite0x/yolu/pull/2. The branch remains unmerged. See the final upstream integration record below.
+
+## Final upstream Cursor integration and revalidation
+
+During the long task, remote main advanced from the original baseline to `739917135559f1fcad434e5781e1869b25b35307` (Cursor Agent through shared ACP conversations). The newly created draft initially had two content conflicts. Main was merged into this independent branch without rewriting the reviewed commits or changing main.
+
+Resolved model/provider ownership by keeping the cycle-free ChatModel definition and Cursor union/capabilities/permissions. Extended the existing shared diagnostic composition to preserve Cursor's upstream labels, `data-cursor-environment`, PATH text and bridge contract. Added one focused Cursor diagnostic regression. Automatic merges retain upstream Cursor discovery, settings, runtime, icons, strings, test fixture and browser lifecycle tests. Backend/native/API files are byte-identical to integrated main; no backend edits were used to resolve the frontend task.
+
+A fresh read-only `review_integration` performed an additional integration review (not a replacement for the three completed rounds):82 independent tests passed, architecture/syntax/diff checks passed, and30 upstream/current diagnostic state renderings matched byte-for-byte across Codex/Antigravity/Cursor. It confirmed all prior fixes and new Cursor behavior remain intact; no source integration defect was found.
+
+The first integration browser run exposed a geometry-readiness gap in the existing drag test: project headings can arrive before conversation rows. Setup now asserts seeded1/2/1 rows and idle-list state before measuring coordinates. Drop/persist/reload/collapse assertions remain unchanged. The complete strengthened flow passed independently, and the complete12-test browser suite passed afterward; no product drag regression was reproduced.
+
+Final integrated gates (authoritative delivery results): API drift + strict TypeScript + full TS/TSX Biome passed; architecture10, shared UI21, application50, conversation171, classic/controller222, application Chromium12 (including two new upstream Cursor lifecycles), catalog Chromium/axe1 and bundle3 all passed: **490 tests total**. Production frontend and Go embed builds passed; critical JavaScript768753 gzip bytes, existing budgets passed. Component catalog production build had passed previously and its sources are unchanged by integration. No generated artifacts are authored by this PR.
+
+Logs: `/tmp/yolu-cursor-{check,build,go,app,chat,legacy}.log`, `/tmp/yolu-cursor-browser-ready.log`, `/tmp/yolu-cursor-catalog.log`. Screenshots: `/tmp/yolu-cursor-screenshots`. Earlier484-test metrics remain historical evidence for the original baseline, not the latest integration total. Native Tauri and physical microphone remain unverified as above.

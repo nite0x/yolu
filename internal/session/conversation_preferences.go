@@ -28,8 +28,8 @@ func (p conversationPreferences) turnSettings() TurnSettings {
 }
 
 func conversationPreferencesKey(provider string) string {
-	if model.NormalizeProvider(provider) == model.ProviderAgy {
-		return "conversation_defaults:v1:agy"
+	if model.IsACPProvider(provider) {
+		return "conversation_defaults:v1:" + provider
 	}
 	return "conversation_defaults:v1"
 }
@@ -86,8 +86,8 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 			httpx.DbError(w, err)
 			return
 		}
-		if provider == model.ProviderAgy {
-			catalog, err := a.agyOptionsCatalog(r.Context(), r.URL.Query().Get("refresh") == "1")
+		if model.IsACPProvider(provider) {
+			catalog, err := a.acpOptionsCatalog(r.Context(), provider, r.URL.Query().Get("refresh") == "1")
 			result := map[string]any{"provider": provider, "settings": settings, "models": catalog.Models, "available": a.Execution.Remote == nil}
 			if err != nil {
 				result["models_error"] = err.Error()
@@ -116,13 +116,13 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if provider == model.ProviderAgy {
+	if model.IsACPProvider(provider) {
 		if turn.ServiceTier != "" {
 			httpx.WriteError(w, http.StatusBadRequest, "所选对话引擎不支持设置响应速度")
 			return
 		}
 		if turn.Effort != "" {
-			catalog, err := a.agyOptionsCatalog(r.Context(), false)
+			catalog, err := a.acpOptionsCatalog(r.Context(), provider, false)
 			if err != nil {
 				httpx.WriteError(w, http.StatusServiceUnavailable, "暂时无法读取可用模型。")
 				return

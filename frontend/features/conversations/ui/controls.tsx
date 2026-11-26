@@ -14,10 +14,10 @@ import {AgentIcon} from "@/entities/conversations/agent-icon"
 import {isGeneralConversationDirectory} from "@/entities/conversations/context"
 import {ConversationStatusBadge} from "@/shared/ui/conversation-surface"
 
-const providerLabel = (provider?: AgentProvider) => provider === "agy" ? "Antigravity" : "Codex";
+const providerLabel = (provider?: AgentProvider) => provider === "cursor" ? "Cursor" : provider === "agy" ? "Antigravity" : "Codex";
 const permissionIcons = {ask: ShieldQuestionMarkIcon, auto: ShieldCheckIcon, full: ShieldAlertIcon};
-const modeLabel = (mode?: string) => mode === "plan" ? uiText("规划") : mode === "default" ? uiText("执行") : mode === "accept-edits" ? uiText("自动编辑") : mode === "auto" ? uiText("自动") : mode || uiText("未获取工作模式");
-const approvalLabel = (policy: unknown, provider?: AgentProvider) => typeof policy === "string" ? ({"on-request": uiText("按需审批"), untrusted: uiText("非受信任操作需审批"), "on-failure": uiText("失败后审批"), never: uiText("无需审批")}[policy] || policy) : provider === "agy" ? uiText("由 Antigravity 管理") : uiText("由 Codex 管理");
+const modeLabel = (mode?: string) => mode === "plan" ? uiText("规划") : mode === "default" || mode === "agent" ? uiText("执行") : mode === "ask" ? uiText("问答") : mode === "accept-edits" ? uiText("自动编辑") : mode === "auto" ? uiText("自动") : mode || uiText("未获取工作模式");
+const approvalLabel = (policy: unknown, provider?: AgentProvider) => typeof policy === "string" ? ({"on-request": uiText("按需审批"), untrusted: uiText("非受信任操作需审批"), "on-failure": uiText("失败后审批"), never: uiText("无需审批")}[policy] || policy) : provider === "cursor" ? uiText("由 Cursor 管理") : provider === "agy" ? uiText("由 Antigravity 管理") : uiText("由 Codex 管理");
 type ControlsProps = {controller: ChatController; portal: RefObject<HTMLElement | null>};
 const overlayClass = "shadcn-scope chat-control-overlay rounded-xl border border-border bg-background p-4 text-sm text-foreground shadow-lg outline-none";
 
@@ -110,7 +110,7 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
   const tierOptions = s.provider === "codex" ? selectedModel?.serviceTiers || [] : [];
   const selectedTier = tierOptions.find(tier => tier.id === settings.serviceTier);
   const tiers = tierOptions.filter((tier, index, all) => tier.id && all.findIndex(item => item.id === tier.id) === index);
-  const unreported = s.provider === "agy" ? uiText("Antigravity 未报告") : uiText("Codex 未报告");
+  const unreported = s.provider === "cursor" ? uiText("Cursor 未报告") : s.provider === "agy" ? uiText("Antigravity 未报告") : uiText("Codex 未报告");
   const changed = Object.values(s.settings).some(Boolean);
   const nextTurnChanged = nextModel !== model || nextEffort !== effort || nextMode !== context?.mode ||
     (!!permission && permission.value !== contextPermission(context)) || (!!selectedTier && selectedTier.id !== context?.serviceTier);
@@ -155,7 +155,7 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
       <div className="chat-setting-body">
         {!readOnly && <>
           <SettingPicker portal={portal} summary={uiText("模型")} display={summaryModel} label={uiText("下轮模型")} options={modelOptions} value={s.session ? nextModel || "" : s.settings.model || ""} disabled={disabled || s.optionsLoading} onChange={value => controller.setSettings({...s.settings, model: value && (!s.session || value !== model) ? value : undefined, effort: undefined, serviceTier: undefined, useModelEffort: undefined, useDefaultSpeed: undefined})} />
-          <div className="chat-setting-line"><strong>{uiText("思考强度")}</strong>{s.provider === "agy" && !selectedModel?.supportedReasoningEfforts?.length
+          <div className="chat-setting-line"><strong>{uiText("思考强度")}</strong>{s.provider !== "codex" && !selectedModel?.supportedReasoningEfforts?.length
             ? <span className="chat-setting-unavailable">{uiText("由模型决定")}</span>
             : <SettingChoices label={uiText("下轮思考强度")} options={efforts} value={(s.session ? nextEffort : settings.effort) || ""} disabled={disabled || s.optionsLoading || !selectedModel} onChange={value => controller.setSettings({
               ...s.settings,
@@ -186,6 +186,7 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
           <SettingChoices label={uiText("对话引擎")} options={[
             {value: "codex", label: providerLabel("codex"), icon: <AgentIcon agent="codex" decorative />},
             {value: "agy", label: providerLabel("agy"), icon: <AgentIcon agent="agy" decorative />},
+            {value: "cursor", label: providerLabel("cursor"), icon: <AgentIcon agent="cursor" decorative />},
           ]} value={s.provider} disabled={disabled} onChange={value => controller.setProvider(value as AgentProvider)} />
         </div>
       </div>}

@@ -67,7 +67,7 @@ func (a *Service) CreateSession(ctx context.Context, input CreateSessionInput) (
 	if err := input.Settings.Validate(); err != nil {
 		return CreationResult{}, creationFailure(400, "", err.Error())
 	}
-	if provider == model.ProviderAgy && input.Settings.ServiceTier != "" {
+	if model.IsACPProvider(provider) && input.Settings.ServiceTier != "" {
 		return CreationResult{}, creationFailure(400, "", "所选对话引擎不支持设置响应速度")
 	}
 	if (input.Text == "" && len(input.Images) == 0 && input.Purpose != "merge_conflict") || len(input.Text) > 64000 || input.RequestID == "" || len(input.RequestID) > 100 || (input.Purpose != "" && input.Purpose != "merge_conflict") {
@@ -132,8 +132,8 @@ func (a *Service) CreateSession(ctx context.Context, input CreateSessionInput) (
 		return CreationResult{}, &creationError{status: 409, code: "directory_conflict", cause: errors.New(directoryConflictMessage), conflict: conflict}
 	}
 	defer releaseDirectories()
-	if provider == model.ProviderAgy {
-		run, status, err := a.startAgySession(ctx, key, fingerprint, input, target)
+	if model.IsACPProvider(provider) {
+		run, status, err := a.startACPSession(ctx, provider, key, fingerprint, input, target)
 		if err != nil {
 			return CreationResult{}, creationProviderFailure(status, err)
 		}

@@ -123,7 +123,8 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		scans.Go(func() { cloudIdentity, cloudErr = a.cloudCatalog(r.Context(), force) })
 	}
 	found, codexErr := a.sessionCatalog(r.Context(), scope, archived, force)
-	agyFound, agyErr := a.scanAgyCatalog(r.Context(), scope, archived)
+	agyFound, agyErr := a.scanACPCatalog(r.Context(), model.ProviderAgy, scope, archived)
+	cursorFound, cursorErr := a.scanACPCatalog(r.Context(), model.ProviderCursor, scope, archived)
 	scans.Wait()
 	cached, err := a.cachedScope(scope, cloudIdentity)
 	if err != nil {
@@ -151,7 +152,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		cached = filtered
 		respond(cached, cause)
 	}
-	if codexErr != nil && len(agyFound) == 0 && (agyErr != nil || !hasProviderSessions(cached, model.ProviderAgy)) {
+	if codexErr != nil && len(agyFound) == 0 && (agyErr != nil || !hasProviderSessions(cached, model.ProviderAgy)) && len(cursorFound) == 0 && (cursorErr != nil || !hasProviderSessions(cached, model.ProviderCursor)) {
 		failure(codexErr)
 		return
 	}
@@ -178,7 +179,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		if c == nil {
 			c, err = a.openSessions(r.Context())
 			if err != nil {
-				if len(agyFound) == 0 && !hasProviderSessions(cached, model.ProviderAgy) {
+				if len(agyFound) == 0 && !hasProviderSessions(cached, model.ProviderAgy) && len(cursorFound) == 0 && !hasProviderSessions(cached, model.ProviderCursor) {
 					failure(err)
 					return
 				}
@@ -213,8 +214,12 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 			a.decorateSessionActivity(&sessions[i])
 			continue
 		}
-		if model.NormalizeProvider(sessions[i].Provider) == model.ProviderAgy {
-			_, listed := agyFound[sessions[i].ID]
+		if model.IsACPProvider(sessions[i].Provider) {
+			listedSessions := agyFound
+			if sessions[i].Provider == model.ProviderCursor {
+				listedSessions = cursorFound
+			}
+			_, listed := listedSessions[sessions[i].ID]
 			sessions[i].Available = listed || archived || a.ChatFor(sessions[i].ID) != nil || sessions[i].Source == "workbench"
 			if !sessions[i].Available {
 				sessions[i].Error = "对话暂不可读取，请刷新重试"
@@ -309,7 +314,7 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer releaseDirectories()
-	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
+	if model.IsACPProvider(record.Provider) {
 		if !platform.AbsoluteWorkspacePath(record.Cwd) {
 			httpx.WriteError(w, 409, "对话工作目录不是绝对路径")
 			return
@@ -320,23 +325,29 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		dirs := append([]string{}, p.AdditionalDirectories...)
 		p.Tool = "agy"
+		if record.Provider == model.ProviderCursor {
+			p.Tool = "cursor-agent"
+		}
 		p.Cwd = record.Cwd
 		p.Session = id
 		p.AdditionalDirectories = []string{}
 		p.Args = []string{"--conversation", id}
+		if record.Provider == model.ProviderCursor {
+			p.Args = []string{"--resume", id}
+		}
 		for _, dir := range dirs {
 			if !platform.SameWorkspacePath(dir, p.Cwd) {
 				p.AdditionalDirectories = append(p.AdditionalDirectories, dir)
 				p.Args = append(p.Args, "--add-dir", dir)
 			}
 		}
-		p.Command = platform.DisplayCommand("agy", p.Args, a.Execution.Remote == nil && platform.NativeWindows())
-		p.Title = "Antigravity · " + record.Name
+		p.Command = platform.DisplayCommand(p.Tool, p.Args, a.Execution.Remote == nil && platform.NativeWindows())
+		p.Title = model.ProviderName(record.Provider) + " · " + record.Name
 		if err := a.Execution.LaunchSimpleTerminal(p); err != nil {
 			httpx.WriteJSON(w, 503, map[string]string{"error": err.Error(), "command": p.Command})
 			return
 		}
-		httpx.WriteJSON(w, 200, map[string]string{"message": "已向终端发送 Antigravity 启动请求，请在终端中继续对话", "command": p.Command})
+		httpx.WriteJSON(w, 200, map[string]string{"message": "已向终端发送 " + model.ProviderName(record.Provider) + " 启动请求，请在终端中继续对话", "command": p.Command})
 		return
 	}
 	c, err := a.openSessions(r.Context())

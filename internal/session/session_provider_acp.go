@@ -3,24 +3,24 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"worktree-hub/internal/acp"
-	"worktree-hub/internal/agy"
 	"worktree-hub/internal/model"
 )
 
-func (a *Service) startAgySession(startup context.Context, key, fingerprint string, input newSessionInput, execution executionContext) (*ChatRun, int, error) {
+func (a *Service) startACPSession(startup context.Context, provider, key, fingerprint string, input newSessionInput, execution executionContext) (*ChatRun, int, error) {
 	if a.Execution.Remote != nil {
-		return nil, 501, errors.New("暂不支持在远端 WSL 环境启动 Antigravity 对话")
+		return nil, 501, fmt.Errorf("暂不支持在远端 WSL 环境启动 %s 对话", model.ProviderName(provider))
 	}
 	plan := execution.plan
 	ctx, cancel := context.WithCancel(context.WithoutCancel(startup))
 	// ACP has no isolated directory grant. Preserve approved associations as
 	// reference metadata and start only in the selected execution directory.
 	plan.AdditionalDirectories = nil
-	flags := agy.ACPFlagsForPermission(input.Settings.Permission, plan.AdditionalDirectories)
-	c, _, err := a.openAgy(ctx, flags...)
+	flags := a.acpFlags(provider, input.Settings.Permission, plan.AdditionalDirectories)
+	c, _, err := a.openACP(ctx, provider, flags...)
 	if err != nil {
 		cancel()
 		return nil, 503, err
@@ -45,7 +45,7 @@ func (a *Service) startAgySession(startup context.Context, key, fingerprint stri
 	if len(plan.AdditionalDirectories) > 0 {
 		params["additionalDirectories"] = plan.AdditionalDirectories
 	}
-	if execution.instructions != "" {
+	if execution.instructions != "" && provider == model.ProviderAgy {
 		params["_meta"] = map[string]any{
 			"antigravity": map[string]any{
 				"systemPrompt": map[string]any{"append": execution.instructions},
@@ -54,11 +54,11 @@ func (a *Service) startAgySession(startup context.Context, key, fingerprint stri
 	}
 	var setup acp.SessionSetupResult
 	if err := c.Call(requestCtx, "session/new", params, &setup); err != nil || setup.SessionID == "" {
-		msg := "Antigravity 创建结果未确认，请刷新对话列表检查后再操作"
+		msg := model.ProviderName(provider) + " 创建结果未确认，请刷新对话列表检查后再操作"
 		if acp.IsAuthRequired(err) {
-			msg = "Antigravity 尚未登录，请先在终端运行 agy 或 agy acp --login 完成登录"
+			msg = acpLoginAdvice(provider)
 		} else if err != nil {
-			msg = "Antigravity 创建对话失败：" + err.Error()
+			msg = model.ProviderName(provider) + " 创建对话失败：" + err.Error()
 		}
 		return nil, 503, errors.New(msg)
 	}
@@ -69,7 +69,7 @@ func (a *Service) startAgySession(startup context.Context, key, fingerprint stri
 	name := initialSessionTitle(input.Text)
 	rec := model.Session{
 		ID:          setup.SessionID,
-		Provider:    model.ProviderAgy,
+		Provider:    provider,
 		Name:        name,
 		TitleSource: "initial",
 		Cwd:         plan.Cwd,
@@ -90,7 +90,7 @@ func (a *Service) startAgySession(startup context.Context, key, fingerprint stri
 		return nil, 500, err
 	}
 	run := &ChatRun{
-		provider:  model.ProviderAgy,
+		provider:  provider,
 		session:   rec.ID,
 		cwd:       rec.Cwd,
 		acpClient: c,
@@ -106,6 +106,6 @@ func (a *Service) startAgySession(startup context.Context, key, fingerprint stri
 	a.chats[rec.ID] = run
 	a.chatMu.Unlock()
 	keep = true
-	go a.DriveAgyChat(ctx, run, plan, input.Text, input.Images...)
+	go a.DriveACPChat(ctx, run, plan, input.Text, input.Images...)
 	return run, 202, nil
 }

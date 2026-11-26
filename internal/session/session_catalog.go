@@ -44,9 +44,9 @@ func (a *Service) SearchSessionsHandler(w http.ResponseWriter, r *http.Request) 
 		scans.Go(func() { _, archiveErr = a.sessionCatalog(r.Context(), sessionScope{}, true, false) })
 		scans.Wait()
 		discoveryErr = errors.Join(activeErr, archiveErr)
-	case model.ProviderAgy:
+	case model.ProviderAgy, model.ProviderCursor:
 		// Antigravity is optional, as it is on the Conversations page.
-		_, _ = a.scanAgyCatalog(r.Context(), sessionScope{}, false)
+		_, _ = a.scanACPCatalog(r.Context(), provider, sessionScope{}, false)
 	default:
 		provider = ""
 	}

@@ -16,6 +16,15 @@ The interface supports English and Simplified Chinese. It follows the system lan
 
 Codex compatibility depends on the installed CLI protocol. Check the CLI version in Settings and the tested versions in the release notes. An installed CLI alone does not establish protocol compatibility or model access; developers can run the opt-in compatibility check in the development guide.
 
+### Cursor Agent conversations
+
+Install and authenticate Cursor Agent in the environment containing your repository (`cursor-agent login`). In **Settings → Conversations**, select **Cursor** as the default agent or configure its model and permissions separately. You can also select Cursor in a new conversation's settings. **Settings → Diagnostics → Cursor Agent** checks the executable, ACP handshake, authentication and session list without sending a model prompt. Set `CURSOR_AGENT_PATH` if the executable is outside the usual search paths.
+
+Cursor uses the shared conversation UI for streaming messages, images, tool activity, diffs, approvals, structured questions and plan approval. Existing native sessions are discovered through ACP and resumed with their saved context. Pinning, renaming and archive state belong to Yolu. Terminal continuation runs `cursor-agent --resume <session-id>` in the recorded directory.
+
+Yolu creates and retains worktrees independently of Cursor conversations. Cursor and Antigravity do not enforce Yolu's independent per-directory access grants; additional bindings remain reference metadata and a managed read-only primary directory is rejected. Remote WSL conversations, live terminal history synchronization, steering and forking are unavailable for both ACP providers. Cursor supports Agent, Plan and Ask modes; model IDs and options come directly from ACP, and separate reasoning controls appear only when the provider advertises them. Sandbox, Auto-review and Run Everything follow Cursor's own policies; Yolu does not enable Run Everything by default.
+
+
 ## Projects and working directories
 
 A project registers a Git repository. Yolu discovers its existing worktrees through Git. A conversation can use a registered project's current checkout, reuse a worktree, or create an independent worktree for parallel development. Projects can have several conversations using different worktrees.

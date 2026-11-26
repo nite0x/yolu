@@ -12,7 +12,7 @@ Use the live [shared component guide](../../frontend/shared/ui/README.md) and `n
 
 Use native checkbox via `Check`; do not add a competing switch/select system. Popovers, dropdown/context menus use the existing Radix dependency or retained native details/dialog owner. Confirmation, form and page headings reuse existing dialog/field/section APIs. There is no generic application DataTable/search/page/layout framework to invent beyond current controls.
 
-`DiagnosticResultView` is a **feature-local** shared composition used by Codex and Antigravity wrappers. It shares status/header/report/check/fact rendering while wrappers retain recovery messages, provider facts and the Codex installation slot. Twenty rendered states were compared byte-for-byte against baseline before integration.
+`DiagnosticResultView` is a **feature-local** shared composition used by Codex, Antigravity and Cursor wrappers. It shares status/header/report/check/fact rendering while wrappers retain recovery messages, provider facts and the Codex installation slot. Twenty rendered states were compared byte-for-byte against baseline before integration.
 
 Removed: unused `SplitLayout`/`ApplicationPane` wrapper and its unused grid stylesheet, unreferenced `ProjectOpenActions`, and unused registry surface animation constants/components. Live `workspace-pane` class, directory card open actions, media-player styles and third-party primitive APIs remain.
 

@@ -4,7 +4,7 @@
 
 - Original baseline: `4e9ff1790708dfae10545a2fabfe89e519350843`.
 - Branch: `codex/frontend-overhaul`; no pre-existing user edits (uploaded task files excluded).
-- Phase: implementation, all three serial independent review/fix cycles and final full quality gates passed; final report complete; remote branch/draft review handoff pending.
+- Phase: refactor, all three independent reviews, final gates and additional upstream Cursor integration review/revalidation complete; final merge commit and draft update pending.
 - Reviews: round1 closed at `e60c004`; round2 closed at `1adb140`; round3 independently closed five P2 findings (including the final-gate timing follow-up). All six review findings are fixed and independently verified.
 - Initial read-only agents: `audit_state` (data/state/lifecycle); `audit_components` (components/styles/modules). These are not post-refactor review rounds.
 
@@ -18,7 +18,7 @@ See [audit](audit.md) for established baseline. Logs are temporary `/tmp/yolu-ba
 
 ## Next
 
-Push `codex/frontend-overhaul`, create the authorized draft PR, attach its URL and record the actual handoff. Main must remain unmerged. Do not merge main.
+Commit the verified merge with upstream `7399171`, push the independent branch, confirm Draft PR #2 is conflict-free and record the handoff. Main remains unmerged. Do not merge main.
 
 ## Safe cleanup
 
@@ -86,3 +86,19 @@ Push `codex/frontend-overhaul`, create the authorized draft PR, attach its URL a
 - Source worktree clean before final documentation write; diff/scope/generated-output checks pass. No prohibited backend/native paths changed.
 - Final gates passed484 tests plus contract/type/lint/build/budget checks. All6 review findings closed; native Tauri and physical microphone explicitly unverified.
 - Next remaining action is authorized remote draft review handoff; no merge or deployment requested.
+
+## Upstream integration after draft creation
+
+- Draft PR: https://github.com/nite0x/yolu/pull/2 (attached to chat).
+- Remote main advanced during the long task from `4e9ff17` to `739917135559f1fcad434e5781e1869b25b35307` (Cursor Agent integration). Draft initially had two content conflicts.
+- Merge upstream into the independent branch without rewriting reviewed history. Upstream backend changes are imported unchanged; this PR must have zero backend/native diff relative to integrated main.
+- Resolve model provider union while retaining cycle-free ChatModel ownership; adapt shared diagnostic composition to Cursor's label/data attribute/PATH text. Preserve automatically merged upstream runtime/options/settings/fixtures and new Cursor browser tests.
+- Prior 484-test final result remains valid for original baseline; new integration needs its own actual counts and evidence before final delivery.
+
+## Upstream integration verified
+
+- Two frontend conflicts resolved with Cursor provider behavior intact and cycle-free ChatModel ownership. Shared diagnostic composition now supports all3 providers; added Cursor identity regression.
+- Fresh read-only `review_integration`:82 tests, architecture/syntax/diff checks and30 exact upstream/current diagnostic SSR states pass; no source integration defect. Upstream backend/native/API/test fixture behavior remains unchanged relativemain7399171.
+- Final check/build/Go/app50/chat171/UI21/legacy222/browser12/catalog1/architecture10/bundle3 all pass:490 tests. Critical gzip768753 bytes, budget passes. Logs/screenshots use `/tmp/yolu-cursor-*`.
+- Drag test readiness now requires seeded1/2/1 rows and idle-list before geometry; original drop/save/reload assertions preserved and independently pass.
+- Restored generated chat artifacts to upstream versions; authored diff has zero backend/native/generated-output changes relative to integrated main. Updated final report with historical484 vs current490 distinction.

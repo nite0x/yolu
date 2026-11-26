@@ -139,7 +139,7 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
     } as Record<string, {label: string; icon: LucideIcon}>)[state]
     const StatusIcon = status?.icon
     const cloud = s.provider === "codex-cloud"
-    const agent = s.yolu_assistant ? "yolu-assistant" : cloud ? "codex-cloud" : s.provider === "agy" ? "agy" : "codex"
+    const agent = s.yolu_assistant ? "yolu-assistant" : cloud ? "codex-cloud" : s.provider === "cursor" ? "cursor" : s.provider === "agy" ? "agy" : "codex"
     const collection = row?.group.collection
     const showProject = !collection && directoryContext && !!s.context?.project
     const showProjectDirectory = collection === "project" && !!s.cwd && conversationPathKey(s.cwd) !== conversationPathKey(row?.group.projectPath || "")

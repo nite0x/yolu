@@ -316,10 +316,10 @@ func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) 
 		a.cloudHistory(w, r, record)
 		return
 	}
-	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
-		history, err := a.readAgySessionHistory(r.Context(), record)
+	if model.IsACPProvider(model.NormalizeProvider(record.Provider)) {
+		history, err := a.readACPSessionHistory(r.Context(), record)
 		if err != nil {
-			httpx.WriteError(w, 503, "无法读取 Antigravity 对话历史："+err.Error())
+			httpx.WriteError(w, 503, "无法读取 "+model.ProviderName(record.Provider)+" 对话历史："+err.Error())
 			return
 		}
 		a.prepareHistoryMedia(record.ID, history.Entries)

@@ -31,6 +31,7 @@ type fakeACPClient struct {
 	listSessions  []acp.SessionSummary
 	replayOnLoad  []acp.SessionUpdate
 	closeOnce     sync.Once
+	ignoreCancel  bool
 }
 
 func newFakeACPClient(cwd string) *fakeACPClient {
@@ -140,7 +141,7 @@ func (f *fakeACPClient) Notify(method string, params any) error {
 	f.mu.Lock()
 	f.notifications = append(f.notifications, method)
 	f.mu.Unlock()
-	if method == "session/cancel" {
+	if method == "session/cancel" && !f.ignoreCancel {
 		select {
 		case f.promptGate <- acp.PromptResult{StopReason: "cancelled"}:
 		default:
@@ -172,29 +173,44 @@ func (f *fakeACPClient) emitUpdate(upd acp.SessionUpdate) {
 	f.events <- acp.Message{Method: "session/update", Params: raw}
 }
 
-func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T) {
+func TestACPProviderLifecycleParity(t *testing.T) {
+	for _, provider := range []string{model.ProviderAgy, model.ProviderCursor} {
+		t.Run(provider, func(t *testing.T) { testACPProviderLifecycle(t, provider) })
+	}
+}
+func testACPProviderLifecycle(t *testing.T, provider string) {
 	a, q, _, _ := chatFixture(t)
 	const prompt = "帮我检查测试并修复问题"
 	fakeACP := newFakeACPClient(q.Path)
 	var openFlags []string
-	a.openAgy = func(_ context.Context, flags ...string) (acp.Client, acp.InitializeResult, error) {
+	open := func(_ context.Context, flags ...string) (acp.Client, acp.InitializeResult, error) {
 		openFlags = flags
 		return fakeACP, acp.InitializeResult{AgentInfo: acp.AgentInfo{Name: "Antigravity ACP Server", Version: "1.5.12"}}, nil
+	}
+	a.openAgy = open
+	if provider == model.ProviderCursor {
+		a.openCursor = open
+		a.cursorCatalog = &acp.OptionCatalog{Models: []codex.ChatModel{
+			{Model: "gemini-3-pro", Default: true}, {Model: "gemini-flash", Efforts: []struct {
+				Effort string `json:"reasoningEffort"`
+			}{{Effort: "low"}, {Effort: "medium"}}},
+		}, Modes: []string{"agent", "plan", "ask"}}
 	}
 	a.diagnoseAgy = func(context.Context) agy.Diagnostics {
 		return agy.Diagnostics{Status: "ok", Version: "1.5.12", CLIPath: "/usr/local/bin/agy", Checks: []agy.DiagnosticCheck{{ID: "cli", Name: "CLI", Status: "ok", Message: "/usr/local/bin/agy"}}}
 	}
 
 	// 1. Diagnostics & Options
-	code, raw := call(t, a, "GET", "/api/settings/agy", nil)
-	if code != 200 || !strings.Contains(string(raw), `"version":"1.5.12"`) {
-		t.Fatalf("agy diagnostics failed: %d %s", code, raw)
+	if provider == model.ProviderAgy {
+		if code, raw := call(t, a, "GET", "/api/settings/agy", nil); code != 200 || !strings.Contains(string(raw), `"version":"1.5.12"`) {
+			t.Fatalf("Antigravity diagnostics: %d %s", code, raw)
+		}
 	}
-	code, raw = call(t, a, "GET", "/api/agents/chat-options?provider=agy", nil)
-	if code != 200 || !strings.Contains(string(raw), `"provider":"agy"`) || !strings.Contains(string(raw), `"steer":false`) {
+	code, raw := call(t, a, "GET", "/api/agents/chat-options?provider="+provider, nil)
+	if code != 200 || !strings.Contains(string(raw), `"provider":"`+provider+`"`) || !strings.Contains(string(raw), `"steer":false`) {
 		t.Fatalf("agy chat options failed: %d %s", code, raw)
 	}
-	endpoint := "/api/settings/conversation-defaults?provider=agy"
+	endpoint := "/api/settings/conversation-defaults?provider=" + provider
 	desired := conversationPreferences{Model: "gemini-flash", Effort: "low", Permission: "ask"}
 	for _, invalid := range []conversationPreferences{
 		{Model: desired.Model, Effort: "xhigh"},
@@ -216,7 +232,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 
 	// 2. Create AGY session
 	createInput := map[string]any{
-		"provider":   "agy",
+		"provider":   provider,
 		"project_id": q.ProjectID,
 		"cwd":        q.Path,
 		"text":       prompt,
@@ -231,7 +247,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 		Chat    ChatState     `json:"chat"`
 	}
 	_ = json.Unmarshal(raw, &created)
-	if created.Session.ID != "agy-session-1" || created.Session.Provider != model.ProviderAgy {
+	if created.Session.ID != "agy-session-1" || created.Session.Provider != provider {
 		t.Fatalf("unexpected created session: %+v", created.Session)
 	}
 
@@ -247,7 +263,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	if run == nil || run.snapshot().Status != "running" {
 		t.Fatalf("agy chat did not enter running state: %+v", run)
 	}
-	if context := run.snapshot().Context; context == nil || context.Model != desired.Model || context.Effort != desired.Effort || context.ApprovalPolicy != "on-request" || len(openFlags) != 1 || openFlags[0] != "--sandbox" {
+	if context := run.snapshot().Context; context == nil || context.Model != desired.Model || context.Effort != desired.Effort || (provider == model.ProviderAgy && (context.ApprovalPolicy != "on-request" || len(openFlags) != 1 || openFlags[0] != "--sandbox")) || (provider == model.ProviderCursor && (context.ApprovalPolicy != nil || len(openFlags) != 2 || openFlags[0] != "--sandbox" || openFlags[1] != "enabled")) {
 		t.Fatalf("defaults did not reach AGY: context=%+v flags=%v", context, openFlags)
 	}
 
@@ -259,7 +275,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	if lastConfigChange["configId"] != "thought_level" || lastConfigChange["value"] != desired.Effort {
 		t.Fatalf("effort was not applied after switching models: %v", lastConfigChange)
 	}
-	if meta == nil || meta["antigravity"] == nil {
+	if provider == model.ProviderAgy && (meta == nil || meta["antigravity"] == nil) {
 		t.Fatalf("expected antigravity systemPrompt metadata in session/new: %+v", fakeACP.newParams)
 	}
 
@@ -365,7 +381,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	fakeACP.replayOnLoad = []acp.SessionUpdate{userUpdate, assistantUpdate, toolUpdate}
 	code, raw = call(t, a, "GET", "/api/sessions/agy-session-1/history", nil)
 	var history SessionHistory
-	if code != 200 || json.Unmarshal(raw, &history) != nil || len(history.Entries) != 3 || len(doneState.Entries) != 3 {
+	if code != 200 || json.Unmarshal(raw, &history) != nil || len(history.Entries) != 3 || len(doneState.Entries) != 3 || history.Session.Provider != provider {
 		t.Fatalf("agy history failed: %d %s", code, raw)
 	}
 	for i, saved := range history.Entries {
@@ -384,7 +400,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 	}
 	fakeACP.listSessions = []acp.SessionSummary{{SessionID: "agy-session-1", Cwd: q.Path, Title: "AGY 对话", UpdatedAt: json.RawMessage(`1700000000`)}}
 	code, raw = call(t, a, "GET", "/api/sessions", nil)
-	if code != 200 || !strings.Contains(string(raw), `"provider":"agy"`) {
+	if code != 200 || !strings.Contains(string(raw), `"provider":"`+provider+`"`) {
 		t.Fatalf("sessions list failed when codex offline: %d %s", code, raw)
 	}
 
@@ -413,7 +429,7 @@ func TestAgyFullLifecycleCreateStreamApproveHistoryManageAndResume(t *testing.T)
 		return nil
 	}
 	code, raw = call(t, a, "POST", "/api/sessions/agy-session-1/resume", map[string]bool{"native_permissions": true})
-	if code != 200 || launched.Tool != "agy" || !strings.Contains(launched.Command, "--conversation") {
+	if code != 200 || launched.Tool != map[string]string{"agy": "agy", "cursor": "cursor-agent"}[provider] || !strings.Contains(launched.Command, map[string]string{"agy": "--conversation", "cursor": "--resume"}[provider]) {
 		t.Fatalf("agy resume failed: %d %s launched=%+v", code, raw, launched)
 	}
 

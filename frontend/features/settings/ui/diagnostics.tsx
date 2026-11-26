@@ -89,7 +89,7 @@ function DiagnosticResultView({
   checkAction,
 }: {
   result: ResultSummary
-  provider: "codex" | "agy"
+  provider: "codex" | "agy" | "cursor"
   label: string
   errorHelp?: ReactNode
   facts: Facts
@@ -102,6 +102,7 @@ function DiagnosticResultView({
       className="codex-diagnostic-result"
       data-codex-environment={provider === "codex" ? result.id : undefined}
       data-agy-environment={provider === "agy" ? result.id : undefined}
+      data-cursor-environment={provider === "cursor" ? result.id : undefined}
       aria-label={label}
       aria-busy={!!result.loading}
     >
@@ -215,21 +216,33 @@ type AgyDiagnosticResult = Omit<ResultSummary, "report" | "error"> & {
   report?: AgyDiagnosticReport
 }
 
-export function AgyDiagnosticsResults({results}: {results: AgyDiagnosticResult[]}) {
+export function AgyDiagnosticsResults({
+  results,
+  provider = "agy",
+}: {
+  results: AgyDiagnosticResult[]
+  provider?: "agy" | "cursor"
+}) {
   return (
     <>
       {results.map((result) => (
         <DiagnosticResultView
           key={result.id}
           result={result}
-          provider="agy"
-          label={uiText("{0} Antigravity 检测", result.name)}
+          provider={provider}
+          label={
+            provider === "cursor"
+              ? uiText("{0} Cursor 检测", result.name)
+              : uiText("{0} Antigravity 检测", result.name)
+          }
           facts={[
             [uiText("CLI 程序"), result.report?.cli_path],
             [uiText("ACP 服务"), result.report?.agent_name],
             [uiText("ACP 版本"), result.report?.version],
           ]}
-          candidatesLabel={uiText("PATH 中找到的 agy：")}
+          candidatesLabel={
+            provider === "cursor" ? uiText("PATH 中找到的 Cursor Agent：") : uiText("PATH 中找到的 agy：")
+          }
         />
       ))}
     </>

@@ -14,6 +14,7 @@ import (
 
 	"worktree-hub/internal/agy"
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/cursor"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/store"
 )
@@ -143,6 +144,8 @@ func executeRequestWithSessions(ctx context.Context, r Request, openSessions fun
 	switch r.Op {
 	case "codex-diagnostics":
 		return installer.Diagnose(ctx, openSessions), nil
+	case "cursor-diagnostics":
+		return cursor.Diagnose(ctx, nil), nil
 	case "agy-diagnostics":
 		return agy.Diagnose(ctx, nil), nil
 	case "codex-install-status":

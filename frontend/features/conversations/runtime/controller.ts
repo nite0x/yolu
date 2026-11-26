@@ -93,7 +93,12 @@ export class ChatController {
       readOnly: () => !!this.options.readOnly,
       update: patch => this.update(patch),
       loaded: session => {
-        if (isCloudSession(session)) this.updateSession(session);
+        const previousProvider = this.snapshot.provider;
+        this.updateSession(session);
+        if (previousProvider !== this.snapshot.provider) {
+          if (this.snapshot.optionsLoading) this.defaultsRefreshPending = true;
+          else if (!this.options.readOnly) void this.loadOptions();
+        }
         this.options.loaded?.(session);
       },
       synchronized: () => { this.historyNeedsSync = false; },
@@ -201,7 +206,7 @@ export class ChatController {
     const normalized = normalizeProvider(provider);
     if (normalized === this.snapshot.provider) return;
     if (this.snapshot.optionsLoading) this.defaultsRefreshPending = true;
-    this.update({provider: normalized, capabilities: defaultCapabilities(normalized), settings: {}, models: [], modes: [], defaults: {}, error: ""});
+    this.update({provider: normalized, cloudEnvironment: normalized === "codex" ? this.snapshot.cloudEnvironment : undefined, capabilities: defaultCapabilities(normalized), settings: {}, models: [], modes: [], defaults: {}, error: ""});
     this.draftChanged();
     if (!this.options.readOnly) void this.loadOptions();
   };
@@ -388,7 +393,7 @@ export class ChatController {
     const target: SessionTarget = before.session ? {allow_shared:update.allow_shared}
       : before.cloudEnvironment !== undefined ? {cloud_environment:before.cloudEnvironment} : {...this.options.target, ...update};
     const settings = this.isCloud() ? {} : before.settings;
-    const createProvider: AgentProvider | undefined = !before.session && before.provider === "agy" ? "agy" : undefined;
+    const createProvider: AgentProvider | undefined = !before.session && before.provider !== "codex" ? before.provider : undefined;
     const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.cwd === target.cwd && this.pending.cloud_environment === target.cloud_environment && this.pending.yolu_assistant === target.yolu_assistant
       && this.pending.provider === createProvider && this.pending.access === target.access && this.pending.allow_shared === target.allow_shared
       && JSON.stringify(this.pending.bindings) === JSON.stringify(target.bindings)
@@ -485,7 +490,7 @@ export class ChatController {
       return;
     }
     try {
-      const optionsPath = provider === "agy" ? "/api/agents/chat-options?provider=agy" : "/api/codex/chat-options";
+      const optionsPath = provider !== "codex" ? `/api/agents/chat-options?provider=${provider}` : "/api/codex/chat-options";
       const [catalog,context] = await Promise.all([this.options.readOnly ? Promise.resolve({models:[],modes:[]}) : this.options.request<{models:ChatModel[];modes:string[];defaults?:ConversationDefaults;capabilities?:ProviderCapabilities}>(optionsPath),this.snapshot.session ? this.options.request<ChatContext>(`${this.base()}/context`) : Promise.resolve(undefined)]);
       if (normalizeProvider(this.snapshot.session?.provider || this.snapshot.provider) !== provider) return;
       this.update({models:catalog.models||[],modes:catalog.modes||[],defaults:("defaults" in catalog ? catalog.defaults : undefined)||{},capabilities:("capabilities" in catalog && catalog.capabilities) ? catalog.capabilities : defaultCapabilities(provider),context});
@@ -494,7 +499,7 @@ export class ChatController {
       const refresh = this.defaultsRefreshPending;
       this.defaultsRefreshPending = false;
       this.update({optionsLoading:false});
-      if (refresh && this.connected && !this.snapshot.session) void this.loadOptions();
+      if (refresh && this.connected) void this.loadOptions();
     }
   };
   setSearch = (search:string) => this.update({search,searchError:""});

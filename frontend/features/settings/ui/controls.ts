@@ -11,6 +11,7 @@ interface Controls {
   "#cancelLanguage": HTMLButtonElement
   "#chatInputForm": HTMLFormElement
   "#checkAgy": HTMLButtonElement
+  "#checkCursor": HTMLButtonElement
   "#checkAllCodex": HTMLButtonElement
   "#checkCodex": HTMLButtonElement
   "#codexDiagnosticsCopy": HTMLTextAreaElement

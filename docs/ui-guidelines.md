@@ -204,3 +204,7 @@ Application text uses `uiText` with Simplified Chinese source messages and Engli
 A change to these shared contracts updates the owning component, affected callers and this document together. This keeps the implementation and the guidance aligned as the application grows.
 
 Ownership conflicts use `ConversationOccupied` above the composer: a lock icon, a concise heading and explanation, and Retry / Create chat branch actions. Keep unsent text and attachments, avoid repeating raw writer-lock errors, and route recovery through the existing poll/send and fork operations. Disable actions while pending or unavailable; use a second action row in narrow panes.
+
+## Agent selection
+
+Codex, Antigravity and Cursor share the conversation settings, creation picker and per-environment defaults. Keep the provider identity in saved drafts and creation requests. Provider changes clear incompatible model/mode overrides and cloud targets. Show provider-reported model identifiers and supported controls; do not infer Codex features or directory enforcement for ACP agents. Cursor questions and plan approval reuse the existing approval/form components in both desktop and browser entry points.

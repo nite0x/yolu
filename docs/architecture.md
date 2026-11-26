@@ -68,7 +68,7 @@ HTTP. It validates input, checks durable creation receipts, resolves bindings,
 reserves directories and selects the provider adapter. The HTTP adapter only
 decodes input, translates failures and reads the resulting session for output.
 
-`session_provider_codex.go` and `session_provider_agy.go` own provider startup and
+`session_provider_codex.go` and `session_provider_acp.go` own provider startup and
 their connection lifetime. `chatRuntime` owns active runs and title workers;
 `controlCoordinator` owns per-session serialization and the cleanup gate.
 Preserve the lock order documented in `session_control.go`. Provider-specific

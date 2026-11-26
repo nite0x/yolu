@@ -282,3 +282,20 @@ The application-local `GET`/`PUT /api/settings/language` endpoint stores `system
 A language change saves active drafts before reloading the UI; a failed save prevents the reload. Native menus use the narrowly scoped `set_ui_language` command, which accepts only the two resolved locales from the main window. This command grants no filesystem or process access.
 
 When adding a label, supply an English catalog entry, preserve interpolation placeholders and keep user-supplied values outside the message key. Keep native menu translations in `src-tauri/src/main.rs` synchronized. Run `node --test scripts/i18n.test.cjs`, the relevant chat tests and `go test ./internal/app -run TestLanguage` after localization changes; desktop menu changes also require the Rust checks and native verification.
+
+## Cursor integration checks
+
+The ACP lifecycle parity test runs the same create, stream, approval, replay, management, terminal and cancellation assertions for Antigravity and Cursor. Cursor-specific tests cover native model identifiers and structured question/plan replies. Run these without contacting a model:
+
+```bash
+go test ./internal/acp ./internal/agy ./internal/cursor ./internal/session ./internal/execution
+npm run chat:test
+YOLU_TEST_BINARY=bin/yolu npm run browser:test
+```
+
+An explicit opt-in check uses the installed and authenticated Cursor Agent for real file read/write, native history after a fresh service connection, contextual continuation and cancellation. It makes small model requests in a temporary Git worktree:
+
+```bash
+YOLU_TEST_CURSOR_TURN=1 go test ./internal/session \
+  -run '^TestInstalledCursorConversationLifecycle$' -count=1 -v -timeout 6m
+```

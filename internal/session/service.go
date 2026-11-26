@@ -11,6 +11,7 @@ import (
 	"worktree-hub/internal/acp"
 	"worktree-hub/internal/agy"
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/cursor"
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
@@ -27,6 +28,9 @@ type Service struct {
 	codexInstaller        codex.Installer
 	openLive              func(context.Context) (codex.LiveClient, error)
 	openTitleLive         func(context.Context) (codex.LiveClient, error)
+	openCursor            func(context.Context, ...string) (acp.Client, acp.InitializeResult, error)
+	cursorCatalogMu       sync.Mutex
+	cursorCatalog         *acp.OptionCatalog
 	openAgy               func(context.Context, ...string) (acp.Client, acp.InitializeResult, error)
 	diagnoseAgy           func(context.Context) agy.Diagnostics
 	agyCatalogMu          sync.Mutex
@@ -48,7 +52,7 @@ type Service struct {
 }
 
 func New(environment *execution.Service) *Service {
-	s := &Service{Execution: environment, openSessions: codex.OpenSessionClient, openLive: codex.OpenLive, openAgy: agy.OpenACP, watchHistory: WatchCodexHistory, terminalConflict: terminalSessionConflict, openExternal: platform.OpenExternal, chatRuntime: chatRuntime{chats: map[string]*ChatRun{}}, bridges: map[string]*terminalBridge{}}
+	s := &Service{Execution: environment, openSessions: codex.OpenSessionClient, openLive: codex.OpenLive, openAgy: agy.OpenACP, openCursor: cursor.OpenACP, watchHistory: WatchCodexHistory, terminalConflict: terminalSessionConflict, openExternal: platform.OpenExternal, chatRuntime: chatRuntime{chats: map[string]*ChatRun{}}, bridges: map[string]*terminalBridge{}}
 	s.diagnoseAgy = func(ctx context.Context) agy.Diagnostics { return agy.Diagnose(ctx, s.openAgy) }
 	if environment.Remote != nil {
 		s.openLive = environment.Remote.OpenCodex

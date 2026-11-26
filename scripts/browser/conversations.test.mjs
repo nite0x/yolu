@@ -34,6 +34,12 @@ test('project groups can be dropped in gaps and keep their order after reload', 
   const zeta = group('Zeta').locator('[data-project-reorder]');
   await page.goto(app.url);
   await expect(names).toHaveText(['Yolu','Browser fixture','Zeta']);
+  // Project headings arrive before their conversation inventories. Measuring
+  // the gap while rows are still filling would drag to obsolete coordinates.
+  await expect(group('Yolu').locator('[data-conversation-session]')).toHaveCount(1);
+  await expect(group('Browser fixture').locator('[data-conversation-session]')).toHaveCount(2);
+  await expect(group('Zeta').locator('[data-conversation-session]')).toHaveCount(1);
+  await expect(nav.locator('#sessionBrowserList')).toHaveAttribute('aria-busy', 'false');
   const source = await zeta.boundingBox();
   const first = await group('Yolu').boundingBox();
   const second = await group('Browser fixture').boundingBox();

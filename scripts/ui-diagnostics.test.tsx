@@ -152,3 +152,20 @@ test("loading and unavailable diagnostic reports keep accessible feedback withou
   assert(unknown?.textContent?.includes(uiText("未知")))
   assert(unknown?.textContent?.includes(uiText("未找到")))
 })
+
+test("Cursor diagnostics retain upstream provider identity through the shared report composition", () => {
+  const document = markup(
+    <AgyDiagnosticsResults
+      provider="cursor"
+      results={[{id: "local", name: "Local", report: {...report, agent_name: "cursor"}}]}
+    />,
+  )
+  const section = document.querySelector('[data-cursor-environment="local"]')
+  assert(section)
+  assert.equal(section.getAttribute("aria-label"), uiText("{0} Cursor 检测", "Local"))
+  assert.equal(section.hasAttribute("data-agy-environment"), false)
+  assert.equal(section.hasAttribute("data-codex-environment"), false)
+  assert(section.textContent?.includes(uiText("PATH 中找到的 Cursor Agent：")))
+  assert.equal(section.querySelector("[data-codex-install]"), null)
+  assert.equal(section.querySelector(".codex-diagnostic-checks")?.children.length, report.checks.length)
+})

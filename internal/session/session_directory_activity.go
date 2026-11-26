@@ -331,9 +331,9 @@ func changedSince(before, after fileSnapshot) []string {
 
 func (a *Service) decorateBindingRuntime(ctx context.Context, record model.Session, v *bindingView) {
 	provider := model.NormalizeProvider(record.Provider)
-	if provider == model.ProviderAgy {
+	if model.IsACPProvider(provider) {
 		v.Status = "unsupported"
-		v.Warning = "Antigravity 无法强制独立目录权限。请使用 Codex 执行多目录操作。"
+		v.Warning = model.ProviderName(provider) + " 无法强制独立目录权限。请使用 Codex 执行多目录操作。"
 	}
 	run := a.ChatFor(record.ID)
 	if run == nil {

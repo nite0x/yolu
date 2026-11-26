@@ -4,10 +4,12 @@ import {control as $} from "./controls"
 export type DiagnosticViews = {
   codex(container: HTMLElement, results: DiagnosticResult[]): void
   agy(container: HTMLElement, results: DiagnosticResult[]): void
+  cursor?(container: HTMLElement, results: DiagnosticResult[]): void
 }
 export function createDiagnosticsController(host: SettingsHost, views: DiagnosticViews) {
   const codexDiagnostics = new Map<string, DiagnosticResult>()
   const agyDiagnostics = new Map<string, DiagnosticResult>()
+  const cursorDiagnostics = new Map<string, DiagnosticResult>()
   const codexInstallationMonitors = new Set<string>()
   let codexDiagnosticsBatch = false
   let codexUnregisteredDistros: string[] = []
@@ -180,6 +182,48 @@ export function createDiagnosticsController(host: SettingsHost, views: Diagnosti
     }
   }
   $("#checkAgy")?.addEventListener("click", () => checkAgyEnvironment(host.context().environment))
+  function renderCursorDiagnostics() {
+    const results = [...cursorDiagnostics.values()]
+    const loading = results.some((result) => result.loading)
+    const button = $("#checkCursor")
+    if (button) button.disabled = loading
+    const status = $("#cursorDiagnosticsStatus")
+    if (status)
+      status.textContent = loading
+        ? uiText("正在检测执行环境，请稍候…")
+        : results.length
+          ? uiText("已检测 {0} 个环境；当前配置：{1}", results.length, host.environmentName())
+          : uiText("尚未检测")
+  }
+  function updateCursorDiagnostics() {
+    const container = $("#cursorDiagnosticsResults")
+    if (container && views.cursor) {
+      views.cursor(container, [...cursorDiagnostics.values()])
+    }
+    renderCursorDiagnostics()
+  }
+  function setCursorDiagnostic(id: string, changes: Partial<DiagnosticResult>) {
+    cursorDiagnostics.set(id, {...cursorDiagnostics.get(id), id, name: host.environmentName(id), ...changes})
+    updateCursorDiagnostics()
+  }
+  async function checkCursorEnvironment(id: string) {
+    const current = cursorDiagnostics.get(id)
+    if (current?.loading) return
+    setCursorDiagnostic(id, {loading: true, error: null})
+    try {
+      const report = await host.request<DiagnosticReport>("/api/settings/cursor", {
+        environment: id,
+        cache: "no-store",
+      })
+      if (!report || !Array.isArray(report.checks))
+        throw new Error(uiText("后台未返回有效检测报告，请确认 Yolu 后台版本"))
+      setCursorDiagnostic(id, {report, loading: false})
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error(String(cause))
+      setCursorDiagnostic(id, {loading: false, error: error.message})
+    }
+  }
+  $("#checkCursor")?.addEventListener("click", () => checkCursorEnvironment(host.context().environment))
   $("#checkAllCodex").addEventListener("click", async () => {
     if (codexDiagnosticsBatch || [...codexDiagnostics.values()].some((result) => result.loading)) return
     codexDiagnosticsBatch = true
@@ -263,11 +307,14 @@ export function createDiagnosticsController(host: SettingsHost, views: Diagnosti
     refresh() {
       renderCodexDiagnostics()
       renderAgyDiagnostics()
+      renderCursorDiagnostics()
       if (host.context().view !== "settings") return
       if (!codexDiagnosticsBatch && !codexDiagnostics.has(host.context().environment))
         void checkCodexEnvironment(host.context().environment)
       if (!agyDiagnostics.has(host.context().environment))
         void checkAgyEnvironment(host.context().environment)
+      if (!cursorDiagnostics.has(host.context().environment))
+        void checkCursorEnvironment(host.context().environment)
     },
     setUnregistered(values: string[]) {
       codexUnregisteredDistros = values

@@ -9,6 +9,7 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/settings/codex/install", s.CodexInstallHandler)
 	mux.HandleFunc("POST /api/settings/codex/install", s.CodexInstallHandler)
 	mux.HandleFunc("GET /api/settings/agy", s.AgyDiagnosticsHandler)
+	mux.HandleFunc("GET /api/settings/cursor", s.CursorDiagnosticsHandler)
 	mux.HandleFunc("POST /api/chat-attachments", s.UploadAttachmentHandler)
 	mux.HandleFunc("GET /api/settings/session-title", s.SessionTitleSettingsHandler)
 	mux.HandleFunc("PUT /api/settings/session-title", s.SessionTitleSettingsHandler)

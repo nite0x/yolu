@@ -44,6 +44,9 @@ func testApp(t *testing.T) *App {
 	a.openAgy = func(context.Context, ...string) (acp.Client, acp.InitializeResult, error) {
 		return nil, acp.InitializeResult{}, fmt.Errorf("Antigravity is mocked in tests")
 	}
+	a.openCursor = func(context.Context, ...string) (acp.Client, acp.InitializeResult, error) {
+		return nil, acp.InitializeResult{}, fmt.Errorf("Cursor is mocked in tests")
+	}
 	a.openTitleLive = func(context.Context) (codex.LiveClient, error) {
 		return nil, fmt.Errorf("title generation is mocked in tests")
 	}
