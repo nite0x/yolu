@@ -20,3 +20,10 @@ Initial implementation findings and their fixes are documented in [audit](../aud
 Full locations, evidence, causes, impact, reproduction, actual fixes, validation and independent closure are in [round 3](round-3-final.md). Review totals: **6 confirmed / 6 fixed / 6 independently closed**, all P2; **0 open P0/P1/P2**. No defect was reclassified to defer its fix. Final report records exact review commit SHAs.
 
 - **R3-005 (P2, closed):** catalog axe checks await finite theme transitions; independent controlled old/current comparisons prove the timing fix without changing product colors or accessibility assertions.
+
+## Fix commit references
+
+- R2-001: `1adb14020694c2a78e45506135abea8351d5486f`.
+- R3-001, R3-002, R3-003, R3-004: `b6cfbbcb8fc75d8f2deee3216fe469061054202a`.
+- R3-005: `8c6f87c1df306d07e0d17663bee92abb3eda759e`.
+- Zero-finding round1 record: `e60c00489c3d0d1b647190c13f59608fb7c482c3`.

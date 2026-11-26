@@ -4,7 +4,7 @@
 
 - Original baseline: `4e9ff1790708dfae10545a2fabfe89e519350843`.
 - Branch: `codex/frontend-overhaul`; no pre-existing user edits (uploaded task files excluded).
-- Phase: implementation, all three serial independent review/fix cycles and final full quality gates passed; final report and remote review handoff pending.
+- Phase: implementation, all three serial independent review/fix cycles and final full quality gates passed; final report complete; remote branch/draft review handoff pending.
 - Reviews: round1 closed at `e60c004`; round2 closed at `1adb140`; round3 independently closed five P2 findings (including the final-gate timing follow-up). All six review findings are fixed and independently verified.
 - Initial read-only agents: `audit_state` (data/state/lifecycle); `audit_components` (components/styles/modules). These are not post-refactor review rounds.
 
@@ -18,7 +18,7 @@ See [audit](audit.md) for established baseline. Logs are temporary `/tmp/yolu-ba
 
 ## Next
 
-Commit final reports, restore generated bundle artifacts, verify a clean source worktree, then push the independent branch and create a draft PR. Do not merge main.
+Push `codex/frontend-overhaul`, create the authorized draft PR, attach its URL and record the actual handoff. Main must remain unmerged. Do not merge main.
 
 ## Safe cleanup
 
@@ -77,3 +77,12 @@ Commit final reports, restore generated bundle artifacts, verify a clean source 
 - Initial catalog final run sampled in-flight theme colors. R3-005 test-only fix awaits finite transitions; same unchanged axe checks pass. Independent old/current fault comparison: old fails/current passes; steady colors0 violations. All six confirmed review findings are fixed and independently closed.
 - Source scope/diff checks pass; no Go/database/protocol/Tauri native changes. Generated tracked chat bundles will be restored after test consumers finish, as required by the no-generated-artifacts rule.
 - Logs: `/tmp/yolu-delivery-*.log`, corrected catalog `/tmp/yolu-delivery-catalog-browser-fixed.log`; screenshots `/tmp/yolu-delivery-screenshots`.
+
+## Final report and source state
+
+- Final synchronization fix/review commit: `8c6f87c1df306d07e0d17663bee92abb3eda759e`.
+- All required docs delivered, including [final report](refactoring-report.md); issue ledger records exact fix SHAs.
+- All generated-asset consumers finished. Restored only task-generated tracked `web/chat/assistant.js` and `assistant.css`; generated outputs, temporary audit files/logs/binaries/uploads excluded.
+- Source worktree clean before final documentation write; diff/scope/generated-output checks pass. No prohibited backend/native paths changed.
+- Final gates passed484 tests plus contract/type/lint/build/budget checks. All6 review findings closed; native Tauri and physical microphone explicitly unverified.
+- Next remaining action is authorized remote draft review handoff; no merge or deployment requested.
