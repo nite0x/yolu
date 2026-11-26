@@ -189,6 +189,7 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   await expect(assistants.locator(`[data-conversation-session="${session.id}"]`)).toBeVisible();
   const assistant = await pane(session.id);
   await assistant.getByRole('link', {name:'Open fixture worktree'}).click();
+  await page.waitForURL(url => url.hash.startsWith(`#/projects/${app.project.id}?`));
   const details = page.frameLocator('iframe.workspace-page:visible');
   await expect(details.locator('#projectDetail')).toBeVisible();
   await expect.poll(() => new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('directory')).toBe(app.repository);
