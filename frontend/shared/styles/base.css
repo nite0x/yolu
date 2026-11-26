@@ -4,7 +4,6 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source(none) important;
 @import "../ui/conversation-surface.css";
-@import "../ui/page-surface.css";
 @source "../../";
 @source not "../../dev";
 /* dark: follows the saved Yolu palette, not prefers-color-scheme. */

@@ -45,7 +45,7 @@ frontend/
     ui/feedback/                Messages, loading and empty states
     ui/layout/                  Dialog and section presentation
     ui/data-display/            Status badges, tables and code previews
-    ui/                         Lists, surfaces, help and resource icons
+    ui/                         Lists, conversation surfaces, help and resource icons
     hooks/                      Reusable React hooks and input preference
     lib/                        Identity, preferences, resizing and utilities
     i18n/                       Localization API and catalogs

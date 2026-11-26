@@ -19,3 +19,11 @@ See [audit](audit.md) for established baseline. Logs are temporary `/tmp/yolu-ba
 ## Next
 
 Finish initial independent findings, remove confirmed dead code, consolidate shared presentation, resolve resource/state issues and strengthen automated boundaries. Then full validation, three serial review/fix/verify/commit rounds and final gates.
+
+## Safe cleanup
+
+- Baseline commit: `83fa728`.
+- Removed unreachable `page-surface.tsx` and its unused split CSS; updated documentation to the actual shell and `workspace-pane` owners.
+- Removed unused `ProjectOpenActions` (live directory card implementation retained) and unused registry surface constants/components; four media-player roles remain.
+- Declared direct `@types/hast` and `@types/mdast` development dependencies for imported AST contracts. No runtime dependency removed: CSS/build references prove reported candidates live.
+- Strict TypeScript passed after cleanup. Baseline legacy suite: 221 passed. Go contract check passed; real baseline binary built without backend edits.
