@@ -5,6 +5,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+
+	"worktree-hub/internal/apitypes"
 )
 
 func Decode(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -33,10 +35,20 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func WriteError(w http.ResponseWriter, status int, message string) {
-	WriteJSON(w, status, map[string]string{"error": message})
+	WriteErrorCode(w, status, "", message)
+}
+
+func WriteErrorCode(w http.ResponseWriter, status int, code, message string) {
+	if code == "" {
+		code = map[int]string{400: "invalid_request", 401: "unauthorized", 403: "forbidden", 404: "not_found", 405: "method_not_allowed", 409: "conflict", 413: "request_too_large", 429: "rate_limited", 500: "internal_error", 501: "not_supported", 503: "unavailable"}[status]
+		if code == "" {
+			code = "request_failed"
+		}
+	}
+	WriteJSON(w, status, apitypes.APIErrorResponse{Error: message, Code: code, RequestID: w.Header().Get("X-Request-ID")})
 }
 
 func DbError(w http.ResponseWriter, err error) {
 	log.Print(err)
-	WriteError(w, 500, "保存数据失败，请查看服务日志")
+	WriteErrorCode(w, 500, "storage_error", "保存数据失败，请查看服务日志")
 }

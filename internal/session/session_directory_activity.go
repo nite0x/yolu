@@ -158,8 +158,10 @@ func (a *Service) reserveDirectories(id, session string, plan model.LaunchPlan) 
 	}, nil
 }
 
+const directoryConflictMessage = "另一个 Agent 正在修改重叠的目录。请创建独立 Worktree，或确认共享当前目录。"
+
 func writeBindingConflict(w http.ResponseWriter, conflicts []directoryConflict) {
-	httpx.WriteJSON(w, 409, map[string]any{"error": "另一个 Agent 正在修改重叠的目录。请创建独立 Worktree，或确认共享当前目录。", "code": "directory_conflict", "conflicts": conflicts})
+	httpx.WriteJSON(w, 409, map[string]any{"error": directoryConflictMessage, "code": "directory_conflict", "conflicts": conflicts})
 }
 
 func collectDirectorySnapshot(ctx context.Context, dir string) fileSnapshot {

@@ -1,3 +1,4 @@
+import type {TurnSettings as ContractTurnSettings} from "../api/contracts"
 import {uiText} from "../i18n";
 import type {ChatModel} from "./model";
 
@@ -8,7 +9,7 @@ export const defaultCapabilities = (provider: AgentProvider): ProviderCapabiliti
   ? {steer: false, fork: false, handoff: false, rate_limits: false, voice: false}
   : {steer: true, fork: true, handoff: true, rate_limits: true, voice: true};
 export type PermissionMode = "ask" | "auto" | "full";
-export interface TurnSettings {model?: string; effort?: string; mode?: string; permission?: PermissionMode; serviceTier?: string; useModelEffort?: boolean; useDefaultSpeed?: boolean; useDefaultPermission?: boolean}
+export interface TurnSettings extends Omit<ContractTurnSettings, "permission"> {permission?: PermissionMode}
 export type ConversationDefaults = Pick<TurnSettings, "model" | "permission" | "effort" | "serviceTier">;
 export interface AssistantTurnSettings {model?: string; permission?: "query"}
 

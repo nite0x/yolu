@@ -4,6 +4,9 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/model"
 )
 
 // chatRuntime owns in-memory turns and their title workers. Connection adapters
@@ -60,5 +63,17 @@ func (a *chatRuntime) CloseChats() {
 		case <-title.finished:
 		case <-time.After(3 * time.Second):
 		}
+	}
+}
+
+// Tracing follows the run rather than its SSE viewers. Only identities and
+// outcomes are logged; prompts, attachments and provider output stay private.
+func traceRun(ctx context.Context, run *ChatRun) func() {
+	logger := httpx.RequestLogger(ctx).With("session_id", run.session, "provider", model.NormalizeProvider(run.provider), "run_id", run.snapshot().ID)
+	started := time.Now()
+	logger.Info("Conversation run started")
+	return func() {
+		state := run.snapshot()
+		logger.Info("Conversation run ended", "turn_id", state.TurnID, "status", state.Status, "duration_ms", time.Since(started).Milliseconds())
 	}
 }

@@ -1,3 +1,5 @@
+import {createAPIClient} from "../core/api-client"
+import {postPageMessage, readPageMessage, type PageMessages, type PageSnapshot} from "../core/page-protocol"
 import { uiText } from "../i18n";
 import { Terminal, type ITheme } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
@@ -10,17 +12,17 @@ import "./terminal.css"
 import type { Project } from "./types"
 
 interface TerminalInfo { id: string; name: string; project_id?: string; session_id?: string; binding_id?: string; cwd: string; state: string; attached: boolean; exit_code?: number }
-interface Snapshot { route: string; environment: string; title: string; kind?: string; context?: string; terminal?: { projectID?: string; sessionID?: string; bindingID?: string; cwd?: string; id?: string }; conversation?: {scope?: object; directory?: string; creationDirectory?: string; selected?: string | null; creating?: boolean; pane?: string} }
+type Snapshot = PageSnapshot & {environment: string; title: string}
 
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
-const unmountSurface = mountTerminalSurface(command => window.parent.postMessage({type:"workhub:page-pane-command", command}, location.origin))
+const unmountSurface = mountTerminalSurface(command => {if (command === "close" || command === "zoom") postPageMessage(window.parent, location.origin, "workhub:page-pane-command", {command})})
 const terminalTools = mountTerminalTools(id => void launchTerminal(id))
 const projectSelect = element<HTMLSelectElement>("terminalProject"), profileSelect = element<HTMLSelectElement>("terminalProfile")
 const customTerminal = element<HTMLDetailsElement>("customTerminal")
 const startCustom = element<HTMLButtonElement>("startTerminal")
 const executable = element<HTMLInputElement>("customExecutable"), argsInput = element<HTMLTextAreaElement>("customArgs"), envInput = element<HTMLTextAreaElement>("customEnv"), nameInput = element<HTMLInputElement>("customName")
 const host = window.parent, token = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')!.content
-const post = (type: string, extra: object = {}) => host.postMessage({type, ...extra}, location.origin)
+const post = <K extends keyof PageMessages>(type: K, extra: PageMessages[K] = {} as PageMessages[K]) => postPageMessage(host, location.origin, type, extra)
 let saved: Snapshot = {route:"/terminals", environment:"local", title:uiText("新建终端"), terminal:{}}
 let active = false, disposed = false, restoring = true, savingProfile = false
 let startingProfile: string | undefined
@@ -54,12 +56,11 @@ document.createElement = new Proxy(document.createElement, {apply(target, owner,
   return node
 }})
 
-async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const response = await fetch(path, {method, headers:{"Content-Type":"application/json", "X-CSRF-Token":token, "X-Environment-ID":saved.environment}, ...(body === undefined ? {} : {body:JSON.stringify(body)})})
-  const value = await response.json()
-  if (!response.ok) throw new Error(value.error || uiText("终端请求失败"))
-  return value as T
+const request = createAPIClient({token, context: () => ({environment:saved.environment, revision:restoreRevision}), read:(path, options) => fetch(path, options), text:uiText})
+function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  return request<T>(path, {method, ...(body === undefined ? {} : {body:JSON.stringify(body)})})
 }
+
 function feedback(message = "", nearAction = false) {
   const node = element(!current && !restoring ? "terminalLaunchFeedback" : "terminalFeedback")
   node.textContent = message; node.hidden = !message
@@ -265,8 +266,8 @@ async function showTerminal(info: TerminalInfo) {
   if (disposed || current !== info) return
   createTerminal(); publish(); await connect()
 }
-async function restore(value: Snapshot) {
-  const revision = ++restoreRevision; restoring = true; saved = {...value, terminal:{...value.terminal}}
+async function restore(value: PageSnapshot) {
+  const revision = ++restoreRevision; restoring = true; saved = {...value, environment:value.environment || "local", title:value.title || uiText("终端"), terminal:{...value.terminal}}
   feedback()
   syncLauncher()
   try {
@@ -398,7 +399,8 @@ function dispose() {if (disposed) return; disposed = true; ++restoreRevision; di
 window.addEventListener("pagehide", dispose)
 window.addEventListener("message", event => {
   if (event.source !== host || event.origin !== location.origin || !event.data) return
-  const message = event.data
+  const message = readPageMessage(event.data)
+  if (!message) return
   if (message.type === "workhub:page-restore") {active = !!message.active; void restore(message.snapshot)}
   else if (message.type === "workhub:page-active") {active = !!message.active; if (active) requestAnimationFrame(measure)}
   else if (message.type === "workhub:parallel-layout") {

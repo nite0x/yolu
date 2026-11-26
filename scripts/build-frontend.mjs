@@ -8,6 +8,18 @@ const watch = process.argv.includes('--watch');
 // Go embeds these files, so every binary build must compile the UI first.
 await build({ root: fileURLToPath(new URL('../', import.meta.url)), ...(watch ? { build: { watch: {}, emptyOutDir: false } } : {}) });
 
+const runtimeOptions = {
+  absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
+  entryPoints: ['frontend/core/browser-runtime.ts'], outfile: 'web/ui/browser-runtime.js',
+  bundle: true, format: 'iife', target: ['es2022'], minify: true,
+};
+if (watch) {
+  const runtime = await context(runtimeOptions);
+  await runtime.watch();
+} else {
+  await buildModule(runtimeOptions);
+}
+
 // Keep Shiki language/theme chunks out of the initial application bundle. All
 // assets are local and embedded by Go; the viewer loads only when opened.
 const viewerOptions = {

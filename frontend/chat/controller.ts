@@ -1,3 +1,4 @@
+import type {CreateSessionInput} from "../api/contracts"
 import type {ChatOptions, SessionTarget, Snapshot} from "./controller-types";
 import { uiText } from "../i18n";
 import {createHistoryLoader} from "./history-loader";
@@ -357,7 +358,7 @@ export class ChatController {
         if (result.accepted !== pending.request_id) throw new Error(uiText("补充消息未确认，草稿已保留"));
         chat = result.chat;
       } else if (!before.session) {
-        const result = await this.options.request<{session: Session; chat: ChatState}>("/api/sessions/new", {method: "POST", body: JSON.stringify(pending)});
+        const result = await this.options.request<{session: Session; chat: ChatState}>("/api/sessions/new", {method: "POST", body: JSON.stringify(pending satisfies CreateSessionInput)});
         const createdProvider = normalizeProvider(result.session.provider || before.provider);
         const session = {...result.session, provider: createdProvider};
         this.update({session, provider: createdProvider, capabilities: defaultCapabilities(createdProvider)}); this.options.created(session); chat = result.chat;

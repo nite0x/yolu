@@ -1,3 +1,4 @@
+import type {DirectoryBindingInput} from "../api/contracts"
 import type {ConversationOverview} from "../app/conversation-context";
 import type {AgentProvider, ChatState, Entry, HistoryPush, ProviderCapabilities, Session, TurnSettings, ChatContext, ChatModel} from "./model";
 import type {ConversationDefaults} from "./settings";
@@ -18,7 +19,7 @@ export interface ChatOptions {
   openTerminal?: (binding: {id:string; project_id?:string; directory:string}) => void;
   managed?: (session: Session, action: string) => void;
 }
-export interface BindingInput {
+export interface BindingInput extends Omit<DirectoryBindingInput, "access" | "role"> {
   project_id?: string; directory?: string; access: "read" | "write"; role?: "primary" | "additional"; allow_shared?: boolean;
 }
 export interface SessionTarget { project_id?: string; cwd?: string; access?: "read" | "write"; allow_shared?: boolean; bindings?: BindingInput[] }

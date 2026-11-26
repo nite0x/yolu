@@ -15,29 +15,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const width = Number(localStorage.getItem('workhub:conversation-list-width:v1'));
     if (width >= 220 && width <= 520) conversationListWidth = width;
   } catch {}
-  const reads = new Map();
-  // Same-origin pages share startup metadata, with independent response bodies.
-  // Explicit refreshes, abortable reads and writes retain their own lifecycle.
-  window.WorkHubApp = {read(path,options) {
-    if (options.method && options.method !== 'GET') {
-      reads.clear();
-      return fetch(path,options).finally(() => reads.clear());
-    }
-    if (/[?&]refresh=1(?:&|$)/.test(path)) {reads.clear(); return fetch(path,options);}
-    const cacheable = /^\/api\/(state|environments|resource-icons)(\?|$)/.test(path) || /^\/api\/sessions\?(archived=true)?$/.test(path) || path === '/api/sessions/search';
-    if (options.signal || !cacheable) return fetch(path,options);
-    const key = JSON.stringify([path,options.headers]), cached = reads.get(key);
-    if (cached && (!cached.updated || Date.now() - cached.updated < 1000)) return cached.promise.then(response => response.clone());
-    const entry = {updated:0};
-    entry.promise = fetch(path,options).then(response => {
-      entry.updated = Date.now();
-      if (!response.ok && reads.get(key) === entry) reads.delete(key);
-      return response;
-    },error => {if (reads.get(key) === entry) reads.delete(key); throw error;});
-    reads.set(key,entry);
-    for (const [key,value] of reads) if (value.updated && Date.now() - value.updated >= 1000) reads.delete(key);
-    return entry.promise.then(response => response.clone());
-  }};
+  const protocol = window.WorkHubBrowser;
+  window.WorkHubApp = protocol.createRequestCache((path, options) => fetch(path, options));
   // Browser and desktop use the same top bar. Native initialization reuses
   // these containers and adds only operating-system window controls.
   let header = document.querySelector('.workhub-window-drag');
@@ -94,7 +73,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     return {...snapshot, route, environment:typeof snapshot.environment === 'string' ? snapshot.environment : 'local', title:typeof snapshot.title === 'string' ? snapshot.title.slice(0,200) : uiText("对话"), kind:route.split('/')[1].split('?')[0]};
   }
   function send(page,type,detail = {}) {
-    if (page?.ready) page.frame.contentWindow.postMessage({type,...detail},location.origin);
+    if (page?.ready) protocol.postPageMessage(page.frame.contentWindow, location.origin, type, detail);
   }
   const grouped = group => group.pages.length > 1;
   const sharedLayout = () => innerWidth > 760;
@@ -460,7 +439,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   window.addEventListener('message',event => {
     if (event.origin !== location.origin || !event.data || typeof event.data !== 'object') return;
-    const message = event.data;
+    const message = protocol.readPageMessage(event.data);
+    if (!message) return;
     if (navigation?.frame.contentWindow === event.source) {
       if (message.type === 'workhub:page-ready') {
         navigation.ready = true;

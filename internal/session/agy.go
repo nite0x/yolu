@@ -137,113 +137,6 @@ func (a *Service) scanAgyCatalog(ctx context.Context, scope sessionScope, archiv
 	return found, nil
 }
 
-func (a *Service) createAgySession(w http.ResponseWriter, r *http.Request, key, fingerprint string, input newSessionInput, execution executionContext) {
-	if a.Execution.Remote != nil {
-		httpx.WriteError(w, 501, "暂不支持在远端 WSL 环境启动 Antigravity 对话")
-		return
-	}
-	plan := execution.plan
-	ctx, cancel := context.WithCancel(context.Background())
-	// ACP has no isolated directory grant. Preserve approved associations as
-	// reference metadata and start only in the selected execution directory.
-	plan.AdditionalDirectories = nil
-	flags := agy.ACPFlagsForPermission(input.Settings.Permission, plan.AdditionalDirectories)
-	c, _, err := a.openAgy(ctx, flags...)
-	if err != nil {
-		cancel()
-		httpx.WriteError(w, 503, err.Error())
-		return
-	}
-	keep := false
-	defer func() {
-		if !keep {
-			c.Close()
-			cancel()
-		}
-	}()
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	requestCtx, end := context.WithTimeout(ctx, 20*time.Second)
-	defer end()
-
-	params := map[string]any{
-		"cwd":        plan.Cwd,
-		"mcpServers": []any{},
-	}
-	if len(plan.AdditionalDirectories) > 0 {
-		params["additionalDirectories"] = plan.AdditionalDirectories
-	}
-	if execution.instructions != "" {
-		params["_meta"] = map[string]any{
-			"antigravity": map[string]any{
-				"systemPrompt": map[string]any{"append": execution.instructions},
-			},
-		}
-	}
-	var setup acp.SessionSetupResult
-	if err := c.Call(requestCtx, "session/new", params, &setup); err != nil || setup.SessionID == "" {
-		msg := "Antigravity 创建结果未确认，请刷新对话列表检查后再操作"
-		if acp.IsAuthRequired(err) {
-			msg = "Antigravity 尚未登录，请先在终端运行 agy 或 agy acp --login 完成登录"
-		} else if err != nil {
-			msg = "Antigravity 创建对话失败：" + err.Error()
-		}
-		httpx.WriteError(w, 503, msg)
-		return
-	}
-	releaseSession := a.lockControlKey("session:" + setup.SessionID)
-	defer releaseSession()
-
-	now := time.Now().Unix()
-	name := initialSessionTitle(input.Text)
-	rec := model.Session{
-		ID:          setup.SessionID,
-		Provider:    model.ProviderAgy,
-		Name:        name,
-		TitleSource: "initial",
-		Cwd:         plan.Cwd,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		Source:      "workbench",
-	}
-	err = a.Execution.Store.SaveSessionWithBindings(rec, execution.bindings)
-	if err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	if name != "" {
-		if err := a.Execution.Store.SetSessionTitle(rec.ID, name, "initial"); err != nil {
-			httpx.DbError(w, err)
-			return
-		}
-	}
-	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, rec.ID, key); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	run := &ChatRun{
-		provider:  model.ProviderAgy,
-		session:   rec.ID,
-		cwd:       rec.Cwd,
-		acpClient: c,
-		acpSetup:  &setup,
-		cancel:    cancel,
-		notify:    make(chan struct{}, 1),
-		finished:  make(chan struct{}),
-		settings:  input.Settings,
-		state:     ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}},
-	}
-	run.writeRoots = writableRoots(plan)
-	a.chatMu.Lock()
-	a.chats[rec.ID] = run
-	a.chatMu.Unlock()
-	keep = true
-	go a.DriveAgyChat(ctx, run, plan, input.Text, input.Images...)
-	a.WriteCreatedSession(w, rec.ID, 202)
-}
-
 func (a *Service) readAgySessionHistory(ctx context.Context, record model.Session) (SessionHistory, error) {
 	history := SessionHistory{
 		Session: codex.Session{
@@ -343,6 +236,7 @@ func loadAgyReplay(ctx context.Context, c acp.Client, sessionID string, params m
 }
 
 func (a *Service) DriveAgyChat(ctx context.Context, run *ChatRun, plan model.LaunchPlan, text string, images ...string) {
+	defer traceRun(ctx, run)()
 	if plan.ManagedBindings {
 		plan.AdditionalDirectories = nil
 	}

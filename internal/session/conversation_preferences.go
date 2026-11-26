@@ -51,7 +51,7 @@ func (a *Service) conversationPreferencesForProvider(ctx context.Context, provid
 	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
 		return settings, err
 	}
-	return settings, settings.turnSettings().validate()
+	return settings, settings.turnSettings().Validate()
 }
 
 func (a *Service) conversationModels(ctx context.Context) ([]chatModel, error) {
@@ -112,7 +112,7 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 	}
 	settings.Model = strings.TrimSpace(settings.Model)
 	turn := settings.turnSettings()
-	if err := turn.validate(); err != nil {
+	if err := turn.Validate(); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -132,7 +132,7 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 				httpx.WriteError(w, http.StatusBadRequest, "当前模型不可用，请重新选择模型")
 				return
 			}
-			if err := turn.validateForModel(selected); err != nil {
+			if err := validateSettingsForModel(turn, selected); err != nil {
 				httpx.WriteError(w, http.StatusBadRequest, err.Error())
 				return
 			}
@@ -149,7 +149,7 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 			httpx.WriteError(w, http.StatusBadRequest, "请选择当前 Codex 可用的模型，或沿用 Codex 默认模型")
 			return
 		}
-		if err := turn.validateForModel(selected); err != nil {
+		if err := validateSettingsForModel(turn, selected); err != nil {
 			httpx.WriteError(w, http.StatusBadRequest, err.Error())
 			return
 		}

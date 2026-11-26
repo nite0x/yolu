@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"worktree-hub/internal/apitypes"
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
@@ -18,15 +19,7 @@ import (
 	"worktree-hub/internal/project"
 )
 
-type bindingInput struct {
-	SessionID   string `json:"session_id,omitempty"`
-	Provider    string `json:"provider,omitempty"`
-	ProjectID   string `json:"project_id,omitempty"`
-	Directory   string `json:"directory,omitempty"`
-	Role        string `json:"role,omitempty"`
-	Access      string `json:"access,omitempty"`
-	AllowShared bool   `json:"allow_shared,omitempty"`
-}
+type bindingInput = apitypes.DirectoryBindingInput
 
 type directoryConflict struct {
 	ID   string `json:"id"`

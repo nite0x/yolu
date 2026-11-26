@@ -128,7 +128,7 @@ func (a *Service) DraftHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := draft.Settings.validate(); err != nil {
+	if err := draft.Settings.Validate(); err != nil {
 		httpx.WriteError(w, 400, err.Error())
 		return
 	}

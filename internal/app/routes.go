@@ -63,7 +63,7 @@ func (a *App) handler() http.Handler {
 	a.Execution.RegisterRoutes(mux)
 	a.terminalRoutes(mux)
 	mux.Handle("/", a.assetsHandler())
-	return a.secureHandler(mux)
+	return httpx.Diagnostics(a.secureHandler(mux))
 }
 
 func (a *App) assetsHandler() http.Handler {

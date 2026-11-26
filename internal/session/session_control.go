@@ -2,6 +2,12 @@ package session
 
 import "sync"
 
+type controlCoordinator struct {
+	controlMu      sync.RWMutex
+	controlLocksMu sync.Mutex
+	controlLocks   map[string]*sessionControlLock
+}
+
 type sessionControlLock struct {
 	mu   sync.Mutex
 	refs int
@@ -11,7 +17,7 @@ type sessionControlLock struct {
 // on the same session or creation receipt. Worktree removal takes the gate's
 // exclusive side before checking occupancy and keeps it until removal ends.
 // Lock order: cleanup gate -> control key -> environment metadata -> runtime state.
-func (a *Service) lockControl(key string) func() {
+func (a *controlCoordinator) lockControl(key string) func() {
 	a.controlMu.RLock()
 	release := a.lockControlKey(key)
 	return func() {
@@ -23,7 +29,7 @@ func (a *Service) lockControl(key string) func() {
 // Callers already holding the cleanup gate use this when a newly created
 // thread gains its ID. Do not recursively take an RWMutex read lock: a queued
 // cleanup writer could otherwise deadlock the creator before it can finish.
-func (a *Service) lockControlKey(key string) func() {
+func (a *controlCoordinator) lockControlKey(key string) func() {
 	a.controlLocksMu.Lock()
 	if a.controlLocks == nil {
 		a.controlLocks = make(map[string]*sessionControlLock)
@@ -47,6 +53,6 @@ func (a *Service) lockControlKey(key string) func() {
 	}
 }
 
-func (a *Service) lockSessionControl(id string) func() {
+func (a *controlCoordinator) lockSessionControl(id string) func() {
 	return a.lockControl("session:" + id)
 }

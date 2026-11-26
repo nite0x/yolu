@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
-npm run chat:build
+npm run build
 output="${1:-bin/windows-amd64}"
 mkdir -p "$output/agents"
-node scripts/build-frontend.mjs
 # Embed the same multi-resolution icon used by the web UI.
 go run github.com/tc-hib/go-winres@v0.3.3 make --arch amd64 --in winres/winres.json
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags '-s -w -H windowsgui' -o "$output/Yolu.exe" .

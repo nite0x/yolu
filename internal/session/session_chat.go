@@ -207,7 +207,7 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 409, "请先恢复已归档对话")
 		return
 	}
-	if err := input.Settings.validate(); err != nil {
+	if err := input.Settings.Validate(); err != nil {
 		httpx.WriteError(w, 400, err.Error())
 		return
 	}
@@ -248,7 +248,7 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 			previous.cancel()
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
 	run := &ChatRun{provider: model.NormalizeProvider(record.Provider), session: r.PathValue("session"), cwd: plan.Cwd, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
 	run.settings = input.Settings
 	run.writeRoots = writableRoots(plan)
@@ -265,6 +265,7 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, 202, run.snapshot())
 }
 func (a *Service) DriveChat(ctx context.Context, run *ChatRun, plan model.LaunchPlan, text string, images ...string) {
+	defer traceRun(ctx, run)()
 	defer close(run.finished)
 	defer run.cancel()
 	defer func() { run.mu.Lock(); run.ended = time.Now(); run.mu.Unlock() }()
