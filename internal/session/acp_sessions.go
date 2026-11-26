@@ -131,7 +131,7 @@ func (a *Service) readACPSessionHistory(ctx context.Context, record model.Sessio
 	return history, nil
 }
 
-func (a *Service) driveACPTurn(ctx context.Context, run *ChatRun, plan model.LaunchPlan, initial *acp.SessionSetupResult, text string, images ...string) {
+func (a *Service) driveACPTurn(ctx context.Context, run *ChatRun, plan model.LaunchPlan, initial *acp.SessionSetupResult, prompt turnPrompt) {
 	defer traceRun(ctx, run)()
 	if plan.ManagedBindings {
 		plan.AdditionalDirectories = nil
@@ -207,7 +207,7 @@ func (a *Service) driveACPTurn(ctx context.Context, run *ChatRun, plan model.Lau
 	reducer := newACPUpdateReducer()
 	reducer.turnSeq = replay.turnSeq
 	reducer.live = true
-	reducer.startTurn(text, images, "")
+	reducer.startTurn(prompt.text, prompt.images, "")
 	stopping := false
 	run.change(func(s *ChatState) {
 		if s.Status == "stopping" {
@@ -265,11 +265,23 @@ func (a *Service) driveACPTurn(ctx context.Context, run *ChatRun, plan model.Lau
 		}
 	}
 
-	result, promptErr := acp.PromptSession(ctx, c, run.session, acpPromptBlocks(text, images), handleMessage)
+	if err := a.reserveTurnReceipt(ctx, run.session, prompt); err != nil {
+		run.fail("无法保存发送回执，请刷新后重试")
+		return
+	}
+	result, promptErr := acp.PromptSession(ctx, c, run.session, acpPromptBlocks(prompt.text, prompt.images), handleMessage)
 
 	now := time.Now().Unix()
-	_ = a.Execution.Store.TouchSession(ctx, run.session, now)
+	var receiptErr error
+	if promptErr == nil && prompt.receipt != "" {
+		receiptErr = a.Execution.Store.ConfirmInputAndTouchSession(context.WithoutCancel(ctx), run.session, prompt.receipt, now)
+	} else {
+		_ = a.Execution.Store.TouchSession(ctx, run.session, now)
+	}
 	run.change(func(s *ChatState) {
+		if receiptErr != nil {
+			s.Notice = "消息已被接收，本机回执保存失败，请刷新核对历史。"
+		}
 		s.Busy = false
 		s.Approvals = []ChatApproval{}
 		s.Retrying = ""

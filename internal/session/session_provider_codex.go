@@ -130,7 +130,7 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 		cancel()
 	}
 	keep = true
-	go a.driveCodexTurn(ctx, run, plan, &codexCreation{thread: s, context: &result.ChatContext}, input.Text, input.Images...)
+	go a.driveCodexTurn(ctx, run, plan, &codexCreation{thread: s, context: &result.ChatContext}, turnPrompt{text: input.Text, images: input.Images})
 	return run, 202, nil
 }
 
@@ -139,7 +139,7 @@ type codexCreation struct {
 	context *ChatContext
 }
 
-func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.LaunchPlan, initial *codexCreation, text string, images ...string) {
+func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.LaunchPlan, initial *codexCreation, prompt turnPrompt) {
 	defer traceRun(ctx, run)()
 	defer a.finishRun(run)
 	defer run.finishLocalTurn()
@@ -291,7 +291,7 @@ func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.L
 		ownerFailure(err)
 		return
 	}
-	params := map[string]any{"threadId": run.session, "cwd": plan.Cwd, "input": chatTurnInput(text, images)}
+	params := map[string]any{"threadId": run.session, "cwd": plan.Cwd, "input": chatTurnInput(prompt.text, prompt.images)}
 	if run.asyncRequest != "" {
 		params["clientUserMessageId"] = run.asyncRequest
 	}
@@ -408,6 +408,10 @@ func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.L
 	}
 	run.turnSubmitting = true
 	run.mu.Unlock()
+	if err := a.reserveTurnReceipt(ctx, run.session, prompt); err != nil {
+		run.fail("无法保存发送回执，请刷新后重试")
+		return
+	}
 	if err := call("turn/start", params, &started); err != nil {
 		configurationFailure(err)
 		return
@@ -426,10 +430,17 @@ func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.L
 		run.configured[b.Directory] = configuredDirectory{id: b.ID, access: b.Access, updatedAt: b.UpdatedAt}
 	}
 	run.mu.Unlock()
+	var receiptErr error
+	if prompt.receipt != "" {
+		receiptErr = a.Execution.Store.AcceptInput(context.WithoutCancel(ctx), run.session, prompt.receipt)
+	}
 	var stopQueued bool
 	run.change(func(state *ChatState) {
 		run.turnSubmitting = false
 		state.TurnID = started.Turn.ID
+		if receiptErr != nil {
+			state.Notice = "消息已被接收，本机回执保存失败，请刷新核对历史。"
+		}
 		stopQueued = run.stopRequested
 		if !stopQueued {
 			state.Status = "running"
@@ -449,7 +460,7 @@ func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.L
 		_ = a.Execution.Store.SetSessionPermission(run.session, run.settings.Permission)
 	}
 	if initial != nil {
-		a.startSessionTitle(run, text)
+		a.startSessionTitle(run, prompt.text)
 	}
 	if run.asyncRequest != "" {
 		if err := a.Execution.Store.AcceptAsyncAnswer(context.WithoutCancel(ctx), run.session, run.asyncRequest); err != nil {

@@ -88,7 +88,7 @@ func TestCloudMetadataRoundTripPreservesAccountScopeAndConfirmedInput(t *testing
 	if err := s.ReserveInput(ctx, record.ID, "message", "input-fingerprint"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ConfirmCloudInput(ctx, record.ID, "message", 2); err != nil {
+	if err := s.ConfirmInputAndTouchSession(ctx, record.ID, "message", 2); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := ExportMetadata(ctx, filepath.Join(source, "worktree-hub.db"))

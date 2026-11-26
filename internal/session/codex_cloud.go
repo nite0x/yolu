@@ -164,7 +164,7 @@ func (a *Service) driveCloudTurn(ctx context.Context, run *ChatRun, client *code
 		})
 		return
 	}
-	persistErr := a.Execution.Store.ConfirmCloudInput(context.WithoutCancel(ctx), run.session, requestID, time.Now().Unix())
+	persistErr := a.Execution.Store.ConfirmInputAndTouchSession(context.WithoutCancel(ctx), run.session, requestID, time.Now().Unix())
 	run.change(func(s *ChatState) {
 		s.TurnID, s.Status = turn, "running"
 		if persistErr != nil {

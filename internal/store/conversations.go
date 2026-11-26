@@ -74,8 +74,8 @@ func acceptInput(ctx context.Context, db interface {
 	return MustAffected(db.ExecContext(ctx, `UPDATE conversation_input_requests SET status='accepted' WHERE session_id=? AND request_id=?`, session, request))
 }
 
-// ConfirmCloudInput commits the acknowledgement and session activity together.
-func (s *Store) ConfirmCloudInput(ctx context.Context, session, request string, updated int64) error {
+// ConfirmInputAndTouchSession commits the acknowledgement and session activity together.
+func (s *Store) ConfirmInputAndTouchSession(ctx context.Context, session, request string, updated int64) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err

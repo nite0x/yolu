@@ -100,6 +100,6 @@ func (a *Service) startACPSession(startup context.Context, provider, key, finger
 		cancel()
 	}
 	keep = true
-	go a.driveACPTurn(ctx, run, plan, &setup, input.Text, input.Images...)
+	go a.driveACPTurn(ctx, run, plan, &setup, turnPrompt{text: input.Text, images: input.Images})
 	return run, 202, nil
 }

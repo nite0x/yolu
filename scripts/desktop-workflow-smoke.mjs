@@ -240,7 +240,8 @@ try {
   await mkdir(shutdownNotes);
   const beforeShutdown = JSON.parse(await readFile(fixtureFile, 'utf8'));
   await writeFile(fixtureFile, JSON.stringify({ ...beforeShutdown, requestDirectory: shutdownNotes }));
-  const stopping = await request(base + '/chat', 'POST', { request_id: 'shutdown-stream', text: '[request-directory] Wait for approval.' }, 202);
+  const shutdownInput = { request_id: 'shutdown-stream', text: '[request-directory] Wait for approval.' };
+  const stopping = await request(base + '/chat', 'POST', shutdownInput, 202);
   await waitFor(() => request(base + '/chat'), chat => chat.approvals.length > 0);
   const stream = await fetch(host.url + base + '/chat/events?' + new URLSearchParams({ run: stopping.id }), {
     headers, signal: AbortSignal.timeout(12000),
@@ -260,6 +261,8 @@ try {
   }
   host = await startBackend();
   headers['X-CSRF-Token'] = JSON.parse(await readFile(path.join(data, 'service.json'), 'utf8')).token;
+  const duplicate = await request(base + '/chat', 'POST', shutdownInput, 409);
+  assert.equal(duplicate.code, 'input_already_accepted');
   const restored = await request(base + '/bindings');
   assert.deepEqual(new Set(restored.bindings.map(row => row.directory)), new Set([primary, secondary.path, notes]));
   assert.equal(restored.bindings.find(row => row.role === 'primary').branch, projectsTrees[0].branch);

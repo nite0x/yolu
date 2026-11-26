@@ -242,3 +242,57 @@ func TestChatFrameRetriesTransientMediaWithoutTurnMutation(t *testing.T) {
 		t.Fatalf("media was not retried independently of the run: %+v %v", recovered, err)
 	}
 }
+
+type uncertainTurnClient struct{ *fakeLiveClient }
+
+func (c *uncertainTurnClient) Call(ctx context.Context, method string, params any, out any) error {
+	if method == "turn/start" {
+		return errors.New("provider reply was lost after input delivery")
+	}
+	return c.fakeLiveClient.Call(ctx, method, params, out)
+}
+
+func TestUnacknowledgedTurnReceiptSurvivesRestart(t *testing.T) {
+	a, _, client, _ := chatFixture(t)
+	ctx := context.Background()
+	input := StartTurnInput{RequestID: "uncertain", Text: "Inspect the workspace"}
+	a.openLive = func(context.Context) (codex.LiveClient, error) {
+		return &uncertainTurnClient{client}, nil
+	}
+	if _, status, err := a.StartTurn(ctx, "session", input); err != nil || status != 202 {
+		t.Fatalf("start: status=%d err=%v", status, err)
+	}
+	failed := awaitChat(t, a, func(s ChatState) bool { return !s.Busy })
+	if failed.Status != "failed" || failed.TurnID != "" {
+		t.Fatalf("provider returned an unexpected state: %+v", failed)
+	}
+	_, status, err := a.Execution.Store.InputReceipt(ctx, "session", newTurnPrompt(input).receipt)
+	if err != nil || status != "pending" {
+		t.Fatalf("receipt status=%q err=%v", status, err)
+	}
+	a.CloseChats()
+	if err := a.Execution.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openApp(a.Execution.DataDir, a.Execution.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Execution.Close()
+	defer reopened.Projects.Close()
+	defer reopened.Close()
+	reopened.openSessions = func(context.Context) (codex.SessionClient, error) {
+		t.Fatal("uncertain retry reached the provider")
+		return nil, nil
+	}
+	_, _, err = reopened.StartTurn(ctx, "session", input)
+	var failure *conversationError
+	if !errors.As(err, &failure) || failure.code != "input_uncertain" {
+		t.Fatalf("uncertain retry was not rejected: %v", err)
+	}
+	input.Text = "Different input"
+	_, _, err = reopened.StartTurn(ctx, "session", input)
+	if !errors.As(err, &failure) || failure.code != "input_mismatch" {
+		t.Fatalf("changed payload was not rejected: %v", err)
+	}
+}

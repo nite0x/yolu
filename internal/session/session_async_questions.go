@@ -236,7 +236,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			writeRunAdmissionError(w, err)
 			return
 		}
-		go a.driveCodexTurn(ctx, run, plan, nil, text)
+		go a.driveCodexTurn(ctx, run, plan, nil, turnPrompt{text: text})
 		select {
 		case <-run.started:
 		case <-run.finished:

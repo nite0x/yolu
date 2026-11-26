@@ -2,6 +2,11 @@ package session
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -15,6 +20,45 @@ type StartTurnInput struct {
 	Images      []string     `json:"images"`
 	Settings    TurnSettings `json:"settings"`
 	AllowShared bool         `json:"allow_shared"`
+}
+
+type turnPrompt struct {
+	text        string
+	images      []string
+	receipt     string
+	fingerprint string
+}
+
+func newTurnPrompt(input StartTurnInput) turnPrompt {
+	raw, _ := json.Marshal(input)
+	return turnPrompt{
+		text: input.Text, images: input.Images,
+		receipt:     "turn-start:" + input.RequestID,
+		fingerprint: fmt.Sprintf("%x", sha256.Sum256(raw)),
+	}
+}
+
+func (a *Service) checkTurnReceipt(ctx context.Context, session string, prompt turnPrompt) error {
+	fingerprint, status, err := a.Execution.Store.InputReceipt(ctx, session, prompt.receipt)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	case err != nil:
+		return conversationStorageFailure(err)
+	case fingerprint != prompt.fingerprint:
+		return conversationFailure(409, "input_mismatch", "发送标识已用于其他消息")
+	case status == "accepted":
+		return conversationFailure(409, "input_already_accepted", "消息已发送，请刷新历史查看")
+	default:
+		return conversationFailure(409, "input_uncertain", "消息的投递结果未确认，请查看历史后再操作，不会自动重复投递")
+	}
+}
+
+func (a *Service) reserveTurnReceipt(ctx context.Context, session string, prompt turnPrompt) error {
+	if prompt.receipt == "" {
+		return nil // First turns and async answers already have a durable receipt.
+	}
+	return a.Execution.Store.ReserveInput(ctx, session, prompt.receipt, prompt.fingerprint)
 }
 
 func (a *Service) StartTurn(ctx context.Context, session string, input StartTurnInput) (ChatState, int, error) {
@@ -38,6 +82,13 @@ func (a *Service) StartTurn(ctx context.Context, session string, input StartTurn
 		}
 		if snapshot.Busy {
 			return ChatState{}, 0, runAdmissionFailure(errChatBusy)
+		}
+	}
+	var prompt turnPrompt
+	if record.Provider != model.ProviderCodexCloud {
+		prompt = newTurnPrompt(input)
+		if err := a.checkTurnReceipt(ctx, record.ID, prompt); err != nil {
+			return ChatState{}, 0, err
 		}
 	}
 	if model.NormalizeProvider(record.Provider) == model.ProviderCodex {
@@ -82,9 +133,9 @@ func (a *Service) StartTurn(ctx context.Context, session string, input StartTurn
 		return ChatState{}, 0, runAdmissionFailure(err)
 	}
 	if model.IsACPProvider(run.provider) {
-		go a.driveACPTurn(runCtx, run, plan, nil, input.Text, input.Images...)
+		go a.driveACPTurn(runCtx, run, plan, nil, prompt)
 	} else {
-		go a.driveCodexTurn(runCtx, run, plan, nil, input.Text, input.Images...)
+		go a.driveCodexTurn(runCtx, run, plan, nil, prompt)
 	}
 	return run.snapshot(), 202, nil
 }
