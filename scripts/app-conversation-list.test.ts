@@ -38,7 +38,7 @@ test("conversation statuses use inline accessible icons and titles preserve thei
     const status = row.querySelector<HTMLElement>(".session-browser-item-status")!
     assert.equal(title.getAttribute("title"), name)
     assert.equal(title.textContent, name)
-    assert.equal(status.parentElement, title.parentElement)
+    assert.equal(status.parentElement, row.querySelector(".session-browser-item-trailing"))
     assert.equal(row.querySelector("time")?.parentElement?.className, "session-browser-item-trailing")
     assert.equal(row.querySelector("time")?.parentElement?.parentElement, title.parentElement)
     assert.equal(status.textContent, "")

@@ -80,7 +80,7 @@ export function SessionBrowser() {
       <section className="session-browser-detail" aria-label={uiText("对话详情")}>
         <div className="session-reading-toolbar"><div className="session-browser-mobile-back"><Button type="button" size="sm" variant="ghost" data-conversation-action="back"><ArrowLeft aria-hidden="true" />{uiText("对话列表")}</Button></div></div>
         <div className="session-reading-layout" id="sessionReadingLayout"><div className="session-reading-chat">
-        <div className="shrink-0">
+        <div id="sessionCreationSetupHost" className="shrink-0" hidden>
           <div id="sessionCreationSetup" className="conversation-creation-setup" hidden>
             <ConversationCreationIntro kind="ui" switchID="conversationCreationKind" switchHidden />
             <div id="sessionBrowserNewDirectoryField" className="session-browser-new-directory" hidden><span id="sessionBrowserNewDirectoryLabel">{uiText("工作目录")}</span><div id="sessionBrowserDirectoryChoices" className="creation-choices" role="group" aria-labelledby="sessionBrowserNewDirectoryLabel" /><select id="sessionBrowserNewDirectory" hidden aria-label={uiText("工作目录")} /></div>
@@ -154,12 +154,12 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
       <span className="session-browser-item-heading">
         {s.terminal && <span className="sr-only">{uiText("终端")}</span>}
         <span className="session-browser-item-title" title={s.name || uiText("未命名对话")}>{s.name || uiText("未命名对话")}</span>
-        <span className="session-browser-item-status" data-session-indicators={s.terminal ? undefined : s.id} data-environment={s.environment_id}
-          data-state={rowError ? "failed" : state} role="img" aria-label={status?.label} title={status?.label} hidden={!status}>
-          {StatusIcon && <StatusIcon aria-hidden="true" />}
-        </span>
-        {s.unread && !status && <span className="session-browser-unread-dot" role="img" aria-label={uiText("有新消息")} title={uiText("有新消息")} />}
         <span className="session-browser-item-trailing">
+          <span className="session-browser-item-status" data-session-indicators={s.terminal ? undefined : s.id} data-environment={s.environment_id}
+            data-state={rowError ? "failed" : state} role="img" aria-label={status?.label} title={status?.label} hidden={!status}>
+            {StatusIcon && <StatusIcon aria-hidden="true" />}
+          </span>
+          {s.unread && !status && <span className="session-browser-unread-dot" role="img" aria-label={uiText("有新消息")} title={uiText("有新消息")} />}
           {!s.terminal && <span className="session-browser-item-agent" role="img" aria-label={cloud ? "Codex Cloud" : antigravity ? "Antigravity" : "Codex"}><AgentIcon aria-hidden="true" /></span>}
           <time className="session-browser-item-time" title={date?.toLocaleString(uiLocale(), {hour12: false})} dateTime={date?.toISOString()}>{dateLabel}</time>
         </span>
@@ -196,11 +196,13 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
     return <div className="session-browser-groups session-browser-workspaces">{[...sections.values()].map(({group, rows}) => {
       const environmentName = sidebarMode && group.environment === "local" ? undefined : group.environmentName
       const collection = !!group.collection
-      const description = group.collapsed && [
-        group.containsSelection && group.collection !== "cloud" && uiText("当前对话所在项目"),
-        group.running && uiText("有对话正在运行"),
+      const countLabel = uiText("{0} 个对话", group.total)
+      const description = [
+        group.collapsed && group.containsSelection && group.collection !== "cloud" && uiText("当前对话所在项目"),
+        group.collapsed && group.running && uiText("有对话正在运行"),
+        collection && countLabel,
       ].filter(Boolean).join(" · ")
-      const count = <span className={collection ? "session-workspace-count session-collection-count" : "session-workspace-count"} title={uiText("{0} 个对话", group.total)}>{group.total}</span>
+      const count = <span className={collection ? "session-workspace-count session-collection-count" : "session-workspace-count"} title={countLabel}>{group.total}</span>
       return <section className="session-browser-group" key={group.key} data-conversation-group={group.key} data-collection={group.collection} aria-label={[group.name, environmentName].filter(Boolean).join(" · ") || undefined}>
       {rows.filter(row => row.kind === "group").map(row => <h3 className={collection ? "session-workspace-heading session-collection-heading" : "session-workspace-heading"} key={row.key}>
         <button type="button" data-conversation-group-toggle={group.key} data-conversation-list-row={row.key} aria-expanded={!group.collapsed}
@@ -212,15 +214,14 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
           <span className="session-workspace-name">{group.name}</span>
           {environmentName && <small>{environmentName}</small>}
           {group.collapsed && group.running && <span className="session-workspace-running session-browser-item-status" data-state="running" aria-hidden="true" title={uiText("有对话正在运行")}><LoaderCircle /></span>}
-          {!collection && count}
-        </button>
-        {collection && <span className="session-collection-actions">
           {count}
-          {group.href && <Button asChild variant="ghost" size="icon-sm" className="session-collection-details w-full transition-colors">
+        </button>
+        {collection && (group.href || group.collection !== "cloud") && <span className="session-collection-actions">
+          {group.href && <Button asChild variant="ghost" size="icon-sm" className="session-collection-details transition-colors">
             <a href={group.href} data-collection-href={group.href} data-collection-environment={group.environment} data-collection-name={group.name}
               aria-label={uiText("打开项目详情：{0}", group.name)} title={uiText("打开项目详情：{0}", group.name)}><FolderOpen aria-hidden="true" /></a>
           </Button>}
-          {group.collection !== "cloud" && <Button type="button" variant="ghost" size="icon-sm" className="session-collection-create w-full transition-colors"
+          {group.collection !== "cloud" && <Button type="button" variant="ghost" size="icon-sm" className="session-collection-create transition-colors"
             data-action={group.href ? "project-conversation-new" : undefined}
             data-conversation-action={group.href ? undefined : "new"}
             data-conversation-standalone={group.href ? undefined : "true"}

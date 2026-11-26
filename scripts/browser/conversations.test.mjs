@@ -48,6 +48,44 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   }
   const first = app.sessions[0].id, second = app.sessions[1].id;
   await page.goto(app.url);
+  await page.getByRole('button', {name:'新建对话',exact:true}).click();
+  const draft = page.frameLocator('iframe.workspace-page:visible');
+  const setup = draft.locator('#sessionCreationSetup');
+  const editor = draft.locator('textarea.aui-composer-input');
+  const header = draft.locator('.conversation-surface-header');
+  const message = 'Verify the first reply [hold]';
+  await expect(setup.getByRole('heading', {name:'想完成什么？'})).toBeVisible();
+  let rejectSend;
+  const rejected = new Promise(resolve => {rejectSend = resolve;});
+  await page.route('**/api/sessions/new', async route => {
+    await rejected;
+    await route.fulfill({status:503,json:{error:'Fixture rejected the first send'}});
+  }, {times:1});
+  await editor.fill(message);
+  await editor.press('Enter');
+  try {
+    await expect(draft.getByText(message, {exact:true})).toBeVisible();
+    await expect(draft.getByText('正在发送…', {exact:true})).toBeVisible();
+    await expect(setup).toBeHidden();
+    await expect(header.getByRole('button', {name:'选择工作目录'})).toBeDisabled();
+    await screenshot('first-send');
+  } finally {
+    rejectSend();
+  }
+  await expect(draft.getByRole('alert').filter({hasText:'Fixture rejected the first send'})).toBeVisible();
+  await expect(editor).toHaveValue(message);
+  await expect(setup).toBeVisible();
+
+  const sending = page.waitForResponse(response => response.ok() && response.url().endsWith('/api/sessions/new'));
+  await editor.press('Enter');
+  await sending;
+  await expect(draft.getByText(message, {exact:true})).toBeVisible();
+  await expect(setup).toBeHidden();
+  await expect(draft.getByText('Reviewed the selected directory.', {exact:true})).toHaveCount(0);
+  const waitingHeader = await header.boundingBox();
+  await app.release();
+  await expect(draft.getByText('Reviewed the selected directory.', {exact:true})).toBeVisible();
+  assert.equal((await header.boundingBox()).y, waitingHeader.y);
   await row(first).click();
   const a = await pane(first);
   await a.locator('textarea.aui-composer-input').fill('Keep the first draft');
@@ -55,9 +93,29 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   const b = await pane(second);
   await b.locator('textarea.aui-composer-input').fill('Keep the second draft');
   await row(first).click();
-  await expect((await pane(first)).locator('textarea.aui-composer-input')).toHaveValue('Keep the first draft');
+  const firstEditor = (await pane(first)).locator('textarea.aui-composer-input');
+  await expect(firstEditor).toHaveValue('Keep the first draft');
+  await firstEditor.hover();
+  const projectHeading = nav.locator('[data-collection="project"] .session-collection-heading');
+  const count = projectHeading.locator('.session-collection-count');
+  const timestamp = row(second).locator('time');
+  const agent = row(second).locator('.session-browser-item-agent svg');
+  const splitAction = nav.locator(`[data-conversation-parallel="${second}"]`);
+  const rightEdge = async locator => {
+    const box = await locator.boundingBox();
+    assert(box);
+    return box.x + box.width;
+  };
+  await expect(projectHeading.locator('.session-collection-actions')).toBeHidden();
+  assert(Math.abs(await rightEdge(count) - await rightEdge(timestamp)) < 1);
+  assert(Math.abs((await timestamp.boundingBox()).x - await rightEdge(agent) - 6) < 1);
+  await projectHeading.hover();
+  await expect(count).toBeHidden();
+  const createEdge = await rightEdge(projectHeading.locator('.session-collection-create svg'));
   await row(second).hover();
-  await nav.locator(`[data-conversation-parallel="${second}"]`).click();
+  await expect(timestamp).toBeHidden();
+  assert(Math.abs(await rightEdge(splitAction.locator('svg')) - createEdge) < 1);
+  await splitAction.click();
   const split = await pane(second);
   await expect(page.locator('iframe.workspace-page:visible')).toHaveCount(2);
   await expect(split.locator('textarea.aui-composer-input')).toHaveValue('Keep the second draft');

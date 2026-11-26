@@ -2759,7 +2759,7 @@ test('search group overrides preserve saved expansion, explain matches and suppo
   assert.equal(session().querySelector('.session-browser-item-search-match').textContent,'分支 · feature/workspace');
   toggleAll.click();
   assert.equal(group('App').getAttribute('aria-expanded'),'false');
-  assert.equal(group('App').getAttribute('aria-description'),'当前对话所在项目');
+  assert.match(group('App').getAttribute('aria-description'),/^当前对话所在项目 · \d+ 个对话$/);
   assert.equal(session(),null);
   nav.$('#sessionBrowserSearch').focus(); move('ArrowDown');
   assert.equal(nav.document.activeElement,group('App'));

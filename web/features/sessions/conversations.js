@@ -545,6 +545,8 @@ function renderConversationBrowser() {
   const creationDirectories = view.creating ? conversationCreationDirectories(view) : [];
   $('#newBrowserSession').disabled = sessionReadOnly;
   $('#newBrowserSession').title = sessionReadOnly ? uiText("当前为只读模式，请在终端新建对话") : uiText("在当前栏新建对话");
+  // The assistant shows setup in the empty thread and returns it here when messages appear.
+  $('#sessionCreationSetupHost').hidden = !!window.WorkHubAssistant;
   $('#sessionCreationSetup').hidden = !view.creating;
   $('#conversationCreationKind').hidden = !view.creating || !window.WorkHubPage || window.WorkHubPage.navigationOnly;
   const terminalKind = $('[data-conversation-kind="terminal"]');

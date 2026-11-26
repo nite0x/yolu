@@ -7,12 +7,14 @@
   --yolu-shadow-ink: var(--yolu-foreground, #182a2b);
   --yolu-elevation-sm: 0 0 0 1px color-mix(in srgb, var(--yolu-shadow-ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--yolu-shadow-ink) 8%, transparent);
   --yolu-elevation: 0 0 0 1px color-mix(in srgb, var(--yolu-shadow-ink) 5%, transparent), 0 1px 2px color-mix(in srgb, var(--yolu-shadow-ink) 4%, transparent), 0 10px 28px -14px color-mix(in srgb, var(--yolu-shadow-ink) 18%, transparent);
-  --yolu-elevation-float: 0 0 0 1px color-mix(in srgb, var(--yolu-shadow-ink) 6%, transparent), 0 12px 32px -10px color-mix(in srgb, var(--yolu-shadow-ink) 22%, transparent);
+  --yolu-shadow-float: 0 12px 32px -10px color-mix(in srgb, var(--yolu-shadow-ink) 22%, transparent);
+  --yolu-elevation-float: 0 0 0 1px color-mix(in srgb, var(--yolu-shadow-ink) 6%, transparent), var(--yolu-shadow-float);
 }
 :root[data-color-scheme="dark"] {
   --yolu-elevation-sm: 0 0 0 1px #ffffff12, 0 1px 2px #0000004d;
   --yolu-elevation: 0 0 0 1px #ffffff0f, 0 12px 32px -14px #000000b3;
-  --yolu-elevation-float: 0 0 0 1px #ffffff14, 0 16px 40px -12px #000000cc;
+  --yolu-shadow-float: 0 16px 40px -12px #000000cc;
+  --yolu-elevation-float: 0 0 0 1px #ffffff14, var(--yolu-shadow-float);
 }
 * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--yolu-shadow-ink) 16%, transparent) transparent; }
 
@@ -169,7 +171,8 @@ input[type="search"][data-slot="input"]:focus-visible { background-image: none; 
 .conversation-icon-button { width: 32px; height: 32px; min-width: 32px; border-radius: 8px; color: var(--yolu-secondary-ink, #435856); }
 .conversation-icon-button:hover { color: var(--yolu-foreground, #182a2b); }
 .assistant-chat-scope .aui-user-message-content { --muted: var(--yolu-selected, #dbe9e2); --composer-radius: 18px; }
-.assistant-chat-scope [data-slot="aui_composer-shell"] { --composer-radius: 20px; --composer-bg: var(--yolu-surface, #fff); --composer-padding: 10px; box-shadow: var(--yolu-elevation-float); transition: border-color .15s; }
+/* The composer's own border draws the entire edge, including its focus state. */
+.assistant-chat-scope [data-slot="aui_composer-shell"] { --composer-radius: 20px; --composer-bg: var(--yolu-surface, #fff); --composer-padding: 10px; box-shadow: var(--yolu-shadow-float); transition: border-color .15s; }
 .chat-permission-trigger { background: var(--yolu-subtle, #f4f7f5); }
 .chat-change-summary { border-radius: 14px; }
 

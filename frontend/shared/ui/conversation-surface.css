@@ -128,7 +128,8 @@ html[data-workspace-pane]:not([data-workspace-focused]) .conversation-surface-he
 .creation-choice-chevron { flex:none; }
 .creation-choice-pin { display:inline-block; flex:none; width:12px; height:12px; background:currentColor; mask: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"%3E%3Cpath d="M16 9V3H8v6l-3 4v3h6v6h2v-6h6v-3l-3-4Z"/%3E%3C/svg%3E') center/contain no-repeat; }
 .creation-header-directory { display:inline-flex; align-items:center; gap:4px; min-width:0; max-width:240px; height:28px; padding:0 6px; border:0; border-radius:6px; background:transparent; color:var(--yolu-muted-ink); font:inherit; cursor:pointer; }
-.creation-header-directory:hover,.creation-header-directory[aria-expanded=true] { background:var(--yolu-hover); color:var(--yolu-foreground); }
+.creation-header-directory:enabled:hover,.creation-header-directory[aria-expanded=true] { background:var(--yolu-hover); color:var(--yolu-foreground); }
+.creation-header-directory:disabled { cursor:default; }
 .creation-header-directory>svg { width:12px; height:12px; flex:none; }
 .creation-header-directory:focus-visible { outline:2px solid var(--yolu-ring); outline-offset:2px; }
 .creation-directory-popover,.creation-pin-menu { position:fixed; inset:auto; margin:0; padding:0; box-sizing:border-box; border:1px solid var(--yolu-border); border-radius:12px; background:var(--yolu-surface); color:var(--yolu-foreground); box-shadow:var(--yolu-elevation-float); font-family:var(--font-sans); font-size:12px; }
