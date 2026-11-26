@@ -45,14 +45,18 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} terminal sends
   async function expectRendered(marker) {
     await frame.locator('#openTerminalSearch').click();
     await frame.locator('#terminalSearch').fill(marker);
-    await frame.locator('#terminalSearch').press('Enter');
     // Use the real search + copy integration to read the selected display
     // content. Received WS bytes alone cannot prove xterm parsed the output.
-    await expect.poll(() => frame.locator('.xterm').evaluate(node => {
-      const clipboard = new DataTransfer();
-      node.dispatchEvent(new ClipboardEvent('copy', {bubbles:true,clipboardData:clipboard}));
-      return clipboard.getData('text/plain');
-    })).toBe(marker);
+    // WebSocket receipt precedes xterm's queued parser. Search again on each
+    // attempt so an initial miss does not leave us polling an empty selection.
+    await expect.poll(async () => {
+      await frame.locator('#terminalSearch').press('Enter');
+      return frame.locator('.xterm').evaluate(node => {
+        const clipboard = new DataTransfer();
+        node.dispatchEvent(new ClipboardEvent('copy', {bubbles:true,clipboardData:clipboard}));
+        return clipboard.getData('text/plain');
+      });
+    }).toBe(marker);
     await frame.locator('#closeTerminalSearch').click();
   }
   // Octal input ensures observing the command echo cannot satisfy the output

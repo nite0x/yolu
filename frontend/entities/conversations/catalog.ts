@@ -8,4 +8,3 @@ export interface Session {
   source?: string; error?: string; available?: boolean;
   pinned?: boolean; archived?: boolean; chat_status?: string; completed_run?: string; unread?: boolean;
 }
-export interface SessionsData { sessions: Session[]; loading?: boolean; error?: string }

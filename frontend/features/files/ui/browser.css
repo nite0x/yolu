@@ -41,10 +41,8 @@
 .workspace-more-menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
 
 .workspace-split-action { display: inline-flex; align-items: stretch; position: relative; }
-.workspace-split-action > .workspace-split-primary { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .workspace-action-menu { position: static; }
-.workspace-action-menu > summary,
-.workspace-split-action > .workspace-split-toggle {
+.workspace-action-menu > summary {
   display: inline-flex;
   align-items: center;
   justify-content: center;

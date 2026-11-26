@@ -153,3 +153,8 @@ not replace preference form state. Settings writes are serialized by scope while
 independent environments can save concurrently.
 
 See the [refactoring record](../docs/frontend/progress.md) and [engineering conventions](../docs/frontend/conventions.md) for full-source lint, lifecycle and review requirements.
+
+The [legacy cleanup record](../docs/frontend/legacy-cleanup.md) lists retired
+renderers/styles and the active classic adapters that still own host behavior.
+Use the live React mounts for Git and grouped conversation content; do not
+restore static HTML alternatives or deprecated index-based grouping wrappers.
