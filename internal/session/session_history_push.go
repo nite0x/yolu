@@ -352,8 +352,8 @@ func (a *Service) SessionHistoryEventsHandler(w http.ResponseWriter, r *http.Req
 		_ = emit(HistoryPush{Connected: false, Entries: []HistoryEntry{}})
 		return
 	}
-	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
-		_ = emit(HistoryPush{Connected: false, Entries: []HistoryEntry{}, Message: "Antigravity 暂不支持终端实时同步，请刷新历史查看进展"})
+	if model.IsACPProvider(model.NormalizeProvider(record.Provider)) {
+		_ = emit(HistoryPush{Connected: false, Entries: []HistoryEntry{}, Message: model.ProviderName(record.Provider) + " 暂不支持终端实时同步，请刷新历史查看进展"})
 		return
 	}
 	_ = emit(HistoryPush{Entries: []HistoryEntry{}, Message: "正在连接终端实时输出"})

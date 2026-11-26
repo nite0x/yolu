@@ -181,7 +181,13 @@ type AgyDiagnosticResult = {
   report?: AgyDiagnosticReport
 }
 
-export function AgyDiagnosticsResults({results}: {results: AgyDiagnosticResult[]}) {
+export function AgyDiagnosticsResults({
+  results,
+  provider = "agy",
+}: {
+  results: AgyDiagnosticResult[]
+  provider?: "agy" | "cursor"
+}) {
   const statusLabel = (status: string) =>
     ({ok: uiText("通过"), warning: uiText("需留意"), error: uiText("异常"), skipped: uiText("未检测")})[
       status
@@ -194,8 +200,13 @@ export function AgyDiagnosticsResults({results}: {results: AgyDiagnosticResult[]
         <section
           className="codex-diagnostic-result"
           key={result.id}
-          data-agy-environment={result.id}
-          aria-label={uiText("{0} Antigravity 检测", result.name)}
+          data-agy-environment={provider === "agy" ? result.id : undefined}
+          data-cursor-environment={provider === "cursor" ? result.id : undefined}
+          aria-label={
+            provider === "cursor"
+              ? uiText("{0} Cursor 检测", result.name)
+              : uiText("{0} Antigravity 检测", result.name)
+          }
           aria-busy={!!result.loading}
         >
           <div className="codex-diagnostic-heading">
@@ -256,7 +267,9 @@ export function AgyDiagnosticsResults({results}: {results: AgyDiagnosticResult[]
                     ))}
                 </dl>
                 <p>
-                  {uiText("PATH 中找到的 agy：")}
+                  {provider === "cursor"
+                    ? uiText("PATH 中找到的 Cursor Agent：")
+                    : uiText("PATH 中找到的 agy：")}
                   {result.report.candidates.length
                     ? result.report.candidates.map((path) => (
                         <code className="block" key={path}>

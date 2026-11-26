@@ -305,8 +305,8 @@ func (a *Service) resolveCreation(ctx context.Context, target SessionTarget, key
 	out.plan.ManagedBindings = true
 	out.plan.SharedDirectories = allowedShared
 	out.plan.Title = "Codex"
-	if model.NormalizeProvider(target.Provider) == model.ProviderAgy {
-		out.plan.Title = "Antigravity"
+	if model.IsACPProvider(model.NormalizeProvider(target.Provider)) {
+		out.plan.Title = model.ProviderName(target.Provider)
 	}
 	out.instructions = managedDirectoryInstructions
 	return out, nil
@@ -709,10 +709,10 @@ func (a *Service) BindingDiffHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func validateProviderBindings(provider string, plan model.LaunchPlan) error {
-	if model.NormalizeProvider(provider) == model.ProviderAgy && plan.ManagedBindings {
+	if model.IsACPProvider(model.NormalizeProvider(provider)) && plan.ManagedBindings {
 		for _, b := range plan.Bindings {
 			if b.Role == model.SessionBindingPrimary && b.Access == model.SessionBindingRead {
-				return fmt.Errorf("Antigravity 无法强制只读工作目录。请选择 Codex，或明确允许修改主目录。")
+				return fmt.Errorf("%s 无法强制只读工作目录。请选择 Codex，或明确允许修改主目录。", model.ProviderName(provider))
 			}
 		}
 	}

@@ -74,7 +74,7 @@ export function ProjectConversationRows({project, sessions, directoryLabels}: {
         <span className="project-conversation-icon"><MessageSquare aria-hidden="true" /></span>
         <span className="project-conversation-info">
           <strong>{session.name || uiText("未命名对话")}</strong>
-          <span>{session.provider === "agy" ? "Antigravity" : "Codex"}{context ? ` · ${context}` : ""}</span>
+          <span>{session.provider === "cursor" ? "Cursor" : session.provider === "agy" ? "Antigravity" : "Codex"}{context ? ` · ${context}` : ""}</span>
         </span>
         {waiting || running ? <StatusBadge tone={waiting ? "warning" : "accent"}>{waiting ? uiText("待确认") : uiText("运行中")}</StatusBadge> : null}
         {timestamp ? <time dateTime={new Date(timestamp * 1000).toISOString()}>{sessionTime(timestamp)}</time> : null}

@@ -146,7 +146,8 @@ export function createAgentSettingsController(
       await settingsSaveQueues.get(JSON.stringify([environment, "default-agent"]))?.catch(() => {})
       const result = await host.request<{provider: string}>("/api/settings/default-agent", {environment})
       if (environment !== host.context().environment || revision !== defaultAgentRevision) return
-      defaultAgentSaved = result.provider === "agy" ? "agy" : "codex"
+      defaultAgentSaved =
+        result.provider === "agy" || result.provider === "cursor" ? result.provider : "codex"
       $("#defaultAgentSelect").value = defaultAgentSaved
       $("#defaultAgentSelect").disabled = false
     } catch (cause) {
@@ -305,8 +306,15 @@ export function createAgentSettingsController(
       )
       effortSelect.value = selectedSegmentValue("conversationDefaultEffort", "conversation_default_effort")
     }
-    if (provider === "agy") {
-      speedSelect.replaceChildren(new Option(uiText("Antigravity 由模型决定响应速度"), ""))
+    if (provider !== "codex") {
+      speedSelect.replaceChildren(
+        new Option(
+          provider === "cursor"
+            ? uiText("Cursor 由模型决定响应速度")
+            : uiText("Antigravity 由模型决定响应速度"),
+          "",
+        ),
+      )
     } else {
       setConversationDefaultOptions(
         speedSelect,
@@ -322,7 +330,7 @@ export function createAgentSettingsController(
   function conversationDefaultsPath(provider: string, reload = false) {
     return (
       "/api/settings/conversation-defaults" +
-      (provider === "agy" ? `?provider=agy${reload ? "&refresh=1" : ""}` : "")
+      (provider !== "codex" ? `?provider=${provider}${reload ? "&refresh=1" : ""}` : "")
     )
   }
 
@@ -371,7 +379,11 @@ export function createAgentSettingsController(
       )
       setConversationDefaultOptions(
         $("#conversationDefaultModel"),
-        provider === "agy" ? uiText("沿用 Antigravity 默认模型") : uiText("沿用 Codex 默认模型"),
+        provider === "cursor"
+          ? uiText("沿用 Cursor 默认模型")
+          : provider === "agy"
+            ? uiText("沿用 Antigravity 默认模型")
+            : uiText("沿用 Codex 默认模型"),
         models,
         settings.model || "",
         unavailableLabel,

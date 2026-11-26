@@ -37,8 +37,8 @@ func (a *Service) ChatOptionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	provider = model.NormalizeProvider(provider)
-	if provider == model.ProviderAgy {
-		httpx.WriteJSON(w, 200, a.agyChatOptions(r.Context()))
+	if model.IsACPProvider(provider) {
+		httpx.WriteJSON(w, 200, a.acpChatOptions(r.Context(), provider))
 		return
 	}
 	defaults, err := a.conversationPreferences(r.Context())
@@ -86,7 +86,7 @@ func (a *Service) ChatContextHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, 200, ChatContext{Cwd: record.Cwd, Model: cloud.Model})
 		return
 	}
-	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
+	if model.IsACPProvider(model.NormalizeProvider(record.Provider)) {
 		result := ChatContext{Cwd: record.Cwd, AdditionalDirectories: record.AdditionalDirectories}
 		if run := a.ChatFor(record.ID); run != nil {
 			state := run.snapshot()
@@ -231,8 +231,8 @@ func (a *Service) ChatSteerHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if model.NormalizeProvider(record.Provider) == model.ProviderAgy {
-		httpx.WriteError(w, 400, "Antigravity 对话暂不支持运行中补充引导，请等待本轮完成或停止后发送")
+	if model.IsACPProvider(model.NormalizeProvider(record.Provider)) {
+		httpx.WriteError(w, 400, model.ProviderName(record.Provider)+" 对话暂不支持运行中补充引导，请等待本轮完成或停止后发送")
 		return
 	}
 	raw, _ := json.Marshal(input)

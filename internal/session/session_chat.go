@@ -212,7 +212,7 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 400, err.Error())
 		return
 	}
-	if model.NormalizeProvider(record.Provider) == model.ProviderAgy && input.Settings.ServiceTier != "" {
+	if model.IsACPProvider(model.NormalizeProvider(record.Provider)) && input.Settings.ServiceTier != "" {
 		httpx.WriteError(w, 400, "所选对话引擎不支持设置响应速度")
 		return
 	}
@@ -262,8 +262,8 @@ func (a *Service) ChatStartHandler(w http.ResponseWriter, r *http.Request) {
 	a.chats[run.session] = run
 	a.chatMu.Unlock()
 	a.pruneFinishedChats()
-	if run.provider == model.ProviderAgy {
-		go a.DriveAgyChat(ctx, run, plan, input.Text, input.Images...)
+	if model.IsACPProvider(run.provider) {
+		go a.DriveACPChat(ctx, run, plan, input.Text, input.Images...)
 	} else {
 		go a.DriveChat(ctx, run, plan, input.Text, input.Images...)
 	}
@@ -620,8 +620,8 @@ func (run *ChatRun) interrupt() error {
 		return nil
 	}
 	run.mu.Unlock()
-	if provider == model.ProviderAgy {
-		return run.interruptAgy()
+	if model.IsACPProvider(provider) {
+		return run.interruptACP()
 	}
 	if provider == model.ProviderCodexCloud {
 		if id == "" {

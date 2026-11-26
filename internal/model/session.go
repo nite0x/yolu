@@ -3,6 +3,7 @@ package model
 const (
 	ProviderCodex      = "codex"
 	ProviderAgy        = "agy"
+	ProviderCursor     = "cursor"
 	ProviderCodexCloud = "codex-cloud"
 )
 
@@ -10,15 +11,29 @@ func NormalizeProvider(provider string) string {
 	switch provider {
 	case "", ProviderCodex:
 		return ProviderCodex
-	case ProviderAgy:
-		return ProviderAgy
+	case ProviderAgy, ProviderCursor:
+		return provider
 	default:
 		return provider
 	}
 }
 
 func SupportedProvider(provider string) bool {
-	return provider == "" || provider == ProviderCodex || provider == ProviderAgy
+	return provider == "" || provider == ProviderCodex || IsACPProvider(provider)
+}
+
+func IsACPProvider(provider string) bool {
+	return provider == ProviderAgy || provider == ProviderCursor
+}
+func ProviderName(provider string) string {
+	switch provider {
+	case ProviderAgy:
+		return "Antigravity"
+	case ProviderCursor:
+		return "Cursor"
+	default:
+		return "Codex"
+	}
 }
 
 type ProviderCapabilities struct {

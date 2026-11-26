@@ -319,35 +319,39 @@ func (a *Service) ChatApprovalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var result any
-	switch pending.Kind {
-	case "project_access":
-		err = a.approveDirectory(r.Context(), run, *pending, choice)
-	case "acp_permission":
-		if choice.ID == "cancel" {
-			result = map[string]any{"outcome": map[string]any{"outcome": "cancelled"}}
-		} else {
-			result = map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": choice.ID}}
-		}
-	case "elicitation":
-		result, err = elicitationReply(pending, choice, input.Content)
-	case "permissions":
-		permissions := json.RawMessage(`{}`)
-		if choice.Accepts {
-			var p struct {
-				Permissions json.RawMessage `json:"permissions"`
+	if pending.method == "cursor/ask_question" || pending.method == "cursor/create_plan" {
+		result, err = cursorApprovalReply(pending, choice, input.Content)
+	} else {
+		switch pending.Kind {
+		case "project_access":
+			err = a.approveDirectory(r.Context(), run, *pending, choice)
+		case "acp_permission":
+			if choice.ID == "cancel" {
+				result = map[string]any{"outcome": map[string]any{"outcome": "cancelled"}}
+			} else {
+				result = map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": choice.ID}}
 			}
-			_ = json.Unmarshal(pending.params, &p)
-			permissions = p.Permissions
+		case "elicitation":
+			result, err = elicitationReply(pending, choice, input.Content)
+		case "permissions":
+			permissions := json.RawMessage(`{}`)
+			if choice.Accepts {
+				var p struct {
+					Permissions json.RawMessage `json:"permissions"`
+				}
+				_ = json.Unmarshal(pending.params, &p)
+				permissions = p.Permissions
+			}
+			scope := "turn"
+			if input.Decision == "accept_session" {
+				scope = "session"
+			}
+			result = map[string]any{"permissions": permissions, "scope": scope}
+		case "questions":
+			result, err = questionReply(pending.Questions, input)
+		default:
+			result = map[string]any{"decision": choice.decision}
 		}
-		scope := "turn"
-		if input.Decision == "accept_session" {
-			scope = "session"
-		}
-		result = map[string]any{"permissions": permissions, "scope": scope}
-	case "questions":
-		result, err = questionReply(pending.Questions, input)
-	default:
-		result = map[string]any{"decision": choice.decision}
 	}
 	if err != nil {
 		run.mu.Unlock()
@@ -358,7 +362,7 @@ func (a *Service) ChatApprovalHandler(w http.ResponseWriter, r *http.Request) {
 	// twice to one RPC request, and a completed turn cannot consume an old reply.
 	if pending.Kind == "project_access" {
 		// The native directory response was sent with its persisted association.
-	} else if pending.Kind == "acp_permission" && run.acpClient != nil {
+	} else if run.acpClient != nil {
 		err = run.acpClient.Reply(pending.rpcID, result)
 	} else {
 		err = run.client.Reply(pending.rpcID, result)

@@ -62,7 +62,7 @@ export function SettingsPage() {
       id: "settings-diagnostics",
       label: uiText("诊断"),
       Icon: Activity,
-      cards: ["codexDiagnosticsTitle", "agyDiagnosticsTitle"],
+      cards: ["codexDiagnosticsTitle", "agyDiagnosticsTitle", "cursorDiagnosticsTitle"],
     },
   ]
   const cards: Record<string, ReactNode> = {
@@ -109,6 +109,7 @@ export function SettingsPage() {
               <NativeSelect id="defaultAgentSelect" size="sm" disabled>
                 <Option value="codex">Codex</Option>
                 <Option value="agy">Antigravity (AGY)</Option>
+                <Option value="cursor">Cursor</Option>
               </NativeSelect>
             </Field>
           </div>
@@ -160,6 +161,11 @@ export function SettingsPage() {
                 <input type="radio" className="sr-only" name="conversation_default_provider" value="agy" />
                 <AgentIcon agent="agy" decorative />
                 <span>Antigravity (AGY)</span>
+              </label>
+              <label>
+                <input type="radio" className="sr-only" name="conversation_default_provider" value="cursor" />
+                <AgentIcon agent="cursor" decorative />
+                <span>Cursor</span>
               </label>
             </fieldset>
           </div>
@@ -545,6 +551,31 @@ export function SettingsPage() {
           {uiText("尚未检测")}
         </p>
         <div id="agyDiagnosticsResults" />
+      </Card>
+    ),
+    cursorDiagnosticsTitle: (
+      <Card
+        className="settings-card gap-0 rounded-none border-0 border-b border-border bg-transparent py-4 shadow-none"
+        aria-labelledby="cursorDiagnosticsTitle"
+      >
+        <SectionHeading
+          className="settings-card-heading"
+          id="cursorDiagnosticsTitle"
+          title={uiText("Cursor Agent 检测")}
+        >
+          {uiText(
+            "检测仅执行 ACP 初始化、认证与只读列表探活，不会发送模型请求。如提示未登录，请在终端执行 cursor-agent login。",
+          )}
+        </SectionHeading>
+        <div className="detail-actions codex-diagnostic-actions">
+          <Button type="button" variant="outline" size="sm" id="checkCursor">
+            {uiText("检测 Cursor")}
+          </Button>
+        </div>
+        <p id="cursorDiagnosticsStatus" className="settings-help" role="status">
+          {uiText("尚未检测")}
+        </p>
+        <div id="cursorDiagnosticsResults" />
       </Card>
     ),
   }

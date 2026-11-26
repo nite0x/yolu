@@ -13,10 +13,10 @@ const quote = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
 
 // Real HTTP, Git and SQLite with deterministic provider responses. No user
 // projects, authentication files or paid model requests are involved.
-export async function startBrowserApp(binary, fixtureRoot = os.tmpdir()) {
+export async function startBrowserApp(binary, fixtureRoot = os.tmpdir(), paths = {}) {
   const directory = await realpath(await mkdtemp(path.join(fixtureRoot, 'yolu-browser-')));
-  const data = path.join(directory, 'data');
-  const worktrees = path.join(directory, 'worktrees');
+  const data = paths.data || path.join(directory, 'data');
+  const worktrees = paths.worktrees || path.join(directory, 'worktrees');
   const repository = path.join(directory, 'repository');
   const reference = path.join(directory, 'reference');
   const bin = path.join(directory, 'bin');
@@ -28,6 +28,8 @@ export async function startBrowserApp(binary, fixtureRoot = os.tmpdir()) {
   await writeFile(state, JSON.stringify({sessions:[],items:[],log,socket,requestDirectory:reference}));
   const script = fileURLToPath(new URL('./desktop-codex.cjs', import.meta.url));
   await writeFile(path.join(bin, 'codex'), `#!/bin/sh\nexec ${[process.execPath,script,state].map(quote).join(' ')} "$@"\n`, {mode:0o700});
+  const cursorScript = fileURLToPath(new URL('./cursor-agent.cjs', import.meta.url));
+  await writeFile(path.join(bin, 'cursor-agent'), `#!/bin/sh\nexec ${[process.execPath,cursorScript,path.join(directory,'cursor.json')].map(quote).join(' ')} "$@"\n`, {mode:0o700});
   const env = {...process.env, HOME:home, CODEX_HOME:path.join(home, '.codex'), PATH:`${bin}:/usr/bin:/bin`, GIT_CONFIG_GLOBAL:os.devNull,GIT_CONFIG_SYSTEM:os.devNull,GIT_CONFIG_NOSYSTEM:'1'};
   const run = (file, args) => execute(file, args, {env, timeout:30000, maxBuffer:2*1024*1024});
   const server = createServer();

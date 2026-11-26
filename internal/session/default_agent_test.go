@@ -12,13 +12,15 @@ func TestDefaultAgentPersistsIndependentlyOfProviderPreferences(t *testing.T) {
 	if code, raw := call(t, a, http.MethodGet, endpoint, nil); code != 200 || !strings.Contains(string(raw), `"provider":"codex"`) {
 		t.Fatalf("initial default: %d %s", code, raw)
 	}
-	if code, raw := call(t, a, http.MethodPut, endpoint, map[string]string{"provider": "agy"}); code != 200 {
-		t.Fatalf("save: %d %s", code, raw)
-	}
-	restored := New(a.Execution)
-	t.Cleanup(restored.Close)
-	if code, raw := call(t, &App{Service: restored, Projects: a.Projects, token: a.token}, http.MethodGet, endpoint, nil); code != 200 || !strings.Contains(string(raw), `"provider":"agy"`) {
-		t.Fatalf("restored default: %d %s", code, raw)
+	for _, provider := range []string{"agy", "cursor"} {
+		if code, raw := call(t, a, http.MethodPut, endpoint, map[string]string{"provider": provider}); code != 200 {
+			t.Fatalf("save: %d %s", code, raw)
+		}
+		restored := New(a.Execution)
+		t.Cleanup(restored.Close)
+		if code, raw := call(t, &App{Service: restored, Projects: a.Projects, token: a.token}, http.MethodGet, endpoint, nil); code != 200 || !strings.Contains(string(raw), `"provider":"`+provider+`"`) {
+			t.Fatalf("restored default: %d %s", code, raw)
+		}
 	}
 	for _, provider := range []string{"", "unknown"} {
 		if code, raw := call(t, a, http.MethodPut, endpoint, map[string]string{"provider": provider}); code != 400 {

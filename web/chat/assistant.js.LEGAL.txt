@@ -124,6 +124,7 @@ lucide-react/dist/esm/icons/maximize-2.mjs:
 lucide-react/dist/esm/icons/mic.mjs:
 lucide-react/dist/esm/icons/minimize-2.mjs:
 lucide-react/dist/esm/icons/minus.mjs:
+lucide-react/dist/esm/icons/mouse-pointer-2.mjs:
 lucide-react/dist/esm/icons/palette.mjs:
 lucide-react/dist/esm/icons/pause.mjs:
 lucide-react/dist/esm/icons/pencil.mjs:

@@ -83,7 +83,7 @@ function createCatalog(read: Read) {
     update({ results })
   }
 
-  async function readConversations(environment: string, provider?: "codex" | "agy") {
+  async function readConversations(environment: string, provider?: "codex" | "agy" | "cursor") {
     const path = provider ? `${sessionSearchPath}?discover=${provider}` : sessionSearchPath
     const { sessions, error } = await read<{ sessions: Session[]; error?: string }>(path, environment)
     if (!connected.includes(environment)) return
@@ -149,7 +149,7 @@ function createCatalog(read: Read) {
       const failed = () => update({ discoveryIncomplete: true })
       discovery = Promise.all(environments.flatMap(environment => [
         readConversations(environment, "codex").catch(failed),
-        ...(environment === "local" ? [readConversations(environment, "agy").catch(failed)] : []),
+        ...(environment === "local" ? [readConversations(environment, "agy").catch(failed), readConversations(environment, "cursor").catch(failed)] : []),
       ])).then(() => {
         discovery = undefined
         discoveredAt = environments === connected ? Date.now() : 0

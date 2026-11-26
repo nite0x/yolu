@@ -18,12 +18,12 @@ Start a conversation from a project, choose a Git worktree or use the current ch
 - **Use your tools.** Open embedded terminals for installed CLIs. Connect external Codex or Claude Code clients to the [read-only project MCP tools](docs/guide.md#connect-an-agent-over-mcp).
 - **Work locally or in WSL.** Windows installations can connect to a WSL distribution and user. Each conversation belongs to one execution environment.
 
-Yolu uses Tauri, Go and SQLite. Application records stay in a local data directory. Conversations use the Codex CLI installed and authenticated in the selected environment, with that environment's account and provider configuration. The interface supports English and Simplified Chinese, follows the system language by default, and remembers an explicit choice in Settings. Documentation is maintained in English.
+Yolu uses Tauri, Go and SQLite. Application records stay in a local data directory. Conversations use an installed and authenticated Codex CLI, Antigravity CLI or Cursor Agent in the selected environment, with that environment's account and provider configuration. The interface supports English and Simplified Chinese, follows the system language by default, and remembers an explicit choice in Settings. Documentation is maintained in English.
 
 ## Get started
 
 1. Download the package for your operating system and CPU from [Releases](https://github.com/nite0x/yolu/releases), when available. Build targets are macOS Apple Silicon and Intel, Windows x64, and Linux x64 (DEB and AppImage).
-2. Install Git in the environment where your repositories live. For conversations, also install and authenticate the Codex CLI there.
+2. Install Git in the environment where your repositories live. For conversations, also install and authenticate Codex CLI, Antigravity CLI or Cursor Agent there.
 3. Register a Git repository in Projects and choose **New conversation**.
 4. Send a request in the current checkout or choose a different worktree. Use **Add project or directory** in the conversation to expand its context.
 

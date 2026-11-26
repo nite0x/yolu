@@ -2,10 +2,10 @@ import type {TurnSettings as ContractTurnSettings} from "@/api/contracts"
 import {uiText} from "@/shared/i18n"
 import type {ChatModel} from "./messages"
 
-export type AgentProvider = "codex" | "agy";
+export type AgentProvider = "codex" | "agy" | "cursor";
 export interface ProviderCapabilities { steer: boolean; fork: boolean; handoff: boolean; rate_limits: boolean; voice: boolean }
-export const normalizeProvider = (provider?: string): AgentProvider => provider === "agy" ? "agy" : "codex";
-export const defaultCapabilities = (provider: AgentProvider, cloud = false): ProviderCapabilities => provider === "agy" || cloud
+export const normalizeProvider = (provider?: string): AgentProvider => provider === "agy" || provider === "cursor" ? provider : "codex";
+export const defaultCapabilities = (provider: AgentProvider, cloud = false): ProviderCapabilities => provider !== "codex" || cloud
   ? {steer: false, fork: false, handoff: false, rate_limits: false, voice: false}
   : {steer: true, fork: true, handoff: true, rate_limits: true, voice: true};
 export type PermissionMode = "ask" | "auto" | "full";
@@ -35,6 +35,11 @@ export const isFastTier = (id?: string) => id === "fast" || id === "priority";
 export const serviceTierLabel = (tier: NonNullable<ChatModel["serviceTiers"]>[number]) => isFastTier(tier.id) ? uiText("快速") : tier.name || tier.id;
 
 export function permissionChoices(provider: AgentProvider): {value: PermissionMode; label: string; description: string; danger?: boolean}[] {
+  if (provider === "cursor") return [
+    {value: "ask", label: uiText("启用沙箱"), description: uiText("在 Cursor 的沙箱限制内运行，需要时请求批准。")},
+    {value: "auto", label: uiText("帮我批准"), description: uiText("由 Cursor 自动审查操作，需要时请求批准。")},
+    {value: "full", label: uiText("跳过权限检查"), description: uiText("Cursor 将允许未被显式禁止的操作。"), danger: true},
+  ];
   if (provider === "agy") return [
     {value: "ask", label: uiText("启用沙箱"), description: uiText("在 Antigravity 的沙箱限制内运行。")},
     {value: "full", label: uiText("跳过权限检查"), description: uiText("Antigravity 将跳过操作权限检查。"), danger: true},

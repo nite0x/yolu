@@ -679,7 +679,7 @@ test("inactive tabs pause both interactive and read-only observation without sto
   }
 });
 
-test("switching provider to agy loads agy options, creates an agy session and disables steering while busy", async () => {
+for (const provider of ["agy", "cursor"] as const) test(`switching provider to ${provider} loads options, creates a session and disables steering while busy`, async () => {
   const requests: {path: string; body?: any}[] = [];
   const c = new ChatController({
     session: null,
@@ -691,31 +691,31 @@ test("switching provider to agy loads agy options, creates an agy session and di
     request: async (path, init) => {
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       requests.push({path, body});
-      if (path === "/api/agents/chat-options?provider=agy") {
+      if (path === `/api/agents/chat-options?provider=${provider}`) {
         return {
-          provider: "agy",
+          provider: provider,
           models: [{id: "gemini-3-pro", model: "gemini-3-pro", displayName: "Gemini 3 Pro", isDefault: true, defaultReasoningEffort: "high", supportedReasoningEfforts: [{reasoningEffort: "high"}]}],
           modes: ["default", "plan", "accept-edits", "auto"],
           capabilities: {steer: false, fork: false, handoff: false, rate_limits: false, voice: false},
         } as any;
       }
       if (path === "/api/sessions/new") {
-        return {session: {id: "agy-1", provider: "agy", name: "AGY", cwd: "/repo/worktree"}, chat: running(body.request_id)} as any;
+        return {session: {id: "agy-1", provider: provider, name: "AGY", cwd: "/repo/worktree"}, chat: running(body.request_id)} as any;
       }
       return running() as any;
     },
   });
-  c.setProvider("agy");
+  c.setProvider(provider);
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(c.getSnapshot().provider, "agy");
+  assert.equal(c.getSnapshot().provider, provider);
   assert.equal(c.getSnapshot().capabilities.steer, false);
   assert.equal(c.getSnapshot().capabilities.fork, false);
-  assert.equal(requests[0].path, "/api/agents/chat-options?provider=agy");
+  assert.equal(requests[0].path, `/api/agents/chat-options?provider=${provider}`);
 
   await c.send("使用 Antigravity 检查测试");
   const createReq = requests.find(r => r.path === "/api/sessions/new");
-  assert.equal(createReq?.body.provider, "agy");
-  assert.equal(c.getSnapshot().session?.provider, "agy");
+  assert.equal(createReq?.body.provider, provider);
+  assert.equal(c.getSnapshot().session?.provider, provider);
   await assert.rejects(c.send("运行中插话"));
 });
 
@@ -818,4 +818,25 @@ test("recovered polling clears its connection failure while preserving operation
     await controller.poll();
     assert.equal(controller.getSnapshot().error, 'Failed send: inspect the receipt before retrying');
   } finally { controller.disconnect(); }
+});
+
+for (const provider of ["agy", "cursor"] as const) test(`restored ${provider} history establishes provider capabilities before options reload`, async () => {
+  const paths: string[] = [];
+  const c = setup(async path => {
+    paths.push(path);
+    if (path.endsWith("/history")) return {session:{...session,provider},entries:[],has_user_message:true} as any;
+    if (path.includes("chat-options")) return {models:[],modes:[]} as any;
+    if (path.endsWith("/context")) return {cwd:target.cwd} as any;
+    return idleChat() as any;
+  });
+  c.connect();
+  try {
+    await c.history();
+    for(let i=0;i<6;i++) await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(c.getSnapshot().provider,provider);
+    assert.equal(c.getSnapshot().session?.provider,provider);
+    assert.equal(c.getSnapshot().capabilities.fork,false);
+    assert.equal(c.getSnapshot().capabilities.steer,false);
+    assert(paths.includes(`/api/agents/chat-options?provider=${provider}`));
+  } finally { c.disconnect(); }
 });

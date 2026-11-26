@@ -26,7 +26,7 @@ func (a *Service) DefaultAgentHandler(w http.ResponseWriter, r *http.Request) {
 		if !httpx.Decode(w, r, &settings) {
 			return
 		}
-		if settings.Provider != model.ProviderCodex && settings.Provider != model.ProviderAgy {
+		if settings.Provider == "" || !model.SupportedProvider(settings.Provider) {
 			httpx.WriteError(w, http.StatusBadRequest, "不支持的对话引擎")
 			return
 		}

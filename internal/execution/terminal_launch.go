@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"worktree-hub/internal/cursor"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 )
@@ -33,7 +34,7 @@ func WriteTerminalScript(dataDir string, p *model.LaunchPlan) error {
 	if p.Tool == "" {
 		p.Tool = "codex"
 	}
-	if p.Tool != "codex" && p.Tool != "agy" && p.Tool != "git" {
+	if p.Tool != "codex" && p.Tool != "agy" && p.Tool != "cursor-agent" && p.Tool != "git" {
 		return fmt.Errorf("不支持的终端程序")
 	}
 	dir := filepath.Join(dataDir, "launches")
@@ -47,7 +48,13 @@ func WriteTerminalScript(dataDir string, p *model.LaunchPlan) error {
 		ext = ".command"
 	}
 	p.Script = filepath.Join(dir, model.NewID()+ext)
-	p.Command = platform.DisplayCommand(p.Tool, p.Args, runtime.GOOS == "windows")
+	tool := p.Tool
+	if tool == "cursor-agent" {
+		if resolved, _ := cursor.ResolveBinary(); resolved != "" {
+			tool = resolved
+		}
+	}
+	p.Command = platform.DisplayCommand(tool, p.Args, runtime.GOOS == "windows")
 	script := "#!/usr/bin/env bash\nexport PATH=\"$HOME/.local/bin:$PATH\"\n"
 	if dir := platform.CodexInstallDir(); p.Tool == "codex" && os.Getenv("CODEX_INSTALL_DIR") != "" && dir != "" {
 		script += "export PATH=\"$PATH\":" + platform.ShellQuote(dir) + "\n"
