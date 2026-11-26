@@ -39,12 +39,13 @@ export class CodexVoiceInput {
         audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
       });
       if (this.closed) {
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach(track => { track.stop(); });
         return;
       }
       this.stream = stream;
       this.timer = setTimeout(() => this.fail(uiText("Codex 语音连接超时，请重试。")), 35000);
-      const connection = this.connection = new RTCPeerConnection();
+      const connection = new RTCPeerConnection();
+      this.connection = connection;
       for (const track of stream.getTracks()) {
         track.enabled = false;
         connection.addTrack(track, stream);
@@ -55,7 +56,8 @@ export class CodexVoiceInput {
           this.fail(uiText("语音连接已断开，请重试。已识别的文字保留在草稿中。"));
         }
       };
-      const channel = this.channel = connection.createDataChannel("oai-events");
+      const channel = connection.createDataChannel("oai-events");
+      this.channel = channel;
       channel.onmessage = event => this.message(event.data);
       channel.onclose = () => {
         if (!this.closed) this.fail(uiText("语音连接已断开，请重试。已识别的文字保留在草稿中。"));
@@ -106,7 +108,7 @@ export class CodexVoiceInput {
     }
     this.finishing = true;
     this.callbacks.state("finishing");
-    this.stream?.getTracks().forEach(track => track.stop());
+    this.stream?.getTracks().forEach(track => { track.stop(); });
     clearTimeout(this.timer);
     // Keep receiving the final fragments until Codex acknowledges session close.
     this.timer = setTimeout(() => this.fail(uiText("听写已停止，最后一段转写未确认完成，请检查草稿。")), 15000);
@@ -122,7 +124,7 @@ export class CodexVoiceInput {
     this.closed = true;
     clearTimeout(this.timer);
     this.abort.abort();
-    this.stream?.getTracks().forEach(track => track.stop());
+    this.stream?.getTracks().forEach(track => { track.stop(); });
     this.channel?.close();
     this.connection?.close();
     this.releaseServer();
@@ -131,8 +133,12 @@ export class CodexVoiceInput {
 
   private message(data: unknown) {
     if (this.closed || typeof data !== "string") return;
-    let event;
-    try { event = JSON.parse(data); } catch { return; }
+    let event: {type?: string; item?: {id?: string; text?: string}; error?: {message?: string}};
+    try {
+      const value: unknown = JSON.parse(data);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return;
+      event = value;
+    } catch { return; }
     switch (event.type) {
       case "session.started":
         if (this.finishing) return;

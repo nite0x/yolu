@@ -76,7 +76,7 @@ function pinchGeometry([first, second]: Point[]) {
 function MermaidViewport({ src }: { src: string }) {
   const [zoom, setZoom] = useState(1);
   const [dragging, setDragging] = useState(false);
-  const viewport = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLElement>(null);
   const renderedZoom = useRef(1);
   const requestedZoom = useRef(1);
   const position = useRef<ZoomPosition | null>(null);
@@ -85,7 +85,8 @@ function MermaidViewport({ src }: { src: string }) {
   const pinch = useRef<Pinch | null>(null);
 
   const localPoint = useCallback((x?: number, y?: number): Point => {
-    const element = viewport.current!;
+    const element = viewport.current;
+    if (!element) return {x: 0, y: 0};
     const bounds = element.getBoundingClientRect();
     return {
       x: x === undefined ? element.clientWidth / 2 : x - bounds.left,
@@ -94,7 +95,8 @@ function MermaidViewport({ src }: { src: string }) {
   }, []);
 
   const contentPoint = useCallback((point: Point): Point => {
-    const element = viewport.current!;
+    const element = viewport.current;
+    if (!element) return point;
     return { x: (element.scrollLeft + point.x) / renderedZoom.current, y: (element.scrollTop + point.y) / renderedZoom.current };
   }, []);
 
@@ -119,7 +121,8 @@ function MermaidViewport({ src }: { src: string }) {
   }, [zoom]);
 
   useEffect(() => {
-    const element = viewport.current!;
+    const element = viewport.current;
+    if (!element) return;
     let gesture: { zoom: number; anchor: Point } | null = null;
     const wheel = (event: WheelEvent) => {
       // Chromium exposes trackpad pinch as a wheel event with Ctrl set.
@@ -159,11 +162,10 @@ function MermaidViewport({ src }: { src: string }) {
 
   return (
     <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
-      <div
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: The named diagram viewport needs focus for keyboard scrolling and zoom navigation. */}
+      <section tabIndex={0}
         ref={viewport}
-        role="region"
         aria-label={uiText("Mermaid 图表预览")}
-        tabIndex={0}
         className={`min-h-0 min-w-0 touch-none overflow-auto overscroll-contain bg-white focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring ${dragging ? "cursor-grabbing select-none" : zoom > 1 ? "cursor-grab" : ""}`}
         onPointerDown={event => {
           if (event.pointerType === "touch") {
@@ -218,7 +220,7 @@ function MermaidViewport({ src }: { src: string }) {
           className="block max-w-none select-none object-contain p-4"
           style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
         />
-      </div>
+      </section>
       <div className="flex items-center justify-center gap-2 border-t border-border p-2">
         <Button type="button" variant="outline" size="icon" aria-label={uiText("缩小")} title={uiText("缩小")} disabled={zoom === 1} onClick={() => zoomAt(zoom / 1.5)}>
           <MinusIcon aria-hidden="true" />

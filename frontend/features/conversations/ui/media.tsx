@@ -24,10 +24,12 @@ export function ChatMediaProvider({controller, entries, children}: PropsWithChil
           if (!/^data:image\/(png|jpeg|gif|webp);base64,/.test(data.data_url)) throw new Error(uiText("图片格式不受支持"));
           return data.data_url;
         }).catch(error => {pending.delete(ref); throw error;});
-        if (pending.size >= 64) pending.delete(pending.keys().next().value!);
+        if (pending.size >= 64) { const oldest = pending.keys().next(); if (!oldest.done) pending.delete(oldest.value); }
         pending.set(ref, request);
       }
-      return pending.get(ref)!;
+      const request = pending.get(ref);
+      if (!request) throw new Error("Missing image request");
+      return request;
     };
   }, [controller]);
   const value = useMemo(() => ({refs, load}), [refs, load]);
@@ -37,13 +39,14 @@ function useLocalImage(source: string) {
   const media = useContext(MediaContext);
   let decoded = source; try {decoded = decodeURI(source);} catch { /* Keep the literal source. */ }
   const ref = media?.refs.get(source) || media?.refs.get(decoded);
+  const load = media?.load;
   const [loaded, setLoaded] = useState<{ref?: string; image?: string; error?: boolean}>({});
   useEffect(() => {
-    if (!ref || !media) return;
+    if (!ref || !load) return;
     let current = true;
-    void media.load(ref).then(image => {if (current) setLoaded({ref, image});}, () => {if (current) setLoaded({ref, error: true});});
+    void load(ref).then(image => {if (current) setLoaded({ref, image});}, () => {if (current) setLoaded({ref, error: true});});
     return () => {current = false;};
-  }, [ref, media?.load]);
+  }, [ref, load]);
   return {ref, ...(loaded.ref === ref ? loaded : {})};
 }
 function ChatMarkdownImage({src, alt, title}: ImgHTMLAttributes<HTMLImageElement>) {

@@ -70,7 +70,7 @@ Business modules never import application assembly or tooling entrypoints.
 Models and runtime state never import rendered UI. Feature-to-feature imports
 must name an integration file explicitly allowed in `architecture.json`; the
 current integration is the conversation file dock using the file browser and
-its change records. Features cannot form dependency cycles.
+its change records. Features and resolved source files cannot form dependency cycles. Relative imports cannot escape the checked source tree.
 
 Use direct imports such as `@/entities/conversations/catalog` across layers and
 relative imports within a feature. Do not create a catch-all export barrel.
@@ -151,3 +151,5 @@ remaining native forms. `web/features/settings/settings.js` only supplies host
 context and capabilities. Polling refreshes context through that mount and does
 not replace preference form state. Settings writes are serialized by scope while
 independent environments can save concurrently.
+
+See the [refactoring record](../docs/frontend/progress.md) and [engineering conventions](../docs/frontend/conventions.md) for full-source lint, lifecycle and review requirements.

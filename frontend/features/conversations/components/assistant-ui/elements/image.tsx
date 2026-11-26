@@ -428,6 +428,7 @@ function ImageZoom({ src, alt = "Image preview", children }: ImageZoomProps) {
 
   return (
     <>
+      {/* biome-ignore lint/a11y/useSemanticElements: The compositional zoom trigger permits arbitrary child content and provides full button keyboard behavior. */}
       <div
         ref={triggerRef}
         onClick={handleOpen}
@@ -451,7 +452,8 @@ function ImageZoom({ src, alt = "Image preview", children }: ImageZoomProps) {
       </div>
       {isOpen &&
         createPortal(
-          <div
+          /* biome-ignore lint/a11y/useKeyWithClickEvents: The modal backdrop closes by pointer; the dialog also has a focus-trapped close button and document Escape handling. */
+      <div
             ref={overlayRef}
             data-slot="image-zoom-overlay"
             role="dialog"
@@ -465,10 +467,7 @@ function ImageZoom({ src, alt = "Image preview", children }: ImageZoomProps) {
               src={src}
               alt={alt}
               className="aui-image-zoom-content fade-in zoom-in-95 animate-in max-h-[90%] max-w-[90%] cursor-zoom-out object-contain duration-200"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleClose();
-              }}
+
             />
             <button
               ref={closeRef}

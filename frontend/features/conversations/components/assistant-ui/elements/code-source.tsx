@@ -36,9 +36,11 @@ export function CodeSource({ code, language, wrap }: { code: string; language: s
     <CodePre data-wrap={wrap} tabIndex={wrap ? undefined : 0}>
       <code className={language ? `language-${language}` : undefined}>
         {lines ? lines.map((line, row) => (
+          /* biome-ignore lint/suspicious/noArrayIndexKey: Syntax rows and tokens are stateless positions within one immutable highlighted source snapshot. */
           <Fragment key={row}>
             {row > 0 && "\n"}
             {line.map((token, index) => (
+              /* biome-ignore lint/suspicious/noArrayIndexKey: Syntax rows and tokens are stateless positions within one immutable highlighted source snapshot. */
               <span key={index} className="aui-code-token" style={{
                 "--code-token-light": token.variants.light?.color,
                 "--code-token-dark": token.variants.dark?.color,

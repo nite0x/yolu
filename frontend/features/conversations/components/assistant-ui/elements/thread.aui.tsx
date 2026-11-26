@@ -693,6 +693,7 @@ const AssistantMessage: FC = () => {
                 return (
                   <span
                     data-slot="aui_assistant-message-indicator"
+                    role="status"
                     className="animate-pulse font-sans"
                     aria-label={uiText("Codex 正在工作")}
                   >

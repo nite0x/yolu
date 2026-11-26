@@ -1,4 +1,4 @@
-import {type PropsWithChildren} from "react"
+import type {PropsWithChildren} from "react"
 import {useAuiState, type ToolCallMessagePartComponent} from "@assistant-ui/react"
 import {BookOpenIcon, FilePenLineIcon, FolderSearchIcon, ImageIcon, LoaderCircleIcon, SearchIcon, TerminalIcon, WrenchIcon, XCircleIcon} from "lucide-react"
 import {ToolFallback} from "../components/assistant-ui/elements/tool-fallback.aui"
@@ -13,7 +13,9 @@ export const toolIcons = {read:BookOpenIcon, explore:FolderSearchIcon, edit:File
 export function ChatToolResult({result: value}: {result: unknown}) {
   const result = value && typeof value === "object" ? value as Record<string, unknown> : {};
   return <>
-    {typeof result.output === "string" && <div className="aui-tool-fallback-result"><pre className="chat-tool-source" tabIndex={0} aria-label={uiText("操作输出")}>{result.output}</pre></div>}
+    {typeof result.output === "string" && <div className="aui-tool-fallback-result">{/* biome-ignore lint/a11y/useSemanticElements: Keep preformatted command output as the named scrollable reading region. */}
+{/* biome-ignore lint/a11y/noNoninteractiveTabindex: Overflowing operation output must support keyboard scrolling. */}
+    <pre className="chat-tool-source" role="region" tabIndex={0} aria-label={uiText("操作输出")}>{result.output}</pre></div>}
     {(typeof result.exit_code === "number" || typeof result.duration_ms === "number") && <p className="chat-tool-metadata">
       {typeof result.exit_code === "number" && <span>{uiText("退出码 {0}", result.exit_code)}</span>}
       {typeof result.duration_ms === "number" && <span>{uiText("耗时 {0} 秒", Math.round(result.duration_ms / 100) / 10)}</span>}
@@ -28,7 +30,7 @@ export function ChatToolGroup({group, children}: PropsWithChildren<{group: Threa
   return <ToolGroupRoot variant="ghost">
     <ToolGroupTrigger count={parts.length} active={group.status.type === "running"} label={toolGroupSummary(parts)} />
     <ToolGroupContent>{children}</ToolGroupContent>
-    {images.length > 0 && <div className="chat-tool-images" aria-label={uiText("已查看的图片")}>{images.map(source => <ChatToolImage key={source} source={source} />)}</div>}
+    {images.length > 0 && <section className="chat-tool-images" aria-label={uiText("已查看的图片")}>{images.map(source => <ChatToolImage key={source} source={source} />)}</section>}
   </ToolGroupRoot>;
 }
 

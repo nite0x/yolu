@@ -567,12 +567,11 @@ function ToolFallbackApprovalQuestions({
         const described =
           question.options?.some((option) => option.description) ?? false;
         return (
-          <div
+          <fieldset
             key={question.id}
-            role="group"
             aria-label={question.prompt}
             data-slot="tool-fallback-approval-question"
-            className="aui-tool-fallback-approval-question flex flex-col gap-2"
+            className="aui-tool-fallback-approval-question m-0 min-w-0 border-0 p-0 flex flex-col gap-2"
           >
             <p className="aui-tool-fallback-approval-question-prompt text-foreground whitespace-pre-line">
               {question.header ? (
@@ -635,7 +634,7 @@ function ToolFallbackApprovalQuestions({
                 }
               />
             ) : null}
-          </div>
+          </fieldset>
         );
       })}
       <div className="flex items-center gap-2">
@@ -1218,7 +1217,7 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
     ) {
       triggerRef.current?.focus({ preventScroll: true });
     }
-  }, [approval, isRequiresAction, status?.type]);
+  }, [approval, isRequiresAction]);
 
   return (
     <ToolFallbackRoot open={open} onOpenChange={setOpen}>

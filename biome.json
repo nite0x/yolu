@@ -1,22 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.9/schema.json",
   "files": {
-    "includes": [
-      "frontend/shared/ui/actions/**",
-      "frontend/shared/ui/forms/**",
-      "frontend/shared/ui/feedback/**",
-      "frontend/shared/ui/layout/**",
-      "frontend/shared/ui/data-display/**",
-      "frontend/dev/**",
-      "frontend/app/**/*.ts",
-      "frontend/app/**/*.tsx",
-      "frontend/core/**",
-      "frontend/features/*/model/**/*.ts",
-      "frontend/features/*/runtime/**/*.ts",
-      "frontend/features/settings/**",
-      "scripts/ui-*.tsx",
-      "vite.ui.config.mts"
-    ]
+    "includes": ["frontend/**/*.ts", "frontend/**/*.tsx", "scripts/ui-*.tsx", "vite.ui.config.mts"]
   },
   "formatter": {
     "indentStyle": "space",
@@ -41,6 +26,15 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["frontend/**"],
+      "formatter": {
+        "enabled": false
+      },
+      "assist": {
+        "enabled": false
+      }
+    },
     {
       "includes": [
         "frontend/app/**",

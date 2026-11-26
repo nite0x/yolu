@@ -162,6 +162,7 @@ function MarkdownCodeBlock({ code, language }: SyntaxHighlighterProps) {
   return (
     <>
       <CodeHeader language={language} code={code}>
+        {/* biome-ignore lint/a11y/useSemanticElements: These display-mode buttons form an action group, not a form fieldset. */}
         <div role="group" aria-label={uiText("Markdown 显示方式")} className="flex items-center gap-1">
           <Button type="button" variant={preview ? "ghost" : "secondary"} size="xs" aria-pressed={!preview} onClick={() => setView("source")}>{uiText("源码")}</Button>
           <Button type="button" variant={preview ? "secondary" : "ghost"} size="xs" aria-pressed={preview} onClick={() => setView("preview")}>{uiText("预览")}</Button>

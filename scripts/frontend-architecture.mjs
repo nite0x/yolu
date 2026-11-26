@@ -50,6 +50,7 @@ export async function checkFrontendArchitecture(root, rules) {
   const files = await listSources(root);
   const errors = [];
   const featureGraph = new Map();
+  const sourceGraph = new Map();
   for (const file of files) {
     const name = path.relative(root, file).split(path.sep).join('/');
     if (name === 'vite-env.d.ts') continue;
@@ -61,6 +62,12 @@ export async function checkFrontendArchitecture(root, rules) {
       const target = await resolveSource(root, file, specifier);
       if (!target) { errors.push(`${name}: unresolved import ${specifier}`); continue; }
       const targetName = path.relative(root, target).split(path.sep).join('/');
+      if (targetName.startsWith('../') || path.isAbsolute(targetName)) {
+        errors.push(`${name}: source imports must stay inside frontend (${specifier})`);
+        continue;
+      }
+      if (!sourceGraph.has(name)) sourceGraph.set(name, new Set());
+      sourceGraph.get(name).add(targetName);
       const [targetLayer, targetFeature, ...inside] = targetName.split('/');
       if (!rules.layers[layer].includes(targetLayer)) errors.push(`${name}: ${layer} must not import ${targetName}`);
       if (name.startsWith('shared/ui/primitives/') && targetName.startsWith('shared/ui/') && !targetName.startsWith('shared/ui/primitives/')) {
@@ -83,6 +90,21 @@ export async function checkFrontendArchitecture(root, rules) {
     visited.add(feature);
   }
   for (const feature of featureGraph.keys()) visit(feature);
+  // Feature-level checks cannot detect cycles inside a feature or between
+  // shared/core files. Check the resolved file graph as well, including types,
+  // re-exports, styles and lazy imports.
+  const completed = new Set(), active = new Map(), trail = [];
+  function visitSource(file) {
+    if (active.has(file)) {
+      errors.push(`Source cycle: ${[...trail.slice(active.get(file)), file].join(' -> ')}`);
+      return;
+    }
+    if (completed.has(file)) return;
+    active.set(file, trail.length); trail.push(file);
+    for (const dependency of sourceGraph.get(file) || []) visitSource(dependency);
+    trail.pop(); active.delete(file); completed.add(file);
+  }
+  for (const file of sourceGraph.keys()) visitSource(file);
   return {files:files.length, errors};
 }
 

@@ -64,6 +64,24 @@ test("Codex WebRTC signaling uses the local authenticated API and appends only u
   } finally {h.dispose();}
 });
 
+test("malformed voice events leave the session listening and later transcripts usable", async () => {
+  const h = fixture();
+  try {
+    await h.session.start();
+    h.message({type: "session.started"});
+    for (const value of [null, [], "unexpected", 42, true, {}, {type: "input_transcript.added", item: null}]) {
+      assert.doesNotThrow(() => h.message(value));
+    }
+    assert.doesNotThrow(() => h.channel.onmessage({data: "invalid JSON"}));
+    assert.doesNotThrow(() => h.channel.onmessage({data: 42}));
+    h.message({type: "input_transcript.added", item: {id: "after-malformed", text: "Still listening"}});
+    assert.deepEqual(h.transcripts, ["Still listening"]);
+    assert.deepEqual(h.states, ["connecting", "listening"]);
+    assert.equal(h.channel.readyState, "open");
+    assert.deepEqual(h.errors, []);
+  } finally {h.dispose();}
+});
+
 test("stopping releases the microphone immediately and receives trailing fragments until confirmed close", async () => {
   const h = fixture();
   try {

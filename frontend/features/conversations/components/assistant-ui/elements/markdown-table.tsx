@@ -82,7 +82,7 @@ export function TableRowHandle() {
 
 export function MarkdownTable({ className, children, style, ...props }: ComponentProps<"table">) {
   const frame = useRef<HTMLDivElement>(null);
-  const viewport = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLElement>(null);
   const [size, setSize] = useState<Size>();
   const [columns, setColumns] = useState<{ widths: number[]; initial: number[] }>();
 
@@ -117,16 +117,17 @@ export function MarkdownTable({ className, children, style, ...props }: Componen
   return (
     <div ref={frame} className="aui-md-table-frame">
       <div className="aui-md-table-box" style={{ width: size?.width }}>
-        <div ref={viewport} className="aui-md-table-wrapper" role="region" aria-label={uiText("表格")}
-          tabIndex={0} style={{ height: size?.height }}>
+        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: The named overflow region must receive focus for keyboard scrolling. */}
+        <section ref={viewport} tabIndex={0} className="aui-md-table-wrapper" aria-label={uiText("表格")} style={{ height: size?.height }}>
           <ColumnResize.Provider value={columnControls}>
             <table className={cn("aui-md-table w-full border-separate border-spacing-0", className)}
               data-resized={!!columns} style={{ ...style, width }} {...props}>
-              {columns && <colgroup>{columns.widths.map((column, index) => <col key={index} style={{ width: column }} />)}</colgroup>}
+              {columns && <colgroup>{columns.widths.map((column, index) => /* biome-ignore lint/suspicious/noArrayIndexKey: Column width slots are fixed table positions; resizing never reorders them. */
+                <col key={index} style={{ width: column }} />)}</colgroup>}
               {children}
             </table>
           </ColumnResize.Provider>
-        </div>
+        </section>
         <ResizeHandle axis="both" label={uiText("调整表格大小")} className="aui-md-table-resize"
           start={() => {
             if (!viewport.current || !frame.current) return;

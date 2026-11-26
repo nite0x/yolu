@@ -86,7 +86,7 @@ export function createConversationList({list, sessionKey, render, remember}: {
         start = Math.max(0, Math.ceil((view.loadedCount - windowSize) / batchSize) * batchSize)
       } else if (visible.length) {
         // Keep a buffer on both sides to avoid bouncing at batch boundaries.
-        if (mountedEnd < loaded && visible.at(-1)!.index >= mountedEnd - 5) start += batchSize
+        if (mountedEnd < loaded && visible[visible.length - 1].index >= mountedEnd - 5) start += batchSize
         else if (mountedStart > 0 && visible[0].index < mountedStart + 5) start = Math.max(0, start - batchSize)
       } else {
         // A scrollbar jump can land entirely inside a spacer.

@@ -142,7 +142,9 @@ const AttachmentUI: FC = () => {
         >
           <AttachmentPreviewDialog src={src} name={name}>
             <TooltipTrigger asChild>
-              <div
+              {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: The tile resolves to a labelled button when previewable and a labelled group while uploading. */}
+{/* biome-ignore lint/a11y/noStaticElementInteractions: Preview tiles supply keyboard handlers and a conditional button role; non-preview tiles are groups. */}
+<div
                 className={cn(
                   "aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 overflow-hidden rounded-[calc(var(--composer-radius,1rem)-var(--composer-padding,8px))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-1 motion-reduce:transition-none dark:after:ring-white/10",
                   src ? "cursor-zoom-in active:scale-[0.96]" : "cursor-default",

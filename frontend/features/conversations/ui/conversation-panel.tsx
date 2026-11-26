@@ -4,7 +4,7 @@ import {HandIcon, InfoIcon, LoaderCircleIcon, LockKeyholeIcon, XIcon} from "luci
 import {Popover} from "radix-ui"
 import {Thread, Composer, type ThreadProps} from "../components/assistant-ui/elements/thread.aui"
 import {Alert, AlertDescription} from "@/shared/ui/primitives/alert"
-import {ConversationHeader} from "@/shared/ui/conversation-surface"
+import type {ConversationHeader} from "@/shared/ui/conversation-surface"
 import type {useChatReading} from "../runtime/use-chat-reading"
 import {uiText} from "@/shared/i18n"
 
@@ -120,6 +120,7 @@ export function ConversationFeedback({
   return (
     <footer className="chat-feedback shrink-0 space-y-1 text-xs text-muted-foreground">
       {messages.filter(Boolean).map((message, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: Feedback slots keep their caller-defined order without row-local state.
         <p key={index} role="status">
           {message}
         </p>

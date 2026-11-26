@@ -8,7 +8,7 @@ import {Input} from "@/shared/ui/primitives/input"
 import {NativeSelect, NativeSelectOption} from "@/shared/ui/primitives/native-select"
 import {convertEntries, mergeEntries, newConversationSettings, type AgentProvider, type ChatContext, type PermissionMode} from "../model/messages"
 import {effortLabel, findChatModel, isFastTier, permissionChoices, serviceTierLabel} from "../model/settings"
-import {ChatController} from "../runtime/controller"
+import type {ChatController} from "../runtime/controller"
 import {useChatState} from "../runtime/use-chat-state"
 import {AgentIcon} from "@/entities/conversations/agent-icon"
 import {isGeneralConversationDirectory} from "@/entities/conversations/context"
@@ -210,7 +210,8 @@ export function ChatSessionMenu({controller, portal, onSearch}: ControlsProps & 
   if (!s.session) return null;
   const openEditor = (mode: "rename" | "fork") => {setName(s.session?.name || ""); setTurn(""); setEditor(mode);};
   const submit = async () => {
-    await controller.manage(editor!, editor === "rename" ? name.trim() : undefined, turn);
+    if (!editor) return;
+    await controller.manage(editor, editor === "rename" ? name.trim() : undefined, turn);
     if (!controller.getSnapshot().error) setEditor(null);
   };
   return <Popover.Root open={!!editor} onOpenChange={open => {if (!open && !s.managing) setEditor(null);}}>
@@ -232,7 +233,7 @@ export function ChatSessionMenu({controller, portal, onSearch}: ControlsProps & 
     <Popover.Portal container={portal.current}><Popover.Content className={`${overlayClass} chat-manage-popover space-y-3`} align="end" sideOffset={8} collisionPadding={12} aria-labelledby={title} onCloseAutoFocus={event => {event.preventDefault(); trigger.current?.focus();}}>
       <h3 id={title} className="text-sm font-semibold">{editor === "rename" ? uiText("重命名对话") : uiText("从历史分叉")}</h3>
       <form className="space-y-3" onSubmit={e => {e.preventDefault(); void submit();}}>
-        {editor === "rename" ? <Input aria-label={uiText("对话名称")} value={name} maxLength={160} required disabled={s.managing} onChange={e => setName(e.target.value)} /> : <><label className="grid gap-1.5 text-xs">{uiText("复制至哪一轮")}<NativeSelect aria-label={uiText("分叉至哪一轮")} value={turn} disabled={s.managing} onChange={e => setTurn(e.target.value)}><NativeSelectOption value="">{uiText("全部已完成轮次")}</NativeSelectOption>{turns.map((id, i) => <NativeSelectOption key={id} value={id}>{uiText("截至第")}{" "}{i + 1}{" "}{uiText("轮（已加载历史）")}</NativeSelectOption>)}</NativeSelect></label><p className="text-xs text-muted-foreground">{uiText("复制对话历史，共用当前工作目录。")}</p></>}
+        {editor === "rename" ? <Input aria-label={uiText("对话名称")} value={name} maxLength={160} required disabled={s.managing} onChange={e => setName(e.target.value)} /> : <><label htmlFor={`${title}-turn`} className="grid gap-1.5 text-xs">{uiText("复制至哪一轮")}<NativeSelect id={`${title}-turn`} aria-label={uiText("分叉至哪一轮")} value={turn} disabled={s.managing} onChange={e => setTurn(e.target.value)}><NativeSelectOption value="">{uiText("全部已完成轮次")}</NativeSelectOption>{turns.map((id, i) => <NativeSelectOption key={id} value={id}>{uiText("截至第")}{" "}{i + 1}{" "}{uiText("轮（已加载历史）")}</NativeSelectOption>)}</NativeSelect></label><p className="text-xs text-muted-foreground">{uiText("复制对话历史，共用当前工作目录。")}</p></>}
         {s.error && <p role="alert" className="text-xs text-destructive">{s.error}</p>}
         <div className="flex justify-end gap-2"><Button type="button" variant="ghost" size="sm" disabled={s.managing} onClick={() => setEditor(null)}>{uiText("取消")}</Button><Button type="submit" size="sm" disabled={s.managing || editor === "rename" && !name.trim()}>{s.managing ? uiText("处理中…") : editor === "rename" ? uiText("保存名称") : uiText("创建分叉对话")}</Button></div>
       </form>
@@ -258,15 +259,15 @@ export function ChatSearch({controller, container, open, onClose}: {controller: 
     const changed = previousSearch.current !== text; previousSearch.current = text;
     setIndex(i => changed ? 0 : Math.max(0, Math.min(i, found.length - 1)));
     for (const node of nodes) node.toggleAttribute("data-search-hit", found.includes(node));
-    return () => nodes.forEach(n => n.removeAttribute("data-search-hit"));
+    return () => nodes.forEach(n => { n.removeAttribute("data-search-hit"); });
   }, [s.search, s.entries, s.chat.entries, container, open]);
   const jump = (delta: number) => {if (!matches.current.length) return; const next = (index + delta + matches.current.length) % matches.current.length; setIndex(next); matches.current[next].scrollIntoView({block: "center", behavior: "smooth"});};
   if (!open) return null;
-  return <div className="chat-search-bar border-t pt-2" role="search" aria-label={uiText("查找消息")} onKeyDown={e => {if (e.key === "Escape") {e.stopPropagation(); onClose();} else if (e.key === "Enter" && e.target instanceof HTMLInputElement) {e.preventDefault(); jump(e.shiftKey ? -1 : 1);}}}>
+  return <search className="chat-search-bar border-t pt-2" aria-label={uiText("查找消息")} onKeyDown={e => {if (e.key === "Escape") {e.stopPropagation(); onClose();} else if (e.key === "Enter" && e.target instanceof HTMLInputElement) {e.preventDefault(); jump(e.shiftKey ? -1 : 1);}}}>
     <div className="flex items-center gap-1"><SearchIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" /><Input autoFocus type="search" aria-label={uiText("查找对话内容")} placeholder={uiText("搜索消息和命令")} value={s.search} onChange={e => controller.setSearch(e.target.value)} className="h-8 min-w-0 flex-1" /><span role="status" className="shrink-0 px-1 text-xs text-muted-foreground">{count ? `${index + 1}/${count}` : s.search ? uiText("无匹配") : ""}</span><TooltipIconButton tooltip={uiText("上一处")} aria-label={uiText("上一处")} disabled={!count} onClick={() => jump(-1)}><ArrowUpIcon /></TooltipIconButton><TooltipIconButton tooltip={uiText("下一处")} aria-label={uiText("下一处")} disabled={!count} onClick={() => jump(1)}><ArrowDownIcon /></TooltipIconButton><TooltipIconButton tooltip={uiText("关闭查找")} aria-label={uiText("关闭查找")} onClick={onClose}><XIcon /></TooltipIconButton></div>
     {s.cursor && <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground"><span>{uiText("正在查找已加载的历史")}</span><Button type="button" size="sm" variant="ghost" disabled={s.searching} onClick={() => void controller.searchAll()}>{s.searching ? uiText("正在加载…") : uiText("搜索全部历史")}</Button></div>}
     {s.searchError && <p role="alert" className="text-xs text-destructive">{s.searchError}</p>}
-  </div>;
+  </search>;
 }
 
 export const ChatStatus = memo(ChatStatusView);

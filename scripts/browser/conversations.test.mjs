@@ -10,12 +10,20 @@ test('project groups can be dropped in gaps and keep their order after reload', 
   assert(process.env.YOLU_TEST_BINARY, 'Set YOLU_TEST_BINARY to the built Go executable.');
   const app = await startBrowserApp(path.resolve(process.env.YOLU_TEST_BINARY));
   t.after(() => app.close());
+  const projectIDs = new Map([['Browser fixture', app.project.id]]);
   for (const name of ['Yolu', 'Zeta']) {
     const cwd = path.join(path.dirname(app.repository), name);
     execFileSync('git', ['clone', '--quiet', app.repository, cwd]);
     const project = await app.request('/api/projects', 'POST', {name, path:cwd});
+    projectIDs.set(name, project.id);
     await app.request('/api/sessions/new', 'POST', {project_id:project.id,cwd,request_id:name,text:name,allow_shared:true});
   }
+  // Repository discovery order can change with Git/status completion timing.
+  // Exercise drag/drop from a known saved order, leaving the movement and
+  // persistence assertions independent of that backend enumeration.
+  await app.request('/api/settings/conversation-project-order', 'PUT', {
+    order: ['Yolu', 'Browser fixture', 'Zeta'].map(name => JSON.stringify(['local', 'project', projectIDs.get(name)])),
+  });
   const browser = await chromium.launch({headless:true, ...(process.env.YOLU_BROWSER_EXECUTABLE ? {executablePath:process.env.YOLU_BROWSER_EXECUTABLE} : {})});
   t.after(() => browser.close());
   const page = await browser.newPage({viewport:{width:1440,height:900}});

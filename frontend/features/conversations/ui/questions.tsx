@@ -18,7 +18,8 @@ function answerText(question: Question, draft?: QuestionDraft) {
 export function QuestionComposer({approval, controller}: {approval: Approval; controller: ChatController}) {
   const state = useSyncExternalStore(controller.subscribe, controller.getViewSnapshot);
   const key = questionDraftKey(approval, state.chat.id);
-  const questions = approval.questions!;
+  const questions = approval.questions;
+  if (!questions?.length) throw new Error("A question composer requires questions");
   const drafts = controller.questionDrafts.get(key) || {};
   const [index, setIndex] = useState(0);
   const [error, setError] = useState("");
@@ -33,9 +34,10 @@ export function QuestionComposer({approval, controller}: {approval: Approval; co
     const next = {...drafts, [question.id]: {...draft, ...patch}};
     controller.setQuestionDraft(key, next); setError("");
   };
+  /* biome-ignore lint/correctness/useExhaustiveDependencies: Changing the selected question must focus its newly mounted native field. */
   useEffect(() => {
     form.current?.querySelector<HTMLElement>('input:checked, input, textarea')?.focus();
-  }, [index]);
+  }, [question.id]);
   const submit = () => {
     if (disabled) return;
     const missing = questions.findIndex(q => !answerText(q, drafts[q.id]));
@@ -55,7 +57,8 @@ export function QuestionComposer({approval, controller}: {approval: Approval; co
   }}>
     <div className="chat-question-heading" aria-live="polite"><span>{uiText("需要你的回答")}</span><span>{index + 1} / {questions.length}</span></div>
     {approval.delivery === "async" && <p className="m-0 text-xs text-muted-foreground">{approval.question_status === "pending" ? uiText("回答的投递结果未确认，请检查对话历史。你的选择已保留。") : uiText("回答会作为消息发送到当前对话。")}</p>}
-    {questions.length > 1 && <div className="chat-question-tabs" role="group" aria-label={uiText("切换问题")}>{questions.map((q, i) => <Button key={q.id} type="button" variant={i === index ? "secondary" : "ghost"} size="sm" aria-pressed={i === index} disabled={disabled} onClick={() => {setIndex(i); setError("");}}>{answerText(q, drafts[q.id]) && <CheckIcon aria-hidden="true" />}{cleanText(q.header) || uiText("问题 {0}", i + 1)}</Button>)}</div>}
+    {questions.length > 1 && /* biome-ignore lint/a11y/useSemanticElements: These question-navigation buttons form an action group, not answer fields. */
+    <div className="chat-question-tabs" role="group" aria-label={uiText("切换问题")}>{questions.map((q, i) => <Button key={q.id} type="button" variant={i === index ? "secondary" : "ghost"} size="sm" aria-pressed={i === index} disabled={disabled} onClick={() => {setIndex(i); setError("");}}>{answerText(q, drafts[q.id]) && <CheckIcon aria-hidden="true" />}{cleanText(q.header) || uiText("问题 {0}", i + 1)}</Button>)}</div>}
     <fieldset key={question.id} disabled={disabled} className="chat-question-fields">
       <legend>{cleanText(question.question || question.header)}</legend>
       {!!question.options?.length && <div className="chat-question-options">{question.options.map((option, i) => <label key={option.label} className="chat-question-option" data-selected={draft.choice === option.label}>

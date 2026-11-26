@@ -9,8 +9,7 @@ export const VisualizationContext = createContext<{session?: string; refs: Reado
 function parseDirectiveAttributes(raw: string): Record<string, string> {
   const attrs: Record<string, string> = {};
   const pattern = /([a-zA-Z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s}]+))/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(raw))) {
+  for (const match of raw.matchAll(pattern)) {
     attrs[match[1]] = match[2] ?? match[3] ?? match[4] ?? "";
   }
   return attrs;

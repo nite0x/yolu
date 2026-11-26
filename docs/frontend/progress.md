@@ -27,3 +27,14 @@ Finish initial independent findings, remove confirmed dead code, consolidate sha
 - Removed unused `ProjectOpenActions` (live directory card implementation retained) and unused registry surface constants/components; four media-player roles remain.
 - Declared direct `@types/hast` and `@types/mdast` development dependencies for imported AST contracts. No runtime dependency removed: CSS/build references prove reported candidates live.
 - Strict TypeScript passed after cleanup. Baseline legacy suite: 221 passed. Go contract check passed; real baseline binary built without backend edits.
+
+## Implementation integration
+
+- Cleanup commit: `4725ce2`.
+- Independent owners: audit_components (diagnostics consolidation, project semantics, dead shell branch); audit_state (terminal connection/disposal + shared guards); files_refactor (file resource/errors/theme + 6 regressions); lint_list (list/creation semantics); lint_conversations (conversation UI/voice lint and malformed event regression).
+- Shared diagnostics are feature-local; no extra library or global store. Twenty SSR states matched baseline exactly.
+- File browser owns errors per operation and remounts on actual resource identity while preserving reading across late project metadata. Renderer follows appearance; splitter rejects invalid saved sizes.
+- Conversation list reuses shared splitter with explicit teardown. Removed unreachable project-resizer branch and styles.
+- Draft decode rejects malformed reading state and ignores damaged image records. Disposal cannot schedule retry/restore callbacks. Cloud draft restore retains capability restrictions. Explicit freshness reads bypass shared retention; quota uses shared API errors/transport.
+- Source graph check now detects all file cycles; eliminated original settings/messages type cycle. Full frontend TS/TSX Biome enabled without globally disabling recommended rules; actual accessibility/correctness fixes plus explained local analyzer exceptions.
+- Current validation: `npm run check` passed; app 50 passed; UI 20 passed; focused data/splitter 12 passed. Full rebuilt application browser and 221 legacy regressions running. Three review rounds still not started.

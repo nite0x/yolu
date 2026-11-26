@@ -12,7 +12,7 @@ import {Card, CardContent, CardFooter, CardHeader, CardTitle} from "@/shared/ui/
 import {Label} from "@/shared/ui/primitives/label"
 import {Input} from "@/shared/ui/primitives/input"
 import {NativeSelect, NativeSelectOption} from "@/shared/ui/primitives/native-select"
-import {ChatController} from "../runtime/controller"
+import type {ChatController} from "../runtime/controller"
 import {useChatReading} from "../runtime/use-chat-reading"
 import {cleanText, convertEntries, mergeEntries, questionDraftKey, type Approval} from "../model/messages"
 import {readElicitation} from "../model/approval"
@@ -52,11 +52,11 @@ function OccupiedConversation({controller, send}: {controller: ChatController; s
     onRetry={() => void retry()} onFork={() => void controller.manage("fork")} />;
 }
 
+const readParallelLayout = () => ({split:document.documentElement.hasAttribute("data-workspace-pane"),zoomed:document.documentElement.hasAttribute("data-workspace-zoomed"),canZoom:document.documentElement.hasAttribute("data-workspace-can-zoom")})
 function ParallelPaneControls() {
-  const read = () => ({split:document.documentElement.hasAttribute("data-workspace-pane"),zoomed:document.documentElement.hasAttribute("data-workspace-zoomed"),canZoom:document.documentElement.hasAttribute("data-workspace-can-zoom")})
-  const [layout,setLayout] = useState(read)
+  const [layout,setLayout] = useState(readParallelLayout)
   useEffect(() => {
-    const update = () => setLayout(read())
+    const update = () => setLayout(readParallelLayout())
     window.addEventListener("workhub:parallel-layout",update)
     return () => window.removeEventListener("workhub:parallel-layout",update)
   }, [])
@@ -98,6 +98,7 @@ function CloudEnvironmentFields({controller, selected, disabled}: {controller: C
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const cloud = selected !== undefined;
+  /* biome-ignore lint/correctness/useExhaustiveDependencies: A retry counter explicitly re-runs the failed cloud inventory request. */
   useEffect(() => {
     if (!cloud) return;
     const abort = new AbortController();
@@ -143,7 +144,8 @@ function ApprovalCard({approval, controller}: {approval: Approval; controller: C
   const state = useSyncExternalStore(controller.subscribe, controller.getViewSnapshot);
   const [error, setError] = useState("");
   const disabled = !!state.answering || state.stopping || !state.chat.busy || state.chat.status === "stopping";
-  return <Card className="gap-3 py-4"><form onSubmit={event => {
+  return <Card className="gap-3 py-4">{/* biome-ignore lint/a11y/useKeyWithClickEvents: This form delegates clicks from native buttons; those buttons already generate keyboard activation. */}
+    <form onSubmit={event => {
     event.preventDefault();
     if (disabled) return;
     setError("");
@@ -160,7 +162,8 @@ function ApprovalCard({approval, controller}: {approval: Approval; controller: C
       return;
     }
     const button = (event.target as Element).closest<HTMLButtonElement>("[data-chat-decision]");
-    if (button && !disabled) { setError(""); void controller.answer(approval, button.dataset.chatDecision!, {}); }
+    const decision = button?.dataset.chatDecision;
+    if (decision && !disabled) { setError(""); void controller.answer(approval, decision, {}); }
   }}>
     <CardHeader className="px-4"><CardTitle>{cleanText(approval.title)}</CardTitle></CardHeader>
     <CardContent className="space-y-3 px-4 py-3">
@@ -204,7 +207,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   useEffect(() => {
     if (previousQuestion.current && !question) panel.current?.querySelector<HTMLTextAreaElement>(uiText("textarea[aria-label=\"对话消息\"]"))?.focus();
     previousQuestion.current = question?.id;
-  }, [question?.id]);
+  }, [question]);
   const entries = useMemo(() => mergeEntries(state.entries, state.chat.entries), [state.entries, state.chat.entries]);
   const messages = useMemo(() => convertEntries(entries), [entries]);
   // The server owns a linear history. Replacing a local echo must remove its
@@ -235,6 +238,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
     onCancel: state.chat.external && state.chat.busy ? undefined : controller.stop,
   });
   const reading = useChatReading(controller, runtime.thread);
+  /* biome-ignore lint/correctness/useExhaustiveDependencies: A restored draft explicitly replays persisted attachments into the composer. */
   useEffect(() => {
     const composer = runtime.thread.composer;
     if (cloud) return;
@@ -298,7 +302,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
                 <summary><span>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</span><span aria-hidden="true">·</span><span>{uiText("会话信息")}</span><ChevronDownIcon aria-hidden="true" /></summary>
                 <dl className="chat-context-facts grid gap-2 text-xs">
                   <dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd>
-                  <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => controller.options.openProject?.(context.projectID!,path)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
+                  <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => context.projectID && controller.options.openProject?.(context.projectID,path)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
                   {context.branch && <><dt>{uiText("分支")}</dt><dd>{context.branch}</dd></>}
                   <dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd><code className="chat-workspace-path">{displayPath || uiText("普通对话")}</code></dd>
                   <dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd>

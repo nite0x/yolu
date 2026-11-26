@@ -23,5 +23,5 @@ export function rankCreationDirectories<T extends {value: string}>(items: T[]): 
     return [item.value, visits.length + (last ? Math.max(0, 1 - (Date.now() - last) / (14 * 86400000)) : 0)]
   }))
   return [...items].sort((a, b) => Number(creationDirectoryPinned(b.value)) - Number(creationDirectoryPinned(a.value))
-    || scores.get(b.value)! - scores.get(a.value)!)
+    || (scores.get(b.value) ?? 0) - (scores.get(a.value) ?? 0))
 }

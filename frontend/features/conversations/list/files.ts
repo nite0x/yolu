@@ -8,7 +8,9 @@ interface DirectoryContext {id: string; path: string; project?: string; git?: bo
 interface FileReference { session: string; environment: string; path: string; line: number }
 
 export function createConversationFiles(document: Document, request: BrowserRequest) {
-  const window = document.defaultView!
+  const ownerWindow = document.defaultView
+  if (!ownerWindow) throw new Error("Conversation files require an attached document")
+  const window = ownerWindow
   const node = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
   const host = node("sessionBrowser")
   const toggle = node<HTMLButtonElement>("toggleConversationFiles")
@@ -114,7 +116,7 @@ export function createConversationFiles(document: Document, request: BrowserRequ
   fullscreen.addEventListener("close", () => { if (!fullscreen.open) restore() })
   window.addEventListener("workhub:open-file", event => {
     const detail = (event as CustomEvent<FileReference>).detail
-    if (!current || detail.session !== current.session || detail.environment !== current.environment) return
+    if (!current || !props || detail.session !== current.session || detail.environment !== current.environment) return
     const normalized = detail.path.replace(/\\/g, "/")
     const absolute = /^(?:\/|[a-z]:\/)/i.test(normalized)
     const roots = [...new Set([current.path, ...bindings.map(binding => binding.path), ...(current.additionalDirectories || [])])]
@@ -128,7 +130,7 @@ export function createConversationFiles(document: Document, request: BrowserRequ
     const browserPath = path || current.path
     const changedRoot = props?.path !== browserPath
     const binding = bindings.find(binding => conversationPathKey(binding.path) === conversationPathKey(browserPath))
-    props = { ...props!, path: browserPath, project: binding?.project || (browserPath === current.path ? current.project : undefined), binding:binding?.id,git:binding?.git, reference: {path: relative, line: detail.line, version: ++referenceVersion} }
+    props = { ...props, path: browserPath, project: binding?.project || (browserPath === current.path ? current.project : undefined), binding:binding?.id,git:binding?.git, reference: {path: relative, line: detail.line, version: ++referenceVersion} }
     restore()
     if (changedRoot) mountFileBrowser(mount)
     event.preventDefault()
@@ -160,9 +162,9 @@ export function createConversationFiles(document: Document, request: BrowserRequ
     setContext(context?: Context) {
       const key = context ? JSON.stringify([context.environment, context.session, context.path, context.additionalDirectories || []]) : ""
       if (key === identity) {
-        if (context && current?.project !== context.project) {
+        if (context && props && current?.project !== context.project) {
           current = context
-          props = {...props!,project:props?.path === context.path ? context.project : undefined}
+          props = {...props,project:props?.path === context.path ? context.project : undefined}
           if (wanted) mountFileBrowser(mount,props)
         }
         return
