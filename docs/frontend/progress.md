@@ -38,3 +38,11 @@ Finish initial independent findings, remove confirmed dead code, consolidate sha
 - Draft decode rejects malformed reading state and ignores damaged image records. Disposal cannot schedule retry/restore callbacks. Cloud draft restore retains capability restrictions. Explicit freshness reads bypass shared retention; quota uses shared API errors/transport.
 - Source graph check now detects all file cycles; eliminated original settings/messages type cycle. Full frontend TS/TSX Biome enabled without globally disabling recommended rules; actual accessibility/correctness fixes plus explained local analyzer exceptions.
 - Current validation: `npm run check` passed; app 50 passed; UI 20 passed; focused data/splitter 12 passed. Full rebuilt application browser and 221 legacy regressions running. Three review rounds still not started.
+
+## Review round 1
+
+- Baseline: `eb901ad`; fresh read-only `review_round1` covered original-to-current diff, all six features, host adapters, module/source graph, components/styles, state/persistence/resources and engineering rules.
+- Confirmed P0/P1/P2: 0; no manufactured code change. Independent web:check (architecture10/UI20/lint/type), app50 and chat168/chat types passed.
+- Integration completed: legacy221, real app Chromium6, catalog Chromium/axe1, production build and Go embed build passed. Extra actual PTY shell/output/reconnect/resize exercise passed for browser and desktop chrome.
+- Round 1 report and ledger recorded; next: start round 2 only after this round's commit.
+- Test harness correction: an earlier parallel build removed generated assets during legacy test startup; reran all 221 after build and passed. Initial drag-order test depended on backend enumeration; seeded its saved starting order without changing movement/persistence assertions; all 6 browser tests passed.
