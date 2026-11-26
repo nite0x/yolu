@@ -16,7 +16,7 @@ export interface ChatOptions {
   activity?: (session: string, chat: ChatState) => void;
   close: () => void;
   newConversation?: () => void;
-  openProject?: (id: string, path?: string) => void;
+  openProject?: (id: string, path?: string, environment?: string) => void;
   openTerminal?: (binding: {id:string; project_id?:string; directory:string}) => void;
   managed?: (session: Session, action: string) => void;
 }

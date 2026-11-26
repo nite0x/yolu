@@ -97,7 +97,8 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
   const nextMode = s.settings.mode || context?.mode;
   const defaultLabel = uiText("默认");
   const scoped = managedDirectories && s.provider === "codex";
-  const permissions = permissionChoices(s.provider);
+  const assistant = controller.isYoluAssistant();
+  const permissions = permissionChoices(s.provider).filter(choice => !assistant || choice.value !== "full");
   const permission = permissions.find(p => p.value === (s.session ? s.settings.permission : settings.permission));
   const effectivePermission = permission || permissions.find(p => p.value === (s.session ? contextPermission(context) : undefined));
   const defaultPermissionLabel = scoped ? uiText("按目录授权") : defaultLabel;
@@ -105,7 +106,7 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
   const defaultPermissionOption: SettingChoice = scoped && !s.session
     ? {value: "", label: uiText("按目录授权"), description: uiText("在对话顶部查看或更改目录访问权限。")}
     : {value: "", label: defaultLabel};
-  const selectedPermissionValue = s.session ? (effectivePermission?.value || "") : (settings.permission || "");
+  const selectedPermissionValue = effectivePermission?.value || "";
   const tierOptions = s.provider === "codex" ? selectedModel?.serviceTiers || [] : [];
   const selectedTier = tierOptions.find(tier => tier.id === settings.serviceTier);
   const tiers = tierOptions.filter((tier, index, all) => tier.id && all.findIndex(item => item.id === tier.id) === index);
@@ -180,7 +181,7 @@ function ChatControlsView({controller, portal, managedDirectories}: ControlsProp
           <dl className="chat-context-facts mt-3 grid gap-2 text-xs"><dt>{uiText("对话引擎")}</dt><dd>{providerLabel(s.provider)}</dd><dt>{uiText("主工作目录")}</dt><dd>{isGeneralConversationDirectory(cwd) ? uiText("普通对话") : cwd || uiText("所选项目目录")}</dd><dt>{uiText("额外工作目录")}</dt><dd>{context?.additional_directories?.join("、") || uiText("未报告额外目录")}</dd><dt>{uiText("当前模型 / 思考强度")}</dt><dd>{model || unreported} / {effort ? effortLabel(effort) : uiText("未获取思考强度")}</dd><dt>{uiText("当前工作模式")}</dt><dd>{modeLabel(context?.mode)}</dd><dt>{uiText("审批策略")}</dt><dd>{approvalLabel(context?.approvalPolicy, s.provider)}</dd><dt>{uiText("批准方式")}</dt><dd>{context?.approvalsReviewer === "auto_review" || context?.approvalsReviewer === "guardian_subagent" ? uiText("帮我批准") : context?.approvalsReviewer === "user" ? uiText("手动批准") : unreported}</dd><dt>{uiText("沙箱")}</dt><dd>{context?.sandbox?.type || unreported}</dd></dl>
         </Collapsible.Content></Collapsible.Root>}
       </div>
-      {!readOnly && !s.session && <div className="chat-setting-creation">
+      {!readOnly && !s.session && !assistant && <div className="chat-setting-creation">
         <div className="chat-setting-line">
           <strong>{uiText("新建时选择引擎")}</strong>
           <SettingChoices label={uiText("对话引擎")} options={[

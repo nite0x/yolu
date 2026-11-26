@@ -25,7 +25,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   document.documentElement.setAttribute('data-workspace-page', '');
   $('#newBrowserSession').hidden = true;
   const post = (type, detail = {}) => window.WorkHubBrowser.postPageMessage(host, location.origin, type, detail);
-  function openConversationDraft({placement, projectCreate, globalCreate, environment = activeEnvironment}) {
+  function openConversationDraft({placement, projectCreate, globalCreate, creatingYoluAssistant, environment = activeEnvironment}) {
     const view = !globalCreate && window.WorkHubConversations.current;
     const scope = projectCreate ? {kind:'project',id:projectCreate.dataset.id,environment} : view?.scope || {kind:'all'};
     const directory = projectCreate ? {
@@ -33,7 +33,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       environment, cwd:projectCreate.dataset.path, target:{project_id:projectCreate.dataset.id},
     } : view ? defaultConversationDirectory({...view,creationDirectory:view.directory || ''}) : null;
     const keepFilters = view && !projectCreate;
-    post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:directory?.environment || environment,title:uiText("新建对话"),terminal:{projectID:directory?.target?.project_id,cwd:directory?.cwd},conversation:{scope,directory:keepFilters ? view.directory || '' : '',creationDirectory:directory?.key || '',environmentFilter:keepFilters ? view.environmentFilter || '' : '',selected:null,creating:true,pane:'detail'}}});
+    post('workhub:page-open',{create:true,placement,snapshot:{route:'/sessions',environment:directory?.environment || environment,title:uiText(creatingYoluAssistant ? "Yolu 助手" : "新建对话"),terminal:{projectID:directory?.target?.project_id,cwd:directory?.cwd},conversation:{scope,directory:keepFilters ? view.directory || '' : '',creationDirectory:directory?.key || '',environmentFilter:keepFilters ? view.environmentFilter || '' : '',selected:null,creating:true,creatingYoluAssistant,pane:'detail'}}});
   }
   function createConversation(placement, environment) {
     if (disposed || restoring || sessionReadOnly || state.busy || placement === 'split' && !canSplit) return;
@@ -59,7 +59,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const session = view ? conversationSelectedSession(view) : null;
     const project = state.projects.find(item => item.id === state.selectedProject);
     const draftTitle = view?.creating ? window.WorkHubAssistant?.draftTitle?.() || '' : '';
-    const title = view ? view.creating ? draftTitle ? uiText("草稿：{0}", draftTitle) : uiText("新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? uiText("任务") : state.view === 'projects' ? uiText("项目") : uiText("对话");
+    const title = view ? view.creating ? draftTitle ? uiText("草稿：{0}", draftTitle) : uiText(view.creatingYoluAssistant ? "Yolu 助手" : "新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? uiText("任务") : state.view === 'projects' ? uiText("项目") : uiText("对话");
     return {
       route, environment: activeEnvironment, title, kind: state.view, draftTitle,
       terminal:view?.creating ? creationHint : undefined,
@@ -70,7 +70,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       })() : '',
       status:session?.chat_status || '',
       sessionEnvironment:session?.environment_id,
-      conversation: view ? {scope:view.scope, creating:!!view.creating, creationBindings:view.creating ? view.creationBindings : undefined, creationLocalDirectories:view.creationLocalDirectories, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(session.environment_id || activeEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,source:session.source,provider:session.provider,primary_project_id:session.primary_project_id,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
+      conversation: view ? {scope:view.scope, creating:!!view.creating, creatingYoluAssistant:view.creating ? view.creatingYoluAssistant : undefined, creationBindings:view.creating ? view.creationBindings : undefined, creationLocalDirectories:view.creationLocalDirectories, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(session.environment_id || activeEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,source:session.source,provider:session.provider,yolu_assistant:session.yolu_assistant,primary_project_id:session.primary_project_id,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
     };
   }
   function publish() {
@@ -132,7 +132,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
           windowStart:Number.isSafeInteger(savedView.windowStart) && savedView.windowStart >= 0 ? savedView.windowStart : 0, locateSelection:null,
           statusFilter:savedView.statusFilter || 'all', environmentFilter:savedView.environmentFilter || '',
           archived:!!savedView.archived, selected:savedView.selected, requestedSession:savedView.selected || null,
-          pane:document.documentElement.hasAttribute('data-workspace-conversation') ? 'detail' : savedView.pane || 'detail', creating:!!savedView.creating && !sessionReadOnly && !navigationOnly, target:null,
+          pane:document.documentElement.hasAttribute('data-workspace-conversation') ? 'detail' : savedView.pane || 'detail', creating:!!savedView.creating && !sessionReadOnly && !navigationOnly, creatingYoluAssistant:!!savedView.creatingYoluAssistant && activeEnvironment === 'local', target:null,
           requestID:(window.WorkHubConversations.current.requestID || 0) + 1, requestKey:null, loading:false, checkedAt:0,
         });
         window.WorkHubConversations.mode = 'page';
@@ -192,7 +192,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
     const nav = target.closest('[data-view]');
     if (nav) return {route:'/' + nav.dataset.view, environment:activeEnvironment};
-    const link = target.closest('a[href^="#/"]');
+    const link = target.closest('a[href^="#/"]:not([data-chat-project-link])');
     if (link) return {route:link.getAttribute('href').slice(1),environment:activeEnvironment};
     return null;
   }
@@ -225,7 +225,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       const standaloneCreate = create.dataset.conversationStandalone === 'true';
       if (navigationOnly && (projectCreate || standaloneCreate)) revealConversationCreationGroup(create);
       const globalCreate = create.id === 'newBrowserSession' || standaloneCreate;
-      openConversationDraft({placement,projectCreate,globalCreate,environment:projectCreate?.dataset.environment});
+      const creatingYoluAssistant = create.dataset.yoluAssistant === 'true';
+      openConversationDraft({placement,projectCreate,globalCreate,creatingYoluAssistant,environment:creatingYoluAssistant ? 'local' : projectCreate?.dataset.environment});
       return;
     }
     if (event.target.closest('.brand[href="/"]') && !(event.metaKey || event.ctrlKey)) {

@@ -4,7 +4,7 @@ import {defaultShortcutIcon, presetShortcutIcons, type ShortcutIcon} from "@/sha
 import {conversationStatusMatches} from "@/entities/conversations/status"
 import {conversationEnvironmentKey, conversationPathKey} from "@/shared/lib/workspace-identity"
 
-type CollectionKind = "project" | "independent" | "cloud"
+type CollectionKind = "project" | "independent" | "cloud" | "yolu-assistant"
 export const projectConversationPreview = 2
 export const projectConversationStep = 5
 
@@ -39,6 +39,7 @@ interface TreeOptions {
   collapsed: string[]
   filtered: boolean
   recent?: boolean
+  showYoluAssistant?: boolean
   navigator?: {
     directories: NavigatorDirectory[]
   }
@@ -88,6 +89,18 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
       collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
     }, sessions: cloud })
   }
+  if (options.navigator) {
+    const assistants = sessions.filter(session => session.yolu_assistant && !filed.has(sessionIdentity(session)))
+    if (assistants.length || options.showYoluAssistant) {
+      const key = "yolu-assistant"
+      for (const session of assistants) filed.add(sessionIdentity(session))
+      groups.set(key, {group: {
+        key, name: uiText("Yolu 助手"), collection: "yolu-assistant", environment: "local",
+        containsSelection: assistants.some(session => sessionIdentity(session) === options.selected),
+        collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
+      }, sessions: assistants})
+    }
+  }
   const directories = options.navigator?.directories || []
   const appearances = distinguishProjectBadges(directories)
   let selectedInProject = false
@@ -95,7 +108,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
     const {cwd, environment, projectID, projectName, projectRoot} = directory
     const path = conversationPathKey(cwd)
     const matchesDirectory = (session: Session) => {
-      if (session.provider === "codex-cloud") return false
+      if (session.provider === "codex-cloud" || session.yolu_assistant) return false
       if ((session.environment_id || "local") !== environment) return false
       const owner = session.primary_project_id || session.terminal?.projectID || session.context?.projectID
       return owner ? owner === projectID && (!!projectRoot || conversationPathKey(session.cwd) === path) : conversationPathKey(session.cwd) === path
@@ -119,7 +132,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
       const key = "independent"
       const name = uiText("未绑定项目")
       groups.set(key, {group:{key, name, collection:"independent", environment:"", icon:{icon:"folder", color:"slate"}, identity:key, iconName:name,
-        containsSelection:options.selectedSession ? options.selectedSession.provider !== "codex-cloud" && !selectedInProject : independent.some(session => sessionIdentity(session) === options.selected),
+        containsSelection:options.selectedSession ? options.selectedSession.provider !== "codex-cloud" && !options.selectedSession.yolu_assistant && !selectedInProject : independent.some(session => sessionIdentity(session) === options.selected),
         collapsed:options.collapsed.includes(key), total:0, shown:0, showContext:true}, sessions:independent})
     }
   } else {

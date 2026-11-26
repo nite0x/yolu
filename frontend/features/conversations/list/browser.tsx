@@ -1,7 +1,7 @@
 import {uiText, uiLocale} from "@/shared/i18n"
 import {ConversationCreationIntro} from "@/shared/ui/conversation-surface"
 import {ShortcutBadge} from "@/shared/ui/resource-icons"
-import {Plus, Search, ArrowLeft, X, ChevronUp, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, GitBranch, RotateCw, Check, Cloud, Folder, FolderOpen, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, SquareSplitHorizontal, SquareTerminal, Orbit, ListFilter as ListFilterIcon, type LucideIcon} from "lucide-react"
+import {Plus, Search, ArrowLeft, X, ChevronUp, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, GitBranch, RotateCw, Check, Cloud, Folder, FolderOpen, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, SquareSplitHorizontal, SquareTerminal, Orbit, PanelsTopLeft, ListFilter as ListFilterIcon, type LucideIcon} from "lucide-react"
 import {ListCreateButton, ListFilter, ListSearch} from "@/shared/ui/list-controls"
 import {Button} from "@/shared/ui/primitives/button"
 import {Input} from "@/shared/ui/primitives/input"
@@ -130,7 +130,7 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
     const StatusIcon = status?.icon
     const antigravity = s.provider === "agy"
     const cloud = s.provider === "codex-cloud"
-    const AgentIcon = cloud ? Cloud : antigravity ? Orbit : SquareTerminal
+    const AgentIcon = s.yolu_assistant ? PanelsTopLeft : cloud ? Cloud : antigravity ? Orbit : SquareTerminal
     const collection = row?.group.collection
     const showProject = !collection && directoryContext && !!s.context?.project
     const showProjectDirectory = collection === "project" && !!s.cwd && conversationPathKey(s.cwd) !== conversationPathKey(row?.group.projectPath || "")
@@ -161,7 +161,7 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
             {StatusIcon && <StatusIcon aria-hidden="true" />}
           </span>
           {s.unread && !status && <span className="session-browser-unread-dot" role="img" aria-label={uiText("有新消息")} title={uiText("有新消息")} />}
-          {!s.terminal && <span className="session-browser-item-agent" role="img" aria-label={cloud ? "Codex Cloud" : antigravity ? "Antigravity" : "Codex"}><AgentIcon aria-hidden="true" /></span>}
+          {!s.terminal && <span className="session-browser-item-agent" role="img" aria-label={s.yolu_assistant ? uiText("Yolu 助手") : cloud ? "Codex Cloud" : antigravity ? "Antigravity" : "Codex"}><AgentIcon aria-hidden="true" /></span>}
           <time className="session-browser-item-time" title={date?.toLocaleString(uiLocale(), {hour12: false})} dateTime={date?.toISOString()}>{dateLabel}</time>
         </span>
       </span>
@@ -199,7 +199,7 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
       const collection = !!group.collection
       const countLabel = uiText("{0} 个对话", group.total)
       const description = [
-        group.collapsed && group.containsSelection && group.collection !== "cloud" && uiText("当前对话所在项目"),
+        group.collapsed && group.containsSelection && group.collection === "project" && uiText("当前对话所在项目"),
         group.collapsed && group.running && uiText("有对话正在运行"),
         collection && countLabel,
       ].filter(Boolean).join(" · ")
@@ -211,7 +211,7 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
           aria-description={description || undefined}
           aria-label={collection ? uiText("展开或折叠 {0} 的对话", group.name) : undefined} className={collection ? "session-collection-toggle" : undefined}
           title={group.name}>
-          {collection && (group.collection === "cloud" ? <Cloud className="session-collection-fallback-icon" aria-hidden="true" /> : group.identity ? <ShortcutBadge name={group.iconName || group.name} identity={group.identity} appearance={group.icon} /> : <Folder className="session-collection-fallback-icon" aria-hidden="true" />)}
+          {collection && (group.collection === "cloud" ? <Cloud className="session-collection-fallback-icon" aria-hidden="true" /> : group.collection === "yolu-assistant" ? <PanelsTopLeft className="session-collection-fallback-icon" aria-hidden="true" /> : group.identity ? <ShortcutBadge name={group.iconName || group.name} identity={group.identity} appearance={group.icon} /> : <Folder className="session-collection-fallback-icon" aria-hidden="true" />)}
           <span className="session-workspace-name">{group.name}</span>
           {environmentName && <small>{environmentName}</small>}
           {group.collapsed && group.running && <span className="session-workspace-running session-browser-item-status" data-state="running" aria-hidden="true" title={uiText("有对话正在运行")}><LoaderCircle /></span>}
@@ -226,6 +226,7 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
             data-action={group.href ? "project-conversation-new" : undefined}
             data-conversation-action={group.href ? undefined : "new"}
             data-conversation-standalone={group.href ? undefined : "true"}
+            data-yolu-assistant={group.collection === "yolu-assistant" ? "true" : undefined}
             data-id={group.projectID} data-path={group.projectPath} data-environment={group.environment || undefined}
             disabled={!canCreate} aria-label={uiText("为 {0} 新建对话", group.name)} title={uiText("为 {0} 新建对话", group.name)}>
             <SquarePen aria-hidden="true" />

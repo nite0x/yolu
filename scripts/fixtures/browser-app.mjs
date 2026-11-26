@@ -63,11 +63,14 @@ export async function startBrowserApp(binary) {
       return value;
     };
     const project = await request('/api/projects','POST',{name:'Browser fixture',path:repository});
+    const fixtureData = JSON.parse(await readFile(state, 'utf8'));
+    fixtureData.assistantLink = '#/projects/' + project.id + '?' + new URLSearchParams({environment:'local',directory:repository});
+    await writeFile(state, JSON.stringify(fixtureData));
     const sessions = [];
     for (const [index, text] of ['First conversation','Second conversation'].entries()) {
       const result = await request('/api/sessions/new','POST',{project_id:project.id,cwd:repository,request_id:`browser-${index}`,text,allow_shared:true});
       sessions.push(result.session);
     }
-    return {url:host.url, request, sessions, close, release:() => writeFile(state+'.release','1')};
+    return {url:host.url, request, sessions, project, repository, close, providerLog:() => readFile(log, 'utf8'), release:() => writeFile(state+'.release','1')};
   } catch (error) { await close(); throw error; }
 }

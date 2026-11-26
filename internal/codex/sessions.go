@@ -32,6 +32,7 @@ type Session struct {
 	} `json:"status,omitempty"`
 	ID               string `json:"id"`
 	CloudEnvironment string `json:"cloud_environment,omitempty"`
+	YoluAssistant    bool   `json:"yolu_assistant,omitempty"`
 	Provider         string `json:"provider,omitempty"`
 	Name             string `json:"name"`
 	Preview          string `json:"preview"`

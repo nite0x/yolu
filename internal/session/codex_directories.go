@@ -19,7 +19,17 @@ type codexPermissionProfile struct {
 	ID string `json:"id"`
 }
 
+const assistantMCPName = "yolu_builtin"
+
 func (a *Service) configureCodexThread(ctx context.Context, client codex.LiveClient, params map[string]any, plan model.LaunchPlan, permission string) error {
+	if plan.YoluAssistant {
+		if len(a.AssistantMCP) == 0 || a.Execution.Remote != nil {
+			return fmt.Errorf("当前执行环境无法启动 Yolu 助手")
+		}
+		if !plan.ManagedBindings || permission == "full" {
+			return fmt.Errorf("Yolu 助手需要本机 Codex 和受管目录权限")
+		}
+	}
 	if !plan.ManagedBindings {
 		setThreadPermissions(params, permission)
 		return nil
@@ -104,10 +114,21 @@ func (a *Service) configureCodexThread(ctx context.Context, client codex.LiveCli
 	if err := client.Call(check, "config/read", map[string]any{"cwd": plan.Cwd}, &effective); err != nil {
 		return fmt.Errorf("无法检查 Codex 目录权限配置：%w", err)
 	}
-	if len(effective.Config.MCPServers) > 0 {
+	if len(effective.Config.MCPServers) > 0 || plan.YoluAssistant {
 		servers := map[string]any{}
 		for name := range effective.Config.MCPServers {
 			servers[name] = map[string]bool{"enabled": false}
+		}
+		if plan.YoluAssistant {
+			if _, exists := effective.Config.MCPServers[assistantMCPName]; exists {
+				return fmt.Errorf("Codex 配置已使用保留的 MCP 名称 %s", assistantMCPName)
+			}
+			servers[assistantMCPName] = map[string]any{
+				"command": a.AssistantMCP[0], "args": a.AssistantMCP[1:],
+				"enabled": true, "required": true, "startup_timeout_sec": 5,
+				"enabled_tools": []string{"list_projects", "get_project"},
+			}
+			params["developerInstructions"] = assistantInstructions + "\n" + codexDirectoryInstructions(managedDirectoryInstructions) + "\n" + chatQuestionInstructions
 		}
 		config["mcp_servers"] = servers
 	}
@@ -129,6 +150,9 @@ func (a *Service) configureCodexThread(ctx context.Context, client codex.LiveCli
 	}
 	return nil
 }
+
+const assistantInstructions = `You are Yolu Assistant in a standard Yolu conversation. Help users find registered projects and understand their worktrees, branches and local Git status.
+Use the built-in Yolu MCP list_projects and get_project tools for Yolu state. Treat stale or refreshing status accordingly. To let the user open a project or worktree, include the exact open_url or worktree_links URL returned by get_project as a Markdown link. Users can click links to navigate in Yolu. Ask when a project or environment is ambiguous. Respect existing conversation directory grants.`
 
 func verifyCodexProfile(params map[string]any, effective *codexPermissionProfile) error {
 	profile, _ := params["permissions"].(string)

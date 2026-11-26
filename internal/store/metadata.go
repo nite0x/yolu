@@ -26,7 +26,7 @@ var metadataTables = []metadataTable{
 	{"assistant_run_contexts", "conversation_id,run_id,context"},
 	{"projects", "id,name,path,common_dir,folder,created_at"},
 	{"settings", "key,value"},
-	{"sessions", "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,title_source,title_changed_at,provider,bindings_managed"},
+	{"sessions", "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,title_source,title_changed_at,provider,bindings_managed,yolu_assistant"},
 	{"session_project_bindings", "id,session_id,project_id,directory,directory_key,branch,role,access,created_at,updated_at"},
 	{"migration_recovery", "id,kind,record_key,reason,payload"},
 	{"session_organization", "session_id,pinned,archived,updated_at"},
@@ -78,7 +78,7 @@ func ExportMetadata(ctx context.Context, file string) (MetadataSnapshot, error) 
 			selects = selectMetadataColumns(selects, columns, map[string]string{
 				"last_synced_at": "0", "additional_directories": "'[]'",
 				"title_source":     "CASE WHEN name='' THEN '' ELSE 'legacy' END",
-				"title_changed_at": "0", "provider": "'codex'", "bindings_managed": "0",
+				"title_changed_at": "0", "provider": "'codex'", "bindings_managed": "0", "yolu_assistant": "0",
 			})
 		}
 		rows, err := readMetadataRows(tx, table.Name, selects)
@@ -195,10 +195,12 @@ func normalizeSessionMetadata(row []any) []any {
 		if row[1] == "" {
 			source = ""
 		}
-		return append(append([]any{}, row...), source, int64(0), "codex", int64(0))
+		return append(append([]any{}, row...), source, int64(0), "codex", int64(0), int64(0))
 	case 10:
-		return append(append([]any{}, row...), "codex", int64(0))
+		return append(append([]any{}, row...), "codex", int64(0), int64(0))
 	case 11:
+		return append(append([]any{}, row...), int64(0), int64(0))
+	case 12:
 		return append(append([]any{}, row...), int64(0))
 	default:
 		return row

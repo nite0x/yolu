@@ -56,7 +56,7 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 	if err := a.configureCodexThread(startup, c, params, plan, input.Settings.Permission); err != nil {
 		return nil, 409, err
 	}
-	if execution.instructions != "" {
+	if execution.instructions != "" && !plan.YoluAssistant {
 		params["developerInstructions"] = codexDirectoryInstructions(execution.instructions) + "\n" + chatQuestionInstructions
 	}
 	if _, err := a.Execution.Store.DB.ExecContext(requestCtx, `INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
@@ -100,7 +100,7 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 	}
 	s.UpdatedAt = s.CreatedAt
 	err = a.Execution.Store.SaveSessionWithBindings(model.Session{
-		ID: s.ID, Name: s.Name, Cwd: s.Cwd, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Source: "workbench", Permission: input.Settings.Permission,
+		ID: s.ID, Name: s.Name, Cwd: s.Cwd, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Source: "workbench", Permission: input.Settings.Permission, YoluAssistant: plan.YoluAssistant,
 	}, execution.bindings)
 	if err != nil {
 		return nil, 500, err

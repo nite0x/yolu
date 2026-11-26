@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,13 @@ func TestMCPReadsProjectAndObservedGitStatus(t *testing.T) {
 	callTestMCP(t, session, "get_project", getProjectInput{ProjectID: projectID, EnvironmentID: "local", Refresh: true}, &detail)
 	if detail.Project.ID != projectID || detail.StatusRefreshing || len(detail.Project.Worktrees) != 2 {
 		t.Fatalf("unexpected detail: %+v", detail)
+	}
+	if detail.OpenURL != "#/projects/"+projectID+"?environment=local" {
+		t.Fatalf("unexpected project link: %q", detail.OpenURL)
+	}
+	query := url.Values{"directory": {path}, "environment": {"local"}}
+	if detail.WorktreeLinks[path] != "#/projects/"+projectID+"?"+query.Encode() {
+		t.Fatalf("unexpected worktree link: %q", detail.WorktreeLinks[path])
 	}
 	found := false
 	for _, tree := range detail.Project.Worktrees {

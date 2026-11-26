@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS sessions (
  title_source TEXT NOT NULL DEFAULT '', title_changed_at INTEGER NOT NULL DEFAULT 0,
  provider TEXT NOT NULL DEFAULT 'codex',
  bindings_managed INTEGER NOT NULL DEFAULT 0 CHECK(bindings_managed IN (0,1)),
- permission TEXT NOT NULL DEFAULT '');
+ permission TEXT NOT NULL DEFAULT '',
+ yolu_assistant INTEGER NOT NULL DEFAULT 0 CHECK(yolu_assistant IN (0,1)));
 CREATE INDEX IF NOT EXISTS sessions_cwd ON sessions(cwd);
 CREATE TABLE IF NOT EXISTS session_organization (session_id TEXT PRIMARY KEY REFERENCES sessions(id), pinned INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS conversation_drafts (key TEXT PRIMARY KEY,payload TEXT NOT NULL,updated_at INTEGER NOT NULL);
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS codex_cloud_sessions (
 		{"provider", "TEXT NOT NULL DEFAULT 'codex'"},
 		{"bindings_managed", "INTEGER NOT NULL DEFAULT 0 CHECK(bindings_managed IN (0,1))"},
 		{"permission", "TEXT NOT NULL DEFAULT ''"},
+		{"yolu_assistant", "INTEGER NOT NULL DEFAULT 0 CHECK(yolu_assistant IN (0,1))"},
 	} {
 		if !columns[column.name] {
 			if _, err := tx.Exec("ALTER TABLE sessions ADD COLUMN " + column.name + " " + column.definition); err != nil {
@@ -90,8 +92,8 @@ func saveSession(db interface {
 	if v.Name != "" && v.TitleSource == "" {
 		v.TitleSource = v.Provider
 	}
-	_, err := db.Exec(`INSERT INTO sessions(id,name,cwd,created_at,updated_at,source,last_synced_at,title_source,title_changed_at,provider,permission)
- VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+	_, err := db.Exec(`INSERT INTO sessions(id,name,cwd,created_at,updated_at,source,last_synced_at,title_source,title_changed_at,provider,permission,yolu_assistant)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
  name=CASE WHEN excluded.name<>'' AND sessions.title_changed_at<excluded.title_changed_at THEN excluded.name ELSE sessions.name END,
  title_source=CASE WHEN excluded.name<>'' AND sessions.name<>excluded.name AND sessions.title_changed_at<excluded.title_changed_at THEN excluded.title_source ELSE sessions.title_source END,
  title_changed_at=CASE WHEN excluded.name<>'' AND sessions.name<>excluded.name AND sessions.title_changed_at<excluded.title_changed_at THEN excluded.title_changed_at ELSE sessions.title_changed_at END,
@@ -99,8 +101,9 @@ func saveSession(db interface {
  created_at=excluded.created_at,updated_at=excluded.updated_at,last_synced_at=excluded.last_synced_at,
  provider=CASE WHEN excluded.provider<>'' THEN excluded.provider ELSE sessions.provider END,
  permission=CASE WHEN excluded.permission<>'' THEN excluded.permission ELSE sessions.permission END,
+ yolu_assistant=MAX(sessions.yolu_assistant,excluded.yolu_assistant),
  source=CASE WHEN excluded.source='workbench' THEN excluded.source ELSE sessions.source END`,
-		v.ID, v.Name, platform.CleanWorkspacePath(v.Cwd), v.CreatedAt, v.UpdatedAt, v.Source, time.Now().Unix(), v.TitleSource, started, v.Provider, v.Permission)
+		v.ID, v.Name, platform.CleanWorkspacePath(v.Cwd), v.CreatedAt, v.UpdatedAt, v.Source, time.Now().Unix(), v.TitleSource, started, v.Provider, v.Permission, v.YoluAssistant)
 	return err
 }
 
@@ -131,7 +134,7 @@ func (s *Store) ObserveSessionTitle(id, name string) (bool, error) {
 func scanSession(scan func(...any) error) (model.Session, error) {
 	var v model.Session
 	var directories string
-	err := scan(&v.ID, &v.Name, &v.Cwd, &v.CreatedAt, &v.UpdatedAt, &v.Source, &v.LastSyncedAt, &directories, &v.Pinned, &v.Archived, &v.TitleSource, &v.TitleChangedAt, &v.Provider, &v.Permission, &v.CloudEnvironment)
+	err := scan(&v.ID, &v.Name, &v.Cwd, &v.CreatedAt, &v.UpdatedAt, &v.Source, &v.LastSyncedAt, &directories, &v.Pinned, &v.Archived, &v.TitleSource, &v.TitleChangedAt, &v.Provider, &v.Permission, &v.CloudEnvironment, &v.YoluAssistant)
 	if err == nil {
 		v.Provider = model.NormalizeProvider(v.Provider)
 		err = json.Unmarshal([]byte(directories), &v.AdditionalDirectories)
@@ -139,7 +142,7 @@ func scanSession(scan func(...any) error) (model.Session, error) {
 	return v, err
 }
 
-const sessionColumns = `id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,COALESCE((SELECT pinned FROM session_organization WHERE session_id=sessions.id),0),COALESCE((SELECT archived FROM session_organization WHERE session_id=sessions.id),0),title_source,title_changed_at,provider,permission,COALESCE((SELECT environment_name FROM codex_cloud_sessions WHERE session_id=sessions.id),'')`
+const sessionColumns = `id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,COALESCE((SELECT pinned FROM session_organization WHERE session_id=sessions.id),0),COALESCE((SELECT archived FROM session_organization WHERE session_id=sessions.id),0),title_source,title_changed_at,provider,permission,COALESCE((SELECT environment_name FROM codex_cloud_sessions WHERE session_id=sessions.id),''),yolu_assistant`
 
 func (s *Store) Session(id string) (model.Session, error) {
 	return scanSession(s.DB.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id=?`, id).Scan)

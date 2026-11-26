@@ -43,6 +43,9 @@ func openAppForExecution(dataDir, root string, remote *execution.Client) (*App, 
 	projects.ReserveWorktree = sessions.ReserveWorktree
 	a := &App{Execution: env, Projects: projects, Sessions: sessions, Terminals: terminal.New(), token: model.NewID() + model.NewID(), pickDirectory: platform.PickDirectory}
 	if remote == nil {
+		if launch, err := currentMCPLaunch(env.DataDir); err == nil {
+			sessions.AssistantMCP = []string{launch.Command, "--mcp", "--data", launch.DataDir}
+		}
 		a.voice = codex.NewVoiceService(env.DataDir, codex.OpenLive)
 		a.browser = newBrowserAccess(a)
 		projects.CheckWorktreeIdle = a.checkTerminalWorktree
