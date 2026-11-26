@@ -268,7 +268,7 @@ Follow the [brand reference](brand/yolu/README.md) and regenerate platform asset
 
 ## Shared UI implementation
 
-Follow [the shared UI guidelines](ui-guidelines.md) for the component inventory, token ownership, pane layout, conversation contract and verification workflow. `SplitLayout` and `ApplicationPane` provide reusable page surfaces, and static project markup uses the same `workspace-pane` class. Native coding conversations render the shared `ConversationPanel`, with `useConversationRuntime` for lifecycle/draft synchronization and `useChatReading` for history/reading behavior. `ConversationList`, `ConversationHeader`, `Thread`, `Composer`, run indicators and feedback are shared within that contract. Domain-specific state and capabilities are supplied through props and controllers.
+Follow [the shared UI guidelines](ui-guidelines.md) for the component inventory, token ownership, pane layout, conversation contract and verification workflow. Product list/detail markup uses the shared `workspace-pane` class; the application shell owns pane composition and sizing. Native coding conversations render the shared `ConversationPanel`, with `useConversationRuntime` for lifecycle/draft synchronization and `useChatReading` for history/reading behavior. `ConversationList`, `ConversationHeader`, `Thread`, `Composer`, run indicators and feedback are shared within that contract. Domain-specific state and capabilities are supplied through props and controllers.
 
 
 ## Localization

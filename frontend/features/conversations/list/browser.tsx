@@ -1,7 +1,7 @@
 import {uiText, uiLocale} from "@/shared/i18n"
 import {ConversationCreationIntro} from "@/shared/ui/conversation-surface"
 import {ShortcutBadge} from "@/shared/ui/resource-icons"
-import {Plus, Search, ArrowLeft, X, ChevronUp, ChevronsDownUp, ChevronsUpDown, Pin, PinOff, GitBranch, RotateCw, Check, Folder, FolderOpen, Ellipsis, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, SquareSplitHorizontal, ListFilter as ListFilterIcon, type LucideIcon} from "lucide-react"
+import {Search, ArrowLeft, X, ChevronUp, ChevronsDownUp, ChevronsUpDown, Pin, GitBranch, RotateCw, Folder, FolderOpen, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, SquareSplitHorizontal, ListFilter as ListFilterIcon, type LucideIcon} from "lucide-react"
 import {AgentIcon} from "@/entities/conversations/agent-icon"
 import {ListCreateButton, ListFilter, ListSearch} from "@/shared/ui/list-controls"
 import {Button} from "@/shared/ui/primitives/button"
@@ -10,7 +10,7 @@ import {Label} from "@/shared/ui/primitives/label"
 import {Check as Checkbox} from "@/shared/ui/forms/check"
 import {NativeSelect} from "@/shared/ui/primitives/native-select"
 import {SessionHistoryPanel} from "./sessions"
-import {type Session} from "@/entities/conversations/catalog"
+import type {Session} from "@/entities/conversations/catalog"
 
 import type {ConversationTreeRow} from "./tree"
 import {isGeneralConversationDirectory} from "@/entities/conversations/context"
@@ -53,10 +53,12 @@ export function SessionBrowser() {
         <ListSearch variant="plain" id="sessionBrowserScopeBar" input="sessionBrowserSearch" label={uiText("搜索对话、项目或分支")} placeholder={uiText("搜索对话…")} clear={{ id:"sessionSearchClear", "data-conversation-action":"clear-search" }} filter={
           <ListFilter id="sessionScopePicker" label={uiText("筛选对话")} descriptionID="sessionScopeLabel" description={uiText("全部对话")} menuClass="session-scope-menu" icon={<ListFilterIcon aria-hidden="true" />}>
           <Label className="sr-only" htmlFor="sessionScopeSearch">{uiText("切换对话范围")}</Label><Input id="sessionScopeSearch" className="h-[32px] text-[12px] shadow-none focus-visible:ring-2 focus-visible:ring-ring/20" type="search" placeholder={uiText("搜索项目或目录")} />
+          {/* biome-ignore lint/a11y/useSemanticElements: These command groups retain the shared controller layout, rather than native fieldset form styling. */}
           <div id="sessionSidebarModes" className="session-sidebar-modes" role="group" aria-label={uiText("对话列表显示方式")} hidden>
             <Button type="button" size="sm" variant="ghost" data-conversation-list-mode="recent" aria-controls="sessionBrowserList" aria-pressed={false}>{uiText("按时间")}</Button>
             <Button type="button" size="sm" variant="ghost" data-conversation-list-mode="grouped" aria-controls="sessionBrowserList" aria-pressed={true}>{uiText("分组")}</Button>
           </div>
+          {/* biome-ignore lint/a11y/useSemanticElements: These command groups retain the shared controller layout, rather than native fieldset form styling. */}
           <div id="sessionSidebarProjectDisplay" role="group" aria-label={uiText("项目分组显示")} hidden>
             <Checkbox name="icons" defaultChecked label={uiText("显示项目图标")} />
             <Checkbox name="counts" defaultChecked label={uiText("显示项目对话数量")} />
@@ -64,8 +66,9 @@ export function SessionBrowser() {
           <Button type="button" variant="ghost" size="sm" data-conversation-action="all" id="sessionScopeAll" hidden>{uiText("查看全部对话")}</Button>
           <div id="sessionScopeOptions" />
           <div className="session-scope-filters">
-            <label id="sessionEnvironmentField" className="session-environment-label" hidden><span>{uiText("执行环境")}</span><NativeSelect id="sessionsEnvironment" aria-label={uiText("筛选对话环境")}><option value="">{uiText("全部环境")}</option></NativeSelect></label>
+            <label htmlFor="sessionsEnvironment" id="sessionEnvironmentField" className="session-environment-label" hidden><span>{uiText("执行环境")}</span><NativeSelect id="sessionsEnvironment" aria-label={uiText("筛选对话环境")}><option value="">{uiText("全部环境")}</option></NativeSelect></label>
             <label className="session-browser-archive"><input id="sessionBrowserArchived" type="checkbox" aria-label={uiText("查看已归档对话")} /><span>{uiText("仅查看已归档对话")}</span></label>
+            {/* biome-ignore lint/a11y/useSemanticElements: These command groups retain the shared controller layout, rather than native fieldset form styling. */}
             <div id="sessionStatusFilters" className="session-status-filters" role="group" aria-label={uiText("按对话状态筛选")}>{[["all", uiText("全部")], ["running", uiText("进行中")], ["waiting", uiText("待确认")], ["unread", uiText("未读")]].map(([value, label]) => <button key={value} type="button" data-conversation-status={value} aria-pressed={value === "all"}>{label}<span data-status-count={value} hidden /></button>)}</div>
             <Button type="button" variant="ghost" size="sm" id="sessionClearFilters" data-conversation-action="clear-filters" hidden>{uiText("清除筛选")}</Button>
           </div>
@@ -80,7 +83,8 @@ export function SessionBrowser() {
           <ListCreateButton id="newBrowserSession" data-conversation-action="new" label={uiText("新建对话")} icon={<SquarePen aria-hidden="true" />} />
         </>} />
         <div id="sessionActiveFilterLabel" className="session-active-filter-label" hidden><span id="sessionActiveFilterText" /><button type="button" data-conversation-action="clear-scope-filters" aria-label={uiText("清除范围与筛选")} title={uiText("清除范围与筛选")}><X aria-hidden="true" /></button></div>
-      </div><div id="sessionBrowserError" role="alert" hidden /><div id="sessionBrowserList" aria-label={uiText("对话结果")} /></aside>
+      </div><div id="sessionBrowserError" role="alert" hidden /><section id="sessionBrowserList" aria-label={uiText("对话结果")} /></aside>
+      {/* biome-ignore lint/a11y/useSemanticElements: This focusable separator adjusts pane size through pointer and keyboard input. */}
       <div id="sessionBrowserResize" className="session-browser-resize" role="separator" tabIndex={0} aria-label={uiText("调整对话列表宽度")} aria-orientation="vertical" aria-controls="sessionBrowserListPane" aria-valuemin={220} aria-valuemax={520} aria-valuenow={280} />
       <section className="session-browser-detail" aria-label={uiText("对话详情")}>
         <div className="session-reading-toolbar"><div className="session-browser-mobile-back"><Button type="button" size="sm" variant="ghost" data-conversation-action="back"><ArrowLeft aria-hidden="true" />{uiText("对话列表")}</Button></div></div>
@@ -88,12 +92,14 @@ export function SessionBrowser() {
         <div id="sessionCreationSetupHost" className="shrink-0" hidden>
           <div id="sessionCreationSetup" className="conversation-creation-setup" hidden>
             <ConversationCreationIntro kind="ui" switchID="conversationCreationKind" switchHidden />
+            {/* biome-ignore lint/a11y/useSemanticElements: These command groups retain the shared controller layout, rather than native fieldset form styling. */}
             <div id="sessionBrowserNewDirectoryField" className="session-browser-new-directory" hidden><span id="sessionBrowserNewDirectoryLabel">{uiText("工作目录")}</span><div id="sessionBrowserDirectoryChoices" className="creation-choices" role="group" aria-labelledby="sessionBrowserNewDirectoryLabel" /><select id="sessionBrowserNewDirectory" hidden aria-label={uiText("工作目录")} /></div>
           </div>
         </div>
         <div id="sessionBrowserEmpty" className="session-browser-empty" role="status">{uiText("选择一个对话，或新建对话开始工作。")}</div>
-        <aside id="sessionHistoryPanel" className="session-history-panel shadcn-scope" role="region" aria-labelledby="sessionHistoryTitle" hidden><SessionHistoryPanel /></aside>
-        </div><div id="conversationFilesResize" className="reading-splitter conversation-files-resize" role="separator" tabIndex={0} aria-label={uiText("调整对话与文件区域大小")} aria-orientation="vertical" aria-controls="conversationFilesDock" hidden /><div id="conversationFilesDock" className="conversation-files-dock" hidden><aside id="conversationFilesPane" className="conversation-files-pane" aria-labelledby="conversationFilesTitle">
+        <section id="sessionHistoryPanel" className="session-history-panel shadcn-scope" aria-labelledby="sessionHistoryTitle" hidden><SessionHistoryPanel /></section>
+        </div>{/* biome-ignore lint/a11y/useSemanticElements: This focusable separator adjusts pane size through pointer and keyboard input. */}
+        <div id="conversationFilesResize" className="reading-splitter conversation-files-resize" role="separator" tabIndex={0} aria-label={uiText("调整对话与文件区域大小")} aria-orientation="vertical" aria-controls="conversationFilesDock" aria-valuenow={320} hidden /><div id="conversationFilesDock" className="conversation-files-dock" hidden><aside id="conversationFilesPane" className="conversation-files-pane" aria-labelledby="conversationFilesTitle">
           <header className="conversation-files-heading"><h3 id="conversationFilesTitle"><Files aria-hidden="true" />{uiText("文件与改动")}</h3><div><Button type="button" size="sm" variant="ghost" id="expandConversationFiles" aria-label={uiText("全屏查看文件")} aria-pressed={false}><Maximize2 aria-hidden="true" />{uiText("全屏")}</Button><Button type="button" size="icon-sm" variant="ghost" id="closeConversationFiles" aria-label={uiText("关闭文件面板")}><X aria-hidden="true" /></Button></div></header>
           <div id="conversationFilesMount" />
         </aside></div></div>

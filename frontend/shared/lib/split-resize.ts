@@ -12,12 +12,14 @@ interface SplitOptions {
 export function setupSplitResize(options: SplitOptions) {
   const {handle, container, panel, axis} = options
   const document = handle.ownerDocument
-  const window = document.defaultView!
-  let drag: {id: number; start: number; size: number} | undefined
+  const window = document.defaultView
+  if (!window) return () => {}
+  let drag: {id: number; start: number; size: number; moved: boolean} | undefined
   const measure = () => panel.getBoundingClientRect()[axis === "x" ? "width" : "height"]
   const coordinate = (event: PointerEvent) => axis === "x" ? event.clientX : event.clientY
   function sync() {
     const bounds = options.bounds()
+    if (!bounds && drag) finish()
     if (!bounds) return
     handle.setAttribute("aria-valuemin", String(Math.round(bounds.min)))
     handle.setAttribute("aria-valuemax", String(Math.round(bounds.max)))
@@ -36,19 +38,21 @@ export function setupSplitResize(options: SplitOptions) {
     drag = undefined
     container.removeAttribute("data-split-resizing")
     if (handle.hasPointerCapture?.(current.id)) handle.releasePointerCapture(current.id)
-    options.commit?.(); options.after?.()
+    if (current.moved) options.commit?.()
+    options.after?.()
   }
   const down = (event: PointerEvent) => {
     if (event.button !== 0 || drag || !options.bounds()) return
     event.preventDefault(); options.before?.()
     handle.focus({preventScroll:true})
-    drag = {id:event.pointerId, start:coordinate(event), size:measure()}
+    drag = {id:event.pointerId, start:coordinate(event), size:measure(), moved:false}
     container.dataset.splitResizing = axis
     handle.setPointerCapture?.(event.pointerId)
   }
   const move = (event: PointerEvent) => {
     if (!drag || event.pointerId !== drag.id) return
     if (!options.bounds()) { finish(event); return }
+    drag.moved = true
     resize(drag.size + (coordinate(event) - drag.start) * (options.direction || 1))
   }
   const keys = (event: KeyboardEvent) => {
@@ -68,6 +72,7 @@ export function setupSplitResize(options: SplitOptions) {
   document.addEventListener("pointermove", move)
   for (const type of ["pointerup","pointercancel","lostpointercapture"]) document.addEventListener(type,end)
   window.addEventListener("blur",blur)
+  window.addEventListener("resize",sync)
   const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(sync)
   observer?.observe(container); observer?.observe(panel)
   sync()
@@ -77,5 +82,6 @@ export function setupSplitResize(options: SplitOptions) {
     document.removeEventListener("pointermove",move)
     for (const type of ["pointerup","pointercancel","lostpointercapture"]) document.removeEventListener(type,end)
     window.removeEventListener("blur",blur)
+    window.removeEventListener("resize",sync)
   }
 }

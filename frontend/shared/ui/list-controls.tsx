@@ -44,9 +44,11 @@ export function syncListFilter(picker: HTMLDetailsElement, visible = true) {
     if (panel.matches(":popover-open")) panel.hidePopover()
     return
   }
-  const window = picker.ownerDocument.defaultView!
-  const anchor = picker.querySelector("summary")!.getBoundingClientRect()
-  const search = picker.closest(".list-search")!.getBoundingClientRect()
+  const window = picker.ownerDocument.defaultView
+  const summary = picker.querySelector("summary")
+  if (!window || !summary) return
+  const anchor = summary.getBoundingClientRect()
+  const search = (picker.closest(".list-search") || summary).getBoundingClientRect()
   const desktop = picker.ownerDocument.documentElement.hasAttribute("data-workhub-desktop")
   const width = Math.min(desktop && search.width ? search.width : 420, window.innerWidth - 24)
   const below = window.innerHeight - anchor.bottom - 18
@@ -71,7 +73,7 @@ export function ResourceSwitcherTrigger({ kind }: { kind: "project" }) {
 export function ResourceSwitcherDialog() {
   return <div className="resource-switcher-content">
     <header className="dialog-header">
-      <h2 id="resourceSwitcherTitle"></h2>
+      <h2 id="resourceSwitcherTitle">{uiText("切换项目")}</h2>
       <Button type="button" size="icon-sm" variant="ghost" className="close-dialog" aria-label={uiText("关闭")}><X aria-hidden="true" /></Button>
     </header>
     <ListSearch input="resourceSwitcherSearch" label={uiText("搜索")} placeholder={uiText("搜索")} clear={{ id: "resourceSwitcherClear" }} filter={null} />

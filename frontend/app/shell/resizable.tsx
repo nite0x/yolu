@@ -12,17 +12,17 @@ function NativePanel({ node, className = "" }: { node: HTMLElement; className?: 
   useLayoutEffect(() => { ref.current?.append(node); return () => node.remove() }, [node])
   return <div ref={ref} className={`ui-panel-node ${className}`} />
 }
-type PanelPair = { container: HTMLElement; list: HTMLElement; detail: HTMLElement; legacy: HTMLElement; conversation: boolean; width: number }
+type PanelPair = { container: HTMLElement; list: HTMLElement; detail: HTMLElement; legacy: HTMLElement; width: number }
 const desktop = () => document.documentElement.hasAttribute("data-workhub-desktop")
-const narrowLayout = (conversation: boolean, width: number) => {
-  if (conversation && (document.documentElement.hasAttribute("data-workspace-pane") || document.documentElement.hasAttribute("data-workspace-conversation") || document.documentElement.hasAttribute("data-workspace-navigation"))) return true
-  return desktop() ? window.innerWidth <= 760 : width < (conversation ? 620 : 680)
+const narrowLayout = (width: number) => {
+  if (document.documentElement.hasAttribute("data-workspace-pane") || document.documentElement.hasAttribute("data-workspace-conversation") || document.documentElement.hasAttribute("data-workspace-navigation")) return true
+  return desktop() ? window.innerWidth <= 760 : width < 620
 }
-function Panels({ container, list, detail, legacy, conversation, width }: PanelPair) {
-  const key = conversation ? "workhub:conversation-list-width:v1" : "workhub:project-list-width:v1"
-  let saved = conversation ? 280 : 248
+function Panels({ container, list, detail, legacy, width }: PanelPair) {
+  const key = "workhub:conversation-list-width:v1"
+  let saved = 280
   try { const value = Number(localStorage.getItem(key)); if (Number.isFinite(value) && value >= 200) saved = value } catch { /* Persistence is optional. */ }
-  const narrow = narrowLayout(conversation, width)
+  const narrow = narrowLayout(width)
   return <>
     {narrow ? <div className="ui-narrow-panels"><NativePanel node={list} className="ui-narrow-list" /><NativePanel node={detail} className="ui-narrow-detail" /></div> : <Group orientation="horizontal" className="ui-panel-group"
       onLayoutChanged={(layout, meta) => {
@@ -30,15 +30,15 @@ function Panels({ container, list, detail, legacy, conversation, width }: PanelP
         // The callback precedes the browser's layout pass; use the library's
         // completed percentages rather than reading the previous DOM width.
         const available = container.getBoundingClientRect().width - 8
-        const percentage = layout[conversation ? "conversation-list-frame" : "project-list-frame"]
+        const percentage = layout["conversation-list-frame"]
         if (available > 0 && Number.isFinite(percentage)) { try { localStorage.setItem(key, String(Math.round(available * percentage / 100))) } catch { /* Persistence is optional. */ } }
       }}>
-      <Panel id={conversation ? "conversation-list-frame" : "project-list-frame"} defaultSize={saved} minSize={conversation ? 220 : 200} maxSize={conversation ? 520 : 640} groupResizeBehavior="preserve-pixel-size" className="ui-panel"
-        onResize={size => { if (!size.inPixels) return; container.style.setProperty(conversation ? "--conversation-list-width" : "--project-list-width", `${Math.round(size.inPixels)}px`) }}>
+      <Panel id="conversation-list-frame" defaultSize={saved} minSize={220} maxSize={520} groupResizeBehavior="preserve-pixel-size" className="ui-panel"
+        onResize={size => { if (!size.inPixels) return; container.style.setProperty("--conversation-list-width", `${Math.round(size.inPixels)}px`) }}>
         <NativePanel node={list} />
       </Panel>
-      <Separator className="ui-resizable-separator" aria-label={conversation ? uiText("调整对话列表宽度") : uiText("调整项目列表宽度")} />
-      <Panel id={conversation ? "conversation-detail-frame" : "project-detail-frame"} minSize={conversation ? 328 : 340} className="ui-panel"><NativePanel node={detail} /></Panel>
+      <Separator className="ui-resizable-separator" aria-label={uiText("调整对话列表宽度")} />
+      <Panel id="conversation-detail-frame" minSize={328} className="ui-panel"><NativePanel node={detail} /></Panel>
     </Group>}
     <NativePanel node={legacy} className="ui-legacy-resizer" />
   </>
@@ -53,21 +53,20 @@ export function setupWorkspacePanels() {
     queued = false
     if (disposed) return
     for (const [container, entry] of roots) if (!container.isConnected) { entry.observer.disconnect(); entry.root.unmount(); roots.delete(container) }
-    for (const container of document.querySelectorAll<HTMLElement>(desktop() ? ".session-browser-body" : ".project-workspace, .session-browser-body")) {
+    for (const container of document.querySelectorAll<HTMLElement>(".session-browser-body")) {
       if (roots.has(container)) continue
-      const conversation = container.classList.contains("session-browser-body")
-      const list = container.querySelector<HTMLElement>(conversation ? ".session-browser-list" : ".project-browser")
-      const detail = container.querySelector<HTMLElement>(conversation ? ".session-browser-detail" : ".project-detail")
-      const legacy = container.querySelector<HTMLElement>(conversation ? "#sessionBrowserResize" : "[data-project-resize]")
+      const list = container.querySelector<HTMLElement>(".session-browser-list")
+      const detail = container.querySelector<HTMLElement>(".session-browser-detail")
+      const legacy = container.querySelector<HTMLElement>("#sessionBrowserResize")
       if (!list || !detail || !legacy) continue
       const host = document.createElement("div"); host.className = "ui-panels-host"
       const root = createRoot(host), width = container.getBoundingClientRect().width
-      const pair = { container, list, detail, legacy, conversation, width }
-      container.dataset.reactPanels = narrowLayout(conversation, width) ? "narrow" : "wide"
+      const pair = { container, list, detail, legacy, width }
+      container.dataset.reactPanels = narrowLayout(width) ? "narrow" : "wide"
       const observer = new ResizeObserver(() => {
         const entry = roots.get(container), next = Math.round(container.getBoundingClientRect().width)
         if (!entry || next === entry.width || !next) return
-        const mode = narrowLayout(conversation, next) ? "narrow" : "wide"
+        const mode = narrowLayout(next) ? "narrow" : "wide"
         const switching = container.dataset.reactPanels !== mode
         const focused = switching && container.contains(document.activeElement) ? document.activeElement as HTMLElement : null
         entry.width = next; entry.pair.width = next; container.dataset.reactPanels = mode

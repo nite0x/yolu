@@ -27,7 +27,9 @@ export function createConversationProjectOrdering({list, status, initialOrder, g
   save: (order: string[]) => Promise<unknown>
   saveFailed: () => void
 }) {
-  const window = list.ownerDocument.defaultView!
+  const ownerWindow = list.ownerDocument.defaultView
+  if (!ownerWindow) throw new Error("Project ordering requires an attached document")
+  const window = ownerWindow
   let saved = readOrder(initialOrder)
   let writes = Promise.resolve()
   let pending = 0

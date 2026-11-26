@@ -1,3 +1,4 @@
+import {createAPIClient} from "@/core/api-client"
 import {uiText, uiLocale} from "@/shared/i18n"
 import {useEffect, useId, useRef, useState} from "react"
 import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
@@ -50,10 +51,11 @@ const visible = () => !document.hidden && !document.documentElement.hasAttribute
 
 async function quotaRequest<T>(path: string, environment: string, init: RequestInit = {}): Promise<T> {
   const token = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content || ""
-  const response = await fetch(path, { ...init, headers:{"X-CSRF-Token":token, "X-Environment-ID":environment, "Content-Type":"application/json"} })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data.error || uiText("暂时无法读取 Codex 额度"))
-  return data
+  const request = createAPIClient({
+    token, context: () => ({environment, revision:0}),
+    read: (url, options) => fetch(url, options), text:uiText,
+  })
+  return request<T>(path, {...init, environment})
 }
 
 export function CodexUsage({ portal, placement = "sidebar" }: { portal: HTMLElement; placement?: "header" | "sidebar" }) {
@@ -92,7 +94,7 @@ export function CodexUsage({ portal, placement = "sidebar" }: { portal: HTMLElem
     try {
       // Persist before sending. A lost response must never lead to consuming a
       // second card when the user retries or reloads this workspace page.
-      const attempt = resetAttempt || restoreAttempt(environment) || {idempotencyKey:crypto.randomUUID(), creditId:creditId!}
+      const attempt = resetAttempt || restoreAttempt(environment) || {idempotencyKey:crypto.randomUUID(), creditId:creditId || ""}
       if (!attempt.creditId) throw new Error(uiText("请刷新后选择一张可用的重置卡。"))
       sessionStorage.setItem(attemptKey(environment), JSON.stringify(attempt))
       setResetAttempt(attempt)
@@ -107,6 +109,7 @@ export function CodexUsage({ portal, placement = "sidebar" }: { portal: HTMLElem
     } finally { resetPending.current = false; setResetBusy(false) }
   }
 
+  /* biome-ignore lint/correctness/useExhaustiveDependencies: After reset work ends, restart quota reads even when the environment and manual revision are unchanged. */
   useEffect(() => {
     const abort = new AbortController()
     let pending = false
@@ -152,17 +155,18 @@ export function CodexUsage({ portal, placement = "sidebar" }: { portal: HTMLElem
       <div className="codex-quota-windows">{windows.map(window => <section key={window.key} className="codex-quota-window" data-tone={window.remaining !== null && window.remaining <= 20 ? "low" : "normal"}>
         <div className="codex-quota-window-heading"><span>{quotaDuration(window.windowDurationMins)}</span><strong>{window.remaining === null ? uiText("未提供比例") : uiText("剩余 {0}", percent(window.remaining))}</strong></div>
         {windows.some(w => w.id !== window.id) && <p className="codex-quota-note">{window.bucket}</p>}
-        {window.remaining !== null && <div className="codex-quota-meter" role="meter" aria-label={uiText("{0} {1}剩余", window.bucket, quotaDuration(window.windowDurationMins))} aria-valuemin={0} aria-valuemax={100} aria-valuenow={window.remaining}><span style={{width:`${window.remaining}%`}} /></div>}
+        {window.remaining !== null && /* biome-ignore lint/a11y/useSemanticElements: The custom meter retains theme-controlled fill and accessible meter values without native platform styling. */
+          <div className="codex-quota-meter" role="meter" aria-label={uiText("{0} {1}剩余", window.bucket, quotaDuration(window.windowDurationMins))} aria-valuemin={0} aria-valuemax={100} aria-valuenow={window.remaining}><span style={{width:`${window.remaining}%`}} /></div>}
         <p className="codex-quota-note">{resetTime(window.resetsAt) ? uiText("{0} 重置", resetTime(window.resetsAt)) : uiText("暂未提供重置时间")}</p>
       </section>)}</div>
       <section className="codex-reset-cards" aria-label={uiText("Codex 重置卡")}>
         <div className="codex-quota-window-heading"><strong>{uiText("额度重置卡")}</strong><span>{credits ? uiText("可用 {0} 张", credits.availableCount) : uiText("暂未提供")}</span></div>
         {resetNotice && <p className={resetNotice.error ? "codex-quota-error" : "codex-reset-notice"} role={resetNotice.error ? "alert" : "status"}>{resetNotice.message}</p>}
-        {resetAttempt ? <><p className="codex-quota-note">{resetBusy ? uiText("正在处理重置请求…") : uiText("上次重置结果尚未确认，重试会核对同一次操作。")}</p><button type="button" className="codex-reset-button" disabled={resetBusy} onClick={() => void consumeReset()}>{resetBusy ? uiText("正在核对…") : uiText("重试上次操作")}</button></> : confirmCard ? <div className="codex-reset-confirm" role="group" aria-label={uiText("确认使用重置卡")}>
+        {resetAttempt ? <><p className="codex-quota-note">{resetBusy ? uiText("正在处理重置请求…") : uiText("上次重置结果尚未确认，重试会核对同一次操作。")}</p><button type="button" className="codex-reset-button" disabled={resetBusy} onClick={() => void consumeReset()}>{resetBusy ? uiText("正在核对…") : uiText("重试上次操作")}</button></> : confirmCard ? <section className="codex-reset-confirm" aria-label={uiText("确认使用重置卡")}>
           <p>{uiText("确定为「{0}」中的 Codex 账号使用 1 张{1}？使用后无法撤回。", environmentName, cardName(confirmCard))}</p>
           <p className="codex-quota-note">{resetTime(confirmCard.expiresAt) ? uiText("{0} 到期。", resetTime(confirmCard.expiresAt)) : uiText("未提供到期时间。")}{uiText("具体可重置的额度由 Codex 判定。")}</p>
           <div className="codex-reset-actions"><button type="button" className="codex-reset-button secondary" onClick={() => {setConfirmCard(null); resetStart.current?.focus()}}>{uiText("取消")}</button><button type="button" className="codex-reset-button" disabled={resetBusy || loading || !!error} onClick={() => void consumeReset(confirmCard.id)}>{uiText("确认使用 1 张")}</button></div>
-        </div> : <>
+        </section> : <>
           {cards.length > 1 && <label className="codex-reset-choice">{uiText("选择重置卡")}<select value={chosenCard?.id || ""} onChange={event => setSelectedCard(event.target.value)}>{cards.map((card, index) => <option key={card.id} value={card.id}>{cardName(card)} {index + 1}{resetTime(card.expiresAt) ? uiText(" · {0} 到期", resetTime(card.expiresAt)) : ""}</option>)}</select></label>}
           {chosenCard && <p className="codex-quota-note">{cards.length > 1 ? uiText("默认优先使用较早到期的卡。") : `${cardName(chosenCard)}${resetTime(chosenCard.expiresAt) ? uiText(" · {0} 到期", resetTime(chosenCard.expiresAt)) : ""}`}</p>}
           {credits && credits.availableCount > 0 && !cards.length && <p className="codex-quota-note">{uiText("卡片详情暂不可用，请刷新后重试。")}</p>}

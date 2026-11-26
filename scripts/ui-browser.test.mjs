@@ -41,6 +41,13 @@ test('shared component catalog supports validation, pending actions, keyboard di
     if (dark) await page.getByRole('button', {name:'Dark appearance', exact:true}).click();
     for (const width of [1280, 390]) {
       await page.setViewportSize({width,height:1000});
+      await expect(page.locator('html')).toHaveAttribute('data-color-scheme', dark ? 'dark' : 'light');
+      // Audit the requested appearance after finite color/layout transitions
+      // settle. Infinite loading indicators remain running and are still audited.
+      await page.evaluate(async () => {
+        const transitions = document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity);
+        await Promise.all(transitions.map(animation => animation.finished.catch(() => {})));
+      });
       const accessibility = await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
       assert.deepEqual(accessibility.violations.map(({id, nodes}) => ({id, targets:nodes.map(node => node.target)})), [], `${dark ? 'dark' : 'light'} ${width}px accessibility`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

@@ -1,8 +1,8 @@
 import type {TurnSettings as ContractTurnSettings} from "@/api/contracts"
 import {uiText} from "@/shared/i18n"
-import type {ChatModel} from "./messages"
 
 export type AgentProvider = "codex" | "agy" | "cursor";
+export interface ChatModel {id:string;model:string;displayName:string;isDefault:boolean;defaultReasoningEffort:string;supportedReasoningEfforts?:{reasoningEffort:string}[];serviceTiers?:{id:string;name:string;description:string}[]}
 export interface ProviderCapabilities { steer: boolean; fork: boolean; handoff: boolean; rate_limits: boolean; voice: boolean }
 export const normalizeProvider = (provider?: string): AgentProvider => provider === "agy" || provider === "cursor" ? provider : "codex";
 export const defaultCapabilities = (provider: AgentProvider, cloud = false): ProviderCapabilities => provider !== "codex" || cloud

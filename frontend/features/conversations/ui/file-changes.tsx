@@ -14,7 +14,7 @@ const ChangePathsContext = createContext<FileChangePaths>({projectRoots: []});
 export const ChatChangePathsProvider = ChangePathsContext.Provider;
 
 function ChangeCounts({additions, deletions}: {additions: number; deletions: number}) {
-  return <span className="chat-change-counts" aria-label={uiText("新增 {0} 行，删除 {1} 行", additions, deletions)}><span className="chat-change-added">+{additions}</span><span className="chat-change-deleted">-{deletions}</span></span>;
+  return <span className="chat-change-counts" role="img" aria-label={uiText("新增 {0} 行，删除 {1} 行", additions, deletions)}><span className="chat-change-added">+{additions}</span><span className="chat-change-deleted">-{deletions}</span></span>;
 }
 
 export function ChatChangeSummary() {
@@ -50,7 +50,10 @@ export function ChatChangeSummary() {
         </button>
         {open && <div className="chat-change-preview">
           <div className="chat-change-preview-heading"><span>{uiText("本轮变更记录")}{file.patches.length > 1 ? uiText(" · {0} 次修改", file.patches.length) : ""}</span><ChatFileButton reference={{path: file.path, line: file.line}}>{uiText("打开文件")}</ChatFileButton></div>
-          {file.patches.length ? file.patches.map((patch, index) => <pre key={index} tabIndex={0} aria-label={uiText("{0} 第 {1} 次修改的差异", file.path, index + 1)}>{patch.split("\n").map((line, lineIndex) => <span key={lineIndex} className={line.startsWith("+") ? "chat-diff-added" : line.startsWith("-") ? "chat-diff-deleted" : line.startsWith("@@") ? "chat-diff-hunk" : undefined}>{line || " "}</span>)}</pre>) : <p>{uiText("此文件没有可显示的文本差异，或差异预览已达到长度上限。")}</p>}
+          {file.patches.length ? file.patches.map((patch, index) => /* biome-ignore lint/a11y/useSemanticElements: Keep preformatted patch source as the named scrollable reading region. */
+            /* biome-ignore lint/a11y/noNoninteractiveTabindex: Overflowing patch source must support keyboard scrolling. */
+            /* biome-ignore lint/suspicious/noArrayIndexKey: Historical patch records and their stateless source lines retain their ordered positions. */
+            <pre key={index} tabIndex={0} role="region" aria-label={uiText("{0} 第 {1} 次修改的差异", file.path, index + 1)}>{patch.split("\n").map((line, lineIndex) => <span key={lineIndex} className={line.startsWith("+") ? "chat-diff-added" : line.startsWith("-") ? "chat-diff-deleted" : line.startsWith("@@") ? "chat-diff-hunk" : undefined}>{line || " "}</span>)}</pre>) : <p>{uiText("此文件没有可显示的文本差异，或差异预览已达到长度上限。")}</p>}
         </div>}
       </li>;
     })}</ul>
@@ -81,7 +84,11 @@ function ChangeText({text}: {text: string}) {
     ...header.reference,
     line: /(?:#L?\d+|:\d+(?:-\d+)?(?::\d+)?)$/i.test(header.label) ? header.reference.line : changedLine(lines.slice(header.index+1,headers[index+1]?.index)),
   }]));
-  return <pre className="aui-tool-fallback-args-value bg-muted/50 text-foreground/90 rounded-md p-2.5 text-xs break-words whitespace-pre-wrap">{lines.map((line,index) => <Fragment key={index}>{links.has(index) ? <ChatFileButton reference={links.get(index)!}>{line}</ChatFileButton> : line}{index<lines.length-1?"\n":""}</Fragment>)}</pre>;
+  return <pre className="aui-tool-fallback-args-value bg-muted/50 text-foreground/90 rounded-md p-2.5 text-xs break-words whitespace-pre-wrap">{lines.map((line,index) => {
+    const reference = links.get(index);
+    // biome-ignore lint/suspicious/noArrayIndexKey: Source lines are stateless positions within one patch snapshot.
+    return <Fragment key={index}>{reference ? <ChatFileButton reference={reference}>{line}</ChatFileButton> : line}{index<lines.length-1?"\n":""}</Fragment>;
+  })}</pre>;
 }
 
 export const ChatToolFallback: ToolCallMessagePartComponent = props => {

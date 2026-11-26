@@ -116,9 +116,6 @@ button.project-summary-stat[aria-pressed="true"] { background: var(--yolu-select
 .project-directory-select { display: block; width: 112px; flex: none; }
 .project-directory-select select { height: 26px !important; padding-block: 0 !important; font-size: var(--yolu-font-size-label) !important; border-color: transparent !important; box-shadow: none !important; background: var(--yolu-subtle) !important; }
 .project-directory-select select:hover { background: var(--yolu-hover) !important; }
-.project-activity { margin-top: 28px; }
-.project-activity > .resource-section-heading { padding-bottom: 8px; border-bottom: 1px solid var(--yolu-border); }
-.project-activity > .directory-muted, .project-activity > .project-conversation-feedback { padding-top: 10px; }
 .project-commit-plan { flex: 1; padding: 18px; border: 1px solid var(--yolu-border); border-radius: 10px; }
 .project-commit-plan > h3 { font-size: var(--yolu-font-size-list-title); }
 .project-commit-plan > p { color: var(--yolu-muted-ink); }

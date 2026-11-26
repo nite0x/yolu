@@ -137,25 +137,28 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
     })
     return () => abort.abort()
   }, [inspectPrimary, cwd, projectID, provider, request])
+  const sessionID = session?.id
   const bindingVersion = JSON.stringify(bindings.map(binding => [binding.id,binding.directory,binding.project_id,!!binding.git,binding.role]))
   useEffect(() => {
-    if (!session) return
+    if (!sessionID) return
     const directories = (JSON.parse(bindingVersion) as [string,string,string | null,boolean,string][]).map(([id,path,project,git,role]) => ({id,path,project,git,primary:role === "primary"}))
-    window.dispatchEvent(new CustomEvent("workhub:session-bindings-changed", {detail:{session:session.id, environment, directories}}))
-  }, [bindingVersion,environment,session?.id])
+    window.dispatchEvent(new CustomEvent("workhub:session-bindings-changed", {detail:{session:sessionID, environment, directories}}))
+  }, [bindingVersion,environment,sessionID])
   const excluded = new Set([target.project_id || "", ...bindings.map(binding => binding.project_id || ""), ...planned.map(binding => binding.project_id || "")])
   const addDirectory = () => setPrompt({purpose:uiText("为此对话添加参考或开发目录。")})
 
   useEffect(() => {
     if (session || assistantDraft || readOnly || busy) return
-    document.addEventListener("workhub:creation-add-directory", addDirectory)
-    return () => document.removeEventListener("workhub:creation-add-directory", addDirectory)
+    const onAddDirectory = () => setPrompt({purpose:uiText("为此对话添加参考或开发目录。")})
+    document.addEventListener("workhub:creation-add-directory", onAddDirectory)
+    return () => document.removeEventListener("workhub:creation-add-directory", onAddDirectory)
   }, [session, assistantDraft, readOnly, busy])
 
   useEffect(() => {
     approvalRef.current = prompt
     return () => { if (approvalRef.current === prompt) approvalRef.current = undefined }
   }, [prompt])
+  /* biome-ignore lint/correctness/useExhaustiveDependencies: Resolve pending approval work when its controller owner changes or unmounts. */
   useEffect(() => () => approvalRef.current?.resolve?.(false), [controller])
   useEffect(() => {
     if (!base) return
@@ -350,7 +353,7 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
       additionalShare={{checked:!!binding.allow_shared, disabled:busy || preparing,
         onChange: checked => updatePlanned(plannedRef.current.map(item => item === binding ? {...item, allow_shared:checked} : item))}} />}
   </div>)
-  const directoryList = <div className="session-context-strip session-dir-list" role="group" aria-label={uiText("对话项目与目录")}>
+  const directoryList = <section className="session-context-strip session-dir-list" aria-label={uiText("对话项目与目录")}>
     {session ? visibleBindings.map(binding => {
       const name = binding.project_name || labelFor(binding, projects)
       const open = detail === binding.id
@@ -372,7 +375,7 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
               {binding.branch && <><span className="session-dir-sep" aria-hidden="true">·</span><span className="session-context-branch session-dir-branch">{binding.branch}</span></>}
             </span>
             <span className="session-dir-trailing">
-              {(additions > 0 || deletions > 0) ? <span className="session-dir-diff" aria-label={uiText("新增 {0} 行，删除 {1} 行", additions, deletions)}>
+              {(additions > 0 || deletions > 0) ? <span className="session-dir-diff" role="img" aria-label={uiText("新增 {0} 行，删除 {1} 行", additions, deletions)}>
                 {additions > 0 && <span className="session-dir-added">+{formatCount(additions)}</span>}
                 {deletions > 0 && <span className="session-dir-deleted">-{formatCount(deletions)}</span>}
               </span> : fileCount > 0 ? <span className="session-dir-file-count">{uiText("{0} 个改动", fileCount)}</span> : null}
@@ -390,7 +393,7 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
           edit={readOnly || session?.archived ? undefined : () => setPrompt({binding,initial:binding,purpose:uiText("更新此目录的访问范围或工作目录。")})}
           remove={readOnly || session?.archived ? undefined : () => void remove(binding)}
           showFiles={path => showFiles(binding, path, path ? undefined : hasChanges ? "working" : "all")}
-          openProject={binding.project_id && controller.options.openProject ? () => controller.options.openProject?.(binding.project_id!,binding.directory) : undefined}
+          openProject={binding.project_id && controller.options.openProject ? () => controller.options.openProject?.(binding.project_id || "",binding.directory) : undefined}
           openTerminal={environment === "local" && controller.options.openTerminal ? () => controller.options.openTerminal?.(binding) : undefined} />}
       </div>
     }) : plannedRows}
@@ -400,7 +403,7 @@ export function useSessionDirectories(controller: ChatController, session: Sessi
     </div>}
     {session && !bindings.length && !error && <span className="session-context-empty">{uiText(data ? "未绑定项目目录" : "正在读取目录…")}</span>}
     {!session && !planned.length && <span className="session-context-empty">{uiText("未绑定项目目录")}</span>}
-  </div>
+  </section>
   return {
     send, target, header,
     context: <>
@@ -457,14 +460,14 @@ function DraftProjectSuggestions({controller, projects, excluded, dismissed, dis
   const draft = useChatState(controller, snapshot => snapshot.draft)
   if (draft === dismissed) return null
   const mention = projectMention(draft)
-  if (mention !== undefined) return <div className="session-context-suggestion" aria-label={uiText("选择要引用的项目")}>
+  if (mention !== undefined) return <section className="session-context-suggestion" aria-label={uiText("选择要引用的项目")}>
     {projects.filter(project => !excluded.has(project.id) && project.name.toLowerCase().includes(mention.toLowerCase())).slice(0, 6).map(project =>
       <Button key={project.id} type="button" size="sm" variant="outline" onClick={() =>
         controller.setDraft(draft.replace(/@[^\s@]*$/u, () => "@" + project.name + " "))
       }>@{project.name}</Button>)}
     {configure && <Button type="button" size="sm" variant="ghost" onClick={() => configure({initial:{access:"read"},purpose:uiText("选择消息所引用的本地目录。")})}><FolderOpen aria-hidden="true" />{uiText("选择本地目录…")}</Button>}
     <Button type="button" size="icon-sm" variant="ghost" aria-label={uiText("关闭项目选择器")} onClick={() => dismiss(draft)}><X aria-hidden="true" /></Button>
-  </div>
+  </section>
   return null
 }
 
@@ -560,18 +563,18 @@ function BindingDialog({prompt, request, environment, provider, session, project
       <p>{prompt.purpose}</p>
       {prompt.conflict ? <code>{prompt.conflict}</code> : <>
         <fieldset disabled={busy}>
-          <label>{uiText("搜索项目名称或路径")}<Input type="search" value={query} onChange={event => setQuery(event.target.value)} /></label>
-          <label>{uiText("项目")}<NativeSelect value={project} onChange={event => {setProject(event.target.value); setDirectory(""); invalidate()}}>
+          <label htmlFor={`${formID}-query`}>{uiText("搜索项目名称或路径")}<Input id={`${formID}-query`} type="search" value={query} onChange={event => setQuery(event.target.value)} /></label>
+          <label htmlFor={`${formID}-project`}>{uiText("项目")}<NativeSelect id={`${formID}-project`} value={project} onChange={event => {setProject(event.target.value); setDirectory(""); invalidate()}}>
             <Option value="">{uiText("本地目录")}</Option>{matching.map(item => <Option key={item.id} value={item.id}>{item.name}{recent.includes(item.id) ? " · " + uiText("最近使用") : ""}</Option>)}
           </NativeSelect></label>
-          {selected ? <label>{uiText("实际目录")}<NativeSelect value={directory || selected.path} onChange={event => {setDirectory(event.target.value); invalidate()}}>
+          {selected ? <label htmlFor={`${formID}-directory`}>{uiText("实际目录")}<NativeSelect id={`${formID}-directory`} value={directory || selected.path} onChange={event => {setDirectory(event.target.value); invalidate()}}>
             {directories.map(path => <Option key={path} value={path}>{path}{path === selected.path ? " · " + uiText("项目目录") : ""}</Option>)}
-          </NativeSelect></label> : <label>{uiText("实际目录")}<div className="session-binding-field-row"><Input value={directory} onChange={event => {setDirectory(event.target.value); invalidate()}} placeholder={uiText("填写绝对目录路径")} required />
+          </NativeSelect></label> : <label htmlFor={`${formID}-directory`}>{uiText("实际目录")}<div className="session-binding-field-row"><Input id={`${formID}-directory`} value={directory} onChange={event => {setDirectory(event.target.value); invalidate()}} placeholder={uiText("填写绝对目录路径")} required />
             {environment === "local" && <Button type="button" variant="outline" onClick={() => void browse()}>{uiText("选择文件夹…")}</Button>}</div></label>}
-          {(!hasPrimary || prompt.binding?.role === "primary") && <label>{uiText("对话中的角色")}<NativeSelect value={role} onChange={event => {setRole(event.target.value === "primary" ? "primary" : "additional"); invalidate()}}>
+          {(!hasPrimary || prompt.binding?.role === "primary") && <label htmlFor={`${formID}-role`}>{uiText("对话中的角色")}<NativeSelect id={`${formID}-role`} value={role} onChange={event => {setRole(event.target.value === "primary" ? "primary" : "additional"); invalidate()}}>
             <Option value="additional">{uiText("附加目录")}</Option><Option value="primary">{uiText("主项目")}</Option>
           </NativeSelect></label>}
-          <label>{uiText("Agent 访问用途")}<NativeSelect value={access} onChange={event => {setAccess(event.target.value === "write" ? "write" : "read"); invalidate()}}>
+          <label htmlFor={`${formID}-access`}>{uiText("Agent 访问用途")}<NativeSelect id={`${formID}-access`} value={access} onChange={event => {setAccess(event.target.value === "write" ? "write" : "read"); invalidate()}}>
             <Option value="read">{uiText("仅作为参考（只读）")}</Option><Option value="write">{uiText("允许修改")}</Option>
           </NativeSelect></label>
         </fieldset>
@@ -594,6 +597,7 @@ function BindingDialog({prompt, request, environment, provider, session, project
 function WorktreeSetup({project, request, disabled, directory, onCreated, onReset}: {
   project: string; request: ChatController["options"]["request"]; disabled: boolean; directory?: string; onCreated: (path: string) => void; onReset: () => void;
 }) {
+  const formID = useId()
   const [open, setOpen] = useState(false)
   const [branches, setBranches] = useState<GitOverview["branches"]>([])
   const [source, setSource] = useState("")
@@ -624,8 +628,8 @@ function WorktreeSetup({project, request, disabled, directory, onCreated, onRese
   return <div className="session-worktree-setup">
     {!open ? <Button type="button" variant="outline" size="sm" onClick={() => void prepare()} disabled={disabled}><GitBranch aria-hidden="true" />{uiText("创建独立 Worktree")}</Button> :
       <form onSubmit={event => void create(event)}>
-        <label>{uiText("新分支标识")}<Input value={slug} required maxLength={64} pattern="[a-zA-Z0-9][a-zA-Z0-9_\\-]{0,63}" onChange={event => setSlug(event.target.value)} disabled={pending} /></label>
-        <label>{uiText("来源分支")}<NativeSelect value={source} onChange={event => setSource(event.target.value)} disabled={pending}>
+        <label htmlFor={`${formID}-slug`}>{uiText("新分支标识")}<Input id={`${formID}-slug`} value={slug} required maxLength={64} pattern="[a-zA-Z0-9][a-zA-Z0-9_\\-]{0,63}" onChange={event => setSlug(event.target.value)} disabled={pending} /></label>
+        <label htmlFor={`${formID}-source`}>{uiText("来源分支")}<NativeSelect id={`${formID}-source`} value={source} onChange={event => setSource(event.target.value)} disabled={pending}>
           <Option value="HEAD">HEAD</Option>{branches.map(branch => <Option key={branch.ref} value={branch.ref}>{branch.name}</Option>)}
         </NativeSelect></label>
         <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setOpen(false)}>{uiText("取消")}</Button>

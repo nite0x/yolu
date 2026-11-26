@@ -15,7 +15,7 @@ export function createResourceIcons({request, changed, failed}: {
     if (!state) { state = {icons: {}, loaded: false, write: Promise.resolve()}; states.set(environment, state) }
     return state
   }
-  const url = (environment: string) => "/api/resource-icons?environment=" + encodeURIComponent(environment)
+  const url = (environment: string) => `/api/resource-icons?environment=${encodeURIComponent(environment)}`
   async function load(environment: string): Promise<void> {
     const state = stateFor(environment)
     if (state.loaded) return
@@ -34,7 +34,7 @@ export function createResourceIcons({request, changed, failed}: {
         await load(environment)
         const result = await request<{icons: Icons}>(url(environment), {environment: "local", method: "PUT", body: JSON.stringify({id, appearance})})
         state.icons = result.icons; changed()
-        try { localStorage.setItem("workhub:resource-icons-updated:" + environment, Date.now() + ":" + Math.random()) } catch { /* Storage is optional. */ }
+        try { localStorage.setItem(`workhub:resource-icons-updated:${environment}`, `${Date.now()}:${Math.random()}`) } catch { /* Storage is optional. */ }
       })
       state.write = operation.catch(() => {})
       try { await operation } catch (error) { failed(uiText("保存图标失败：") + (error as Error).message); throw error }

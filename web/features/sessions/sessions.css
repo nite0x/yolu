@@ -1,24 +1,10 @@
 .session-description { font-size:14px; color: var(--muted-foreground, var(--yolu-muted-ink,#64748b)); line-height: 1.9; max-width: 640px; margin: 10px 0 16px; }
 .session-empty { padding: 22px 0; color: var(--muted-foreground, var(--yolu-muted-ink,#64748b)); font-size:15px; line-height: 1.9; }
-.session-search { display: flex; align-items: flex-end; gap: 12px; margin: 18px 0; }
-.session-search .field { flex: 1; margin-bottom: 0; min-width: 0; }
-.session-search button { flex-shrink: 0; }
-.session-picker-row { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border); }
-.session-picker-row > div { min-width: 0; }
-.session-picker-row strong { display: block; font-size:15px; overflow-wrap: anywhere; line-height: 1.8; }
-.session-picker-row .path, .session-picker-row small { display: block; font:13px/1.8 Consolas, monospace; color: var(--muted-foreground, var(--yolu-muted-ink,#64748b)); overflow-wrap: anywhere; }
-.session-picker-row button { flex-shrink: 0; }
-.session-row-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .session-history-panel { position: fixed; inset: 0 0 0 auto; width: min(780px, 60vw); margin: 0; background: var(--yolu-subtle,#fafbfe); border-left: 1px solid var(--border); box-shadow: -15px 0 50px #1c20351a; z-index: 15; display: flex; flex-direction: column; }
 .session-history-header { flex: 0 0 auto; padding: 16px 22px 14px; background: var(--yolu-surface,#fff); border-bottom: 1px solid var(--border); }
 .session-history-header h2 { font-size: 18px; line-height: 1.5; overflow-wrap: anywhere; }
 .session-history-header .dialog-header > div { min-width: 0; }
 .session-history-meta { white-space: pre-wrap; font:12px/1.7 Consolas, monospace; color: var(--muted-foreground, var(--yolu-muted-ink,#64748b)); overflow-wrap: anywhere; margin-top: 8px; max-height: 64px; overflow-y: auto; }
-.session-project-field { display: block; margin-top: 16px; font-size:14px; color: var(--muted-foreground, var(--yolu-muted-ink,#64748b)); }
-.session-project-field select { display: block; width: 100%; margin-top: 7px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--yolu-subtle,#f8f8fb); color: var(--ink); font: inherit; }
-.session-new-empty { padding: 50px 14px; max-width: 420px; margin: auto; }
-.session-new-empty h3 { margin: 16px 0 10px; font-size: 20px; color: var(--ink); }
-.session-new-empty p { font-size:15px; line-height: 1.9; color: var(--muted-foreground, var(--yolu-muted-ink,#64748b)); }
 .session-history-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
 .session-history-toolbar > span { font-size:13px; line-height: 1.8; color: var(--muted-foreground, var(--yolu-muted-ink,#64748b)); }
 .session-history-toolbar > div { display: flex; gap: 7px; flex-shrink: 0; }

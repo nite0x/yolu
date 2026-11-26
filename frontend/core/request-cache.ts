@@ -15,7 +15,7 @@ export function createRequestCache(fetcher: ReadRequest, now = Date.now) {
       if (/[?&]refresh=1(?:&|$)/.test(path)) { reads.clear(); return fetcher(path, options) }
       const cacheable = /^\/api\/(state|environments|resource-icons)(\?|$)/.test(path)
         || /^\/api\/sessions(?:\?|$|\/search$)/.test(path)
-      if (options.signal || !cacheable) return fetcher(path, options)
+      if (options.signal || ["no-store", "no-cache", "reload"].includes(options.cache || "") || !cacheable) return fetcher(path, options)
       const url = new URL(path, "http://localhost")
       url.searchParams.sort()
       const headers = [...new Headers(options.headers).entries()].sort(([a], [b]) => a.localeCompare(b))

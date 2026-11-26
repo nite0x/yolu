@@ -4,10 +4,16 @@ import {createPortal, flushSync} from "react-dom"
 import {ALargeSmall, ArrowRight, Bot, Minus, MoreHorizontal, Plus, RefreshCw, Search, Terminal, X} from "lucide-react"
 import {ConversationCreationIntro, ConversationHeader, ConversationIconButton, ConversationPaneButtons, ConversationStatusBadge, ConversationWorkingContext} from "@/shared/ui/conversation-surface"
 
+function mountElement(id: string) {
+  const node = document.getElementById(id)
+  if (!node) throw new Error(`Missing terminal mount: ${id}`)
+  return node
+}
+
 export interface TerminalProfile { id: string; name: string; executable: string; args: string[] | null; available: boolean }
 
 export function mountTerminalTools(launch: (id: string) => void) {
-  const root = createRoot(document.getElementById("terminalProfileChoices")!)
+  const root = createRoot(mountElement("terminalProfileChoices"))
   return {
     render(profiles: TerminalProfile[], disabled: boolean, starting?: string) {
       const available = profiles.filter(profile => profile.available)
@@ -37,9 +43,9 @@ export function mountTerminalTools(launch: (id: string) => void) {
 // Mount the same chrome as UI conversations once. The terminal controller owns
 // the launch form values, including unfinished custom settings.
 export function mountTerminalSurface(command: (command: string) => void) {
-  const root = createRoot(document.getElementById("terminalSurface")!)
+  const root = createRoot(mountElement("terminalSurface"))
   flushSync(() => root.render(<>
-    {createPortal(<ConversationCreationIntro kind="terminal" uiID="terminalKindUI" />, document.getElementById("terminalCreationSetup")!)}
+    {createPortal(<ConversationCreationIntro kind="terminal" uiID="terminalKindUI" />, mountElement("terminalCreationSetup"))}
     <ConversationHeader title={uiText("新建对话")} titleID="terminalTitle"
       actions={<>
         <ConversationStatusBadge id="terminalStatusBadge" hidden><span className="chat-status-dot" aria-hidden="true" /><span id="terminalStatus">{uiText("正在连接…")}</span></ConversationStatusBadge>
@@ -48,11 +54,11 @@ export function mountTerminalSurface(command: (command: string) => void) {
             <summary className="conversation-icon-button" aria-label={uiText("终端文字大小")} title={uiText("终端文字大小")}><ALargeSmall aria-hidden="true" /></summary>
             <div className="terminal-appearance-panel">
               <span>{uiText("文字大小")}</span>
-              <div className="terminal-font-controls" role="group" aria-label={uiText("调整终端文字大小")}>
+              <fieldset className="terminal-font-controls m-0 min-w-0 border-0 p-0" aria-label={uiText("调整终端文字大小")}>
                 <ConversationIconButton id="decreaseTerminalFont" label={uiText("缩小终端文字")}><Minus aria-hidden="true" /></ConversationIconButton>
                 <output id="terminalFontSize" aria-live="polite">14 px</output>
                 <ConversationIconButton id="increaseTerminalFont" label={uiText("放大终端文字")}><Plus aria-hidden="true" /></ConversationIconButton>
-              </div>
+              </fieldset>
               <button id="resetTerminalFont" type="button">{uiText("恢复默认")}</button>
             </div>
           </details>
@@ -70,7 +76,7 @@ export function mountTerminalSurface(command: (command: string) => void) {
         <code id="terminalContextPath" className="chat-workspace-path" />
       </ConversationWorkingContext>}>
 
-      <div id="terminalSearchBar" className="terminal-search-bar" role="search" hidden><input id="terminalSearch" type="search" placeholder={uiText("搜索终端输出")} aria-label={uiText("搜索终端输出")} /><button id="terminalSearchNext" type="button">{uiText("查找")}</button><ConversationIconButton id="closeTerminalSearch" label={uiText("关闭终端搜索")}><X aria-hidden="true" /></ConversationIconButton></div>
+      <search id="terminalSearchBar" className="terminal-search-bar" hidden><input id="terminalSearch" type="search" placeholder={uiText("搜索终端输出")} aria-label={uiText("搜索终端输出")} /><button id="terminalSearchNext" type="button">{uiText("查找")}</button><ConversationIconButton id="closeTerminalSearch" label={uiText("关闭终端搜索")}><X aria-hidden="true" /></ConversationIconButton></search>
     </ConversationHeader>
   </>))
   return () => root.unmount()

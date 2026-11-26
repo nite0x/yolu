@@ -25,4 +25,3 @@ const settingsController = window.WorkHubUI.mountSettings({
   },
 });
 function renderSettings() { settingsController.refresh(); }
-function enqueueSettingsSave(key, operation) { return settingsController.enqueue(key, operation); }

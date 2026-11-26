@@ -456,7 +456,7 @@ export class ChatController {
     }
     if (record.provider) this.providerChosen = true;
     const restoredProvider = !this.snapshot.session && !this.isYoluAssistant() && record.provider ? normalizeProvider(record.provider) : this.snapshot.provider;
-    this.update({draft:record.text,cloudEnvironment:!this.snapshot.session && !this.isYoluAssistant() && restoredProvider === "codex" && typeof record.cloudEnvironment === "string" ? record.cloudEnvironment : undefined,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
+    this.update({draft:record.text,cloudEnvironment:!this.snapshot.session && !this.isYoluAssistant() && restoredProvider === "codex" && typeof record.cloudEnvironment === "string" ? record.cloudEnvironment : undefined,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider, isCloudSession(this.snapshot.session)),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
   }
   private loadDraft() { return this.draftPersistence.load(); }
   private draftChanged() { this.draftPersistence.changed(); }

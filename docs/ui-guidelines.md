@@ -18,7 +18,7 @@ The [frontend module guide](../frontend/README.md) defines feature ownership and
 | Typography | `web/core/typography.css` | Font families, text sizes and weights |
 | Component tokens | `frontend/shared/styles/base.css`, `frontend/app/styles/workspace.css` | Generic tokens and application-level style composition |
 | Application frame | `web/core/chrome.css`, `desktop-frame.css`, `page-host.css` | Shared navigation, pane surfaces, elevation, gutters and host geometry |
-| Pane layout | `frontend/shared/ui/page-surface.tsx`, `page-surface.css` | Shared split layout and pane markup |
+| Pane layout | `frontend/app/shell/layout.tsx`, `resizable.tsx`, `web/core/page-host.css` | Shared pane composition, resizing and surfaces |
 | Lists | `frontend/shared/ui/list-controls.tsx`, `frontend/features/conversations/list/browser.tsx` | List headings, creation actions, search, rows, selection and date groups |
 | Working directories | `frontend/features/projects/ui/working-directories.tsx`, `working-directories.css` | Project directory cards, Git summaries and directory actions |
 | Conversation surface | `frontend/shared/ui/conversation-surface.tsx`, `conversation-surface.css` | Header, status, context and pane actions |
@@ -44,20 +44,7 @@ The right side of the header shows the Git refresh action and the Codex quota tr
 
 Global search keeps results in memory across dialog opens and reads saved conversation titles and archive state first. Entering a search term starts background conversation discovery. Available results stay usable while discovery runs.
 
-Use `SplitLayout` when a workflow requires two simultaneously visible panes, such as browsing conversations. Use `ApplicationPane` for the list and detail surfaces. Static HTML and legacy controllers apply the same `workspace-pane` class.
-
-```tsx
-import {ApplicationPane, SplitLayout} from "@/shared/ui/page-surface";
-
-<SplitLayout>
-  <ApplicationPane as="aside" aria-label={listLabel}>
-    {list}
-  </ApplicationPane>
-  <ApplicationPane aria-labelledby="conversationTitle">
-    {conversation}
-  </ApplicationPane>
-</SplitLayout>
-```
+Use the existing `workspace-pane` class for product list/detail surfaces. The application shell owns retained page composition and pane sizing; feature components own their content. `app/shell/resizable.tsx` adapts stable native DOM boundaries to `react-resizable-panels`, and `setupSplitResize` supplies pointer/keyboard resizing for stable reading surfaces. Do not introduce another layout wrapper when markup and these existing owners already provide the behavior.
 
 | Purpose | Existing token or contract |
 | --- | --- |

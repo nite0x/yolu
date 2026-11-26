@@ -189,7 +189,8 @@ export function AudioPlayer({
       <span className={cn(mono, "text-muted-foreground tabular-nums")}>
         {formatDuration(currentTime)}&nbsp;/ {durationLabel}
       </span>
-      <audio
+      {/* biome-ignore lint/a11y/useMediaCaption: User-supplied attachment media has no caption track source; retain playback controls without fabricating captions. */}
+<audio
         ref={audioRef}
         src={src}
         preload="metadata"
@@ -246,7 +247,8 @@ export function VideoPlayer({
       {...props}
     >
       <div className={cn(field, "overflow-hidden rounded-xl", ratioClassName)}>
-        <video
+        {/* biome-ignore lint/a11y/useMediaCaption: User-supplied attachment media has no caption track source; retain playback controls without fabricating captions. */}
+<video
           ref={videoRef}
           src={src}
           poster={poster}

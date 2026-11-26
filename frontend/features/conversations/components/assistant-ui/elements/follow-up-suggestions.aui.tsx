@@ -16,7 +16,8 @@ const FollowupSuggestionsRow: FC = () => {
     // scrollLeft runs 0..-max in RTL; normalize to hidden width per physical edge.
     const fromStart = Math.abs(el.scrollLeft);
     // getComputedStyle forces a style recalc per scroll event; direction is stable, read it once.
-    const rtl = (rtlRef.current ??= getComputedStyle(el).direction === "rtl");
+    rtlRef.current ??= getComputedStyle(el).direction === "rtl";
+    const rtl = rtlRef.current;
     const [left, right] = rtl
       ? [maxScroll - fromStart, fromStart]
       : [fromStart, maxScroll - fromStart];
@@ -49,9 +50,9 @@ const FollowupSuggestionsRow: FC = () => {
       style={{ maskImage, WebkitMaskImage: maskImage }}
     >
       <div className="mx-auto flex min-h-8 w-max items-center gap-2 px-0.5">
-        {suggestions.map((suggestion, idx) => (
+        {suggestions.map((suggestion) => (
           <ThreadPrimitive.Suggestion
-            key={idx}
+            key={suggestion.prompt}
             className="aui-thread-followup-suggestion border-foreground/10 hover:bg-foreground/[0.03] hover:border-foreground/25 rounded-md border px-2.5 py-1 text-sm whitespace-nowrap transition-colors ease-in motion-reduce:transition-none"
             prompt={suggestion.prompt}
             send

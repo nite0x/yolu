@@ -18,8 +18,14 @@ export function readLocalDraft(key:string): DraftRecord | undefined {
  try {const value = JSON.parse(localStorage.getItem(draftStorageKey(key)) || "null"); return validDraft(value) ? value : undefined;} catch {return undefined;}
 }
 export function validDraft(value: unknown): value is DraftRecord {
- const d=value as DraftRecord | null;
- return !!d && typeof d.text==="string" && typeof d.updated==="number" && !!d.settings && !!d.reading && Array.isArray(d.images);
+ if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+ const d = value as Partial<DraftRecord>;
+ const reading = d.reading;
+ return typeof d.text === "string" && Number.isFinite(d.updated) && typeof d.project === "string"
+   && !!d.settings && typeof d.settings === "object" && !Array.isArray(d.settings)
+   && !!reading && Number.isFinite(reading.top) && typeof reading.bottom === "boolean"
+   && typeof reading.anchor === "string" && Number.isFinite(reading.offset)
+   && Array.isArray(d.images);
 }
 export function cacheDraft(key:string,record:DraftRecord) {
  // Large images are persisted in the environment database; localStorage is a
@@ -30,7 +36,7 @@ export function draftImages(attachments: readonly Attachment[]): DraftRecord['im
  return attachments.flatMap(a=>(a.content||[]).flatMap(p=>p.type==="image" && p.image.startsWith("data:image/") ? [{id:a.id,name:a.name,contentType:a.contentType||"image/png",url:p.image}] : []));
 }
 export function restoreImages(images:DraftRecord['images']): readonly Attachment[] {
- return images.filter(i=>typeof i.url==="string"&&/^data:image\/(png|jpeg|gif|webp);base64,/.test(i.url)).slice(0,4).map(i=>({id:i.id,type:"image" as const,name:i.name,contentType:i.contentType,status:{type:"complete" as const},content:[{type:"image" as const,image:i.url}]}));
+ return images.filter(i=>i && typeof i.id==="string" && typeof i.name==="string" && typeof i.contentType==="string" && typeof i.url==="string"&&/^data:image\/(png|jpeg|gif|webp);base64,/.test(i.url)).slice(0,4).map(i=>({id:i.id,type:"image" as const,name:i.name,contentType:i.contentType,status:{type:"complete" as const},content:[{type:"image" as const,image:i.url}]}));
 }
 
 export function draftFiles(attachments: readonly Attachment[]): NonNullable<DraftRecord['files']> {

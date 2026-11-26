@@ -16,7 +16,11 @@ export const bridge = {
   draftTitle: () => active && !active.getSnapshot().session ? draftTitle(active.getSnapshot().draft) : "",
   flushDraft: () => controllers.flush(),
   open(options: ChatOptions) {
-    if (!root) root = createRoot(document.getElementById("assistantChatRoot")!);
+    if (!root) {
+      const container = document.getElementById("assistantChatRoot");
+      if (!container) throw new Error("Missing conversation mount: assistantChatRoot");
+      root = createRoot(container);
+    }
     unsubscribePreview?.();
     active?.disconnect();
     let controller = controllers.get(key(options));

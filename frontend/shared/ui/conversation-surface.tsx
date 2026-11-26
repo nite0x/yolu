@@ -3,6 +3,7 @@ import {useEffect, useRef, type ComponentProps, type ReactNode} from "react"
 import {ChevronDown, ListTree, Maximize2, Minimize2, X} from "lucide-react"
 
 export function ConversationKindSwitch({kind, id, uiID, terminalID}: {kind: "ui" | "terminal"; id?: string; uiID?: string; terminalID?: string}) {
+  // biome-ignore lint/a11y/useSemanticElements: Mode actions navigate between conversation entry points; they are not form fields.
   return <div id={id} className="conversation-kind-switch" role="group" aria-label={uiText("对话形式")}>
     <button id={uiID} type="button" aria-pressed={kind === "ui"}>{uiText("对话")}</button>
     <button id={terminalID} type="button" data-conversation-kind={kind === "ui" ? "terminal" : undefined} aria-pressed={kind === "terminal"}>{uiText("终端")}</button>

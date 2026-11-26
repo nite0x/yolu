@@ -16,10 +16,10 @@ function text(message: string, ...values: unknown[]) {
 // Only explicitly marked application labels are translated. User content,
 // messages, file previews and terminal output never pass through a DOM walker.
 function applyStatic(root: ParentNode = document) {
-  for (const element of root.querySelectorAll<HTMLElement>("[data-i18n]")) element.textContent = text(element.dataset.i18n!);
+  for (const element of root.querySelectorAll<HTMLElement>("[data-i18n]")) element.textContent = text(element.dataset.i18n ?? "");
   for (const attribute of ["title", "placeholder", "aria-label"]) {
     for (const element of root.querySelectorAll<HTMLElement>(`[data-i18n-${attribute}]`)) {
-      element.setAttribute(attribute, text(element.getAttribute(`data-i18n-${attribute}`)!));
+      element.setAttribute(attribute, text(element.getAttribute(`data-i18n-${attribute}`) ?? ""));
     }
   }
 }

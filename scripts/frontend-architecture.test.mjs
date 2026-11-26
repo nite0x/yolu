@@ -69,6 +69,38 @@ test('module cycles are rejected even if every individual integration is declare
   assert.match(result.errors.join('\n'), /Feature cycle: files -> git -> files/);
 });
 
+test('cycles within a feature and shared infrastructure are rejected', async t => {
+  const result = await fixture(t, {
+    'features/files/model/a.ts': `import type {B} from './b'`,
+    'features/files/model/b.ts': `export type {A} from './a'`,
+    'shared/a.ts': `export {b} from './b'`,
+    'shared/b.ts': `const a = import('./a')`,
+  });
+  assert.equal(result.errors.filter(error => error.startsWith('Source cycle:')).length, 2);
+  assert.match(result.errors.join('\n'), /features\/files\/model\/a.ts -> features\/files\/model\/b.ts/);
+  assert.match(result.errors.join('\n'), /shared\/a.ts -> shared\/b.ts/);
+});
+
+test('a converging dependency graph and a literal dynamic import remain valid', async t => {
+  const result = await fixture(t, {
+    'shared/a.ts': `import './b'; import('./c')`,
+    'shared/b.ts': `import './c'`,
+    'shared/c.ts': 'export const c = 1',
+  });
+  assert.deepEqual(result.errors, []);
+});
+
+test('relative imports cannot escape the checked source tree', async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'yolu-escape-check-'));
+  t.after(() => rm(directory, {recursive:true, force:true}));
+  const root = path.join(directory, 'frontend');
+  await mkdir(path.join(root, 'shared'), {recursive:true});
+  await writeFile(path.join(root, 'shared/a.ts'), `import '../../external'`);
+  await writeFile(path.join(directory, 'external.ts'), 'export const value = 1');
+  const result = await checkFrontendArchitecture(root, rules);
+  assert.match(result.errors.join('\n'), /source imports must stay inside frontend/);
+});
+
 test('primitives cannot depend on composed shared components', async t => {
   const result = await fixture(t, {
     'shared/ui/primitives/button.tsx':`import {Field} from '../forms/field'`,

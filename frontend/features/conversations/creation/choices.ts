@@ -150,7 +150,7 @@ function createPicker(source: HTMLSelectElement, container: HTMLElement): Picker
     // Fill late inventory arrivals without moving choices already on screen.
     const available = new Set(items.map(item => item.value))
     top = top.filter(value => available.has(value))
-    if (top.length < 5) top.push(...rankCreationDirectories(items.filter(item => item.value && !item.disabled && !top!.includes(item.value))).slice(0, 5 - top.length).map(item => item.value))
+    if (top.length < 5) top.push(...rankCreationDirectories(items.filter(item => item.value && !item.disabled && !top?.includes(item.value))).slice(0, 5 - top.length).map(item => item.value))
     const signature = JSON.stringify([source.disabled, source.value, top, items, items.map(item => creationDirectoryPinned(item.value))])
     if (signature !== quickSignature) {
       quickSignature = signature

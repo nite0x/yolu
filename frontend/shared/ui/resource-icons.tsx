@@ -54,7 +54,7 @@ export type ShortcutIcon = {icon: string; color: string}
 
 function hashIdentity(identity: string) {
   let hash = 2166136261
-  for (const char of identity) hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619) >>> 0
+  for (const char of identity) hash = Math.imul(hash ^ (char.codePointAt(0) ?? 0), 16777619) >>> 0
   return hash
 }
 
@@ -129,7 +129,9 @@ export function setupResourceIcons(container: HTMLElement) {
     const button = event.target.closest<HTMLElement>("[data-resource-icon-edit]")
     if (!button) return
     trigger = button
-    const entry: Entry = {key:button.dataset.resourceIcon!, name:button.dataset.resourceName!, environment:button.dataset.environment!, appearance:JSON.parse(button.dataset.resourceAppearance || "{}")}
+    const {resourceIcon:key, resourceName:name, environment} = button.dataset
+    if (key === undefined || name === undefined || environment === undefined) return
+    const entry: Entry = {key, name, environment, appearance:JSON.parse(button.dataset.resourceAppearance || "{}")}
     flushSync(() => root.render(<IconEditor key={entry.environment + entry.key} entry={entry} close={close} save={async value => {
       saving = true
       try {

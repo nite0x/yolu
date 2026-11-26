@@ -39,14 +39,18 @@ function createStyleInstaller() {
 const display: FileDisplay = {
   render(container, preview, split) {
     const installStyles = createStyleInstaller()
-    const options = { theme: "pierre-light" as const, themeType: "light" as const, overflow: "scroll" as const, onPostRender: installStyles }
+    const renderedNodes = new Set<HTMLElement>()
+    const applyStyles = (node: HTMLElement) => { renderedNodes.add(node); installStyles(node) }
+    const appearance = container.ownerDocument.documentElement
+    const themeType = () => appearance.dataset.colorScheme === "dark" ? "dark" as const : "light" as const
+    const options = { theme: {light: "pierre-light", dark: "pierre-dark"}, themeType: themeType(), overflow: "scroll" as const, onPostRender: applyStyles }
     const instances: (File | FileDiff)[] = []
     try {
       if (preview.format === "file") {
         const line = preview.line ? Math.min(preview.line, preview.text.split("\n").length) : undefined
         let located = false
         const instance = new File({ ...options, onPostRender(node) {
-          installStyles(node)
+          applyStyles(node)
           const target = line && !located ? node.shadowRoot?.querySelector(`[data-line="${line}"]`) : undefined
           if (target) {
             located = true
@@ -69,10 +73,20 @@ const display: FileDisplay = {
         if (!instances.length) container.textContent = preview.text || uiText("此区域没有文本差异。")
       }
     } catch {
-      instances.forEach(instance => { instance.cleanUp() })
+      instances.splice(0).forEach(instance => { instance.cleanUp() })
+      renderedNodes.clear()
       container.textContent = preview.text
     }
-    return () => { instances.forEach(instance => { instance.cleanUp() }); container.replaceChildren() }
+    // Theme changes update the existing renderer without replacing its reading
+    // position or selected lines. Follow the owning pane's saved appearance.
+    const observer = new MutationObserver(() => {
+      for (const instance of instances) instance.setThemeType(themeType())
+      // Pierre changes its theme style without a post-render callback. Mirror
+      // that text into our CSP-compatible sheets as well as the initial render.
+      for (const node of renderedNodes) installStyles(node)
+    })
+    observer.observe(appearance, {attributes: true, attributeFilter: ["data-color-scheme"]})
+    return () => { observer.disconnect(); instances.forEach(instance => { instance.cleanUp() }); renderedNodes.clear(); container.replaceChildren() }
   },
 }
 export function installFileDisplay(host: Window) {

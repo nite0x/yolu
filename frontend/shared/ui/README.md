@@ -95,9 +95,7 @@ npm run ui:test:browser    # Chromium interactions and axe WCAG checks
 npm run check             # API, architecture and strict TypeScript too
 ```
 
-Biome covers these composed foundations, the catalog, component tests, app/core,
-feature models/runtimes and the settings feature. Existing app/model/runtime
-formatting is retained; new foundations and migrated settings use the formatter.
+Biome checks every frontend TypeScript/TSX source, the catalog and component tests. Existing source formatting is retained outside the formatted foundations and settings scopes.
 Registry source is not reformatted wholesale. TypeScript and architecture checks
 cover the whole frontend. Primitives cannot import composed UI; production code
 cannot import the developer catalog. CI builds the catalog and checks keyboard
