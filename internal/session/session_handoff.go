@@ -61,46 +61,47 @@ func (a *Service) ChatHandoffHandler(w http.ResponseWriter, r *http.Request) {
 		same = platform.SameWorkspacePath(b.cwd, cwd)
 		b.mu.Unlock()
 	}
-	a.chatMu.Lock()
-	if old := a.chats[session]; old != nil {
+	if old := a.ChatFor(session); old != nil {
 		s := old.snapshot()
 		if s.ID == input.RequestID {
-			a.chatMu.Unlock()
+
 			httpx.WriteJSON(w, 200, s)
 			return
 		}
 		if s.Busy {
-			a.chatMu.Unlock()
+
 			httpx.WriteError(w, 409, "此对话已经在运行或交接")
 			return
 		}
 	}
 	if b == nil {
-		a.chatMu.Unlock()
+
 		httpx.WriteError(w, 409, "无法准确识别此对话的终端控制连接，已阻止接管。请先在原终端退出 Codex；从工作台新打开的终端支持一键交接")
 		return
 	}
 	if !same || pid == 0 {
-		a.chatMu.Unlock()
+
 		httpx.WriteError(w, 409, "终端归属或工作目录不匹配，已阻止接管")
 		return
 	}
 	if err := scanTerminalSessionsExcept("/proc", session, cwd, pid); err != nil {
-		a.chatMu.Unlock()
+
 		httpx.WriteError(w, 409, "发现其他无法确认归属的 Codex 终端，已阻止接管："+err.Error())
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &ChatRun{session: session, cwd: cwd, handoff: true, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "handoff", Busy: true, Notice: "正在等待终端本轮工作结束；不会中断思考、输出或命令。审批仍在原终端处理，可取消等待。", Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
-	a.chats[session] = run
-	a.chatMu.Unlock()
+	run := &ChatRun{session: session, cwd: cwd, handoff: true, cancel: cancel, finished: make(chan struct{}), state: ChatState{ID: input.RequestID, Status: "handoff", Busy: true, Notice: "正在等待终端本轮工作结束；不会中断思考、输出或命令。审批仍在原终端处理，可取消等待。", Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
+	if err := a.publishRun(run); err != nil {
+		cancel()
+		writeRunAdmissionError(w, err)
+		return
+	}
+
 	go a.DriveHandoff(ctx, run, b, pid)
 	httpx.WriteJSON(w, 202, run.snapshot())
 }
 func (a *Service) DriveHandoff(ctx context.Context, run *ChatRun, b *terminalBridge, pid int) {
-	defer close(run.finished)
-	defer run.cancel()
-	defer func() { run.mu.Lock(); run.ended = time.Now(); run.mu.Unlock() }()
+	defer a.finishRun(run)
 	ctx, end := context.WithTimeout(ctx, 30*time.Minute)
 	defer end()
 	c, err := a.openLive(ctx)

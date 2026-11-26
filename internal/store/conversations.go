@@ -65,7 +65,29 @@ func (s *Store) ReserveInput(ctx context.Context, session, request, fingerprint 
 }
 
 func (s *Store) AcceptInput(ctx context.Context, session, request string) error {
-	return MustAffected(s.DB.ExecContext(ctx, `UPDATE conversation_input_requests SET status='accepted' WHERE session_id=? AND request_id=?`, session, request))
+	return acceptInput(ctx, s.DB, session, request)
+}
+
+func acceptInput(ctx context.Context, db interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, session, request string) error {
+	return MustAffected(db.ExecContext(ctx, `UPDATE conversation_input_requests SET status='accepted' WHERE session_id=? AND request_id=?`, session, request))
+}
+
+// ConfirmCloudInput commits the acknowledgement and session activity together.
+func (s *Store) ConfirmCloudInput(ctx context.Context, session, request string, updated int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := acceptInput(ctx, tx, session, request); err != nil {
+		return err
+	}
+	if err := MustAffected(tx.ExecContext(ctx, `UPDATE sessions SET updated_at=MAX(updated_at,?) WHERE id=?`, updated, session)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) Draft(ctx context.Context, key string) (payload string, err error) {

@@ -56,7 +56,7 @@ type ChatFormField struct {
 	MaxLength   *int             `json:"max_length,omitempty"`
 }
 
-type chatApprovalInput struct {
+type TurnApprovalInput struct {
 	RunID      string              `json:"run_id"`
 	ApprovalID string              `json:"approval_id"`
 	Decision   string              `json:"decision"`
@@ -74,13 +74,14 @@ func (a *Service) ChatApprovalOpenHandler(w http.ResponseWriter, r *http.Request
 	if !httpx.Decode(w, r, &input) {
 		return
 	}
-	run := a.ControlledRun(w, r, input.RunID)
-	if run == nil {
+	run, err := a.currentRun(r.Context(), r.PathValue("session"), input.RunID)
+	if err != nil {
+		writeConversationError(w, err)
 		return
 	}
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	if !run.state.Busy || run.state.Status == "stopping" {
+	if !run.state.Busy || run.stopRequested {
 		httpx.WriteError(w, 409, "此运行已经结束")
 		return
 	}
@@ -413,7 +414,7 @@ func commandApprovalChoices(decisions []json.RawMessage) []ChatApprovalChoice {
 	return choices
 }
 
-func questionReply(questions []ChatQuestion, input chatApprovalInput) (any, error) {
+func questionReply(questions []ChatQuestion, input TurnApprovalInput) (any, error) {
 	answers := map[string]any{}
 	for _, q := range questions {
 		values := input.Answers[q.ID]

@@ -148,7 +148,7 @@ func (a *Service) scanSessionCatalog(ctx context.Context, scope sessionScope, ar
 	found := map[string]codex.Session{}
 	seen := map[string]bool{}
 	for {
-		page, err := sessionList(c, params)
+		page, err := codex.ListSessions(c, params)
 		if err != nil {
 			return nil, err
 		}

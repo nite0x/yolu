@@ -19,7 +19,7 @@ func TestCreateSessionUseCasePreservesReceiptsWithoutHTTP(t *testing.T) {
 	}
 	input.Text = "A different request"
 	_, err = a.CreateSession(context.Background(), input)
-	var failure *creationError
+	var failure *conversationError
 	if !errors.As(err, &failure) || failure.code != "creation_mismatch" {
 		t.Fatalf("%v", err)
 	}
@@ -39,7 +39,7 @@ func TestCreateCloudSessionUsesCloudValidationWithoutLocalResolution(t *testing.
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := a.CreateSession(context.Background(), tc.input)
-			var failure *creationError
+			var failure *conversationError
 			if !errors.As(err, &failure) || failure.status != tc.status {
 				t.Fatalf("creation error = %v, want status %d", err, tc.status)
 			}

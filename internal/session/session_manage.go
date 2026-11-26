@@ -84,7 +84,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer c.Close()
 		if input.Action == "archive" || input.Action == "fork" {
-			s, err := readSession(c, record.ID)
+			s, err := codex.ReadSession(c, record.ID)
 			if err != nil {
 				httpx.WriteError(w, 503, err.Error())
 				return

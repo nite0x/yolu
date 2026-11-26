@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"worktree-hub/internal/codex"
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
@@ -40,7 +41,7 @@ func asyncChatQuestions(questions []asyncUserInputQuestion) []ChatQuestion {
 	return result
 }
 
-func (a *Service) decorateAsyncQuestions(session string, entries []HistoryEntry) error {
+func (a *Service) decorateAsyncQuestions(ctx context.Context, session string, entries []HistoryEntry) error {
 	var statuses map[store.AsyncQuestionKey]string
 	for i := range entries {
 		e := &entries[i]
@@ -49,7 +50,7 @@ func (a *Service) decorateAsyncQuestions(session string, entries []HistoryEntry)
 		}
 		if statuses == nil {
 			var err error
-			statuses, err = a.Execution.Store.AsyncAnswerStatuses(context.Background(), session)
+			statuses, err = a.Execution.Store.AsyncAnswerStatuses(ctx, session)
 			if err != nil {
 				return err
 			}
@@ -88,7 +89,7 @@ func (a *Service) pendingAsyncQuestion(ctx context.Context, session, item, turn 
 		return HistoryEntry{}, err
 	}
 	defer c.Close()
-	s, err := readSession(c, session)
+	s, err := codex.ReadSession(c, session)
 	if err != nil {
 		return HistoryEntry{}, err
 	}
@@ -158,7 +159,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 409, err.Error())
 		return
 	}
-	if _, err := questionReply(question.Questions, chatApprovalInput{Decision: input.Decision, Answers: input.Answers}); err != nil {
+	if _, err := questionReply(question.Questions, TurnApprovalInput{Decision: input.Decision, Answers: input.Answers}); err != nil {
 		httpx.WriteError(w, 400, err.Error())
 		return
 	}
@@ -208,6 +209,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.DbError(w, err)
 		return
 	}
+	a.asyncAnswersChanged(record.ID)
 	if status == "skipped" {
 		httpx.WriteJSON(w, 200, current)
 		return
@@ -215,7 +217,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	if current.Busy {
 		run := a.ChatFor(record.ID)
 		run.mu.Lock()
-		client := run.client
+		client, _ := run.connection.(codex.LiveClient)
 		run.mu.Unlock()
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
@@ -235,16 +237,16 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.DbError(w, err)
 			return
 		}
+		a.asyncAnswersChanged(record.ID)
 	} else {
 		ctx, cancel := context.WithCancel(context.Background())
-		run := &ChatRun{session: record.ID, cwd: plan.Cwd, writeRoots: writableRoots(plan), directoryRoots: uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...)), managedBindings: plan.ManagedBindings, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), asyncRequest: requestID, started: make(chan struct{}), state: ChatState{ID: requestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
-		a.chatMu.Lock()
-		if previous := a.chats[record.ID]; previous != nil && previous.snapshot().PredictionPending {
-			previous.cancel()
+		run := &ChatRun{session: record.ID, cwd: plan.Cwd, writeRoots: writableRoots(plan), directoryRoots: uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...)), managedBindings: plan.ManagedBindings, cancel: cancel, finished: make(chan struct{}), asyncRequest: requestID, started: make(chan struct{}), state: ChatState{ID: requestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
+		if err := a.publishRun(run); err != nil {
+			cancel()
+			writeRunAdmissionError(w, err)
+			return
 		}
-		a.chats[record.ID] = run
-		a.chatMu.Unlock()
-		go a.DriveChat(ctx, run, plan, text)
+		go a.driveCodexTurn(ctx, run, plan, nil, text)
 		select {
 		case <-run.started:
 		case <-run.finished:
@@ -262,4 +264,12 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.WriteJSON(w, 200, state())
+}
+
+func (a *Service) asyncAnswersChanged(session string) {
+	if run := a.ChatFor(session); run != nil {
+		run.mu.Lock()
+		run.publishChangeLocked()
+		run.mu.Unlock()
+	}
 }

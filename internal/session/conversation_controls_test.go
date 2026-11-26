@@ -113,7 +113,7 @@ func TestHistoryAndLiveShareDisplayableToolRecords(t *testing.T) {
 		if !ok {
 			t.Fatal(item.Type)
 		}
-		run := &ChatRun{session: "s", state: ChatState{TurnID: "turn"}, notify: make(chan struct{}, 1)}
+		run := &ChatRun{session: "s", state: ChatState{TurnID: "turn"}}
 		params, _ := json.Marshal(map[string]any{"threadId": "s", "turnId": "turn", "item": json.RawMessage(raw)})
 		run.handle(codex.Event{Method: "item/completed", Params: params})
 		entries := run.snapshot().Entries

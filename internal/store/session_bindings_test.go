@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"path/filepath"
@@ -89,7 +90,11 @@ func TestSessionBindingInsertRollsBackAndConcurrentDuplicateIsRejected(t *testin
 	}
 	binding := model.SessionProjectBinding{SessionID: "a", Directory: dir, Role: model.SessionBindingPrimary, Access: model.SessionBindingWrite}
 	bad := model.SessionProjectBinding{ProjectID: "unknown", Directory: filepath.Join(dir, "unregistered"), Role: model.SessionBindingAdditional, Access: model.SessionBindingRead}
-	if err := s.SaveSessionWithBindings(model.Session{ID: "unpublished", Cwd: dir}, []model.SessionProjectBinding{binding, bad}); err == nil {
+	ctx := context.Background()
+	if err := s.ReserveCreation(ctx, "unpublished", "fingerprint"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveCreatedSession(ctx, "unpublished", model.Session{ID: "unpublished", Cwd: dir}, []model.SessionProjectBinding{binding, bad}); err == nil {
 		t.Fatal("invalid initial bindings accepted")
 	}
 	if _, err := s.Session("unpublished"); !errors.Is(err, sql.ErrNoRows) {

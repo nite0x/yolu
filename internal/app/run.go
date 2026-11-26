@@ -155,6 +155,7 @@ func Run() {
 	srv := &http.Server{Addr: *addr, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	srv.BaseContext = func(net.Listener) context.Context { return ctx }
 	a.shutdown = stop
 	srv.Handler = a.handler()
 	listener, err := net.Listen("tcp", *addr)
@@ -185,6 +186,7 @@ func Run() {
 		stop()
 	}
 	<-ctx.Done()
+	a.Execution.Closing.Store(true)
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdown); err != nil {

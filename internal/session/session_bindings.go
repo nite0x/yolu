@@ -400,7 +400,7 @@ func (a *Service) lookupBinding(id, bindingID string) (model.SessionProjectBindi
 	return model.SessionProjectBinding{}, sql.ErrNoRows
 }
 
-func writeBindingError(w http.ResponseWriter, err error) {
+func bindingFailure(err error) error {
 	status := 409
 	var invalid invalidSessionTarget
 	if errors.Is(err, sql.ErrNoRows) {
@@ -408,7 +408,11 @@ func writeBindingError(w http.ResponseWriter, err error) {
 	} else if errors.As(err, &invalid) {
 		status = 400
 	}
-	httpx.WriteError(w, status, err.Error())
+	return conversationFailure(status, "", err.Error())
+}
+
+func writeBindingError(w http.ResponseWriter, err error) {
+	writeConversationError(w, bindingFailure(err))
 }
 
 func (a *Service) InspectBindingHandler(w http.ResponseWriter, r *http.Request) {
@@ -475,70 +479,74 @@ func (a *Service) writeSessionBindings(w http.ResponseWriter, r *http.Request, r
 	})
 }
 
+type BindingChange struct {
+	apitypes.DirectoryBindingInput
+	ProjectIDs []string `json:"project_ids"`
+}
+
 func (a *Service) MutateBindingHandler(w http.ResponseWriter, r *http.Request) {
-	if a.Execution.ReadOnlySessions {
-		httpx.WriteError(w, http.StatusMethodNotAllowed, "当前为只读对话模式")
+	deleting := r.Method == http.MethodDelete
+	var change BindingChange
+	if !deleting && !httpx.Decode(w, r, &change) {
 		return
 	}
-	id, bindingID := r.PathValue("session"), r.PathValue("binding")
+	record, err := a.ChangeDirectoryBinding(r.Context(), r.PathValue("session"), r.PathValue("binding"), deleting, change)
+	if err != nil {
+		writeConversationError(w, err)
+		return
+	}
+	a.writeSessionBindings(w, r, record)
+}
+
+// ChangeDirectoryBinding serializes saved directory intent with turn admission
+// and native terminal controls. Effective access remains owned by the driver.
+func (a *Service) ChangeDirectoryBinding(ctx context.Context, id, bindingID string, deleting bool, change BindingChange) (model.Session, error) {
+	if a.Execution.ReadOnlySessions {
+		return model.Session{}, conversationFailure(http.StatusMethodNotAllowed, "", "当前为只读对话模式")
+	}
 	release := a.lockSessionControl(id)
 	defer release()
-	record, ok := a.requestSession(w, r)
-	if !ok {
-		return
+	record, err := a.resolveSession(ctx, id)
+	if err != nil {
+		return record, err
 	}
 	if record.Provider == model.ProviderCodexCloud {
-		httpx.WriteError(w, 409, "云端目录由 Codex Cloud 环境管理")
-		return
+		return record, conversationFailure(409, "", "云端目录由 Codex Cloud 环境管理")
 	}
-	if err := a.checkBindingMutation(r.Context(), record); err != nil {
-		writeBindingError(w, err)
-		return
+	if err := a.checkBindingMutation(ctx, record); err != nil {
+		return record, bindingFailure(err)
 	}
-	if r.Method == http.MethodDelete {
+	if deleting {
 		if _, err := a.lookupBinding(id, bindingID); err != nil {
-			writeBindingError(w, err)
-			return
+			return record, bindingFailure(err)
 		}
-		if err := a.Execution.Store.DeleteSessionBinding(id, bindingID); err != nil {
-			httpx.DbError(w, err)
-			return
+		return record, a.Execution.Store.DeleteSessionBinding(id, bindingID)
+	}
+	if bindingID == "" && change.ProjectIDs != nil {
+		if err := a.bindProjectReferences(ctx, record, change.ProjectIDs); err != nil {
+			return record, bindingFailure(err)
 		}
-		a.writeSessionBindings(w, r, record)
-		return
+		return record, nil
 	}
-	var body struct {
-		bindingInput
-		ProjectIDs []string `json:"project_ids"`
-	}
-	if !httpx.Decode(w, r, &body) {
-		return
-	}
-	if r.Method == http.MethodPost && body.ProjectIDs != nil {
-		if err := a.bindProjectReferences(r.Context(), record, body.ProjectIDs); err != nil {
-			writeBindingError(w, err)
-			return
-		}
-		a.writeSessionBindings(w, r, record)
-		return
-	}
-	input := body.bindingInput
+	input := change.DirectoryBindingInput
 	bindings, err := a.Execution.Store.SessionBindings(id)
 	if err != nil {
-		httpx.DbError(w, err)
-		return
+		return record, conversationStorageFailure(err)
 	}
 	managed, err := a.Execution.Store.SessionBindingsManaged(id)
 	if err != nil {
-		httpx.DbError(w, err)
-		return
+		return record, conversationStorageFailure(err)
 	}
 	var old model.SessionProjectBinding
 	if bindingID != "" {
-		old, err = a.lookupBinding(id, bindingID)
-		if err != nil {
-			writeBindingError(w, err)
-			return
+		for _, binding := range bindings {
+			if binding.ID == bindingID {
+				old = binding
+				break
+			}
+		}
+		if old.ID == "" {
+			return record, bindingFailure(sql.ErrNoRows)
 		}
 		if input.ProjectID == "" {
 			input.ProjectID = old.ProjectID
@@ -553,7 +561,7 @@ func (a *Service) MutateBindingHandler(w http.ResponseWriter, r *http.Request) {
 			input.Access = old.Access
 		}
 	}
-	ctx := execution.WithClient(r.Context(), a.Execution.Remote)
+	ctx = execution.WithClient(ctx, a.Execution.Remote)
 	input.SessionID = id
 	v, err := a.inspectBinding(ctx, input, false)
 	if err == nil && !managed && v.Role != model.SessionBindingPrimary {
@@ -580,8 +588,7 @@ func (a *Service) MutateBindingHandler(w http.ResponseWriter, r *http.Request) {
 		err = validateBindingSet(next)
 	}
 	if err != nil {
-		writeBindingError(w, err)
-		return
+		return record, bindingFailure(err)
 	}
 	a.directoryStarts.Lock()
 	conflicts := []directoryConflict{}
@@ -590,8 +597,7 @@ func (a *Service) MutateBindingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(conflicts) != 0 && !input.AllowShared {
 		a.directoryStarts.Unlock()
-		writeBindingConflict(w, &directoryWriteConflict{Directory: v.Directory, Conflicts: conflicts})
-		return
+		return record, directoryConflictFailure(&directoryWriteConflict{Directory: v.Directory, Conflicts: conflicts})
 	}
 	if !managed {
 		err = a.Execution.Store.InsertSessionBindings(id, append(bindings, v.SessionProjectBinding))
@@ -600,10 +606,9 @@ func (a *Service) MutateBindingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	a.directoryStarts.Unlock()
 	if err != nil {
-		writeBindingError(w, err)
-		return
+		return record, bindingFailure(err)
 	}
-	a.writeSessionBindings(w, r, record)
+	return record, nil
 }
 
 // bindProjectReferences appends read-only grants together. An existing

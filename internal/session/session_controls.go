@@ -103,7 +103,7 @@ func (a *Service) ChatContextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.Close()
-	s, err := readSession(c, record.ID)
+	s, err := codex.ReadSession(c, record.ID)
 	if err != nil {
 		httpx.WriteError(w, 503, err.Error())
 		return
@@ -269,7 +269,7 @@ func (a *Service) ChatSteerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	run.mu.Lock()
-	client := run.client
+	client, _ := run.connection.(codex.LiveClient)
 	run.mu.Unlock()
 	if client == nil {
 		httpx.WriteError(w, 409, "对话仍在连接，请稍后发送")

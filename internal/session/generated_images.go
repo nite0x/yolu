@@ -62,38 +62,38 @@ func (a *Service) generatedImagePath(key string) (string, error) {
 
 // Cache on the Yolu host, including for remote sessions. Content addressing
 // deduplicates refreshes; atomic replacement keeps concurrent readers safe.
-func (a *Service) cacheHistoryImage(value string) (string, error) {
+func (a *Service) cacheHistoryImage(value string) (key string, transient bool, err error) {
 	raw, _, err := decodeHistoryImage(value)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	hash := sha256.Sum256(raw)
-	key := hex.EncodeToString(hash[:])
+	key = hex.EncodeToString(hash[:])
 	path, _ := a.generatedImagePath(key)
 	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Size() == int64(len(raw)) {
-		return key, nil
+		return key, false, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return "", err
+		return "", true, err
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".image-*")
 	if err != nil {
-		return "", err
+		return "", true, err
 	}
 	defer os.Remove(f.Name())
 	_, err = f.Write(raw)
 	closeErr := f.Close()
 	if err != nil {
-		return "", err
+		return "", true, err
 	}
 	if closeErr != nil {
-		return "", closeErr
+		return "", true, closeErr
 	}
 	if err := os.Rename(f.Name(), path); err != nil {
 		// Another writer may have published the same content on Windows.
 		if info, statErr := os.Stat(path); statErr != nil || !info.Mode().IsRegular() || info.Size() != int64(len(raw)) {
-			return "", err
+			return "", true, err
 		}
 	}
-	return key, nil
+	return key, false, nil
 }

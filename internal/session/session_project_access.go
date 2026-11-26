@@ -128,14 +128,14 @@ func (a *Service) handleDirectoryPermission(ctx context.Context, run *ChatRun, e
 		if permission != "" {
 			return false
 		}
-		_ = run.client.Reply(event.ID, map[string]any{"decision": "decline"})
+		_ = run.connection.Reply(event.ID, map[string]any{"decision": "decline"})
 		run.change(func(state *ChatState) {
 			state.Notice = "已拒绝跳过对话目录权限的操作。Agent 可单独申请其他目录。"
 		})
 		return true
 	}
 	deny := func(reason string) bool {
-		_ = run.client.Reply(event.ID, nativeDirectoryGrant("", ""))
+		_ = run.connection.Reply(event.ID, nativeDirectoryGrant("", ""))
 		run.change(func(state *ChatState) { state.Notice = reason })
 		return true
 	}
@@ -185,7 +185,7 @@ func (a *Service) handleDirectoryPermission(ctx context.Context, run *ChatRun, e
 				configured := run.configured[dir].access
 				run.mu.Unlock()
 				if configured == model.SessionBindingWrite || configured == request.Access {
-					_ = run.client.Reply(event.ID, nativeDirectoryGrant(dir, request.Access))
+					_ = run.connection.Reply(event.ID, nativeDirectoryGrant(dir, request.Access))
 					return true
 				}
 			}
@@ -218,31 +218,48 @@ func (a *Service) handleDirectoryPermission(ctx context.Context, run *ChatRun, e
 	}
 	run.change(func(state *ChatState) {
 		state.Approvals = append(state.Approvals, approval)
-		state.Status = "waiting"
+		if !run.stopRequested {
+			state.Status = "waiting"
+		}
 	})
 	return true
 }
 
-// Called with the session cleanup gate, directory start mutex, and run mutex
-// held. Persist only the verified association presented in this approval.
-func (a *Service) approveDirectory(ctx context.Context, run *ChatRun, pending ChatApproval, choice ChatApprovalChoice) error {
+type directoryApproval struct {
+	binding  model.SessionProjectBinding
+	baseline fileSnapshot
+}
+
+// Directory inspection can invoke Git and remote filesystem operations. Keep
+// this outside the admission and run mutexes, with only the session gate held.
+func (a *Service) prepareDirectoryApproval(ctx context.Context, run *ChatRun, pending ChatApproval, choice ChatApprovalChoice) (directoryApproval, error) {
 	if !choice.Accepts {
-		return run.client.Reply(pending.rpcID, nativeDirectoryGrant("", ""))
+		return directoryApproval{}, nil
 	}
 	if pending.directoryBinding == nil {
-		return fmt.Errorf("此目录授权已失效")
+		return directoryApproval{}, fmt.Errorf("此目录授权已失效")
 	}
 	binding := *pending.directoryBinding
-	current, err := a.validateStoredBinding(execution.WithClient(ctx, a.Execution.Remote), binding, false)
+	fileCtx := execution.WithClient(ctx, a.Execution.Remote)
+	current, err := a.validateStoredBinding(fileCtx, binding, false)
 	if err != nil {
-		return err
-	}
-	if binding.Access == model.SessionBindingWrite && len(a.directoryConflictsLocked(binding.Directory, run.session)) != 0 && choice.ID != "accept_shared" {
-		return fmt.Errorf("有其他 Agent 开始修改此目录，请拒绝此请求并选择独立 Worktree 或重新确认共享目录")
+		return directoryApproval{}, err
 	}
 	if binding.Branch != current.Branch {
-		return fmt.Errorf("当前分支已变化，请拒绝此申请并重新核对目录")
+		return directoryApproval{}, fmt.Errorf("当前分支已变化，请拒绝此申请并重新核对目录")
 	}
+	snapshotCtx, cancel := context.WithTimeout(fileCtx, 2*time.Second)
+	defer cancel()
+	return directoryApproval{binding: binding, baseline: collectDirectorySnapshot(snapshotCtx, binding.Directory)}, nil
+}
+
+// The caller holds the run mutex and, for a grant, the directory admission
+// mutex. Native confirmation remains separate from saved access intent.
+func (a *Service) commitDirectoryApproval(run *ChatRun, pending ChatApproval, choice ChatApprovalChoice, grant directoryApproval) error {
+	if !choice.Accepts {
+		return run.connection.Reply(pending.rpcID, nativeDirectoryGrant("", ""))
+	}
+	binding := grant.binding
 	bindings, err := a.Execution.Store.SessionBindings(run.session)
 	if err != nil {
 		return err
@@ -258,15 +275,12 @@ func (a *Service) approveDirectory(ctx context.Context, run *ChatRun, pending Ch
 		return err
 	}
 	if _, exists := run.baseline[binding.Directory]; !exists {
-		snapshotCtx, cancel := context.WithTimeout(execution.WithClient(ctx, a.Execution.Remote), 2*time.Second)
-		baseline := collectDirectorySnapshot(snapshotCtx, binding.Directory)
-		cancel()
 		if run.baseline == nil {
 			run.baseline = map[string]fileSnapshot{}
 		}
-		run.baseline[binding.Directory] = baseline
+		run.baseline[binding.Directory] = grant.baseline
 	}
-	if err = run.client.Reply(pending.rpcID, nativeDirectoryGrant(binding.Directory, binding.Access)); err != nil {
+	if err = run.connection.Reply(pending.rpcID, nativeDirectoryGrant(binding.Directory, binding.Access)); err != nil {
 		return err
 	}
 	run.directoryRoots = uniqueDirectories(append(run.directoryRoots, binding.Directory))

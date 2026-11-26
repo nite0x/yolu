@@ -90,7 +90,12 @@ func (a *Service) handleCursorMessage(run *ChatRun, client acp.Client, msg acp.M
 		_ = client.Reply(msg.ID, map[string]any{"outcome": map[string]any{"outcome": "cancelled"}})
 		return true
 	}
-	run.change(func(s *ChatState) { s.Approvals = append(s.Approvals, approval); s.Status = "waiting" })
+	run.change(func(s *ChatState) {
+		s.Approvals = append(s.Approvals, approval)
+		if !run.stopRequested {
+			s.Status = "waiting"
+		}
+	})
 	return true
 }
 

@@ -16,7 +16,7 @@ import (
 // Start once after the first input is accepted and the thread can be read from
 // another connection. Title inference never owns the main turn's event stream.
 func (a *Service) startSessionTitle(run *ChatRun, text string) {
-	if run.created == nil || initialSessionTitle(text) == "" {
+	if initialSessionTitle(text) == "" {
 		return
 	}
 	record, err := a.Execution.Store.Session(run.session)
@@ -29,17 +29,17 @@ func (a *Service) startSessionTitle(run *ChatRun, text string) {
 		return
 	}
 	if a.titleRuns == nil {
-		a.titleRuns = map[*ChatRun]*titleRun{}
+		a.titleRuns = map[*ChatRun]*backgroundTask{}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	title := &titleRun{cancel: cancel, finished: make(chan struct{})}
+	title := &backgroundTask{cancel: cancel, finished: make(chan struct{})}
 	a.titleRuns[run] = title
 	go func() {
-		defer close(title.finished)
 		defer cancel()
 		defer func() {
 			a.chatMu.Lock()
 			delete(a.titleRuns, run)
+			close(title.finished)
 			a.chatMu.Unlock()
 		}()
 		a.generateSessionTitle(ctx, run, record, text)

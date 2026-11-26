@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"strings"
@@ -63,21 +64,6 @@ CREATE TABLE IF NOT EXISTS codex_cloud_sessions (
 
 func (s *Store) SaveSession(v model.Session, observedAt ...int64) error {
 	return saveSession(s.DB, v, observedAt...)
-}
-
-func (s *Store) SaveSessionWithBindings(v model.Session, bindings []model.SessionProjectBinding, observedAt ...int64) error {
-	tx, err := s.DB.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := saveSession(tx, v, observedAt...); err != nil {
-		return err
-	}
-	if err := insertSessionBindings(tx, v.ID, bindings); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 func saveSession(db interface {
@@ -145,7 +131,11 @@ func scanSession(scan func(...any) error) (model.Session, error) {
 const sessionColumns = `id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,COALESCE((SELECT pinned FROM session_organization WHERE session_id=sessions.id),0),COALESCE((SELECT archived FROM session_organization WHERE session_id=sessions.id),0),title_source,title_changed_at,provider,permission,COALESCE((SELECT environment_name FROM codex_cloud_sessions WHERE session_id=sessions.id),''),yolu_assistant`
 
 func (s *Store) Session(id string) (model.Session, error) {
-	return scanSession(s.DB.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id=?`, id).Scan)
+	return s.SessionContext(context.Background(), id)
+}
+
+func (s *Store) SessionContext(ctx context.Context, id string) (model.Session, error) {
+	return scanSession(s.DB.QueryRowContext(ctx, `SELECT `+sessionColumns+` FROM sessions WHERE id=?`, id).Scan)
 }
 
 func (s *Store) Sessions() ([]model.Session, error) {

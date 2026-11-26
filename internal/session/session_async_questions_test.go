@@ -159,7 +159,7 @@ func TestAsyncQuestionAfterCompletionStartsNextTurnAndSkipPersists(t *testing.T)
 			// A new service has no in-memory runs. Receipts survive independently.
 			reopened := New(a.Execution)
 			entries := []HistoryEntry{{ID: "async-question", TurnID: "turn", Delivery: "async", Questions: []ChatQuestion{{ID: "0"}}}}
-			if err := reopened.decorateAsyncQuestions("session", entries); err != nil {
+			if err := reopened.decorateAsyncQuestions(context.Background(), "session", entries); err != nil {
 				t.Fatal(err)
 			}
 			wantStatus := "accepted"

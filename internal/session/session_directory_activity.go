@@ -42,6 +42,14 @@ type fileSnapshot struct {
 	git   bool
 }
 
+func (s fileSnapshot) retainedBytes() int {
+	size := len(s.err)
+	for name, digest := range s.files {
+		size += 64 + len(name) + len(digest)
+	}
+	return size
+}
+
 func writableRoots(plan model.LaunchPlan) []string {
 	if !plan.ManagedBindings {
 		return uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
