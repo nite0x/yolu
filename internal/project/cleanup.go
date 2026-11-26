@@ -159,8 +159,12 @@ func (a *Service) CleanupWorktreeHandler(w http.ResponseWriter, r *http.Request)
 		}
 		defer release()
 	}
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
+	current, err := a.RegisteredProject(r.Context(), p.ID)
+	if err != nil || current.CommonDir != p.CommonDir {
+		httpx.WriteError(w, 409, "项目登记已变化，请刷新后重试")
+		return
+	}
+	p = current
 	v := a.inspectCleanup(r.Context(), p, in.Path)
 	if !v.Cleanable {
 		httpx.WriteJSON(w, 409, map[string]any{"error": "目录当前不能清理", "details": v.Reasons})

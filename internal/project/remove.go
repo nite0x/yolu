@@ -35,11 +35,24 @@ func (a *Service) ProjectRemovalHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *Service) RemoveProjectHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	p, err := a.Execution.Store.Project(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.WriteError(w, 404, "项目不存在")
+		return
+	}
+	if err != nil {
+		httpx.DbError(w, err)
+		return
+	}
+	unlock := a.lockGit(p.CommonDir)
+	defer unlock()
+
 	a.Execution.Mu.Lock()
 	defer a.Execution.Mu.Unlock()
 	// Deleting registration clears only the foreign key. Each associated
 	// conversation retains its directory, access choice and history.
-	removed, err := a.Execution.Store.RemoveProject(r.Context(), r.PathValue("id"))
+	removed, err := a.Execution.Store.RemoveProject(r.Context(), id)
 	if err != nil {
 		httpx.DbError(w, err)
 		return

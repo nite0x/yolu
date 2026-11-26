@@ -3,6 +3,7 @@ package project
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"worktree-hub/internal/execution"
@@ -14,7 +15,8 @@ type Service struct {
 	Execution         *execution.Service
 	cache             *stateCache
 	CredentialHelper  string
-	gitLocks          sync.Map // common Git directory -> *sync.Mutex
+	locksMu           sync.Mutex
+	locks             map[string]*operationLock
 	OpenEditor        func(tool, path, distro string) error
 	OpenDirectory     func(path, distro string) error
 	OpenExternal      func(string) error
@@ -33,12 +35,45 @@ func New(environment *execution.Service) *Service {
 
 func (s *Service) Close() { s.cache.Close() }
 
-func (s *Service) lockGit(common string) func() {
-	value, _ := s.gitLocks.LoadOrStore(common, &sync.Mutex{})
-	mu := value.(*sync.Mutex)
-	mu.Lock()
-	return mu.Unlock
+type operationLock struct {
+	mu   sync.Mutex
+	refs int
 }
+
+func (s *Service) lockGit(common string) func() {
+	return s.lockOperation("repository:" + common)
+}
+
+func (s *Service) lockWorktreeTarget(target string) func() {
+	// Windows is case-insensitive. On case-sensitive filesystems conservative
+	// serialization is harmless for differently cased target names.
+	return s.lockOperation("target:" + strings.ToLower(target))
+}
+
+func (s *Service) lockOperation(key string) func() {
+	s.locksMu.Lock()
+	if s.locks == nil {
+		s.locks = make(map[string]*operationLock)
+	}
+	entry := s.locks[key]
+	if entry == nil {
+		entry = &operationLock{}
+		s.locks[key] = entry
+	}
+	entry.refs++
+	s.locksMu.Unlock()
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+		s.locksMu.Lock()
+		entry.refs--
+		if entry.refs == 0 {
+			delete(s.locks, key)
+		}
+		s.locksMu.Unlock()
+	}
+}
+
 func (s *Service) Snapshot(projects []model.Project, force bool) (bool, string) {
 	return s.cache.snapshot(projects, force)
 }
