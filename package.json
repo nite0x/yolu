@@ -21,7 +21,7 @@
     "web:test": "npm run web:check && npm run web:build && npm run app:test && node --test scripts/*.test.cjs",
     "desktop:prepare": "node scripts/prepare-desktop.mjs",
     "desktop:dev": "node scripts/desktop-dev.mjs",
-    "desktop:build": "tauri build",
+    "desktop:build": "node scripts/build-desktop.mjs",
     "desktop:package": "node scripts/package-desktop.mjs",
     "desktop:check": "node --test scripts/desktop-packaging.test.mjs",
     "desktop:test": "npm run desktop:prepare && cargo test --manifest-path src-tauri/Cargo.toml",

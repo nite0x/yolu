@@ -1,6 +1,7 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { root, run, desktopVersion, packagePlan, bundleFiles, writeChecksums, validateReleaseSource, desktopBuildEnvironment } from './desktop-lib.mjs';
+import { buildDesktopWithEngram } from './engram-core/build.mjs';
 
 const plan = packagePlan(process.argv.slice(2), run('rustc', ['--print', 'host-tuple']));
 const version = desktopVersion();
@@ -17,11 +18,11 @@ if (plan.dryRun) {
   // never leave old installers looking like artifacts of the new source tree.
   rmSync(output, { recursive: true, force: true });
   rmSync(bundleDirectory, { recursive: true, force: true });
-  const args = [path.join(root, 'node_modules/@tauri-apps/cli/tauri.js'), 'build', '--ci', '--target', plan.target, '--bundles', plan.bundles.join(',')];
+  const args = ['--ci', '--target', plan.target, '--bundles', plan.bundles.join(',')];
   if (plan.debug) args.push('--debug');
   if (Object.keys(plan.config).length) args.push('--config', JSON.stringify(plan.config));
   args.push('--', '--locked');
-  run(process.execPath, args, { stdio: 'inherit', env: desktopBuildEnvironment(plan) });
+  const engramCore = buildDesktopWithEngram(plan.target, args, { env: desktopBuildEnvironment(plan) });
   if (plan.requireSigning) validateReleaseSource(plan, run('git', ['status', '--porcelain', '--untracked-files=normal']));
   const artifacts = bundleFiles(bundleDirectory, plan);
   mkdirSync(output, { recursive: true });
@@ -61,7 +62,7 @@ if (plan.dryRun) {
   }
   const files = writeChecksums(output, names);
   const modified = Boolean(run('git', ['status', '--porcelain', '--untracked-files=normal']));
-  writeFileSync(path.join(output, 'release.json'), JSON.stringify({ version, target: plan.target, mode, backend_version: readFileSync(path.join(root, 'src-tauri/backend-version.txt'), 'utf8').trim(), revision, modified, signing_required: plan.requireSigning, files }, null, 2) + '\n');
+  writeFileSync(path.join(output, 'release.json'), JSON.stringify({ version, target: plan.target, mode, backend_version: readFileSync(path.join(root, 'src-tauri/backend-version.txt'), 'utf8').trim(), engram_core: engramCore, revision, modified, signing_required: plan.requireSigning, files }, null, 2) + '\n');
   // Cover the manifest itself too; the manifest's file list intentionally has no
   // self-hash. SHA256SUMS is integrity metadata, not a publisher signature.
   writeChecksums(output, [...names, 'release.json']);

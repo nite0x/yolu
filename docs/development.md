@@ -210,7 +210,7 @@ npm run desktop:package -- --target x86_64-apple-darwin
 npm run desktop:package -- --debug
 ```
 
-`npm run desktop:build` invokes Tauri directly; `desktop:package` additionally collects and names release files, exports documents and generates checksums/source metadata. Do not set `CARGO_TARGET_DIR` when using `desktop:package`, which expects `src-tauri/target`.
+`npm run desktop:build` and `desktop:package` both build and verify the Engram Core sidecar before invoking Tauri for an installer. `desktop:package` also names and collects release files, exports documents, and generates checksums and source metadata. Do not set `CARGO_TARGET_DIR` when using `desktop:package`, which expects `src-tauri/target`.
 
 The version in `package.json` is authoritative. Tauri reads it directly; `src-tauri/Cargo.toml` must match. Commit the corresponding `Cargo.lock` update when changing a version. The backend identity combines the application version with a source fingerprint.
 
@@ -219,6 +219,12 @@ Output is collected under `dist/desktop/<version>/<target>/release/`, or `debug/
 Actions uploads Linux DEB and AppImage as separate downloads, named `yolu-x86_64-unknown-linux-gnu-deb` and `yolu-x86_64-unknown-linux-gnu-appimage`. Each includes the shared documents and its own `release.json` and `SHA256SUMS`, covering only that download's files.
 
 Windows releases additionally include `Upgrade.cmd`, `Upgrade-Yolu.ps1` and `yolu-upgrade.exe`. The upgrade script verifies the complete release, safely stops the default backend, backs up application data and installed files, verifies database backup hashes, then installs. It does not relocate repositories, worktrees or Codex history.
+
+### Engram Core sidecar
+
+The [source lock](../scripts/engram-core/upstream.json) records the official Engram repository, release tag and exact commit. The build verifies the tag's commit in a temporary checkout, copies the Yolu-owned adapter to `cmd/engram-core`, and builds that package with its linked Go dependencies. Tauri receives the tested executable and its separate license notices through a packaging-only configuration. The checkout is removed after compilation and the staging directory is removed after the packaging attempt. `release.json` records the Core protocol version and upstream revision.
+
+The Core takes an absolute `--data-dir` and one versioned JSON request on stdin, returns one JSON response on stdout, and exits. The host supplies the project and, for saves, the session and stable operation ID. Packaging runs the target executable, so its target architecture must be runnable on the build machine. The compatibility check exercises save, search, cross-project isolation, exact retries, conflicting retries, and reading and writing a database created by Engram v3.7.1. That fixture was generated from the official `engram_3.7.1_darwin_amd64.tar.gz` with a synthetic observation, normalized to a placeholder workspace path, and checked with SQLite `integrity_check`. Subsequent upgrades should also test a database created by the last shipped Core before changing the lock.
 
 ### macOS preview isolation
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"worktree-hub/internal/memory"
 	"worktree-hub/internal/platform"
 )
 
@@ -56,6 +57,7 @@ type projectMCP struct {
 func runMCP(args []string) error {
 	flags := flag.NewFlagSet("yolu-backend --mcp", flag.ContinueOnError)
 	dataDir := flags.String("data", platform.DefaultDataDir(), "data directory of the running Yolu backend")
+	memoryTools := flags.Bool("memory", false, "enable scoped conversation memory tools")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -63,13 +65,21 @@ func runMCP(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 || *dataDir == "" {
-		return errors.New("usage: yolu-backend --mcp [--data DIRECTORY]")
+		return errors.New("usage: yolu-backend --mcp [--data DIRECTORY] [--memory]")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	client := desktopHTTPClient(5 * time.Second)
 	defer client.CloseIdleConnections()
 	server := (&projectMCP{dataDir: *dataDir, client: client}).server()
+	if *memoryTools {
+		client.Timeout = 10 * time.Second
+		grant := os.Getenv(memory.GrantEnv)
+		if grant == "" {
+			return errors.New("Yolu memory requires a conversation grant")
+		}
+		server = newMemoryMCP(*dataDir, client, grant)
+	}
 	err := server.Run(ctx, &mcp.StdioTransport{})
 	if errors.Is(err, context.Canceled) {
 		return nil

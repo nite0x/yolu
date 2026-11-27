@@ -56,6 +56,7 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("PUT /api/settings/browser-access", a.browserAccessHandler)
 	mux.HandleFunc("GET "+mcpSettingsPath, a.mcpSettingsHandler)
 	mux.HandleFunc("POST "+mcpSettingsPath, a.mcpSettingsHandler)
+	mux.HandleFunc("POST "+memoryCallPath, a.memoryCallHandler)
 	if a.voice != nil {
 		a.voiceRoutes(mux)
 	}

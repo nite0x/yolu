@@ -179,6 +179,7 @@ jobs:
           chmod +x "$image"
           staging=$(mktemp -d)
           (cd "$staging" && "$image" --appimage-extract >/dev/null)
+          [[ "$("$staging/squashfs-root/usr/bin/engram-core" --version)" == "engram-core protocol 1 (Engram "* ]]
           node scripts/desktop-smoke.mjs "$staging/squashfs-root/usr/bin/yolu-backend" "$image"
       - name: Split Linux downloads by installer format
         if: runner.os == 'Linux'

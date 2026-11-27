@@ -21,7 +21,9 @@ try {
   assert(existsSync(path.join(mount, 'Applications')));
   run('/usr/bin/ditto', [path.join(mount, 'Yolu.app'), installed]);
   assert(existsSync(path.join(installed, 'Contents/Resources/notices/THIRD-PARTY-NOTICES.txt')));
+  assert(existsSync(path.join(installed, 'Contents/Resources/notices/ENGRAM-CORE-NOTICES.txt')));
   const binaries = path.join(installed, 'Contents/MacOS');
+  assert.match(run(path.join(binaries, 'engram-core'), ['--version']), /^engram-core protocol 1 \(Engram v/);
   const smoke = fileURLToPath(new URL('desktop-smoke.mjs', import.meta.url));
   const result = run(process.execPath, [smoke, path.join(binaries, 'yolu-backend'), path.join(binaries, 'yolu')]);
   console.log(result.trim());

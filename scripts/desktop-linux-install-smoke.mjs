@@ -13,9 +13,10 @@ const name = run('dpkg-deb', ['-f', installer, 'Package']).trim();
 const contents = path.join(directory, 'contents');
 try {
   run('dpkg-deb', ['--extract', installer, contents]);
-  for (const file of ['usr/bin/yolu', 'usr/bin/yolu-backend', 'usr/lib/Yolu/notices/THIRD-PARTY-NOTICES.txt']) {
+  for (const file of ['usr/bin/yolu', 'usr/bin/yolu-backend', 'usr/bin/engram-core', 'usr/lib/Yolu/notices/THIRD-PARTY-NOTICES.txt', 'usr/lib/Yolu/notices/ENGRAM-CORE-NOTICES.txt']) {
     assert(existsSync(path.join(contents, file)), `Missing package file: ${file}`);
   }
+  assert.match(run(path.join(contents, 'usr/bin/engram-core'), ['--version']), /^engram-core protocol 1 \(Engram v/);
 } finally {
   rmSync(contents, { recursive: true, force: true });
 }

@@ -75,6 +75,12 @@ The conversation header lists directories with branch, access and validation sta
 
 When two active agents can write to the same directory, Yolu asks for explicit confirmation to share it. Choose an independent worktree to isolate the checkouts. Read-only and dynamic access depend on the provider and live protocol. Inspect the directory's reported status before sending, and answer an agent's structured access request in the conversation when supported.
 
+### Project memory
+
+Desktop installations with Engram Core make project memory available to managed local Codex conversations whose primary directory belongs to a registered project. Yolu stores memory in its application data for that project, so separate conversations and worktrees of the same project can search the same entries.
+
+In a conversation with write access to its primary directory, start a message with `Remember:` or `/remember` followed by one fact or decision. For example, send `Remember: the release marker is TUNDRAK8X73.` and check that the `memory_save` tool returns an ID. Start a separate conversation for the same project and ask `What is this project's release marker? Search project memory.` Check that `memory_search` returns the same ID. Read-only directory bindings and Plan mode support search. A save applies to one explicit message, and Yolu reuses that message's operation ID on retry.
+
 ### Yolu Assistant
 
 Open the **Yolu Assistant** group in the shared conversation navigator and select **New conversation** on its group row. The assistant uses local Codex with Yolu's built-in MCP server. Ask questions such as “Which registered projects have worktrees with uncommitted changes?” Select a project or worktree link in the reply to open its details in Yolu. The assistant can query registered projects across execution environments and reports unavailable or stale status when applicable.

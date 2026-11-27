@@ -12,9 +12,11 @@ function Install-WorkHub {
 }
 try {
     Install-WorkHub
-    foreach ($file in @('yolu.exe', 'yolu-backend.exe', 'agents\worktree-hub-linux-amd64', 'notices\THIRD-PARTY-NOTICES.txt')) {
+    foreach ($file in @('yolu.exe', 'yolu-backend.exe', 'engram-core.exe', 'agents\worktree-hub-linux-amd64', 'notices\THIRD-PARTY-NOTICES.txt', 'notices\ENGRAM-CORE-NOTICES.txt')) {
         if (-not (Test-Path -LiteralPath (Join-Path $directory $file))) { throw "Missing installed file: $file" }
     }
+    $coreVersion = & (Join-Path $directory 'engram-core.exe') --version
+    if ($LASTEXITCODE -ne 0 -or $coreVersion -notmatch '^engram-core protocol 1 \(Engram v') { throw 'Installed Engram Core did not report its protocol version' }
     $info = (& $backend --desktop-start --root (Join-Path $temporary 'workspaces') | ConvertFrom-Json)
     if ($LASTEXITCODE -ne 0) { throw 'Installed backend did not start' }
     $descriptor = Get-Content -LiteralPath (Join-Path $data 'service.json') -Raw | ConvertFrom-Json

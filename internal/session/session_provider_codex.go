@@ -10,6 +10,7 @@ import (
 	"worktree-hub/internal/platform"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/memory"
 	"worktree-hub/internal/model"
 )
 
@@ -62,6 +63,12 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 	if execution.instructions != "" && !plan.YoluAssistant {
 		params["developerInstructions"] = codexDirectoryInstructions(execution.instructions) + "\n" + chatQuestionInstructions
 	}
+	memoryGrant := a.configureCodexMemory(ctx, params, plan, input.Settings, input.Text)
+	defer func() {
+		if !keep {
+			memoryGrant.Close()
+		}
+	}()
 	if err := a.Execution.Store.ReserveCreation(requestCtx, key, fingerprint); err != nil {
 		return nil, 500, err
 	}
@@ -130,19 +137,25 @@ func (a *Service) startCodexSession(startup context.Context, key, fingerprint st
 		cancel()
 	}
 	keep = true
-	go a.driveCodexTurn(ctx, run, plan, &codexCreation{thread: s, context: &result.ChatContext}, turnPrompt{text: input.Text, images: input.Images})
+	go a.driveCodexTurn(ctx, run, plan, &codexCreation{thread: s, context: &result.ChatContext, memory: memoryGrant}, turnPrompt{text: input.Text, images: input.Images})
 	return run, 202, nil
 }
 
 type codexCreation struct {
 	thread  codex.Session
 	context *ChatContext
+	memory  *memory.Grant
 }
 
 func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.LaunchPlan, initial *codexCreation, prompt turnPrompt) {
 	defer traceRun(ctx, run)()
 	defer a.finishRun(run)
 	defer run.finishLocalTurn()
+	var memoryGrant *memory.Grant
+	if initial != nil {
+		memoryGrant = initial.memory
+	}
+	defer func() { memoryGrant.Close() }()
 
 	c, _ := run.connection.(codex.LiveClient)
 	var err error
@@ -267,6 +280,9 @@ func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.L
 			configurationFailure(err)
 			return
 		}
+		settings := run.settings
+		settings.Permission = effectivePermission
+		memoryGrant = a.configureCodexMemory(ctx, resumeParams, plan, settings, prompt.text)
 		if err := call("thread/resume", resumeParams, &resumed); err != nil {
 			configurationFailure(err)
 			return
@@ -412,6 +428,14 @@ func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.L
 		run.fail("无法保存发送回执，请刷新后重试")
 		return
 	}
+	if memoryGrant != nil {
+		operation := prompt.receipt
+		if initial != nil {
+			operation = "creation:" + run.snapshot().ID
+		}
+		memoryGrant.Activate(run.session, operation)
+		addCodexMemoryContext(params)
+	}
 	if err := call("turn/start", params, &started); err != nil {
 		configurationFailure(err)
 		return
@@ -424,6 +448,7 @@ func (a *Service) driveCodexTurn(ctx context.Context, run *ChatRun, plan model.L
 	// optional prediction; suggestions must never keep the turn busy.
 	defer run.predictNextPrompt(ctx, c)
 	defer a.freezeRunDirectories(run)
+	defer memoryGrant.Close()
 	run.mu.Lock()
 	run.configured = map[string]configuredDirectory{}
 	for _, b := range plan.Bindings {

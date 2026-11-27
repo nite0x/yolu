@@ -13,6 +13,7 @@ import (
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/cursor"
 	"worktree-hub/internal/execution"
+	"worktree-hub/internal/memory"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 )
@@ -22,6 +23,7 @@ type Service struct {
 	controlCoordinator
 	Execution             *execution.Service
 	AssistantMCP          []string
+	Memory                *memory.Service
 	openSessions          func(context.Context) (codex.SessionClient, error)
 	openCloudSessions     func(context.Context) (codex.SessionClient, error)
 	sessionPool           *codex.SessionPool

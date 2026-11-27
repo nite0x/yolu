@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"os"
 	"sync"
 	"sync/atomic"
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/execution"
+	"worktree-hub/internal/memory"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/project"
@@ -45,6 +47,9 @@ func openAppForExecution(dataDir, root string, remote *execution.Client) (*App, 
 	if remote == nil {
 		if launch, err := currentMCPLaunch(env.DataDir); err == nil {
 			sessions.AssistantMCP = []string{launch.Command, "--mcp", "--data", launch.DataDir}
+		}
+		if binary, err := os.Executable(); err == nil {
+			sessions.Memory = memory.New(memory.BundledBinary(binary), env.DataDir, env.Store.SessionBindings)
 		}
 		a.voice = codex.NewVoiceService(env.DataDir, codex.OpenLive)
 		a.browser = newBrowserAccess(a)
