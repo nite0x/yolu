@@ -34,3 +34,5 @@ Before creating logos, icons, diagrams or brand artwork, read the [Yolu brand re
 ## Documentation language
 
 Write and maintain all repository documentation in English, including READMEs, development guides, contributor instructions and issue/PR templates.
+
+Keep repository documentation focused on current project behavior, usage, architecture, and actionable development conventions. Update existing guides when behavior changes instead of adding dated audit, refactoring, progress, or review reports. Archive historical reports and superseded plans outside the repository; retain permanent source references and preserve required licenses, migration instructions, and operational checklists. Verify references before removing obsolete documents.
