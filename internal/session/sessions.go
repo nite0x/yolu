@@ -3,7 +3,6 @@ package session
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -47,29 +46,6 @@ func sessionName(s codex.Session) string {
 	return string([]rune(name)[:min(160, len([]rune(name)))])
 }
 
-func sessionList(c codex.SessionClient, params map[string]any) (codex.SessionPage, error) {
-	params["sourceKinds"] = []string{"cli", "vscode", "appServer"}
-	params["sortKey"] = "updated_at"
-	params["limit"] = 50
-	var page codex.SessionPage
-	err := c.Call("thread/list", params, &page)
-	if page.Data == nil {
-		page.Data = []codex.Session{}
-	}
-	return page, err
-}
-
-func readSession(c codex.SessionClient, id string) (codex.Session, error) {
-	var response struct {
-		Thread codex.Session `json:"thread"`
-	}
-	err := c.Call("thread/read", map[string]any{"threadId": id, "includeTurns": false}, &response)
-	if err == nil && (response.Thread.ID != id || response.Thread.Cwd == "") {
-		err = fmt.Errorf("对话元数据不完整，无法继续")
-	}
-	return response.Thread, err
-}
-
 // SaveSession indexes provider metadata independently of directory associations.
 func (a *Service) SaveSession(s codex.Session, source string, observedAt ...int64) error {
 	return a.Execution.Store.SaveSession(model.Session{ID: s.ID, Name: sessionName(s), Cwd: s.Cwd, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, Source: source}, observedAt...)
@@ -89,7 +65,7 @@ func (a *Service) CodexSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	if search := strings.TrimSpace(r.URL.Query().Get("search")); search != "" {
 		params["searchTerm"] = search
 	}
-	page, err := sessionList(c, params)
+	page, err := codex.ListSessions(c, params)
 	if err != nil {
 		httpx.WriteError(w, 503, err.Error())
 		return
@@ -187,7 +163,7 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		current, readErr := readSession(c, s.ID)
+		current, readErr := codex.ReadSession(c, s.ID)
 		if readErr == nil {
 			found[s.ID] = current
 			if err := a.SaveSession(current, s.Source, titleObservedAt); err != nil {
@@ -308,9 +284,9 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 	p.AllowShared = input.AllowShared
 	launchScope := p
 	launchScope.ManagedBindings = false
-	releaseDirectories, conflicts := a.reserveDirectories("terminal:"+id, id, launchScope)
-	if releaseDirectories == nil {
-		writeBindingConflict(w, conflicts)
+	releaseDirectories, err := a.reserveDirectories("terminal:"+id, id, launchScope)
+	if err != nil {
+		writeConversationError(w, err)
 		return
 	}
 	defer releaseDirectories()
@@ -355,7 +331,7 @@ func (a *Service) ResumeSessionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 503, err.Error())
 		return
 	}
-	s, err := readSession(c, id)
+	s, err := codex.ReadSession(c, id)
 	c.Close()
 	if err != nil {
 		httpx.WriteError(w, 409, "对话暂不可继续："+err.Error())

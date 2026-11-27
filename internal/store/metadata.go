@@ -16,17 +16,11 @@ type metadataTable struct{ Name, Columns string }
 
 // Explicit columns make import independent of platform and future additive
 // schema migrations. No SQL identifiers supplied by a client are executed.
-var metadataTables = []metadataTable{
-	{"assistant_conversations", "id,title,created_at,updated_at"},
-	{"assistant_runs", "id,conversation_id,input,status,error_code"},
-	{"assistant_messages", "id,conversation_id,run_id,role,text"},
-	{"assistant_action_plans", "id,conversation_id,run_id,status,payload,created_at,updated_at"},
-	{"assistant_decisions", "conversation_id,request_id,plan_id,fingerprint"},
-	{"assistant_tool_calls", "id,conversation_id,run_id,capability,status,result,created_at"},
-	{"assistant_run_contexts", "conversation_id,run_id,context"},
+var metadataTables = append(legacyAssistantTables, []metadataTable{
 	{"projects", "id,name,path,common_dir,folder,created_at"},
 	{"settings", "key,value"},
-	{"sessions", "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,title_source,title_changed_at,provider,bindings_managed,yolu_assistant"},
+	{"sessions", "id,name,cwd,created_at,updated_at,source,last_synced_at,additional_directories,title_source,title_changed_at,provider,bindings_managed,yolu_assistant,permission"},
+	{"codex_cloud_sessions", "session_id,thread_id,account_identity,environment_name,model"},
 	{"session_project_bindings", "id,session_id,project_id,directory,directory_key,branch,role,access,created_at,updated_at"},
 	{"migration_recovery", "id,kind,record_key,reason,payload"},
 	{"session_organization", "session_id,pinned,archived,updated_at"},
@@ -34,7 +28,7 @@ var metadataTables = []metadataTable{
 	{"conversation_async_answers", "session_id,item_id,turn_id,fingerprint,status,request_id"},
 	{"conversation_drafts", "key,payload,updated_at"},
 	{"conversation_create_requests", "request_id,fingerprint,session_id"},
-}
+}...)
 
 type MetadataSnapshot struct {
 	Tables map[string][][]any `json:"tables"`
@@ -78,7 +72,7 @@ func ExportMetadata(ctx context.Context, file string) (MetadataSnapshot, error) 
 			selects = selectMetadataColumns(selects, columns, map[string]string{
 				"last_synced_at": "0", "additional_directories": "'[]'",
 				"title_source":     "CASE WHEN name='' THEN '' ELSE 'legacy' END",
-				"title_changed_at": "0", "provider": "'codex'", "bindings_managed": "0", "yolu_assistant": "0",
+				"title_changed_at": "0", "provider": "'codex'", "bindings_managed": "0", "yolu_assistant": "0", "permission": "''",
 			})
 		}
 		rows, err := readMetadataRows(tx, table.Name, selects)
@@ -172,10 +166,7 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 			}
 		}
 	}
-	if _, err := tx.Exec(`UPDATE assistant_runs SET status='interrupted',error_code='interrupted' WHERE status='running'`); err != nil {
-		return err
-	}
-	if err := interruptAssistantPlans(tx); err != nil {
+	if err := recoverLegacyAssistant(tx); err != nil {
 		return err
 	}
 	// Older exports contain the session index but no directory bindings.
@@ -190,18 +181,20 @@ func (s *Store) ImportMetadata(snapshot MetadataSnapshot) error {
 
 func normalizeSessionMetadata(row []any) []any {
 	switch len(row) {
+	case 13:
+		return append(append([]any{}, row...), "")
 	case 8:
 		source := "legacy"
 		if row[1] == "" {
 			source = ""
 		}
-		return append(append([]any{}, row...), source, int64(0), "codex", int64(0), int64(0))
+		return append(append([]any{}, row...), source, int64(0), "codex", int64(0), int64(0), "")
 	case 10:
-		return append(append([]any{}, row...), "codex", int64(0), int64(0))
+		return append(append([]any{}, row...), "codex", int64(0), int64(0), "")
 	case 11:
-		return append(append([]any{}, row...), int64(0), int64(0))
+		return append(append([]any{}, row...), int64(0), int64(0), "")
 	case 12:
-		return append(append([]any{}, row...), int64(0))
+		return append(append([]any{}, row...), int64(0), "")
 	default:
 		return row
 	}

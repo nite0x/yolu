@@ -6,23 +6,17 @@ import (
 	"net/http"
 
 	"worktree-hub/internal/httpx"
+	"worktree-hub/internal/store"
 )
 
-type projectReference struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
 type projectRemoval struct {
-	Name     string             `json:"name"`
-	Sessions []projectReference `json:"sessions"`
+	Name     string                          `json:"name"`
+	Sessions []store.ProjectSessionReference `json:"sessions"`
 }
 
 func (a *Service) ProjectRemovalHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	plan := projectRemoval{Sessions: []projectReference{}}
-	db := a.Execution.Store.DB
-	err := db.QueryRowContext(r.Context(), `SELECT name FROM projects WHERE id=?`, id).Scan(&plan.Name)
+	p, err := a.Execution.Store.Project(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		httpx.WriteError(w, 404, "项目不存在")
 		return
@@ -31,41 +25,39 @@ func (a *Service) ProjectRemovalHandler(w http.ResponseWriter, r *http.Request) 
 		httpx.DbError(w, err)
 		return
 	}
-	rows, err := db.QueryContext(r.Context(), `
-		SELECT DISTINCT s.id,s.name FROM sessions AS s
-		JOIN session_project_bindings AS b ON b.session_id=s.id
-		WHERE b.project_id=? ORDER BY s.name,s.id`, id)
+	references, err := a.Execution.Store.ProjectSessionReferences(r.Context(), id)
 	if err != nil {
 		httpx.DbError(w, err)
 		return
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var ref projectReference
-		if err := rows.Scan(&ref.ID, &ref.Name); err != nil {
-			httpx.DbError(w, err)
-			return
-		}
-		plan.Sessions = append(plan.Sessions, ref)
-	}
-	if err := rows.Err(); err != nil {
-		httpx.DbError(w, err)
-		return
-	}
-	httpx.WriteJSON(w, 200, plan)
+	httpx.WriteJSON(w, 200, projectRemoval{Name: p.Name, Sessions: references})
+
 }
 
 func (a *Service) RemoveProjectHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	p, err := a.Execution.Store.Project(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		httpx.WriteError(w, 404, "项目不存在")
+		return
+	}
+	if err != nil {
+		httpx.DbError(w, err)
+		return
+	}
+	unlock := a.lockGit(p.CommonDir)
+	defer unlock()
+
 	a.Execution.Mu.Lock()
 	defer a.Execution.Mu.Unlock()
 	// Deleting registration clears only the foreign key. Each associated
 	// conversation retains its directory, access choice and history.
-	result, err := a.Execution.Store.DB.ExecContext(r.Context(), `DELETE FROM projects WHERE id=?`, r.PathValue("id"))
+	removed, err := a.Execution.Store.RemoveProject(r.Context(), id)
 	if err != nil {
 		httpx.DbError(w, err)
 		return
 	}
-	if count, _ := result.RowsAffected(); count == 0 {
+	if !removed {
 		httpx.WriteError(w, 404, "项目不存在")
 		return
 	}

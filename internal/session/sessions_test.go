@@ -199,12 +199,12 @@ func TestInstalledCodexSessionProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	page, err := sessionList(c, map[string]any{})
+	page, err := codex.ListSessions(c, map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(page.Data) > 0 {
-		s, err := readSession(c, page.Data[0].ID)
+		s, err := codex.ReadSession(c, page.Data[0].ID)
 		if err != nil || s.ID != page.Data[0].ID || !filepath.IsAbs(s.Cwd) {
 			t.Fatalf("metadata read failed: %v", err)
 		}
@@ -212,7 +212,7 @@ func TestInstalledCodexSessionProtocol(t *testing.T) {
 			t.Fatalf("saved history read failed: %v", err)
 		}
 	}
-	page, err = sessionList(c, map[string]any{"cwd": []string{filepath.Join(t.TempDir(), "no-sessions")}})
+	page, err = codex.ListSessions(c, map[string]any{"cwd": []string{filepath.Join(t.TempDir(), "no-sessions")}})
 	if err != nil || len(page.Data) != 0 {
 		t.Fatalf("directory filter failed: %v", err)
 	}

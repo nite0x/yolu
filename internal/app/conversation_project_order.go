@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -10,9 +11,8 @@ import (
 const conversationProjectOrderKey = "conversation_project_order:v1"
 
 func (a *App) conversationProjectOrder() []string {
-	var value string
 	var order []string
-	if err := a.Execution.Store.DB.QueryRow(`SELECT value FROM settings WHERE key=?`, conversationProjectOrderKey).Scan(&value); err == nil {
+	if value, err := a.Execution.Store.Setting(context.Background(), conversationProjectOrderKey); err == nil {
 		if err := json.Unmarshal([]byte(value), &order); err == nil {
 			return order
 		}
@@ -28,7 +28,7 @@ func (a *App) saveConversationProjectOrder(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	value, _ := json.Marshal(input.Order)
-	if _, err := a.Execution.Store.DB.ExecContext(r.Context(), `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, conversationProjectOrderKey, string(value)); err != nil {
+	if err := a.Execution.Store.SaveSetting(r.Context(), conversationProjectOrderKey, string(value)); err != nil {
 		httpx.DbError(w, err)
 		return
 	}

@@ -44,7 +44,7 @@ func TestInstalledCodexPromptPrediction(t *testing.T) {
 	if err := c.Call(ctx, "turn/start", map[string]any{"threadId": started.Thread.ID, "input": chatTurnInput("I want a small command-line calculator. Suggest its first feature, then wait for my next instruction.", nil), "effort": "low"}, &turn); err != nil {
 		t.Fatal(err)
 	}
-	run := &ChatRun{session: started.Thread.ID, cwd: cwd, notify: make(chan struct{}, 1), state: ChatState{Status: "running", Busy: true, TurnID: turn.Turn.ID, Context: &ChatContext{Model: started.Model}}}
+	run := &ChatRun{session: started.Thread.ID, cwd: cwd, state: ChatState{Status: "running", Busy: true, TurnID: turn.Turn.ID, Context: &ChatContext{Model: started.Model}}}
 	for {
 		select {
 		case <-ctx.Done():

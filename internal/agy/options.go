@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"worktree-hub/internal/acp"
-	"worktree-hub/internal/codex"
+	"worktree-hub/internal/model"
 )
 
 var DefaultModes = []string{"default", "plan", "accept-edits", "auto"}
@@ -97,7 +97,7 @@ func ACPFlagsForPermission(permission string, additionalDirs []string) []string 
 
 // ListCLIModels tries `agy models` as a read-only way to discover models
 // without creating a conversation session.
-func ListCLIModels(ctx context.Context) []codex.ChatModel {
+func ListCLIModels(ctx context.Context) []model.ChatModel {
 	runCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	out, err := Command(runCtx, "models").Output()
@@ -107,8 +107,8 @@ func ListCLIModels(ctx context.Context) []codex.ChatModel {
 	return ParseModelsOutput(string(out))
 }
 
-func ParseModelsOutput(output string) []codex.ChatModel {
-	models := []codex.ChatModel{}
+func ParseModelsOutput(output string) []model.ChatModel {
+	models := []model.ChatModel{}
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(output, "\n") {
 		line := strings.TrimSpace(raw)
@@ -138,7 +138,7 @@ func ParseModelsOutput(output string) []codex.ChatModel {
 				display = rest
 			}
 		}
-		models = append(models, codex.ChatModel{
+		models = append(models, model.ChatModel{
 			ID:      id,
 			Model:   id,
 			Name:    display,

@@ -52,19 +52,17 @@ func (a *Service) openCloudSession(ctx context.Context, id string) (*codexcloud.
 	return client, thread, err
 }
 
-func (a *Service) createCloudSession(ctx context.Context, key, fingerprint string, input newSessionInput, provider string) (CreationResult, error) {
+func (a *Service) createCloudSession(ctx context.Context, key, fingerprint string, input CreateSessionInput, provider string) (CreationResult, error) {
 	if provider != model.ProviderCodex || input.Text == "" || len(input.Images) != 0 || input.Purpose != "" || input.Cwd != "" || input.Project != "" || input.Access != "" || len(input.Bindings) != 0 || input.AllowShared {
-		return CreationResult{}, creationFailure(400, "", "Codex Cloud 对话使用云端环境和文字消息")
+		return CreationResult{}, conversationFailure(400, "", "Codex Cloud 对话使用云端环境和文字消息")
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 90*time.Second)
-	defer cancel()
 	client, err := a.cloudClient(ctx)
 	if err != nil {
-		return CreationResult{}, creationFailure(503, "", err.Error())
+		return CreationResult{}, conversationFailure(503, "", err.Error())
 	}
 	environments, err := client.Environments(ctx)
 	if err != nil {
-		return CreationResult{}, creationFailure(503, "", err.Error())
+		return CreationResult{}, conversationFailure(503, "", err.Error())
 	}
 	var environment codexcloud.Environment
 	for _, item := range environments {
@@ -74,66 +72,61 @@ func (a *Service) createCloudSession(ctx context.Context, key, fingerprint strin
 		}
 	}
 	if environment.ID == "" {
-		return CreationResult{}, creationFailure(409, "", "所选 Codex Cloud 环境已不可用，请刷新列表")
+		return CreationResult{}, conversationFailure(409, "", "所选 Codex Cloud 环境已不可用，请刷新列表")
 	}
-	if _, err := a.Execution.Store.DB.ExecContext(ctx, `INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
-		return CreationResult{}, creationStorageFailure(err)
+	if err := a.Execution.Store.ReserveCreation(ctx, key, fingerprint); err != nil {
+		return CreationResult{}, conversationStorageFailure(err)
 	}
 	thread, err := client.Start(ctx, environment.ID)
 	if err != nil {
-		return CreationResult{}, creationFailure(503, "", "云端对话创建结果未确认："+err.Error())
+		return CreationResult{}, conversationFailure(503, "", "云端对话创建结果未确认："+err.Error())
 	}
 	now := time.Now().Unix()
 	record := model.Session{ID: "cloud-" + thread.ID, Name: initialSessionTitle(input.Text), Cwd: thread.Cwd, Provider: model.ProviderCodexCloud, Source: "workbench", CreatedAt: now, UpdatedAt: now}
 	cloud := store.CodexCloudSession{ThreadID: thread.ID, Identity: client.Identity(), Environment: environment.Name, Model: thread.Model}
 	if err := a.Execution.Store.SaveCodexCloudSession(record, cloud, key); err != nil {
-		return CreationResult{}, creationStorageFailure(err)
+		return CreationResult{}, conversationStorageFailure(err)
 	}
 	release := a.lockSessionControl(record.ID)
 	defer release()
 	if err := a.launchCloudTurn(record, cloud, client, key, input.Text); err != nil {
-		return CreationResult{}, creationStorageFailure(err)
+		return CreationResult{}, conversationStorageFailure(err)
 	}
 	return CreationResult{SessionID: record.ID, Status: http.StatusAccepted}, nil
 }
 
-func (a *Service) cloudChatStart(w http.ResponseWriter, r *http.Request, record model.Session, key, text string, images []string) {
+func (a *Service) startCloudTurn(ctx context.Context, record model.Session, key, text string, images []string) (ChatState, error) {
 	if text == "" || len(images) != 0 {
-		httpx.WriteError(w, 400, "Codex Cloud 对话目前支持文字消息")
-		return
+		return ChatState{}, conversationFailure(400, "", "Codex Cloud 对话目前支持文字消息")
 	}
 	if a.ChatBusy(record.ID) {
-		httpx.WriteError(w, 409, "该对话正在运行，请等待完成或停止后再发送")
-		return
+		return ChatState{}, conversationFailure(409, "", "该对话正在运行，请等待完成或停止后再发送")
 	}
 	// Never replay a request after its in-memory run was evicted or after a
 	// restart. Admission may already have happened even without a receipt.
-	var fingerprint string
-	err := a.Execution.Store.DB.QueryRowContext(r.Context(), `SELECT fingerprint FROM conversation_input_requests WHERE session_id=? AND request_id=?`, record.ID, key).Scan(&fingerprint)
+	fingerprint, _, err := a.Execution.Store.InputReceipt(ctx, record.ID, key)
 	if err == nil {
 		if fingerprint != cloudMessageFingerprint(text) {
-			httpx.WriteError(w, 409, "发送标识已用于其他消息")
-			return
+			return ChatState{}, conversationFailure(409, "", "发送标识已用于其他消息")
 		}
-		httpx.WriteError(w, 409, "此消息已经发送或状态未确认，请刷新对话查看")
-		return
+		return ChatState{}, conversationFailure(409, "", "此消息已经发送或状态未确认，请刷新对话查看")
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		httpx.DbError(w, err)
-		return
+		return ChatState{}, conversationStorageFailure(err)
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	client, thread, err := a.openCloudSession(ctx, record.ID)
 	if err != nil {
-		httpx.WriteError(w, 503, err.Error())
-		return
+		return ChatState{}, conversationFailure(503, "", err.Error())
 	}
 	if err := a.launchCloudTurn(record, thread, client, key, text); err != nil {
-		httpx.DbError(w, err)
-		return
+		if errors.Is(err, errChatClosing) || errors.Is(err, errChatBusy) {
+			return ChatState{}, runAdmissionFailure(err)
+		}
+		return ChatState{}, conversationStorageFailure(err)
 	}
-	httpx.WriteJSON(w, http.StatusAccepted, a.ChatFor(record.ID).snapshot())
+	return a.ChatFor(record.ID).snapshot(), nil
 }
 
 func cloudMessageFingerprint(text string) string {
@@ -141,16 +134,11 @@ func cloudMessageFingerprint(text string) string {
 }
 
 func (a *Service) launchCloudTurn(record model.Session, thread store.CodexCloudSession, client *codexcloud.Client, requestID, text string) error {
-	a.chatMu.Lock()
-	defer a.chatMu.Unlock()
-	if a.chatsClosing {
-		return errors.New("Yolu 正在退出，请重新打开后继续云端对话")
-	}
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_input_requests(session_id,request_id,fingerprint,status) VALUES(?,?,?,'pending')`, record.ID, requestID, cloudMessageFingerprint(text)); err != nil {
+	if err := a.Execution.Store.ReserveInput(context.Background(), record.ID, requestID, cloudMessageFingerprint(text)); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	run := &ChatRun{session: record.ID, provider: model.ProviderCodexCloud, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{})}
+	run := &ChatRun{session: record.ID, provider: model.ProviderCodexCloud, cancel: cancel, finished: make(chan struct{})}
 	run.state = ChatState{ID: requestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}, Context: &ChatContext{Cwd: record.Cwd, Model: thread.Model}}
 	run.cloudInterrupt = func(ctx context.Context, turn string) error {
 		current, _, err := a.openCloudSession(ctx, record.ID)
@@ -159,19 +147,16 @@ func (a *Service) launchCloudTurn(record model.Session, thread store.CodexCloudS
 		}
 		return current.Interrupt(ctx, thread.ThreadID, turn)
 	}
-	a.chats[record.ID] = run
+	if err := a.publishRun(run); err != nil {
+		cancel()
+		return err
+	}
 	go a.driveCloudTurn(ctx, run, client, thread, text, requestID)
 	return nil
 }
 
 func (a *Service) driveCloudTurn(ctx context.Context, run *ChatRun, client *codexcloud.Client, thread store.CodexCloudSession, text, requestID string) {
-	defer run.cancel()
-	defer close(run.finished)
-	defer func() {
-		run.mu.Lock()
-		run.ended = time.Now()
-		run.mu.Unlock()
-	}()
+	defer a.finishRun(run)
 	turn, err := client.Send(ctx, thread.ThreadID, requestID, text)
 	if err != nil {
 		run.change(func(s *ChatState) {
@@ -179,9 +164,12 @@ func (a *Service) driveCloudTurn(ctx context.Context, run *ChatRun, client *code
 		})
 		return
 	}
-	_, _ = a.Execution.Store.DB.ExecContext(ctx, `UPDATE sessions SET updated_at=? WHERE id=?`, time.Now().Unix(), run.session)
+	persistErr := a.Execution.Store.ConfirmInputAndTouchSession(context.WithoutCancel(ctx), run.session, requestID, time.Now().Unix())
 	run.change(func(s *ChatState) {
 		s.TurnID, s.Status = turn, "running"
+		if persistErr != nil {
+			s.Notice = "消息已被云端接收，本机回执保存失败，请刷新核对历史。"
+		}
 	})
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()

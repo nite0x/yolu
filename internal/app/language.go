@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -13,9 +14,12 @@ const uiLanguageKey = "ui_language:v1"
 // Language is local application metadata, shared across execution environments
 // and independent of the ephemeral HTTP port used by the desktop sidecar.
 func (a *App) uiLanguage() string {
-	var value string
-	err := a.Execution.Store.DB.QueryRow(`SELECT value FROM settings WHERE key=?`, uiLanguageKey).Scan(&value)
-	if err != nil || (value != "en" && value != "zh-CN") {
+	value, _ := a.Execution.Store.Setting(context.Background(), uiLanguageKey)
+	return normalizeLanguage(value)
+}
+
+func normalizeLanguage(value string) string {
+	if value != "en" && value != "zh-CN" {
 		return "system"
 	}
 	return value
@@ -33,17 +37,16 @@ func (a *App) languageHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, http.StatusBadRequest, "Unsupported interface language")
 			return
 		}
-		_, err := a.Execution.Store.DB.ExecContext(r.Context(), `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, uiLanguageKey, input.Language)
+		err := a.Execution.Store.SaveSetting(r.Context(), uiLanguageKey, input.Language)
 		if err != nil {
 			httpx.DbError(w, err)
 			return
 		}
 	}
-	var value string
-	err := a.Execution.Store.DB.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key=?`, uiLanguageKey).Scan(&value)
+	value, err := a.Execution.Store.Setting(r.Context(), uiLanguageKey)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		httpx.DbError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"language": a.uiLanguage()})
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"language": normalizeLanguage(value)})
 }

@@ -89,8 +89,6 @@ type projectImportResult struct {
 // Each item is committed independently. Retrying a partial batch returns the
 // existing registration for the same canonical Git directory.
 func (a *Service) importProject(ctx context.Context, input projectImportInput) (string, bool, error) {
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
 	if input.Path == "" || input.CommonDir == "" {
 		return "", false, fmt.Errorf("仓库扫描结果无效，请重新扫描")
 	}
@@ -105,20 +103,28 @@ func (a *Service) importProject(ctx context.Context, input projectImportInput) (
 	if common != input.CommonDir {
 		return "", false, fmt.Errorf("仓库位置已变化，请重新扫描")
 	}
-	var id string
-	err = a.Execution.Store.DB.QueryRowContext(ctx, `SELECT id FROM projects WHERE common_dir=?`, common).Scan(&id)
+	id, err := a.Execution.Store.ProjectIDForRepository(ctx, common)
 	if err == nil {
 		return id, true, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return "", false, err
 	}
-	review, err := a.registration(ctx, input.Name, input.Path, model.NewID())
+	review, err := inspectRegistration(ctx, input.Name, input.Path, model.NewID())
 	if err != nil {
 		return "", false, err
 	}
 	if review.Project.CommonDir != input.CommonDir {
 		return "", false, fmt.Errorf("仓库位置已变化，请重新扫描")
+	}
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
+	id, err = a.Execution.Store.ProjectIDForRepository(ctx, common)
+	if err == nil {
+		return id, true, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", false, err
 	}
 	p, err := a.insertRegistration(ctx, review)
 	return p.ID, false, err

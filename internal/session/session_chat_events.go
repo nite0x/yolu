@@ -3,12 +3,10 @@ package session
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"regexp"
 	"strings"
 
 	"worktree-hub/internal/codex"
-	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
 )
 
@@ -55,8 +53,10 @@ func (run *ChatRun) handle(event codex.Event) bool {
 	if p.ThreadID != run.session {
 		return false
 	}
-	state := run.snapshot()
-	if p.TurnID != "" && p.TurnID != state.TurnID {
+	run.mu.Lock()
+	turn, retrying := run.state.TurnID, run.state.Retrying
+	run.mu.Unlock()
+	if p.TurnID != "" && p.TurnID != turn {
 		return false
 	}
 	if len(event.ID) > 0 {
@@ -65,29 +65,31 @@ func (run *ChatRun) handle(event codex.Event) bool {
 			// Never auto-approve an interaction we cannot render. Reject it and
 			// interrupt only the turn started by this page.
 			run.mu.Lock()
-			c := run.client
+			c := run.connection
 			run.mu.Unlock()
 			_ = c.Reply(event.ID, map[string]any{"decision": "cancel"})
 			_ = run.interrupt()
 			run.change(func(s *ChatState) { s.Status = "failed"; s.Error = err.Error() })
 			return true
 		}
-		if event.Method == "item/fileChange/requestApproval" {
-			for _, entry := range state.Entries {
-				if entry.Kind == "change" && entry.ID == p.ItemID {
+		run.change(func(s *ChatState) {
+			for _, entry := range s.Entries {
+				if entry.ID != p.ItemID || entry.TurnID != turn {
+					continue
+				}
+				if event.Method == "item/fileChange/requestApproval" && entry.Kind == "change" {
 					approval.Details += "\n" + entry.Text
 				}
-			}
-		}
-		if event.Method == "item/commandExecution/requestApproval" {
-			for _, entry := range state.Entries {
-				if entry.Kind == "command" && entry.ID == p.ItemID {
+				if event.Method == "item/commandExecution/requestApproval" && entry.Kind == "command" {
 					approval.Details = entry.Command + "\n" + entry.Cwd + "\n" + approval.Details
 					break
 				}
 			}
-		}
-		run.change(func(s *ChatState) { s.Approvals = append(s.Approvals, approval); s.Status = "waiting" })
+			s.Approvals = append(s.Approvals, approval)
+			if !run.stopRequested {
+				s.Status = "waiting"
+			}
+		})
 		return false
 	}
 	switch event.Method {
@@ -126,7 +128,7 @@ func (run *ChatRun) handle(event codex.Event) bool {
 		})
 	case "item/reasoning/summaryTextDelta", "item/reasoning/textDelta":
 		// Model progress confirms recovery without exposing raw reasoning.
-		if state.Retrying != "" && p.Delta != "" {
+		if retrying != "" && p.Delta != "" {
 			run.change(func(s *ChatState) { s.Retrying = "" })
 		}
 	case "item/commandExecution/outputDelta":
@@ -154,7 +156,7 @@ func (run *ChatRun) handle(event codex.Event) bool {
 			}
 		})
 	case "turn/completed":
-		if p.Turn.ID != state.TurnID {
+		if p.Turn.ID != turn {
 			return false
 		}
 		run.change(func(s *ChatState) {
@@ -279,115 +281,4 @@ func makeChatApproval(event codex.Event) (ChatApproval, error) {
 		return a, fmt.Errorf("侧栏暂不支持此交互（%s），已请求停止本轮工作，请在终端继续", event.Method)
 	}
 	return a, nil
-}
-func (a *Service) ChatApprovalHandler(w http.ResponseWriter, r *http.Request) {
-	var input chatApprovalInput
-	if !httpx.Decode(w, r, &input) {
-		return
-	}
-	releaseControl := a.lockSessionControl(r.PathValue("session"))
-	defer releaseControl()
-	run := a.ControlledRun(w, r, input.RunID)
-	if run == nil {
-		return
-	}
-	a.directoryStarts.Lock()
-	defer a.directoryStarts.Unlock()
-	run.mu.Lock()
-	if !run.state.Busy || run.state.Status == "stopping" {
-		run.mu.Unlock()
-		httpx.WriteError(w, 409, "此运行已经结束")
-		return
-	}
-	var pending *ChatApproval
-	for i := range run.state.Approvals {
-		if run.state.Approvals[i].ID == input.ApprovalID {
-			copy := run.state.Approvals[i]
-			pending = &copy
-			break
-		}
-	}
-	if pending == nil {
-		run.mu.Unlock()
-		httpx.WriteError(w, 409, "此审批已被处理或失效")
-		return
-	}
-	choice, err := approvalChoice(pending, input.Decision)
-	if err != nil {
-		run.mu.Unlock()
-		httpx.WriteError(w, 400, err.Error())
-		return
-	}
-	var result any
-	if pending.method == "cursor/ask_question" || pending.method == "cursor/create_plan" {
-		result, err = cursorApprovalReply(pending, choice, input.Content)
-	} else {
-		switch pending.Kind {
-		case "project_access":
-			err = a.approveDirectory(r.Context(), run, *pending, choice)
-		case "acp_permission":
-			if choice.ID == "cancel" {
-				result = map[string]any{"outcome": map[string]any{"outcome": "cancelled"}}
-			} else {
-				result = map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": choice.ID}}
-			}
-		case "elicitation":
-			result, err = elicitationReply(pending, choice, input.Content)
-		case "permissions":
-			permissions := json.RawMessage(`{}`)
-			if choice.Accepts {
-				var p struct {
-					Permissions json.RawMessage `json:"permissions"`
-				}
-				_ = json.Unmarshal(pending.params, &p)
-				permissions = p.Permissions
-			}
-			scope := "turn"
-			if input.Decision == "accept_session" {
-				scope = "session"
-			}
-			result = map[string]any{"permissions": permissions, "scope": scope}
-		case "questions":
-			result, err = questionReply(pending.Questions, input)
-		default:
-			result = map[string]any{"decision": choice.decision}
-		}
-	}
-	if err != nil {
-		run.mu.Unlock()
-		httpx.WriteError(w, 400, err.Error())
-		return
-	}
-	// Keep this mutex through the short write so duplicate clicks cannot reply
-	// twice to one RPC request, and a completed turn cannot consume an old reply.
-	if pending.Kind == "project_access" {
-		// The native directory response was sent with its persisted association.
-	} else if run.acpClient != nil {
-		err = run.acpClient.Reply(pending.rpcID, result)
-	} else {
-		err = run.client.Reply(pending.rpcID, result)
-	}
-	if err == nil {
-		left := []ChatApproval{}
-		for _, p := range run.state.Approvals {
-			if p.ID != pending.ID {
-				left = append(left, p)
-			}
-		}
-		run.state.Approvals = left
-		run.state.Revision++
-		if len(left) == 0 {
-			run.state.Status = "running"
-		}
-	}
-	run.mu.Unlock()
-	if err != nil {
-		httpx.WriteError(w, 503, "审批未送达："+err.Error())
-		return
-	}
-	select {
-	case run.notify <- struct{}{}:
-	default:
-	}
-	httpx.WriteJSON(w, 200, run.snapshot())
 }

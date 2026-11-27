@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"worktree-hub/internal/codex"
+	"worktree-hub/internal/model"
 )
 
 type controlsLive struct {
@@ -34,7 +35,7 @@ func (c *controlsLive) Call(ctx context.Context, method string, params any, out 
 		result = map[string]any{"turnId": "turn"}
 	case "model/list":
 		result = map[string]any{"data": []any{map[string]any{"id": "model", "model": "model", "displayName": "Fixture model", "isDefault": true, "defaultReasoningEffort": "medium", "supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "medium"}, map[string]any{"reasoningEffort": "high"}}}}}
-		result.(map[string]any)["data"].([]any)[0].(map[string]any)["serviceTiers"] = []codex.ModelServiceTier{{ID: "fast", Name: "Fast"}}
+		result.(map[string]any)["data"].([]any)[0].(map[string]any)["serviceTiers"] = []model.ModelServiceTier{{ID: "fast", Name: "Fast"}}
 		result.(map[string]any)["data"] = append(result.(map[string]any)["data"].([]any), map[string]any{"id": "gpt-6.1-sol", "model": "gpt-6.1-sol", "displayName": "GPT-6.1-Sol", "defaultReasoningEffort": "medium", "supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "high"}}})
 	case "collaborationMode/list":
 		result = map[string]any{"data": []any{map[string]any{"mode": "default"}, map[string]any{"mode": "plan"}}}
@@ -113,7 +114,7 @@ func TestHistoryAndLiveShareDisplayableToolRecords(t *testing.T) {
 		if !ok {
 			t.Fatal(item.Type)
 		}
-		run := &ChatRun{session: "s", state: ChatState{TurnID: "turn"}, notify: make(chan struct{}, 1)}
+		run := &ChatRun{session: "s", state: ChatState{TurnID: "turn"}}
 		params, _ := json.Marshal(map[string]any{"threadId": "s", "turnId": "turn", "item": json.RawMessage(raw)})
 		run.handle(codex.Event{Method: "item/completed", Params: params})
 		entries := run.snapshot().Entries

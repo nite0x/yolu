@@ -42,7 +42,7 @@ func (a *Service) externalActivity(ctx context.Context, id string) (codex.Activi
 		return codex.Activity{Status: "unknown"}, true
 	}
 	defer c.Close()
-	s, err := readSession(c, id)
+	s, err := codex.ReadSession(c, id)
 	if err != nil {
 		return codex.Activity{Status: "unknown"}, true
 	}

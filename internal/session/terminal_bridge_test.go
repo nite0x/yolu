@@ -418,7 +418,7 @@ func TestInstalledCodexNewSessionAndManagedTerminalHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	session, err := readSession(c, result.Session.ID)
+	session, err := codex.ReadSession(c, result.Session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

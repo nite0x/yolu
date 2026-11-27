@@ -1,6 +1,7 @@
 package project
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -24,79 +25,79 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 	if !httpx.Decode(w, r, &in) {
 		return
 	}
+	result, err := a.CreateProjectWorktree(r.Context(), r.PathValue("id"), in)
+	if err != nil {
+		writeOperationError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, result)
+}
+
+// CreateProjectWorktree serializes Git by common directory, with a separate
+// reservation for the destination. The environment metadata lock is not held
+// across subprocesses, including post-checkout hooks.
+func (a *Service) CreateProjectWorktree(ctx context.Context, id string, in CreateWorktree) (map[string]string, error) {
+	defer a.cache.invalidate()
 	a.Execution.GitActivity.RLock()
 	defer a.Execution.GitActivity.RUnlock()
 	if a.Execution.Closing.Load() {
-		httpx.WriteError(w, 503, "后台正在退出")
-		return
+		return nil, &OperationError{Status: 503, Message: "后台正在退出"}
 	}
-	p, err := a.RegisteredProject(r.Context(), r.PathValue("id"))
+	p, err := a.RegisteredProject(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		httpx.WriteError(w, 404, "项目不存在")
-		return
+		return nil, &OperationError{Status: 404, Message: "项目不存在"}
 	}
 	if err != nil {
-		httpx.WriteError(w, 422, err.Error())
-		return
+		return nil, &OperationError{Status: 422, Message: err.Error()}
 	}
 	unlock := a.lockGit(p.CommonDir)
 	defer unlock()
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
-	p, err = a.RegisteredProject(r.Context(), p.ID)
-	if err != nil {
-		httpx.WriteError(w, 409, "项目登记已变化，请刷新后重试")
-		return
+	current, err := a.RegisteredProject(ctx, p.ID)
+	if err != nil || !platform.SameWorkspacePath(current.CommonDir, p.CommonDir) {
+		return nil, &OperationError{Status: 409, Message: "项目登记已变化，请刷新后重试"}
 	}
+	p = current
 	in.Slug, in.Branch = strings.TrimSpace(in.Slug), strings.TrimSpace(in.Branch)
 	if !execution.ValidSlug.MatchString(in.Slug) {
-		httpx.WriteError(w, 400, "工作标识应为 1–64 位字母、数字、短横线或下划线，以字母或数字开头")
-		return
+		return nil, &OperationError{Status: 400, Message: "工作标识应为 1–64 位字母、数字、短横线或下划线，以字母或数字开头"}
 	}
 	if in.Mode != "new" && in.Mode != "existing" {
-		httpx.WriteError(w, 400, "请选择新建分支或使用已有本地分支")
-		return
+		return nil, &OperationError{Status: 400, Message: "请选择新建分支或使用已有本地分支"}
 	}
 	if in.Branch == "" && in.Mode == "new" {
 		in.Branch = "codex/" + in.Slug
 	}
 	if in.Branch == "" || len(in.Branch) > 160 || strings.HasPrefix(in.Branch, "-") || strings.Contains(in.Branch, "@{") {
-		httpx.WriteError(w, 400, "分支名无效")
-		return
+		return nil, &OperationError{Status: 400, Message: "分支名无效"}
 	}
-	if _, err := execution.Git(r.Context(), p.Path, "check-ref-format", "--branch", in.Branch); err != nil {
-		httpx.WriteError(w, 400, "分支名无效")
-		return
+	if _, err := execution.Git(ctx, p.Path, "check-ref-format", "--branch", in.Branch); err != nil {
+		return nil, &OperationError{Status: 400, Message: "分支名无效"}
 	}
-	v, err := InspectGit(r.Context(), p)
+	v, err := InspectGit(ctx, p)
 	if err != nil {
-		httpx.WriteError(w, 422, err.Error())
-		return
+		return nil, &OperationError{Status: 422, Message: err.Error()}
 	}
 	source, commit := strings.TrimSpace(in.Source), ""
 	if source == "" && in.Mode == "new" {
-		source = execution.DefaultBranchSource(r.Context(), p.Path)
+		source = execution.DefaultBranchSource(ctx, p.Path)
 	}
 	if in.Mode == "existing" {
 		b, err := findBranch(v, "refs/heads/"+in.Branch, "local")
 		if err != nil {
-			httpx.WriteError(w, 409, "本地分支不存在，请刷新后重新选择")
-			return
+			return nil, &OperationError{Status: 409, Message: "本地分支不存在，请刷新后重新选择"}
 		}
 		if len(b.Worktrees) > 0 {
-			httpx.WriteError(w, 409, "该分支已被 Worktree 占用："+strings.Join(b.Worktrees, "、"))
-			return
+			return nil, &OperationError{Status: 409, Message: "该分支已被 Worktree 占用：" + strings.Join(b.Worktrees, "、")}
 		}
 		source, commit = b.Ref, b.Commit
 	} else {
 		for _, b := range v.Branches {
 			if b.Ref == "refs/heads/"+in.Branch {
-				httpx.WriteError(w, 409, "本地分支已存在，请选择“使用已有分支”或换一个新分支名")
-				return
+				return nil, &OperationError{Status: 409, Message: "本地分支已存在，请选择“使用已有分支”或换一个新分支名"}
 			}
 		}
 		if source == "HEAD" {
-			commit, err = execution.Git(r.Context(), p.Path, "rev-parse", "--verify", "HEAD^{commit}")
+			commit, err = execution.Git(ctx, p.Path, "rev-parse", "--verify", "HEAD^{commit}")
 			commit = strings.TrimSpace(commit)
 		} else {
 			var b GitBranch
@@ -104,44 +105,44 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 			commit = b.Commit
 		}
 		if err != nil || commit == "" {
-			httpx.WriteError(w, 409, "请选择仍然存在的来源分支或明确选择当前 HEAD，不会自动替换来源")
-			return
+			return nil, &OperationError{Status: 409, Message: "请选择仍然存在的来源分支或明确选择当前 HEAD，不会自动替换来源"}
 		}
 	}
 	directory := platform.JoinWorkspacePath(a.Execution.Root, in.Slug)
 	target := platform.JoinWorkspacePath(directory, p.Folder)
-	resolved, err := execution.Eval(r.Context(), a.Execution.Root)
-	if err != nil || !platform.SameWorkspacePath(resolved, a.Execution.Root) || !platform.Within(a.Execution.Root, directory) || !platform.Within(directory, target) {
-		httpx.WriteError(w, 422, "Worktree 根目录已变化或路径无效，请检查服务配置")
-		return
+	releaseTarget, err := a.Execution.Directories.ReserveCheckout(target)
+	if err != nil {
+		return nil, &OperationError{Status: 409, Message: err.Error()}
 	}
-	if info, err := execution.Stat(r.Context(), directory, false); err == nil {
+	defer releaseTarget()
+	resolved, err := execution.Eval(ctx, a.Execution.Root)
+	if err != nil || !platform.SameWorkspacePath(resolved, a.Execution.Root) || !platform.Within(a.Execution.Root, directory) || !platform.Within(directory, target) {
+		return nil, &OperationError{Status: 422, Message: "Worktree 根目录已变化或路径无效，请检查服务配置"}
+	}
+	if info, err := execution.Stat(ctx, directory, false); err == nil {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			httpx.WriteError(w, 409, "工作目录不是普通目录，拒绝使用符号链接或文件")
-			return
+			return nil, &OperationError{Status: 409, Message: "工作目录不是普通目录，拒绝使用符号链接或文件"}
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		httpx.WriteError(w, 409, "无法检查工作目录："+err.Error())
-		return
+		return nil, &OperationError{Status: 409, Message: "无法检查工作目录：" + err.Error()}
 	}
-	if _, err := execution.Stat(r.Context(), target, false); !errors.Is(err, os.ErrNotExist) {
-		httpx.WriteError(w, 409, "目标目录已存在或无法检查，不会覆盖："+target)
-		return
+	if _, err := execution.Stat(ctx, target, false); !errors.Is(err, os.ErrNotExist) {
+		return nil, &OperationError{Status: 409, Message: "目标目录已存在或无法检查，不会覆盖：" + target}
 	}
 	for _, t := range v.Project.Worktrees {
 		if t.Path == target {
-			httpx.WriteError(w, 409, "该路径仍有 Git Worktree 登记，请先在 Git 终端检查或修复")
-			return
+			return nil, &OperationError{Status: 409, Message: "该路径仍有 Git Worktree 登记，请先在 Git 终端检查或修复"}
 		}
 	}
-	if err := execution.Mkdir(r.Context(), directory, 0755, false); err != nil && !errors.Is(err, os.ErrExist) {
-		httpx.WriteError(w, 409, "无法创建工作目录："+err.Error())
-		return
+	if err := execution.Mkdir(ctx, directory, 0755, false); err != nil && !errors.Is(err, os.ErrExist) {
+		return nil, &OperationError{Status: 409, Message: "无法创建工作目录：" + err.Error()}
 	}
 	// Recheck after mkdir; a pre-existing parent may contain other directories.
-	if resolved, err := execution.Eval(r.Context(), directory); err != nil || !platform.SameWorkspacePath(resolved, directory) {
-		httpx.WriteError(w, 409, "工作目录已变化，停止创建")
-		return
+	if resolved, err := execution.Eval(ctx, directory); err != nil || !platform.SameWorkspacePath(resolved, directory) {
+		return nil, &OperationError{Status: 409, Message: "工作目录已变化，停止创建"}
+	}
+	if _, err := execution.Stat(ctx, target, false); !errors.Is(err, os.ErrNotExist) {
+		return nil, &OperationError{Status: 409, Message: "目标目录已存在或无法检查，不会覆盖：" + target}
 	}
 	args := []string{"worktree", "add"}
 	if in.Mode == "new" {
@@ -150,11 +151,10 @@ func (a *Service) CreateWorktreeHandler(w http.ResponseWriter, r *http.Request) 
 	} else {
 		args = append(args, "--", target, in.Branch)
 	}
-	if _, err := execution.GitOperation(r.Context(), p.Path, args...); err != nil {
+	if _, err := execution.GitOperation(ctx, p.Path, args...); err != nil {
 		// Hooks can fail after Git has created a branch or files. Preserve all
 		// partial results for inspection rather than removing user work.
-		httpx.WriteJSON(w, 409, map[string]any{"error": "Worktree 创建未完成，请刷新列表并检查现场；已有文件和分支均保留", "details": []string{RedactGitOutput(err.Error()), "目标目录：" + target, "分支：" + in.Branch}})
-		return
+		return nil, &OperationError{Status: 409, Message: "Worktree 创建未完成，请刷新列表并检查现场；已有文件和分支均保留", Details: []string{RedactGitOutput(err.Error()), "目标目录：" + target, "分支：" + in.Branch}}
 	}
-	httpx.WriteJSON(w, 201, map[string]string{"message": "Worktree 已创建，已加入项目列表", "path": target, "branch": in.Branch, "source": source, "base_commit": commit})
+	return map[string]string{"message": "Worktree 已创建，已加入项目列表", "path": target, "branch": in.Branch, "source": source, "base_commit": commit}, nil
 }

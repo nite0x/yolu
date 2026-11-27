@@ -182,6 +182,7 @@ try {
     provider: 'codex', project_id: projects[1].id, cwd: secondary.path, request_id: 'overlap', text: 'Review this directory.',
   }, 409);
   assert(conflict.conflicts.length > 0);
+  assert(conflict.request_id);
   const isolated = await prepare(projects[1].id, 'isolated');
   const parallel = await request('/api/sessions/new', 'POST', {
     provider: 'codex', project_id: projects[1].id, cwd: isolated.path, request_id: 'parallel', text: 'Review the isolated checkout.',
@@ -233,9 +234,35 @@ try {
   await request(base + '/bindings', 'POST', binding);
   assert.equal((await request(base + '/bindings')).bindings.length, 3);
   assert.equal((await fetch(host.url + '/api/workspaces', { headers })).status, 404);
-  await run(binary, ['--stop', '--data', data]);
+  // The stop command must drain an open reader without waiting for the agent
+  // or requiring a pane to disconnect first.
+  const shutdownNotes = path.join(directory, 'shutdown-notes');
+  await mkdir(shutdownNotes);
+  const beforeShutdown = JSON.parse(await readFile(fixtureFile, 'utf8'));
+  await writeFile(fixtureFile, JSON.stringify({ ...beforeShutdown, requestDirectory: shutdownNotes }));
+  const shutdownInput = { request_id: 'shutdown-stream', text: '[request-directory] Wait for approval.' };
+  const stopping = await request(base + '/chat', 'POST', shutdownInput, 202);
+  await waitFor(() => request(base + '/chat'), chat => chat.approvals.length > 0);
+  const stream = await fetch(host.url + base + '/chat/events?' + new URLSearchParams({ run: stopping.id }), {
+    headers, signal: AbortSignal.timeout(12000),
+  });
+  assert.equal(stream.status, 200);
+  const reader = stream.body.getReader();
+  try {
+    const firstFrame = await reader.read();
+    assert.equal(firstFrame.done, false);
+    assert.match(Buffer.from(firstFrame.value).toString(), /^data: /);
+    const startedStopping = performance.now();
+    await run(binary, ['--stop', '--data', data]);
+    assert(performance.now() - startedStopping < 9000, 'backend waited for the HTTP shutdown deadline');
+    while (!(await reader.read()).done) { /* Consume any final frames. */ }
+  } finally {
+    await reader.cancel();
+  }
   host = await startBackend();
   headers['X-CSRF-Token'] = JSON.parse(await readFile(path.join(data, 'service.json'), 'utf8')).token;
+  const duplicate = await request(base + '/chat', 'POST', shutdownInput, 409);
+  assert.equal(duplicate.code, 'input_already_accepted');
   const restored = await request(base + '/bindings');
   assert.deepEqual(new Set(restored.bindings.map(row => row.directory)), new Set([primary, secondary.path, notes]));
   assert.equal(restored.bindings.find(row => row.role === 'primary').branch, projectsTrees[0].branch);
@@ -243,7 +270,7 @@ try {
 
   const saved = { directory, data, worktreeRoot, projects, session, primary, url: host.url, pid: host.pid, log };
   await writeFile(path.join(directory, 'test-state.json'), JSON.stringify(saved, null, 2));
-  console.log('Workflow passed: project and projectless conversations, directory profiles and native approvals, history and restoration, write conflicts, isolated checkouts, Git previews and protected Worktree removal.');
+  console.log('Workflow passed: project and projectless conversations, directory profiles and native approvals, history and restoration, write conflicts, isolated checkouts, Git previews, protected Worktree removal and active-stream shutdown.');
   if (keep) {
     console.log('Native UI verification state: ' + path.join(directory, 'test-state.json'));
     await new Promise(resolve => {

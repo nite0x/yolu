@@ -14,7 +14,7 @@ func TestMetadataSnapshotPreservesSessionDirectoriesAndImportsTransactionally(t 
 	source := testApp(t)
 	const directory = "/saved/worktrees/project"
 	_, err := source.Execution.Store.DB.Exec(`INSERT INTO projects VALUES('p','Project','/original/repo','/original/repo/.git','project','now');
-INSERT INTO sessions(id,name,cwd,created_at,updated_at,source,last_synced_at) VALUES('session','Title',?,123,456,'manual',456);
+INSERT INTO sessions(id,name,cwd,created_at,updated_at,source,last_synced_at,permission) VALUES('session','Title',?,123,456,'manual',456,'ask');
 INSERT INTO settings VALUES('terminal','{"kind":"windows-terminal"}')`, directory)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ INSERT INTO settings VALUES('terminal','{"kind":"windows-terminal"}')`, director
 		t.Fatalf("bindings: %+v %v", bindings, err)
 	}
 	sessions, err := target.Execution.Store.Sessions()
-	if err != nil || len(sessions) != 1 || sessions[0].UpdatedAt != 456 {
+	if err != nil || len(sessions) != 1 || sessions[0].UpdatedAt != 456 || sessions[0].Permission != "ask" {
 		t.Fatalf("sessions: %+v %v", sessions, err)
 	}
 	if err := target.Execution.Store.ImportMetadata(transferred); err == nil {

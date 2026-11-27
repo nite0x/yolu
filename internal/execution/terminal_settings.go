@@ -37,8 +37,7 @@ func DefaultTerminalSettings() model.TerminalSettings {
 }
 
 func (a *Service) TerminalSettings() (model.TerminalSettings, error) {
-	var raw string
-	err := a.Store.DB.QueryRow(`SELECT value FROM settings WHERE key='terminal'`).Scan(&raw)
+	raw, err := a.Store.Setting(context.Background(), "terminal")
 	if errors.Is(err, sql.ErrNoRows) {
 		return DefaultTerminalSettings(), nil
 	}
@@ -91,7 +90,7 @@ func (a *Service) TerminalSettingsHandler(w http.ResponseWriter, r *http.Request
 	a.Mu.Lock()
 	raw, err := json.Marshal(settings)
 	if err == nil {
-		_, err = a.Store.DB.Exec(`INSERT INTO settings(key,value) VALUES('terminal',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(raw))
+		err = a.Store.SaveSetting(context.Background(), "terminal", string(raw))
 	}
 	a.Mu.Unlock()
 	if err != nil {

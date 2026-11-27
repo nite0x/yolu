@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -83,7 +84,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer c.Close()
 		if input.Action == "archive" || input.Action == "fork" {
-			s, err := readSession(c, record.ID)
+			s, err := codex.ReadSession(c, record.ID)
 			if err != nil {
 				httpx.WriteError(w, 503, err.Error())
 				return
@@ -104,8 +105,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			key := "fork:" + record.ID + ":" + input.RequestID
-			var existing, fingerprint string
-			err := a.Execution.Store.DB.QueryRow(`SELECT session_id,fingerprint FROM conversation_create_requests WHERE request_id=?`, key).Scan(&existing, &fingerprint)
+			existing, fingerprint, err := a.Execution.Store.CreationReceipt(r.Context(), key)
 			if err == nil {
 				if fingerprint != input.TurnID {
 					httpx.WriteError(w, 409, "分叉请求已用于其他轮次")
@@ -122,7 +122,7 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 				httpx.DbError(w, err)
 				return
 			}
-			if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, input.TurnID); err != nil {
+			if err := a.Execution.Store.ReserveCreation(r.Context(), key, input.TurnID); err != nil {
 				httpx.DbError(w, err)
 				return
 			}
@@ -155,8 +155,9 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 				httpx.DbError(w, err)
 				return
 			}
+			var bindings []model.SessionProjectBinding
 			if managed {
-				bindings, err := a.Execution.Store.SessionBindings(record.ID)
+				bindings, err = a.Execution.Store.SessionBindings(record.ID)
 				if err != nil {
 					httpx.DbError(w, err)
 					return
@@ -166,18 +167,13 @@ func (a *Service) ManageSessionHandler(w http.ResponseWriter, r *http.Request) {
 					bindings[i].SessionID = result.Thread.ID
 					bindings[i].CreatedAt, bindings[i].UpdatedAt = 0, 0
 				}
-				fork := result.Thread
-				err = a.Execution.Store.SaveSessionWithBindings(model.Session{
-					ID: fork.ID, Name: sessionName(fork), Cwd: fork.Cwd, CreatedAt: fork.CreatedAt, UpdatedAt: fork.UpdatedAt, Source: "workbench", Permission: record.Permission, YoluAssistant: record.YoluAssistant,
-				}, bindings)
-			} else if err = a.SaveSession(result.Thread, "workbench"); err == nil {
-				err = a.Execution.Store.SaveSessionDirectories(result.Thread.ID, record.AdditionalDirectories)
 			}
-			if err != nil {
-				httpx.DbError(w, err)
-				return
-			}
-			if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, result.Thread.ID, key); err != nil {
+			fork := result.Thread
+			if err := a.Execution.Store.SaveCreatedSession(context.WithoutCancel(r.Context()), key, model.Session{
+				ID: fork.ID, Name: sessionName(fork), Cwd: fork.Cwd, CreatedAt: fork.CreatedAt, UpdatedAt: fork.UpdatedAt,
+				Source: "workbench", Permission: record.Permission, YoluAssistant: record.YoluAssistant,
+				AdditionalDirectories: record.AdditionalDirectories,
+			}, bindings); err != nil {
 				httpx.DbError(w, err)
 				return
 			}

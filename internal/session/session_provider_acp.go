@@ -10,12 +10,14 @@ import (
 	"worktree-hub/internal/model"
 )
 
-func (a *Service) startACPSession(startup context.Context, provider, key, fingerprint string, input newSessionInput, execution executionContext) (*ChatRun, int, error) {
+func (a *Service) startACPSession(startup context.Context, provider, key, fingerprint string, input CreateSessionInput, execution executionContext) (*ChatRun, int, error) {
 	if a.Execution.Remote != nil {
 		return nil, 501, fmt.Errorf("暂不支持在远端 WSL 环境启动 %s 对话", model.ProviderName(provider))
 	}
 	plan := execution.plan
 	ctx, cancel := context.WithCancel(context.WithoutCancel(startup))
+	stopStartupCancellation := context.AfterFunc(startup, cancel)
+	defer stopStartupCancellation()
 	// ACP has no isolated directory grant. Preserve approved associations as
 	// reference metadata and start only in the selected execution directory.
 	plan.AdditionalDirectories = nil
@@ -32,7 +34,7 @@ func (a *Service) startACPSession(startup context.Context, provider, key, finger
 			cancel()
 		}
 	}()
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
+	if err := a.Execution.Store.ReserveCreation(ctx, key, fingerprint); err != nil {
 		return nil, 500, err
 	}
 	requestCtx, end := context.WithTimeout(ctx, 20*time.Second)
@@ -77,35 +79,27 @@ func (a *Service) startACPSession(startup context.Context, provider, key, finger
 		UpdatedAt:   now,
 		Source:      "workbench",
 	}
-	err = a.Execution.Store.SaveSessionWithBindings(rec, execution.bindings)
-	if err != nil {
-		return nil, 500, err
-	}
-	if name != "" {
-		if err := a.Execution.Store.SetSessionTitle(rec.ID, name, "initial"); err != nil {
-			return nil, 500, err
-		}
-	}
-	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id=? WHERE request_id=?`, rec.ID, key); err != nil {
+	if err := a.Execution.Store.SaveCreatedSession(ctx, key, rec, execution.bindings); err != nil {
 		return nil, 500, err
 	}
 	run := &ChatRun{
-		provider:  provider,
-		session:   rec.ID,
-		cwd:       rec.Cwd,
-		acpClient: c,
-		acpSetup:  &setup,
-		cancel:    cancel,
-		notify:    make(chan struct{}, 1),
-		finished:  make(chan struct{}),
-		settings:  input.Settings,
-		state:     ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}},
+		provider:   provider,
+		session:    rec.ID,
+		cwd:        rec.Cwd,
+		connection: c,
+		cancel:     cancel,
+		finished:   make(chan struct{}),
+		settings:   input.Settings,
+		state:      ChatState{ID: input.RequestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}},
 	}
 	run.writeRoots = writableRoots(plan)
-	a.chatMu.Lock()
-	a.chats[rec.ID] = run
-	a.chatMu.Unlock()
+	if err := a.publishRun(run); err != nil {
+		return nil, 503, err
+	}
+	if !stopStartupCancellation() {
+		cancel()
+	}
 	keep = true
-	go a.DriveACPChat(ctx, run, plan, input.Text, input.Images...)
+	go a.driveACPTurn(ctx, run, plan, &setup, turnPrompt{text: input.Text, images: input.Images})
 	return run, 202, nil
 }

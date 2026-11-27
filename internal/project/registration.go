@@ -30,7 +30,7 @@ type RegistrationReview struct {
 	Project model.Project `json:"project"`
 }
 
-func (a *Service) registration(ctx context.Context, name, path, id string) (RegistrationReview, error) {
+func inspectRegistration(ctx context.Context, name, path, id string) (RegistrationReview, error) {
 	var review RegistrationReview
 	path, err := execution.Normalize(ctx, path)
 	if err != nil {
@@ -63,28 +63,39 @@ func (a *Service) registration(ctx context.Context, name, path, id string) (Regi
 	if folder == "" {
 		folder = "project-" + id[:6]
 	}
-	var exists int
-	err = a.Execution.Store.DB.QueryRowContext(ctx, `SELECT count(*) FROM projects WHERE common_dir=? OR name=? COLLATE NOCASE OR folder=? COLLATE NOCASE`, common, name, folder).Scan(&exists)
-	if err != nil {
-		return review, err
-	}
-	if exists > 0 {
-		return review, &OperationError{Status: 409, Message: "仓库已登记，或项目名称/目录名重复，请使用不同的项目名称"}
-	}
 	review.Project = model.Project{ID: id, Name: name, Path: root, CommonDir: common, Folder: folder}
 	return review, nil
 }
 
+func (a *Service) checkRegistrationAvailable(ctx context.Context, p model.Project) error {
+	exists, err := a.Execution.Store.RegistrationExists(ctx, p.CommonDir, p.Name, p.Folder)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return &OperationError{Status: 409, Message: "仓库已登记，或项目名称/目录名重复，请使用不同的项目名称"}
+	}
+	return nil
+}
+
 func (a *Service) ReviewRegistration(ctx context.Context, name, path string) (RegistrationReview, error) {
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
-	return a.registration(ctx, name, path, model.NewID())
+	review, err := inspectRegistration(ctx, name, path, model.NewID())
+	if err != nil {
+		return review, err
+	}
+	return review, a.checkRegistrationAvailable(ctx, review.Project)
 }
 
 func (a *Service) insertRegistration(ctx context.Context, review RegistrationReview) (model.Project, error) {
 	p := review.Project
+	if a.Execution.Closing.Load() {
+		return p, &OperationError{Status: 503, Message: "后台正在退出"}
+	}
+	if err := a.checkRegistrationAvailable(ctx, p); err != nil {
+		return p, err
+	}
 	p.CreatedAt = model.Now()
-	_, err := a.Execution.Store.DB.ExecContext(ctx, `INSERT INTO projects(id,name,path,common_dir,folder,created_at) VALUES(?,?,?,?,?,?)`, p.ID, p.Name, p.Path, p.CommonDir, p.Folder, p.CreatedAt)
+	err := a.Execution.Store.InsertProject(ctx, p)
 	return p, err
 }
 
@@ -92,18 +103,17 @@ func (a *Service) insertRegistration(ctx context.Context, review RegistrationRev
 // handlers. Reviewed execution uses the same validation and persistence below.
 func (a *Service) RegisterProject(ctx context.Context, name, path string) (model.Project, error) {
 	defer a.cache.invalidate()
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
-	review, err := a.registration(ctx, name, path, model.NewID())
+	review, err := inspectRegistration(ctx, name, path, model.NewID())
 	if err != nil {
 		return model.Project{}, err
 	}
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
 	return a.insertRegistration(ctx, review)
 }
 
 func (a *Service) reconcileRegistration(ctx context.Context, review RegistrationReview) (model.Project, bool, error) {
-	var p model.Project
-	err := a.Execution.Store.DB.QueryRowContext(ctx, `SELECT id,name,path,common_dir,folder,created_at FROM projects WHERE id=?`, review.Project.ID).Scan(&p.ID, &p.Name, &p.Path, &p.CommonDir, &p.Folder, &p.CreatedAt)
+	p, err := a.Execution.Store.Project(ctx, review.Project.ID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, false, nil
 	}
@@ -127,8 +137,6 @@ func (a *Service) ReconcileRegistration(ctx context.Context, review Registration
 
 func (a *Service) ExecuteRegistration(ctx context.Context, review RegistrationReview) (model.Project, error) {
 	defer a.cache.invalidate()
-	a.Execution.Mu.Lock()
-	defer a.Execution.Mu.Unlock()
 	if p, found, err := a.reconcileRegistration(ctx, review); err != nil || found {
 		return p, err
 	}
@@ -136,12 +144,17 @@ func (a *Service) ExecuteRegistration(ctx context.Context, review RegistrationRe
 	if len(p.ID) < 6 {
 		return model.Project{}, &OperationError{Status: 400, Message: "项目登记计划无效"}
 	}
-	current, err := a.registration(ctx, p.Name, p.Path, p.ID)
+	current, err := inspectRegistration(ctx, p.Name, p.Path, p.ID)
 	if err != nil {
 		return model.Project{}, err
 	}
 	if !reflect.DeepEqual(current, review) {
 		return model.Project{}, &OperationError{Status: 409, Message: "仓库位置已变化，请重新检查并确认计划"}
+	}
+	a.Execution.Mu.Lock()
+	defer a.Execution.Mu.Unlock()
+	if p, found, err := a.reconcileRegistration(ctx, review); err != nil || found {
+		return p, err
 	}
 	return a.insertRegistration(ctx, review)
 }

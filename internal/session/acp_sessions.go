@@ -41,54 +41,40 @@ func (a *Service) scanACPCatalog(ctx context.Context, provider string, scope ses
 	defer c.Close()
 
 	observed := time.Now().UnixNano()
-	params := map[string]any{}
+	cwd := ""
 	if len(scope.paths) == 1 {
-		params["cwd"] = scope.paths[0]
+		cwd = scope.paths[0]
 	}
-	seenCursors := map[string]bool{}
-	for {
-		var page acp.SessionListResult
-		if err := c.Call(scanCtx, "session/list", params, &page); err != nil {
-			return found, err
+	err = acp.WalkSessions(scanCtx, c, cwd, func(item acp.SessionSummary) error {
+		if item.SessionID == "" || !scope.includes(item.SessionID, item.Cwd) || provider == model.ProviderCursor && cursor.IsOptionsDirectory(item.Cwd) {
+			return nil
 		}
-		for _, item := range page.Sessions {
-			if item.SessionID == "" || !scope.includes(item.SessionID, item.Cwd) || provider == model.ProviderCursor && cursor.IsOptionsDirectory(item.Cwd) {
-				continue
-			}
-			updated := acp.ParseTimestamp(item.UpdatedAt)
-			created := acp.ParseTimestamp(item.CreatedAt)
-			if created == 0 {
-				created = updated
-			}
-			if updated == 0 {
-				updated = created
-			}
-			title := strings.TrimSpace(item.Title)
-			if len([]rune(title)) > 160 {
-				title = string([]rune(title)[:160])
-			}
-			rec := model.Session{
-				ID:        item.SessionID,
-				Provider:  provider,
-				Name:      title,
-				Cwd:       item.Cwd,
-				CreatedAt: created,
-				UpdatedAt: updated,
-				Source:    provider,
-				Available: true,
-			}
-			found[rec.ID] = rec
-			if err := a.Execution.Store.SaveSession(rec, observed); err != nil {
-				return found, err
-			}
+		updated := acp.ParseTimestamp(item.UpdatedAt)
+		created := acp.ParseTimestamp(item.CreatedAt)
+		if created == 0 {
+			created = updated
 		}
-		if page.NextCursor == nil || *page.NextCursor == "" || seenCursors[*page.NextCursor] {
-			break
+		if updated == 0 {
+			updated = created
 		}
-		seenCursors[*page.NextCursor] = true
-		params["cursor"] = *page.NextCursor
-	}
-	return found, nil
+		title := strings.TrimSpace(item.Title)
+		if len([]rune(title)) > 160 {
+			title = string([]rune(title)[:160])
+		}
+		rec := model.Session{
+			ID:        item.SessionID,
+			Provider:  provider,
+			Name:      title,
+			Cwd:       item.Cwd,
+			CreatedAt: created,
+			UpdatedAt: updated,
+			Source:    provider,
+			Available: true,
+		}
+		found[rec.ID] = rec
+		return a.Execution.Store.SaveSession(rec, observed)
+	})
+	return found, err
 }
 
 func (a *Service) readACPSessionHistory(ctx context.Context, record model.Session) (SessionHistory, error) {
@@ -112,19 +98,14 @@ func (a *Service) readACPSessionHistory(ctx context.Context, record model.Sessio
 	if err != nil {
 		return history, err
 	}
-	defer func() {
-		closeCtx, end := context.WithTimeout(context.Background(), 2*time.Second)
-		defer end()
-		_ = c.Call(closeCtx, "session/close", map[string]any{"sessionId": record.ID}, nil)
-		c.Close()
-	}()
+	defer acp.CloseSession(c, record.ID, record.Provider != model.ProviderCursor)
 
 	reducer := newACPUpdateReducer()
-	setup, err := loadACPReplay(loadCtx, c, record.ID, map[string]any{
+	setup, err := acp.ReplaySession(loadCtx, c, record.ID, map[string]any{
 		"sessionId":  record.ID,
 		"cwd":        record.Cwd,
 		"mcpServers": []any{},
-	}, reducer)
+	}, func(event acp.SessionUpdate) { reducer.apply(event) })
 	if err != nil {
 		return history, err
 	}
@@ -150,106 +131,50 @@ func (a *Service) readACPSessionHistory(ctx context.Context, record model.Sessio
 	return history, nil
 }
 
-// Use the same ACP replay for reading history and locating the next turn.
-func loadACPReplay(ctx context.Context, c acp.Client, sessionID string, params map[string]any, reducer *acpUpdateReducer) (acp.SessionSetupResult, error) {
-	callDone := make(chan error, 1)
-	var setup acp.SessionSetupResult
-	go func() {
-		callDone <- c.Call(ctx, "session/load", params, &setup)
-	}()
-
-	events := c.Events()
-	var drained <-chan time.Time
-	for {
-		select {
-		case msg, ok := <-events:
-			if !ok {
-				events = nil
-				if callDone == nil {
-					return setup, nil
-				}
-				continue
-			}
-			if msg.Method == "session/update" {
-				reducer.applyRaw(msg.Params, sessionID)
-			}
-		case err := <-callDone:
-			if err != nil || events == nil {
-				return setup, err
-			}
-			callDone = nil
-			// ACP notifications and replies arrive on separate channels.
-			timer := time.NewTimer(30 * time.Millisecond)
-			defer timer.Stop()
-			drained = timer.C
-		case <-drained:
-			return setup, nil
-		case <-ctx.Done():
-			return acp.SessionSetupResult{}, ctx.Err()
-		}
-	}
-}
-
-func (a *Service) DriveACPChat(ctx context.Context, run *ChatRun, plan model.LaunchPlan, text string, images ...string) {
+func (a *Service) driveACPTurn(ctx context.Context, run *ChatRun, plan model.LaunchPlan, initial *acp.SessionSetupResult, prompt turnPrompt) {
 	defer traceRun(ctx, run)()
 	if plan.ManagedBindings {
 		plan.AdditionalDirectories = nil
 	}
-	defer close(run.finished)
-	defer run.cancel()
-	defer func() { run.mu.Lock(); run.ended = time.Now(); run.mu.Unlock() }()
-	defer run.change(func(s *ChatState) {
-		s.Busy = false
-		s.Retrying = ""
-		s.Approvals = []ChatApproval{}
-		if s.Status == "starting" || s.Status == "running" || s.Status == "waiting" || s.Status == "stopping" {
-			s.Status = "failed"
-			if s.Error == "" {
-				s.Error = "对话连接已结束，请检查已保存的进展后重试"
-			}
+	defer a.finishRun(run)
+	defer run.finishLocalTurn()
+
+	c, _ := run.connection.(acp.Client)
+	loaded := initial != nil
+	defer func() {
+		if c != nil {
+			acp.CloseSession(c, run.session, loaded && run.provider != model.ProviderCursor && ctx.Err() == nil)
 		}
-	})
-	fail := func(message string) {
-		run.change(func(s *ChatState) {
-			if s.Status == "stopping" {
-				s.Status = "interrupted"
-				s.Error = ""
-			} else {
-				s.Status = "failed"
-				s.Error = message
-			}
-		})
-	}
+	}()
 	if a.Execution.Remote != nil {
-		fail("暂不支持在远端 WSL 环境运行 " + model.ProviderName(run.provider) + " 对话")
+		run.fail("暂不支持在远端 WSL 环境运行 " + model.ProviderName(run.provider) + " 对话")
 		return
 	}
 	if !platform.AbsoluteWorkspacePath(plan.Cwd) {
-		fail("对话工作目录不可用")
+		run.fail("对话工作目录不可用")
 		return
 	}
 	fileCtx := execution.WithClient(ctx, a.Execution.Remote)
 	if info, err := execution.Stat(fileCtx, plan.Cwd, true); err != nil || !info.IsDir() {
-		fail("对话原工作目录不可用")
+		run.fail("对话原工作目录不可用")
 		return
 	}
 
-	c := run.acpClient
 	replay := newACPUpdateReducer()
 	var setup acp.SessionSetupResult
-	if run.acpSetup != nil {
-		setup = *run.acpSetup
+	if initial != nil {
+		setup = *initial
 	}
 	if c == nil {
 		flags := a.acpFlags(run.provider, run.settings.Permission, plan.AdditionalDirectories)
 		var err error
 		c, _, err = a.openACP(ctx, run.provider, flags...)
 		if err != nil {
-			fail(err.Error())
+			run.fail(err.Error())
 			return
 		}
 		run.mu.Lock()
-		run.acpClient = c
+		run.connection = c
 		run.mu.Unlock()
 		resumeCtx, endResume := context.WithTimeout(ctx, 20*time.Second)
 		resumeParams := map[string]any{
@@ -260,35 +185,29 @@ func (a *Service) DriveACPChat(ctx context.Context, run *ChatRun, plan model.Lau
 		if len(plan.AdditionalDirectories) > 0 {
 			resumeParams["additionalDirectories"] = plan.AdditionalDirectories
 		}
-		setup, err = loadACPReplay(resumeCtx, c, run.session, resumeParams, replay)
+		setup, err = acp.ReplaySession(resumeCtx, c, run.session, resumeParams, func(event acp.SessionUpdate) { replay.apply(event) })
 		endResume()
 		if err != nil {
 			if acp.IsAuthRequired(err) {
-				fail(acpLoginAdvice(run.provider))
+				run.fail(acpLoginAdvice(run.provider))
 			} else {
-				fail("无法恢复 " + model.ProviderName(run.provider) + " 对话：" + err.Error())
+				run.fail("无法恢复 " + model.ProviderName(run.provider) + " 对话：" + err.Error())
 			}
-			c.Close()
 			return
 		}
+		loaded = true
 	}
-	defer func() {
-		closeCtx, end := context.WithTimeout(context.Background(), 2*time.Second)
-		defer end()
-		_ = c.Call(closeCtx, "session/close", map[string]any{"sessionId": run.session}, nil)
-		c.Close()
-	}()
 
 	cat := a.acpCatalogFromSetup(run.provider, setup)
 	if err := applyACPTurnSettings(ctx, c, run.session, &cat, run.settings); err != nil {
-		fail(err.Error())
+		run.fail(err.Error())
 		return
 	}
 	chatCtx := buildACPChatContext(run.provider, plan, cat, run.settings)
 	reducer := newACPUpdateReducer()
 	reducer.turnSeq = replay.turnSeq
 	reducer.live = true
-	reducer.startTurn(text, images, "")
+	reducer.startTurn(prompt.text, prompt.images, "")
 	stopping := false
 	run.change(func(s *ChatState) {
 		if s.Status == "stopping" {
@@ -302,24 +221,9 @@ func (a *Service) DriveACPChat(ctx context.Context, run *ChatRun, plan model.Lau
 	})
 
 	if stopping || ctx.Err() != nil {
-		fail("页面对话已停止，请刷新历史检查进展")
+		run.fail("页面对话已停止，请刷新历史检查进展")
 		return
 	}
-	promptBlocks := acpPromptBlocks(text, images)
-	type promptOutcome struct {
-		res acp.PromptResult
-		err error
-	}
-	promptDone := make(chan promptOutcome, 1)
-	go func() {
-		var res acp.PromptResult
-		err := c.Call(ctx, "session/prompt", map[string]any{
-			"sessionId": run.session,
-			"prompt":    promptBlocks,
-		}, &res)
-		promptDone <- promptOutcome{res: res, err: err}
-	}()
-
 	handleMessage := func(msg acp.Message) {
 		if msg.Method == "session/request_permission" && len(msg.ID) > 0 {
 			approval, err := makeACPPermissionApproval(msg)
@@ -332,7 +236,9 @@ func (a *Service) DriveACPChat(ctx context.Context, run *ChatRun, plan model.Lau
 			}
 			run.change(func(s *ChatState) {
 				s.Approvals = append(s.Approvals, approval)
-				s.Status = "waiting"
+				if !run.stopRequested {
+					s.Status = "waiting"
+				}
 			})
 			return
 		}
@@ -344,8 +250,8 @@ func (a *Service) DriveACPChat(ctx context.Context, run *ChatRun, plan model.Lau
 			_ = c.ReplyError(msg.ID, -32601, "Method not supported by Yolu client: "+msg.Method)
 			return
 		}
-		if msg.Method == "session/update" {
-			changedTitle := reducer.applyRaw(msg.Params, run.session)
+		if update, ok := acp.DecodeSessionUpdate(msg, run.session); ok {
+			changedTitle := reducer.apply(update)
 			if changedTitle != "" {
 				if updated, err := a.Execution.Store.ObserveSessionTitle(run.session, changedTitle); err == nil && updated {
 					run.change(func(s *ChatState) { s.SessionName = changedTitle })
@@ -359,71 +265,52 @@ func (a *Service) DriveACPChat(ctx context.Context, run *ChatRun, plan model.Lau
 		}
 	}
 
-	for {
-		select {
-		case msg, ok := <-c.Events():
-			if !ok {
-				fail(model.ProviderName(run.provider) + " 实时连接断开，请刷新历史检查已保存的进展")
-				return
-			}
-			handleMessage(msg)
-		case outcome := <-promptDone:
-			// Drain any trailing session/update notifications emitted right before the RPC reply.
-			drain := time.NewTimer(40 * time.Millisecond)
-		drainLoop:
-			for {
-				select {
-				case msg, ok := <-c.Events():
-					if !ok {
-						break drainLoop
-					}
-					if msg.Method == "session/update" {
-						handleMessage(msg)
-					}
-				case <-drain.C:
-					break drainLoop
-				}
-			}
-			drain.Stop()
-			now := time.Now().Unix()
-			_, _ = a.Execution.Store.DB.Exec(`UPDATE sessions SET updated_at=? WHERE id=?`, now, run.session)
-			run.change(func(s *ChatState) {
-				s.Busy = false
-				s.Approvals = []ChatApproval{}
-				s.Retrying = ""
-				for i := range s.Entries {
-					if s.Entries[i].Status == "inProgress" {
-						if outcome.err != nil || outcome.res.StopReason == "cancelled" || s.Status == "stopping" {
-							s.Entries[i].Status = "interrupted"
-						} else {
-							s.Entries[i].Status = "completed"
-						}
-					}
-				}
-				switch {
-				case s.Status == "stopping" || outcome.res.StopReason == "cancelled":
-					s.Status = "interrupted"
-					s.Error = ""
-				case outcome.err != nil:
-					s.Status = "failed"
-					s.Error = outcome.err.Error()
-				default:
-					s.Status = "completed"
-					s.Error = ""
-				}
-			})
-			return
-		case <-ctx.Done():
-			_ = run.interruptACP()
-			fail("页面对话已停止，请刷新历史检查进展")
-			return
-		}
+	if err := a.reserveTurnReceipt(ctx, run.session, prompt); err != nil {
+		run.fail("无法保存发送回执，请刷新后重试")
+		return
 	}
+	result, promptErr := acp.PromptSession(ctx, c, run.session, acpPromptBlocks(prompt.text, prompt.images), handleMessage)
+
+	now := time.Now().Unix()
+	var receiptErr error
+	if promptErr == nil && prompt.receipt != "" {
+		receiptErr = a.Execution.Store.ConfirmInputAndTouchSession(context.WithoutCancel(ctx), run.session, prompt.receipt, now)
+	} else {
+		_ = a.Execution.Store.TouchSession(ctx, run.session, now)
+	}
+	run.change(func(s *ChatState) {
+		if receiptErr != nil {
+			s.Notice = "消息已被接收，本机回执保存失败，请刷新核对历史。"
+		}
+		s.Busy = false
+		s.Approvals = []ChatApproval{}
+		s.Retrying = ""
+		for i := range s.Entries {
+			if s.Entries[i].Status == "inProgress" {
+				if promptErr != nil || result.StopReason == "cancelled" || run.stopRequested {
+					s.Entries[i].Status = "interrupted"
+				} else {
+					s.Entries[i].Status = "completed"
+				}
+			}
+		}
+		switch {
+		case run.stopRequested || result.StopReason == "cancelled":
+			s.Status = "interrupted"
+			s.Error = ""
+		case promptErr != nil:
+			s.Status = "failed"
+			s.Error = promptErr.Error()
+		default:
+			s.Status = "completed"
+			s.Error = ""
+		}
+	})
 }
 
 func (run *ChatRun) interruptACP() error {
 	run.mu.Lock()
-	client := run.acpClient
+	client, _ := run.connection.(acp.Client)
 	approvals := append([]ChatApproval(nil), run.state.Approvals...)
 	run.mu.Unlock()
 	if client == nil {
@@ -435,7 +322,7 @@ func (run *ChatRun) interruptACP() error {
 			_ = client.Reply(pending.rpcID, map[string]any{"outcome": map[string]any{"outcome": "cancelled"}})
 		}
 	}
-	err := client.Notify("session/cancel", map[string]any{"sessionId": run.session})
+	err := acp.CancelSession(client, run.session)
 	// Cancellation may race prompt startup or an agent may never acknowledge it.
 	// Each ACP run owns its subprocess, so end that connection after a short grace
 	// period instead of leaving the conversation permanently busy.
@@ -675,17 +562,6 @@ func (r *acpUpdateReducer) entries() []HistoryEntry {
 	out := make([]HistoryEntry, len(r.list))
 	copy(out, r.list)
 	return out
-}
-
-func (r *acpUpdateReducer) applyRaw(raw json.RawMessage, sessionID string) string {
-	var env acp.SessionUpdateEnvelope
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return ""
-	}
-	if env.SessionID != "" && sessionID != "" && env.SessionID != sessionID {
-		return ""
-	}
-	return r.apply(env.Update)
 }
 
 func (r *acpUpdateReducer) apply(u acp.SessionUpdate) string {

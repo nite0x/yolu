@@ -42,6 +42,14 @@ type fileSnapshot struct {
 	git   bool
 }
 
+func (s fileSnapshot) retainedBytes() int {
+	size := len(s.err)
+	for name, digest := range s.files {
+		size += 64 + len(name) + len(digest)
+	}
+	return size
+}
+
 func writableRoots(plan model.LaunchPlan) []string {
 	if !plan.ManagedBindings {
 		return uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...))
@@ -136,7 +144,15 @@ func (a *Service) directoryConflictsLocked(path, own string) []directoryConflict
 	return items
 }
 
-func (a *Service) reserveDirectories(id, session string, plan model.LaunchPlan) (func(), *directoryWriteConflict) {
+func (a *Service) reserveDirectories(id, session string, plan model.LaunchPlan) (func(), error) {
+	paths := append([]string{plan.Cwd}, plan.AdditionalDirectories...)
+	for _, binding := range plan.Bindings {
+		paths = append(paths, binding.Directory)
+	}
+	releaseCheckout, err := a.Execution.Directories.UseDirectories(paths...)
+	if err != nil {
+		return nil, conversationFailure(409, "directory_changing", err.Error())
+	}
 	a.directoryStarts.Lock()
 	defer a.directoryStarts.Unlock()
 	roots := writableRoots(plan)
@@ -148,7 +164,8 @@ func (a *Service) reserveDirectories(id, session string, plan model.LaunchPlan) 
 			}
 			if !shared {
 				if conflicts := a.directoryConflictsLocked(root, session); len(conflicts) > 0 {
-					return nil, &directoryWriteConflict{Directory: root, Conflicts: conflicts}
+					releaseCheckout()
+					return nil, directoryConflictFailure(&directoryWriteConflict{Directory: root, Conflicts: conflicts})
 				}
 			}
 		}
@@ -161,6 +178,7 @@ func (a *Service) reserveDirectories(id, session string, plan model.LaunchPlan) 
 		a.directoryStarts.Lock()
 		delete(a.directoryReservations, id)
 		a.directoryStarts.Unlock()
+		releaseCheckout()
 	}, nil
 }
 
@@ -171,7 +189,7 @@ func writeBindingConflict(w http.ResponseWriter, conflict *directoryWriteConflic
 		apitypes.APIErrorResponse
 		Conflicts []directoryConflict `json:"conflicts"`
 	}{
-		APIErrorResponse: apitypes.APIErrorResponse{Error: directoryConflictMessage, Code: "directory_conflict", ConflictDirectory: conflict.Directory},
+		APIErrorResponse: apitypes.APIErrorResponse{Error: directoryConflictMessage, Code: "directory_conflict", ConflictDirectory: conflict.Directory, RequestID: w.Header().Get("X-Request-ID")},
 		Conflicts:        conflict.Conflicts,
 	})
 }

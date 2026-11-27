@@ -8,7 +8,6 @@ import (
 
 	"worktree-hub/internal/acp"
 	"worktree-hub/internal/agy"
-	"worktree-hub/internal/codex"
 	"worktree-hub/internal/cursor"
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
@@ -43,7 +42,7 @@ func (a *Service) acpCatalogFromSetup(provider string, setup acp.SessionSetupRes
 	return agy.CatalogFromSetup(setup)
 }
 func (a *Service) cursorOptionsCatalog(ctx context.Context, refresh bool) (acp.OptionCatalog, error) {
-	fallback := acp.OptionCatalog{Models: []codex.ChatModel{}, Modes: []string{"agent", "plan", "ask"}}
+	fallback := acp.OptionCatalog{Models: []model.ChatModel{}, Modes: []string{"agent", "plan", "ask"}}
 	if a.Execution.Remote != nil {
 		return fallback, fmt.Errorf("暂不支持在远端 WSL 环境运行 Cursor 对话")
 	}

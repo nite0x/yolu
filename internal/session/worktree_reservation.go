@@ -95,7 +95,7 @@ func (a *Service) ReserveWorktree(ctx context.Context, path string) (func(), err
 	params := map[string]any{}
 	seen := map[string]bool{}
 	for {
-		page, err := sessionList(c, params)
+		page, err := codex.ListSessions(c, params)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +117,7 @@ func (a *Service) ReserveWorktree(ctx context.Context, path string) (func(), err
 		params["cursor"] = *page.NextCursor
 	}
 	for id := range known {
-		s, err := readSession(c, id)
+		s, err := codex.ReadSession(c, id)
 		if err != nil {
 			return nil, fmt.Errorf("无法核实关联对话 %s，请刷新检查后重试", id)
 		}

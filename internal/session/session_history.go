@@ -333,7 +333,7 @@ func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	defer c.Close()
 	titleObservedAt := time.Now().UnixNano()
-	s, err := readSession(c, r.PathValue("session"))
+	s, err := codex.ReadSession(c, r.PathValue("session"))
 	if err != nil {
 		httpx.WriteError(w, 503, "无法读取对话详情："+err.Error())
 		return
@@ -352,7 +352,7 @@ func (a *Service) SessionHistoryHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	a.prepareHistoryMedia(s.ID, history.Entries)
-	if err := a.decorateAsyncQuestions(s.ID, history.Entries); err != nil {
+	if err := a.decorateAsyncQuestions(r.Context(), s.ID, history.Entries); err != nil {
 		httpx.DbError(w, err)
 		return
 	}

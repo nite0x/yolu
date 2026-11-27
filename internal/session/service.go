@@ -52,7 +52,7 @@ type Service struct {
 }
 
 func New(environment *execution.Service) *Service {
-	s := &Service{Execution: environment, openSessions: codex.OpenSessionClient, openLive: codex.OpenLive, openAgy: agy.OpenACP, openCursor: cursor.OpenACP, watchHistory: WatchCodexHistory, terminalConflict: terminalSessionConflict, openExternal: platform.OpenExternal, chatRuntime: chatRuntime{chats: map[string]*ChatRun{}}, bridges: map[string]*terminalBridge{}}
+	s := &Service{Execution: environment, openSessions: codex.OpenSessionClient, openLive: codex.OpenLive, openAgy: agy.OpenACP, openCursor: cursor.OpenACP, watchHistory: WatchCodexHistory, terminalConflict: terminalSessionConflict, openExternal: platform.OpenExternal, chatRuntime: chatRuntime{chats: map[string]*ChatRun{}, streamShutdown: make(chan struct{})}, bridges: map[string]*terminalBridge{}}
 	s.diagnoseAgy = func(ctx context.Context) agy.Diagnostics { return agy.Diagnose(ctx, s.openAgy) }
 	if environment.Remote != nil {
 		s.openLive = environment.Remote.OpenCodex

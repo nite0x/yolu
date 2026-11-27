@@ -74,7 +74,7 @@ func (a *Service) MergeAIHandler(w http.ResponseWriter, r *http.Request) {
 		writeBindingError(w, err)
 		return
 	}
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_create_requests(request_id,fingerprint) VALUES(?,?)`, key, fingerprint); err != nil {
+	if err := a.Execution.Store.ReserveCreation(r.Context(), key, fingerprint); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
@@ -84,7 +84,7 @@ func (a *Service) MergeAIHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, 503, map[string]string{"error": err.Error(), "command": plan.Command})
 		return
 	}
-	if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_create_requests SET session_id='launched' WHERE request_id=?`, key); err != nil {
+	if err := a.Execution.Store.CompleteCreation(context.WithoutCancel(r.Context()), key, "launched"); err != nil {
 		httpx.DbError(w, err)
 		return
 	}

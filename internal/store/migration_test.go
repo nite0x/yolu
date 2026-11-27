@@ -56,7 +56,15 @@ func writeLegacyDatabase(t *testing.T) (string, string, string) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err := (&Store{DB: db}).migrateAssistant(); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := migrateLegacyAssistant(tx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	_, err = db.Exec(`
@@ -164,9 +172,9 @@ func assertMigratedBindings(t *testing.T, s *Store, tree, extra string) {
 	if _, err := os.Stat(filepath.Join(tree, ".git")); err != nil {
 		t.Fatalf("existing worktree was modified: %v", err)
 	}
-	messages, err := s.AssistantMessages("assistant", 0, 100)
-	if err != nil || len(messages) != 1 || messages[0].Text != "Existing message" {
-		t.Fatalf("message history changed: %+v %v", messages, err)
+	var text string
+	if err := s.DB.QueryRow(`SELECT count(*),COALESCE(MAX(text),'') FROM assistant_messages WHERE conversation_id='assistant'`).Scan(&count, &text); err != nil || count != 1 || text != "Existing message" {
+		t.Fatalf("message history changed: count=%d text=%q err=%v", count, text, err)
 	}
 }
 

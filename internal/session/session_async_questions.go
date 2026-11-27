@@ -12,9 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"worktree-hub/internal/codex"
 	"worktree-hub/internal/execution"
 	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
+	"worktree-hub/internal/store"
 )
 
 // Async questions are agent messages, not outstanding JSON-RPC requests.
@@ -39,19 +41,23 @@ func asyncChatQuestions(questions []asyncUserInputQuestion) []ChatQuestion {
 	return result
 }
 
-func (a *Service) decorateAsyncQuestions(session string, entries []HistoryEntry) error {
+func (a *Service) decorateAsyncQuestions(ctx context.Context, session string, entries []HistoryEntry) error {
+	var statuses map[store.AsyncQuestionKey]string
 	for i := range entries {
 		e := &entries[i]
 		if e.Delivery != "async" || len(e.Questions) == 0 {
 			continue
 		}
-		var status string
-		err := a.Execution.Store.DB.QueryRow(`SELECT status FROM conversation_async_answers WHERE session_id=? AND item_id=? AND turn_id=?`, session, e.ID, e.TurnID).Scan(&status)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
+		if statuses == nil {
+			var err error
+			statuses, err = a.Execution.Store.AsyncAnswerStatuses(ctx, session)
+			if err != nil {
+				return err
+			}
 		}
-		e.QuestionStatus = status
+		e.QuestionStatus = statuses[store.AsyncQuestionKey{Item: e.ID, Turn: e.TurnID}]
 	}
+
 	return nil
 }
 
@@ -83,7 +89,7 @@ func (a *Service) pendingAsyncQuestion(ctx context.Context, session, item, turn 
 		return HistoryEntry{}, err
 	}
 	defer c.Close()
-	s, err := readSession(c, session)
+	s, err := codex.ReadSession(c, session)
 	if err != nil {
 		return HistoryEntry{}, err
 	}
@@ -132,8 +138,8 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return ChatState{Status: "idle", Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}
 	}
-	var previous, status string
-	err := a.Execution.Store.DB.QueryRow(`SELECT fingerprint,status FROM conversation_async_answers WHERE session_id=? AND item_id=? AND turn_id=?`, record.ID, input.ItemID, input.TurnID).Scan(&previous, &status)
+	key := store.AsyncQuestionKey{Item: input.ItemID, Turn: input.TurnID}
+	previous, status, err := a.Execution.Store.AsyncAnswer(r.Context(), record.ID, key)
 	if err == nil {
 		if previous != fingerprint {
 			httpx.WriteError(w, 409, "此问询已提交其他回答，请刷新历史")
@@ -153,7 +159,7 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, 409, err.Error())
 		return
 	}
-	if _, err := questionReply(question.Questions, chatApprovalInput{Decision: input.Decision, Answers: input.Answers}); err != nil {
+	if _, err := questionReply(question.Questions, TurnApprovalInput{Decision: input.Decision, Answers: input.Answers}); err != nil {
 		httpx.WriteError(w, 400, err.Error())
 		return
 	}
@@ -188,9 +194,9 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, 409, err.Error())
 			return
 		}
-		release, conflicts := a.reserveDirectories("answer:"+record.ID, record.ID, plan)
-		if release == nil {
-			writeBindingConflict(w, conflicts)
+		release, err := a.reserveDirectories("answer:"+record.ID, record.ID, plan)
+		if err != nil {
+			writeConversationError(w, err)
 			return
 		}
 		defer release()
@@ -199,10 +205,11 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	if input.Decision == "decline" {
 		status = "skipped"
 	}
-	if _, err := a.Execution.Store.DB.Exec(`INSERT INTO conversation_async_answers(session_id,item_id,turn_id,fingerprint,status,request_id) VALUES(?,?,?,?,?,?)`, record.ID, input.ItemID, input.TurnID, fingerprint, status, requestID); err != nil {
+	if err := a.Execution.Store.SaveAsyncAnswer(r.Context(), record.ID, key, requestID, fingerprint, status); err != nil {
 		httpx.DbError(w, err)
 		return
 	}
+	a.asyncAnswersChanged(record.ID)
 	if status == "skipped" {
 		httpx.WriteJSON(w, 200, current)
 		return
@@ -210,43 +217,32 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 	if current.Busy {
 		run := a.ChatFor(record.ID)
 		run.mu.Lock()
-		client := run.client
+		client, _ := run.connection.(codex.LiveClient)
 		run.mu.Unlock()
-		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-		defer cancel()
-		var result struct {
-			TurnID string `json:"turnId"`
-		}
-		if client == nil {
-			err = fmt.Errorf("对话仍在连接")
-		} else {
-			err = client.Call(ctx, "turn/steer", map[string]any{"threadId": record.ID, "expectedTurnId": current.TurnID, "clientUserMessageId": requestID, "input": chatTurnInput(text, nil)}, &result)
-		}
-		if err != nil || result.TurnID != current.TurnID {
+		if client == nil || steerCodex(r.Context(), client, record.ID, current.TurnID, requestID, text, nil) != nil {
 			httpx.WriteError(w, 409, "回答未确认，请检查历史后再操作；已保留你的选择")
 			return
 		}
-		if _, err := a.Execution.Store.DB.Exec(`UPDATE conversation_async_answers SET status='accepted' WHERE session_id=? AND request_id=?`, record.ID, requestID); err != nil {
+		if err := a.Execution.Store.AcceptAsyncAnswer(context.WithoutCancel(r.Context()), record.ID, requestID); err != nil {
 			httpx.DbError(w, err)
 			return
 		}
+		a.asyncAnswersChanged(record.ID)
 	} else {
 		ctx, cancel := context.WithCancel(context.Background())
-		run := &ChatRun{session: record.ID, cwd: plan.Cwd, writeRoots: writableRoots(plan), directoryRoots: uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...)), managedBindings: plan.ManagedBindings, cancel: cancel, notify: make(chan struct{}, 1), finished: make(chan struct{}), asyncRequest: requestID, started: make(chan struct{}), state: ChatState{ID: requestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
-		a.chatMu.Lock()
-		if previous := a.chats[record.ID]; previous != nil && previous.snapshot().PredictionPending {
-			previous.cancel()
+		run := &ChatRun{session: record.ID, cwd: plan.Cwd, writeRoots: writableRoots(plan), directoryRoots: uniqueDirectories(append([]string{plan.Cwd}, plan.AdditionalDirectories...)), managedBindings: plan.ManagedBindings, cancel: cancel, finished: make(chan struct{}), asyncRequest: requestID, started: make(chan struct{}), state: ChatState{ID: requestID, Status: "starting", Busy: true, Entries: []HistoryEntry{}, Approvals: []ChatApproval{}}}
+		if err := a.publishRun(run); err != nil {
+			cancel()
+			writeRunAdmissionError(w, err)
+			return
 		}
-		a.chats[record.ID] = run
-		a.chatMu.Unlock()
-		go a.DriveChat(ctx, run, plan, text)
+		go a.driveCodexTurn(ctx, run, plan, nil, turnPrompt{text: text})
 		select {
 		case <-run.started:
 		case <-run.finished:
 			// Completion may race with the start acknowledgement. The durable
 			// receipt, rather than select ordering, determines delivery success.
-			var delivered string
-			if err := a.Execution.Store.DB.QueryRow(`SELECT status FROM conversation_async_answers WHERE session_id=? AND request_id=?`, record.ID, requestID).Scan(&delivered); err != nil || delivered != "accepted" {
+			if _, delivered, err := a.Execution.Store.AsyncAnswer(r.Context(), record.ID, key); err != nil || delivered != "accepted" {
 				httpx.WriteError(w, 409, "回答未确认："+run.snapshot().Error)
 				return
 			}
@@ -258,4 +254,12 @@ func (a *Service) AsyncQuestionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.WriteJSON(w, 200, state())
+}
+
+func (a *Service) asyncAnswersChanged(session string) {
+	if run := a.ChatFor(session); run != nil {
+		run.mu.Lock()
+		run.publishChangeLocked()
+		run.mu.Unlock()
+	}
 }

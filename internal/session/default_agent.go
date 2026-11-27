@@ -16,8 +16,8 @@ func (a *Service) DefaultAgentHandler(w http.ResponseWriter, r *http.Request) {
 		Provider string `json:"provider"`
 	}{}
 	if r.Method == http.MethodGet {
-		settings.Provider = model.ProviderCodex
-		err := a.Execution.Store.DB.QueryRowContext(r.Context(), `SELECT value FROM settings WHERE key=?`, key).Scan(&settings.Provider)
+		provider, err := a.Execution.Store.Setting(r.Context(), key)
+		settings.Provider = model.NormalizeProvider(provider)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			httpx.DbError(w, err)
 			return
@@ -30,7 +30,7 @@ func (a *Service) DefaultAgentHandler(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, http.StatusBadRequest, "不支持的对话引擎")
 			return
 		}
-		if _, err := a.Execution.Store.DB.ExecContext(r.Context(), `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, settings.Provider); err != nil {
+		if err := a.Execution.Store.SaveSetting(r.Context(), key, settings.Provider); err != nil {
 			httpx.DbError(w, err)
 			return
 		}

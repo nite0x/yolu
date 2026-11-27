@@ -40,8 +40,7 @@ func (a *Service) conversationPreferences(ctx context.Context) (conversationPref
 
 func (a *Service) conversationPreferencesForProvider(ctx context.Context, provider string) (conversationPreferences, error) {
 	var settings conversationPreferences
-	var raw string
-	err := a.Execution.Store.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, conversationPreferencesKey(provider)).Scan(&raw)
+	raw, err := a.Execution.Store.Setting(ctx, conversationPreferencesKey(provider))
 	if errors.Is(err, sql.ErrNoRows) {
 		return settings, nil
 	}
@@ -155,7 +154,7 @@ func (a *Service) ConversationPreferencesHandler(w http.ResponseWriter, r *http.
 		}
 	}
 	raw, _ := json.Marshal(settings)
-	if _, err := a.Execution.Store.DB.ExecContext(r.Context(), `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, string(raw)); err != nil {
+	if err := a.Execution.Store.SaveSetting(r.Context(), key, string(raw)); err != nil {
 		httpx.DbError(w, err)
 		return
 	}

@@ -21,6 +21,7 @@ type Service struct {
 	Store            *store.Store
 	Root, DataDir    string
 	Mu               sync.Mutex
+	Directories      DirectoryOperations
 	GitActivity      sync.RWMutex // shutdown takes the writer; Git operations share readers
 	Remote           *Client
 	ReadOnlySessions bool
@@ -98,7 +99,7 @@ func (s *Service) Close() error {
 		s.Mu.Lock()
 		defer s.Mu.Unlock()
 		if s.Store != nil {
-			s.closeErr = s.Store.DB.Close()
+			s.closeErr = s.Store.Close()
 		}
 	})
 	return s.closeErr

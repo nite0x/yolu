@@ -17,5 +17,5 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{id}/remote", s.ProjectRemoteHandler)
 	mux.HandleFunc("POST /api/projects/{id}/open", s.OpenProjectHandler)
 	mux.HandleFunc("POST /api/projects/{id}/git", s.GitActionHandler)
-	mux.HandleFunc("POST /api/projects/{id}/worktrees", s.InvalidateStateAfter(s.CreateWorktreeHandler))
+	mux.HandleFunc("POST /api/projects/{id}/worktrees", s.CreateWorktreeHandler)
 }

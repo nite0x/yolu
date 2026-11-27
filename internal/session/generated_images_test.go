@@ -112,7 +112,7 @@ func TestInstalledCodexGeneratedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	s, err := readSession(c, id)
+	s, err := codex.ReadSession(c, id)
 	if err != nil {
 		t.Fatal(err)
 	}

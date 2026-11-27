@@ -9,12 +9,14 @@ An execution environment owns its SQLite store and provider connections. The fro
 | Table | Responsibility |
 | --- | --- |
 | `projects` | Repository registration, path and Git common directory |
-| `sessions` | Native session index, working directory, provider, title and managed-context marker |
+| `sessions` | Native session index, working directory, provider, title, permission selection and managed-context marker |
 | `session_project_bindings` | Directory identity, optional project, selected role, intended access and recorded branch |
 | `session_organization` | Pins and archive state |
 | `conversation_create_requests` | Durable creation identifiers and resulting session IDs |
 | `conversation_drafts` | Draft text, attachments, settings, reading state and question drafts |
 | `conversation_async_answers` | Receipts for asynchronous questions |
+| `conversation_input_requests` | Durable receipts for ordinary turns, steering and cloud input |
+| `codex_cloud_sessions` | Native cloud thread link, account scope, environment label and model |
 | `migration_recovery` | Historical source records and migration exceptions |
 
 Directory identity uses normalized paths resolved in the execution environment. SQLite prevents duplicate directory bindings and more than one primary binding per session. Several sessions can bind the same worktree. A project deletion clears its registration reference in saved bindings, preserving their directories. A session deletion cascades its binding records, while Git retains its worktrees. Full messages remain in provider storage.
@@ -23,9 +25,47 @@ The recorded branch supports drift checks. The API obtains current branch, chang
 
 ## Runtime
 
-Creation validates the directory, registered-project membership and model selection, then saves a durable request receipt. Identical retries can reuse the resulting session. A different payload requires a new request identifier. A persisted uncertain result must be inspected before starting another creation.
+Creation validates the directory, registered-project membership and model selection, then saves a durable request receipt. Identical retries can reuse the resulting session. A different payload requires a new request identifier. A persisted uncertain result must be inspected before starting another creation. Ordinary turns reserve a local receipt immediately before sending the prompt. A retry after restart checks that receipt before connecting to a provider.
 
-Control locks serialize operations on a session. The directory reservation shared by project operations and terminal starts protects worktree switching and removal. Write conflicts between overlapping active turns are checked against the effective directories. A user can explicitly confirm sharing or create an independent checkout.
+Control locks serialize operations on one session or creation identity. Branch
+switch and worktree removal take the cleanup gate while revalidating occupancy,
+bindings and reviewed paths. Worktree creation holds the repository lock and a
+claim on its destination. Chat, binding and terminal admission reject a
+destination while Git is creating it. Independent repositories may create
+checkouts concurrently, including beneath a shared parent directory.
+
+The ordering for Git mutations is the Git activity gate, repository lock, and
+the applicable checkout claim or cleanup gates. Destructive operations obtain
+the embedded terminal gate before the session cleanup gate. Session operations
+take the cleanup gate and their control key before directory admission and the
+runtime registry. A short directory start mutex serializes write conflict
+checks with publication of bindings or reservations. Registry scans acquire a
+run mutex only after acquiring the registry mutex. Provider validation and file
+snapshots for directory approvals run outside the registry and directory start
+mutexes. Approval rechecks the run and approval IDs before committing a reply.
+
+Write conflicts between overlapping active turns are checked against effective
+directories. Users can explicitly confirm sharing or create an independent
+checkout. Confirming shared writes leaves checkout admission protection in
+effect.
+
+The runtime tracks provider workers until cleanup completes, including workers
+whose prediction is cancelled by a later turn. A Codex stop received during an
+unacknowledged start waits for the native turn identity before interrupting.
+Provider completion can win a race with interruption. Completed runs have a
+ten-minute retention window, evaluated on lookup and completion, with an upper
+bound of 64 runs and a 32 MiB estimated display budget per environment. Durable
+history stays available through the provider after display eviction.
+
+Live SSE readers share immutable encodings per run and receive a broadcast on
+state changes. Delivery coalesces updates within 100 ms and isolates slow
+readers with per-write deadlines. A new stream starts with the current state.
+Async answer writes invalidate live display state, with one status query for
+the session per published snapshot containing questions. The media projection
+generates session-scoped references and retries transient cache writes
+independently of the turn revision. Files are read and validated by the media
+endpoint when requested.
+
 
 Native runtime events describe actual tool execution. Git status and file snapshots describe the directory's current state and observed changes over a turn. Existing changes, changes observed during the turn, and changes supported by direct tool evidence have separate meanings.
 
@@ -71,7 +111,7 @@ For example, a registered project conversation can start with:
 
 ## Upgrading existing data
 
-The migration runs in a transaction. It backfills the independent session index from historical link records before building bindings. Explicit historical directories and available project associations carry forward. A deterministic primary is chosen using the saved working directory and historical project order. The migration records original rows, including those with no reliable session or path mapping, for recovery and metadata export. It removes the obsolete active tables after the binding conversion. No migration performs Git or filesystem mutations.
+The migration runs in a transaction. It backfills the independent session index from historical link records before building bindings. Explicit historical directories and available project associations carry forward. A deterministic primary is chosen using the saved working directory and historical project order. The migration records original rows, including those with no reliable session or path mapping, for recovery and metadata export. It removes the obsolete active tables after the binding conversion. No migration performs Git or filesystem mutations. Historical assistant tables retain their schema names and payloads for transfer and recovery. Interrupted assistant operations are repaired transactionally, including preservation of historical fields unknown to the current application.
 
 To verify an upgrade, open a copy of the old application data in an isolated profile, use the same agent history and repository paths, and check the conversation list and project context. See [migration instructions](brand/yolu/migration.md).
 
@@ -85,6 +125,6 @@ Predictions are bounded in-memory display state, never saved messages or drafts.
 
 ## ACP providers
 
-`internal/acp` owns stdio JSON-RPC, common option parsing and event types. `internal/agy` and `internal/cursor` own executable discovery, startup flags, authentication, diagnostics and provider-specific option discovery. Shared session creation, history replay, streaming, permission replies and cancellation live in `session_provider_acp.go` and `acp_sessions.go`. Cursor blocking question and plan extensions use the existing shared approval/form UI and validate replies against the retained request.
+`internal/acp` owns stdio JSON-RPC, common option parsing and event types. `internal/agy` and `internal/cursor` own executable discovery, startup flags, authentication, diagnostics and provider-specific option discovery. `internal/acp/conversation.go` owns session pagination, replay, prompt draining, session update decoding and cancellation. The session drivers own display projection, approvals and local records. Cursor blocking question and plan extensions use the existing shared approval/form UI and validate replies against the retained request.
 
 Cursor CLI aliases are not ACP model IDs: `auto` is represented as `default[]` in the installed protocol. Always use the IDs returned by ACP session setup. Option discovery creates a temporary empty ACP session without a model prompt and does not index it in Yolu. Cursor does not implement `session/close`; ending its dedicated subprocess releases the connection.

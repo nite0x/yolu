@@ -27,7 +27,7 @@ func (c *predictionLive) Call(ctx context.Context, method string, params, out an
 }
 
 func predictionRun() (*ChatRun, *predictionLive) {
-	run := &ChatRun{session: "session", notify: make(chan struct{}, 1), state: ChatState{
+	run := &ChatRun{session: "session", state: ChatState{
 		ID: "request", Status: "completed", TurnID: "turn", PredictionPending: true,
 		Entries: []HistoryEntry{}, Approvals: []ChatApproval{},
 	}}

@@ -190,7 +190,7 @@ func testACPProviderLifecycle(t *testing.T, provider string) {
 	a.openAgy = open
 	if provider == model.ProviderCursor {
 		a.openCursor = open
-		a.cursorCatalog = &acp.OptionCatalog{Models: []codex.ChatModel{
+		a.cursorCatalog = &acp.OptionCatalog{Models: []model.ChatModel{
 			{Model: "gemini-3-pro", Default: true}, {Model: "gemini-flash", Efforts: []struct {
 				Effort string `json:"reasoningEffort"`
 			}{{Effort: "low"}, {Effort: "medium"}}},

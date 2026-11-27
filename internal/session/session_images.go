@@ -30,7 +30,7 @@ func (a *Service) imageRef(session, path string) string {
 	mac.Write([]byte(session + "\x00" + encoded))
 	return encoded + "." + hex.EncodeToString(mac.Sum(nil))
 }
-func (a *Service) prepareHistoryMedia(session string, entries []HistoryEntry) {
+func (a *Service) prepareHistoryMedia(session string, entries []HistoryEntry) (retry bool) {
 	for i := range entries {
 		e := &entries[i]
 		if a.Execution.Remote == nil && e.Kind == "assistant" && e.Status != "inProgress" {
@@ -43,8 +43,9 @@ func (a *Service) prepareHistoryMedia(session string, entries []HistoryEntry) {
 		images := make([]string, 0, len(e.Images))
 		for _, image := range e.Images {
 			if strings.HasPrefix(image, "data:") {
-				key, err := a.cacheHistoryImage(image)
+				key, transient, err := a.cacheHistoryImage(image)
 				if err != nil {
+					retry = retry || transient
 					e.Text += "\n[图片暂不可读取]"
 					continue
 				}
@@ -59,7 +60,7 @@ func (a *Service) prepareHistoryMedia(session string, entries []HistoryEntry) {
 		e.Images = images
 		paths := e.LocalImagePaths
 		if e.Kind == "assistant" {
-			paths = append(paths, localImageSources(e.Text)...)
+			paths = append(append([]string(nil), paths...), localImageSources(e.Text)...)
 		}
 		for _, source := range paths {
 			path := source
@@ -75,6 +76,7 @@ func (a *Service) prepareHistoryMedia(session string, entries []HistoryEntry) {
 			e.LocalImages[source] = a.imageRef(session, path)
 		}
 	}
+	return retry
 }
 func (a *Service) SessionImageHandler(w http.ResponseWriter, r *http.Request) {
 	if !a.HistorySessionAllowed(w, r) {

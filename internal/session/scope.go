@@ -10,7 +10,6 @@ import (
 
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/execution"
-	"worktree-hub/internal/httpx"
 	"worktree-hub/internal/model"
 	"worktree-hub/internal/platform"
 	"worktree-hub/internal/project"
@@ -139,34 +138,38 @@ func (a *Service) cachedScope(scope sessionScope, cloudIdentity string) ([]model
 
 // Session IDs are local to the selected execution environment.
 func (a *Service) requestSession(w http.ResponseWriter, r *http.Request) (model.Session, bool) {
-	id := r.PathValue("session")
-	s, err := a.Execution.Store.Session(id)
+	record, err := a.resolveSession(r.Context(), r.PathValue("session"))
+	if err != nil {
+		writeConversationError(w, err)
+	}
+	return record, err == nil
+}
+
+func (a *Service) resolveSession(ctx context.Context, id string) (model.Session, error) {
+	s, err := a.Execution.Store.SessionContext(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		c, openErr := a.openSessions(r.Context())
+		c, openErr := a.openSessions(ctx)
 		if openErr != nil {
-			httpx.WriteError(w, 503, openErr.Error())
-			return s, false
+			return s, conversationFailure(503, "", openErr.Error())
 		}
 		defer c.Close()
 		var current codex.Session
 		titleObservedAt := time.Now().UnixNano()
-		current, err = readSession(c, id)
+		current, err = codex.ReadSession(c, id)
 		if err == nil {
 			err = a.SaveSession(current, "codex", titleObservedAt)
 			if err == nil {
-				s, err = a.Execution.Store.Session(id)
+				s, err = a.Execution.Store.SessionContext(ctx, id)
 			}
 		}
 	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			httpx.WriteError(w, 404, "对话不存在")
-		} else {
-			httpx.WriteError(w, 503, err.Error())
+			return s, conversationFailure(404, "", "对话不存在")
 		}
-		return s, false
+		return s, conversationFailure(503, "", err.Error())
 	}
-	return s, true
+	return s, nil
 }
 
 // SessionTarget selects the execution directory and the initial associations.

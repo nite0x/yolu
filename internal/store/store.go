@@ -14,6 +14,8 @@ import (
 
 type Store struct{ DB *sql.DB }
 
+func (s *Store) Close() error { return s.DB.Close() }
+
 // OpenReadOnly reads saved environment metadata without running migrations or
 // starting its execution environment.
 func OpenReadOnly(dataDir string) (*Store, error) {
@@ -51,10 +53,6 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	if err := s.migrateAssistant(); err != nil {
-		db.Close()
-		return nil, err
-	}
 	return s, nil
 }
 
@@ -81,6 +79,9 @@ CREATE TABLE IF NOT EXISTS conversation_async_answers (
 		return err
 	}
 	if err := migrateSessionBindings(tx); err != nil {
+		return err
+	}
+	if err := migrateLegacyAssistant(tx); err != nil {
 		return err
 	}
 	return tx.Commit()

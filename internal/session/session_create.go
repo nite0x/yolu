@@ -14,7 +14,6 @@ import (
 )
 
 type CreateSessionInput = apitypes.CreateSessionInput
-type newSessionInput = CreateSessionInput
 
 var (
 	errCreationUncertain = errors.New("上次创建结果未确认，为避免重复创建请先刷新对话列表检查")
@@ -27,8 +26,7 @@ func creationFingerprint(in CreateSessionInput) string {
 }
 
 func (a *Service) createdSessionID(ctx context.Context, key, fingerprint string) (string, error) {
-	var id, previous string
-	err := a.Execution.Store.DB.QueryRowContext(ctx, `SELECT session_id,fingerprint FROM conversation_create_requests WHERE request_id=?`, key).Scan(&id, &previous)
+	id, previous, err := a.Execution.Store.CreationReceipt(ctx, key)
 	if err != nil {
 		return "", err
 	}
@@ -49,19 +47,11 @@ func (a *Service) NewSessionHandler(w http.ResponseWriter, r *http.Request) {
 	logger := httpx.RequestLogger(r.Context()).With("creation_request_id", input.RequestID, "provider", model.NormalizeProvider(input.Provider))
 	result, err := a.CreateSession(r.Context(), input)
 	if err != nil {
-		var failure *creationError
+		var failure *conversationError
 		if errors.As(err, &failure) {
 			logger.Warn("Conversation creation failed", "code", failure.code, "status", failure.status)
-			if failure.code == "directory_conflict" {
-				writeBindingConflict(w, failure.conflict)
-			} else if failure.status == 500 {
-				httpx.DbError(w, failure.cause)
-			} else {
-				httpx.WriteErrorCode(w, failure.status, failure.code, failure.Error())
-			}
-		} else {
-			httpx.DbError(w, err)
 		}
+		writeConversationError(w, err)
 		return
 	}
 	logger.Info("Conversation creation accepted", "session_id", result.SessionID, "status", result.Status)
