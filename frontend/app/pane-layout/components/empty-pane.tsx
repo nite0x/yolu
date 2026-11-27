@@ -1,0 +1,125 @@
+import { uiText } from "@/shared/i18n"
+import { MessageSquare, Search, SquarePen, X } from "lucide-react"
+import { memo } from "react"
+import type { PaneContextHint, SplitPlacement } from "../model/types"
+import type { PaneCapabilities } from "../state/selectors"
+import { PaneHeader } from "./pane-header"
+
+export interface RecentConversationItem {
+  id: string
+  title: string
+  environment: string
+  detail?: string
+}
+
+export interface EmptyPaneProps {
+  paneId: string
+  context?: PaneContextHint
+  capabilities: PaneCapabilities
+  recentConversations: readonly RecentConversationItem[]
+  canCreateConversation: boolean
+  onCreateConversation: (paneId: string, context?: PaneContextHint) => void
+  onPickConversation: (paneId: string, trigger?: HTMLButtonElement) => void
+  onOpenRecentConversation: (paneId: string, item: RecentConversationItem) => void
+  onSplit: (paneId: string, placement: SplitPlacement) => void
+  onToggleMaximize: (paneId: string) => void
+  onClose: (paneId: string) => void
+  onFocus: (paneId: string) => void
+  onStartHeaderDrag?: (paneId: string, event: React.PointerEvent<HTMLElement>) => void
+}
+
+export const EmptyPane = memo(function EmptyPane({
+  paneId,
+  context,
+  capabilities,
+  recentConversations,
+  canCreateConversation,
+  onCreateConversation,
+  onPickConversation,
+  onOpenRecentConversation,
+  onSplit,
+  onToggleMaximize,
+  onClose,
+  onFocus,
+  onStartHeaderDrag,
+}: EmptyPaneProps) {
+  const recent = recentConversations.slice(0, 5)
+
+  return (
+    <section
+      className="pane-layout-empty"
+      aria-label={uiText("空白面板")}
+      onPointerDown={() => onFocus(paneId)}
+      onFocus={() => onFocus(paneId)}
+    >
+      <PaneHeader
+        paneId={paneId}
+        title={uiText("空白面板")}
+        capabilities={capabilities}
+        onSplit={onSplit}
+        onToggleMaximize={onToggleMaximize}
+        onClose={onClose}
+        onStartHeaderDrag={onStartHeaderDrag}
+      />
+      <div className="pane-layout-empty-body">
+        <div className="pane-layout-empty-inner">
+          <p className="pane-layout-empty-hint">
+            {uiText("新建对话、打开已有对话，或从左侧列表直接选择。")}
+          </p>
+          <div className="pane-layout-empty-actions">
+            <button
+              type="button"
+              className="pane-layout-empty-primary"
+              disabled={!canCreateConversation}
+              onClick={() => onCreateConversation(paneId, context)}
+            >
+              <SquarePen aria-hidden="true" />
+              <span>{uiText("新建对话")}</span>
+            </button>
+            <button
+              type="button"
+              className="pane-layout-empty-secondary"
+              onClick={event => onPickConversation(paneId, event.currentTarget)}
+            >
+              <Search aria-hidden="true" />
+              <span>{uiText("打开已有对话")}</span>
+            </button>
+            {capabilities.split && (
+              <button
+                type="button"
+                className="pane-layout-empty-cancel"
+                onClick={() => onClose(paneId)}
+              >
+                <X aria-hidden="true" />
+                <span>{uiText("取消分屏")}</span>
+              </button>
+            )}
+          </div>
+          {recent.length > 0 && (
+            <div className="pane-layout-empty-recent">
+              <h3 className="pane-layout-empty-recent-title">{uiText("最近对话")}</h3>
+              <ul className="pane-layout-empty-recent-list">
+                {recent.map(item => (
+                  <li key={`${item.environment}:${item.id}`}>
+                    <button
+                      type="button"
+                      className="pane-layout-empty-recent-item"
+                      onClick={() => onOpenRecentConversation(paneId, item)}
+                      title={[item.title, item.detail].filter(Boolean).join("\n")}
+                    >
+                      <MessageSquare aria-hidden="true" />
+                      <span className="pane-layout-empty-recent-text">
+                        <strong>{item.title}</strong>
+                        {item.detail && <small>{item.detail}</small>}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+})
