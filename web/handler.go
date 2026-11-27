@@ -14,6 +14,7 @@ type UISettings struct {
 	ColorTheme               string
 	SendShortcut             string
 	ConversationProjectOrder []string
+	PaneLayout               string
 }
 
 // ValidColorTheme reports whether a saved appearance choice may be written into
@@ -82,6 +83,7 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 		theme := "mint"
 		sendShortcut := "enter"
 		var projectOrder []string
+		var paneLayout string
 		if len(settings) > 0 {
 			preferences := settings[0]()
 			if preferences.Language == "en" || preferences.Language == "zh-CN" {
@@ -94,6 +96,7 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 				sendShortcut = preferences.SendShortcut
 			}
 			projectOrder = preferences.ConversationProjectOrder
+			paneLayout = preferences.PaneLayout
 		}
 		page = strings.ReplaceAll(page, "__UI_LANGUAGE__", choice)
 		page = strings.ReplaceAll(page, "__UI_COLOR_THEME__", theme)
@@ -109,6 +112,9 @@ func Handler(token string, readOnly bool, settings ...func() UISettings) http.Ha
 		if pageName == "index.html" {
 			order, _ := json.Marshal(projectOrder)
 			page = strings.ReplaceAll(page, "__CONVERSATION_PROJECT_ORDER__", html.EscapeString(string(order)))
+		}
+		if pageName == "app.html" {
+			page = strings.ReplaceAll(page, "__PANE_LAYOUT__", html.EscapeString(paneLayout))
 		}
 		_, _ = w.Write([]byte(page))
 	})

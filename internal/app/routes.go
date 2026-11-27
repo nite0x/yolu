@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/subtle"
 	"net/http"
 
@@ -50,6 +51,8 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("GET /api/settings/appearance", a.appearanceHandler)
 	mux.HandleFunc("PUT /api/settings/appearance", a.appearanceHandler)
 	mux.HandleFunc("PUT /api/settings/conversation-project-order", a.saveConversationProjectOrder)
+	mux.HandleFunc("GET /api/settings/pane-layout", a.paneLayoutHandler)
+	mux.HandleFunc("PUT /api/settings/pane-layout", a.paneLayoutHandler)
 	mux.HandleFunc("GET /api/settings/chat-input", a.chatInputHandler)
 	mux.HandleFunc("PUT /api/settings/chat-input", a.chatInputHandler)
 	mux.HandleFunc("GET /api/settings/browser-access", a.browserAccessHandler)
@@ -73,6 +76,7 @@ func (a *App) assetsHandler() http.Handler {
 		return web.UISettings{
 			Language: a.uiLanguage(), ColorTheme: a.uiColorTheme(), SendShortcut: a.uiSendShortcut(),
 			ConversationProjectOrder: a.conversationProjectOrder(),
+			PaneLayout:               a.savedPaneLayout(context.Background(), defaultPaneLayoutCtx),
 		}
 	})
 }
