@@ -14,6 +14,7 @@ let mountSequence = 0;
 let unsubscribePreview: (() => void) | undefined;
 export const bridge = {
   draftTitle: () => active && !active.getSnapshot().session ? draftTitle(active.getSnapshot().draft) : "",
+  selectDraftExecution: (execution: NonNullable<ChatOptions["draftExecution"]>) => active?.selectDraftExecution(execution, false),
   flushDraft: () => controllers.flush(),
   open(options: ChatOptions) {
     if (!root) {
@@ -30,6 +31,7 @@ export const bridge = {
       controllers.delete(key(options, null)); controllers.set(key(options, session.id), current);
       options.created(session);
     }};
+    if (options.draftExecution) controller.selectDraftExecution(options.draftExecution, false);
     active = controller;
     let previous: string | undefined;
     const publishPreview = () => {

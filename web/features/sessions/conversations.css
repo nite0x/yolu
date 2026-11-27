@@ -41,7 +41,16 @@ html[data-workspace-navigation] .session-sidebar-group-control { inline-size: 28
 .session-status-filters [data-conversation-status="waiting"] [data-status-count] { color: var(--yolu-warning,#9a5a12); }
 .session-status-filters button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 #sessionBrowserError { margin: 0 12px 8px; padding: 9px; font-size: 12px; white-space: pre-wrap; color: var(--destructive); background: var(--muted); border-radius: 6px; }
+.session-browser-list-scroll { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
 #sessionBrowserList { overflow-y: auto; overflow-x: hidden; min-width: 0; min-height: 0; flex: 1; padding: 0 7px 12px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; overflow-anchor: none; }
+[data-conversation-scroll-viewport], #sessionBrowserList[data-conversation-scroll-viewport] { scrollbar-width: none; scrollbar-gutter: auto; }
+[data-conversation-scroll-viewport]::-webkit-scrollbar { display: none; }
+.conversation-scrollbar { position: absolute; z-index: 2; inset-block: 0; inset-inline-end: 0; width: 11px; pointer-events: none; }
+.conversation-scrollbar > div { position: absolute; top: 0; width: 100%; opacity: 0; touch-action: none; transition: opacity .15s ease; }
+.conversation-scrollbar > div::after { content: ""; position: absolute; inset: 0 3px; border-radius: 999px; background: var(--yolu-muted-ink); }
+.conversation-scrollbar[data-visible] > div { opacity: .55; pointer-events: auto; }
+.conversation-scrollbar[data-visible] > div:is(:hover, :active) { opacity: .85; }
+@media (prefers-reduced-motion: reduce) { .conversation-scrollbar > div { transition: none; } }
 .session-list-spacer { flex-shrink: 0; pointer-events: none; overflow-anchor: none; }
 .session-list-more { margin: 0; padding: 12px 4px 4px; text-align: center; color: var(--muted-foreground); font-size: 11px; }
 .session-browser-items {
@@ -267,12 +276,14 @@ html[data-workspace-conversation] .session-browser[data-pane="detail"] .session-
   justify-content: flex-start;
   padding-block: var(--session-row-block-inset);
 }
-.session-browser-item-end { flex: none; inline-size: var(--session-row-end-width); min-width: 0; text-align: end; }
+.session-browser-item-end { flex: none; min-inline-size: var(--session-row-action-size); max-inline-size: var(--session-row-end-width); text-align: end; }
 .parallel-list-item .session-browser-item-time { pointer-events: var(--parallel-time-events, auto); }
 .parallel-list-add[data-slot] {
   position: absolute;
-  inset-inline-end: var(--session-row-inset);
+  inset-inline-end: var(--session-row-action-inset);
   inset-block-start: max(0px, calc(var(--session-row-block-inset) + (var(--session-row-heading-height) - var(--session-row-action-size)) / 2));
+  inline-size: var(--session-row-action-size);
+  block-size: var(--session-row-action-size);
   padding: 0;
   border-radius: 7px;
   color: var(--muted-foreground);

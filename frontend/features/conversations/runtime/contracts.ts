@@ -8,6 +8,7 @@ export interface ChatOptions {
   overview?: ConversationOverview;
   target?: SessionTarget; session: Session | null; environment: string; environmentName?: string;
   draftTarget?: SessionTarget;
+  draftExecution?: "local" | "cloud";
   updateDraftBindings?: (bindings: BindingInput[]) => void;
   readOnly?: boolean; persistDraft?: boolean; focusComposer?: boolean;
   request: <T>(path: string, options?: RequestInit) => Promise<T>;

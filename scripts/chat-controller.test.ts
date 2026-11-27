@@ -343,18 +343,27 @@ test("Cloud creation sends the selected environment without the local worktree o
     session:null, target:{project_id:"project",cwd:"/repo/worktree"}, environment:"local",
     created(){}, close(){}, stream:async()=>new Response(),
     request:async(path,options)=>{
+      if (path === "/api/agents/chat-options?provider=cursor") return {models:[],modes:[]} as any;
       requests.push({path,body:JSON.parse(String(options?.body))});
       return {session:{...session,id:"cloud-thread",provider:"codex-cloud",cloud_environment:"apix"},chat:idleChat()} as any;
     }
   });
+  c.setProvider("cursor");
   c.setSettings({permission:"full",model:"local-only"});
-  c.setCloudEnvironment("");
+  c.setDraft("Cloud smoke test");
+  c.selectDraftExecution("cloud");
   assert.equal(c.canSend(),false);
   c.setCloudEnvironment("cloud-config-apix");
+  c.selectDraftExecution("local");
+  assert.equal(c.getSnapshot().provider,"cursor");
+  assert.equal(c.getSnapshot().settings.model,"local-only");
+  assert.equal(c.getSnapshot().draft,"Cloud smoke test");
+  assert.equal(c.getSnapshot().cloudEnvironment,undefined);
+  c.selectDraftExecution("cloud");
   await c.send("Cloud smoke test", [], true, {cwd:"/repo/new-worktree",access:"write",allow_shared:true});
   assert.equal(requests[0].path,"/api/sessions/new");
   assert.equal(requests[0].body.cloud_environment,"cloud-config-apix");
-  for (const field of ["cwd","project_id","access","allow_shared","bindings"]) assert.equal(requests[0].body[field],undefined);
+  for (const field of ["cwd","project_id","access","allow_shared","bindings","provider"]) assert.equal(requests[0].body[field],undefined);
   assert.deepEqual(requests[0].body.settings,{});
   assert.equal(c.getSnapshot().session?.cloud_environment,"apix");
   assert.equal(c.getSnapshot().session?.provider,"codex-cloud");

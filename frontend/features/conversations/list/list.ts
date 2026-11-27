@@ -1,4 +1,5 @@
 import type {Session} from "@/entities/conversations/catalog"
+import {setupConversationScrollbar} from "../scrollbar"
 import type {ConversationTreeRow} from "./tree"
 
 interface ListState {
@@ -20,6 +21,10 @@ export function createConversationList({list, sessionKey, render, remember}: {
   render: () => void
   remember: () => void
 }) {
+  const disposeScrollbar = setupConversationScrollbar(list)
+  list.ownerDocument.defaultView?.addEventListener("pagehide", event => {
+    if (!event.persisted) disposeScrollbar()
+  })
   const batchSize = 20, windowSize = 60
   const rows = (view: ListState) => view.listRows || view.listItems || []
   const rowKey = (row: ConversationTreeRow | Session) => "kind" in row ? row.key : sessionKey(row)

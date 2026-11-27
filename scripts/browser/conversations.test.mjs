@@ -6,6 +6,89 @@ import {readFile, mkdir} from 'node:fs/promises';
 import {chromium, expect} from '@playwright/test';
 import {startBrowserApp} from '../fixtures/browser-app.mjs';
 
+test('conversation scrollbars appear independently and fade without reserving space', {timeout:60000}, async t => {
+  assert(process.env.YOLU_TEST_BINARY, 'Set YOLU_TEST_BINARY to the built Go executable.');
+  const app = await startBrowserApp(path.resolve(process.env.YOLU_TEST_BINARY));
+  t.after(() => app.close());
+  for (let index = 0; index < 16; index++) {
+    await app.request('/api/sessions/new', 'POST', {
+      project_id:app.project.id, cwd:app.repository, request_id:`list-${index}`, text:`Sidebar conversation ${index}`, allow_shared:true,
+    });
+  }
+  const [first, second] = app.sessions.map(session => session.id);
+  for (const id of [first, second]) {
+    await expect.poll(async () => (await app.request(`/api/sessions/${id}/chat`)).busy).toBe(false);
+    const text = Array.from({length:60}, (_, line) => `Long saved message, line ${line + 1}`).join('\n');
+    await app.request(`/api/sessions/${id}/chat`, 'POST', {text, request_id:`long-${id}`, allow_shared:true});
+  }
+  await expect.poll(async () => (await app.request(`/api/sessions/${first}/chat`)).busy).toBe(false);
+  await app.request(`/api/sessions/${first}/chat`, 'POST', {text:'[hold]', request_id:'show-running-status', allow_shared:true});
+  const browser = await chromium.launch({headless:true, args:['--disable-overlay-scrollbar'], ...(process.env.YOLU_BROWSER_EXECUTABLE ? {executablePath:process.env.YOLU_BROWSER_EXECUTABLE} : {})});
+  t.after(() => browser.close());
+  const page = await browser.newPage({viewport:{width:1440,height:680}});
+  await page.addInitScript(() => localStorage.setItem('workhub:conversation-list-mode:v1', 'recent'));
+  const nav = page.frameLocator('iframe.workspace-navigation-frame');
+  const list = nav.locator('#sessionBrowserList');
+  const listBar = nav.locator('.conversation-scrollbar');
+  const row = id => nav.locator(`[data-conversation-session="${id}"]`);
+  const viewports = '[data-slot="aui_thread-viewport"]';
+  const frames = page.locator('iframe.workspace-page:visible');
+  await page.goto(app.url);
+  const running = row(first).locator('.session-browser-item-status');
+  await expect(running).toHaveAttribute('data-state', 'running');
+  await expect(running).toBeVisible();
+  const stateBox = await running.boundingBox();
+  const timeBox = await row(first).locator('time').boundingBox();
+  assert(stateBox && timeBox);
+  assert(timeBox.x - stateBox.x - stateBox.width <= 8);
+  assert(Math.abs(timeBox.y + timeBox.height / 2 - stateBox.y - stateBox.height / 2) < 1);
+  await row(first).click();
+  await row(second).hover();
+  await nav.locator(`[data-conversation-parallel="${second}"]`).click();
+  await expect(frames).toHaveCount(2);
+
+  const checkScroll = async (viewport, bar, delta, inactive, drag = false) => {
+    const thumb = bar.locator(':scope > div');
+    await expect.poll(() => viewport.evaluate(node => node.scrollHeight - node.clientHeight)).toBeGreaterThan(100);
+    await expect(thumb).toHaveCSS('opacity', '0');
+    const dimensions = () => viewport.evaluate(node => [node.offsetWidth, node.clientWidth]);
+    const before = await dimensions();
+    assert.equal(before[0], before[1]);
+    const position = () => viewport.evaluate(node => node.scrollTop);
+    await viewport.hover({position:{x:35,y:140}});
+    await expect(thumb).toHaveCSS('opacity', '0');
+    for (const other of inactive) await expect(other).not.toHaveAttribute('data-visible');
+    const previous = await position();
+    const range = await viewport.evaluate(node => node.scrollHeight - node.clientHeight);
+    await page.mouse.wheel(0, previous > range / 2 ? -delta : delta);
+    await expect.poll(position).not.toBe(previous);
+    await expect(bar).toHaveAttribute('data-visible', '');
+    for (const other of inactive) await expect(other).not.toHaveAttribute('data-visible');
+    assert.deepEqual(await dimensions(), before);
+    if (drag) {
+      const bounds = await thumb.boundingBox();
+      assert(bounds);
+      const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
+      const start = await position();
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x, y + (start > range / 2 ? -34 : 34), {steps:4});
+      await page.mouse.up();
+      await expect.poll(position).not.toBe(start);
+      await viewport.hover({position:{x:35,y:140}});
+    }
+    await expect(thumb).toHaveCSS('opacity', '0');
+    assert.deepEqual(await dimensions(), before);
+  };
+  const paneBars = [0, 1].map(index => frames.nth(index).contentFrame().locator('.chat-reading .conversation-scrollbar'));
+  await checkScroll(list, listBar, 120, paneBars, true);
+  for (let index = 0; index < 2; index++) {
+    const pane = frames.nth(index).contentFrame();
+    await checkScroll(pane.locator(viewports), paneBars[index], 250, [paneBars[1 - index], listBar]);
+  }
+  await app.release();
+});
+
 test('project groups can be dropped in gaps and keep their order after reload', {timeout:45000}, async t => {
   assert(process.env.YOLU_TEST_BINARY, 'Set YOLU_TEST_BINARY to the built Go executable.');
   const app = await startBrowserApp(path.resolve(process.env.YOLU_TEST_BINARY));
@@ -61,6 +144,63 @@ test('project groups can be dropped in gaps and keep their order after reload', 
   await expect(names).toHaveText(['Yolu','Zeta','Browser fixture']);
   await zeta.click();
   await expect(zeta).toHaveAttribute('aria-expanded','false');
+});
+
+for (const entry of ['browser', 'desktop-chrome']) test(`${entry} switches between chat, terminal and Codex Cloud in the creation form`, {timeout:90000}, async t => {
+  assert(process.env.YOLU_TEST_BINARY, 'Set YOLU_TEST_BINARY to the built Go executable.');
+  const app = await startBrowserApp(path.resolve(process.env.YOLU_TEST_BINARY), path.resolve('bin'));
+  t.after(() => app.close());
+  const browser = await chromium.launch({headless:true, ...(process.env.YOLU_BROWSER_EXECUTABLE ? {executablePath:process.env.YOLU_BROWSER_EXECUTABLE} : {})});
+  t.after(() => browser.close());
+  const context = await browser.newContext({viewport:{width:1240,height:860},locale:'zh-CN'});
+  if (entry === 'desktop-chrome') {
+    const chrome = await readFile(new URL('../../src-tauri/src/window-chrome.js', import.meta.url), 'utf8');
+    await context.addInitScript({content:chrome + '("windows");'});
+  }
+  await context.route('**/api/codex/cloud-environments', route => route.fulfill({json:[{id:'cloud-fixture',name:'Cloud fixture',shared:false}]}));
+  const page = await context.newPage();
+  await page.goto(app.url);
+  await page.getByRole('button', {name:'新建对话',exact:true}).click();
+  const surface = page.frameLocator('iframe.workspace-page:visible');
+  const modes = surface.getByRole('group', {name:'对话形式',exact:true});
+  const chat = modes.getByRole('button', {name:'对话',exact:true});
+  const terminal = modes.getByRole('button', {name:'终端',exact:true});
+  const cloud = modes.getByRole('button', {name:'Codex Cloud',exact:true});
+  const environment = surface.getByLabel('云端环境', {exact:true});
+  const directory = surface.locator('#sessionBrowserNewDirectoryField');
+  const worktree = surface.getByRole('checkbox', {name:'创建新 Worktree'});
+  const editor = surface.locator('textarea.aui-composer-input');
+  await expect(modes.getByRole('button')).toHaveText(['对话','终端','Codex Cloud']);
+  await expect(chat).toHaveAttribute('aria-pressed','true');
+  await expect(directory).toBeVisible();
+  await directory.getByRole('button', {name:/Browser fixture/}).click();
+  await worktree.check();
+  await editor.fill('Keep this draft across creation modes');
+  await cloud.focus();
+  await cloud.press('Enter');
+  await expect(cloud).toBeFocused();
+  await expect(cloud).toHaveAttribute('aria-pressed','true');
+  await expect(directory).toBeHidden();
+  await environment.selectOption('cloud-fixture');
+  await terminal.click();
+  await expect(terminal).toHaveAttribute('aria-pressed','true');
+  await expect(modes.getByRole('button')).toHaveText(['对话','终端','Codex Cloud']);
+  await cloud.click();
+  await expect(cloud).toHaveAttribute('aria-pressed','true');
+  await expect(environment).toHaveValue('cloud-fixture');
+  await expect(editor).toHaveValue('Keep this draft across creation modes');
+  await terminal.click();
+  await expect(terminal).toHaveAttribute('aria-pressed','true');
+  await chat.click();
+  await expect(chat).toHaveAttribute('aria-pressed','true');
+  await expect(directory).toBeVisible();
+  await expect(worktree).toBeChecked();
+  await expect(environment).toBeHidden();
+  await expect(editor).toHaveValue('Keep this draft across creation modes');
+  await page.setViewportSize({width:375,height:780});
+  const buttons = await modes.getByRole('button').all();
+  const positions = await Promise.all(buttons.map(button => button.boundingBox()));
+  assert(positions.every(position => position && position.y === positions[0]?.y && position.x + position.width <= 375));
 });
 
 for (const entry of ['browser', 'desktop-chrome']) test(`${entry} handles creation directory conflicts inline`, {timeout:90000}, async t => {
@@ -279,8 +419,8 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   await expect(timestamp).toHaveCSS('opacity','0');
   const hoverAction = await splitAction.boundingBox();
   assert(hoverAction);
-  assert.equal(hoverAction.x, restingTime.x);
-  assert.equal(hoverAction.width, restingTime.width);
+  assert.equal(hoverAction.width, hoverAction.height);
+  assert.equal(hoverAction.width, 30);
   assert(Math.abs(hoverAction.y + hoverAction.height / 2 - (restingTime.y + restingTime.height / 2)) < 1);
   assert.equal(await rightEdge(agent), restingEdges.agent);
   assert.equal(await rightEdge(title), restingEdges.title);
@@ -290,6 +430,19 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   const split = await pane(second);
   await expect(page.locator('iframe.workspace-page:visible')).toHaveCount(2);
   await expect(split.locator('textarea.aui-composer-input')).toHaveValue('Keep the second draft');
+  const activeHeader = page.frameLocator('iframe.workspace-page[data-focused="true"]').locator('.conversation-surface-header');
+  await expect(activeHeader).toHaveCSS('background-image', /^linear-gradient\(/);
+  const inactiveHeader = page.frameLocator('iframe.workspace-page[data-focused="false"]').locator('.conversation-surface-header');
+  await expect(inactiveHeader).toHaveCSS('background-image', /^linear-gradient\(/);
+  assert.equal(await inactiveHeader.evaluate(header => getComputedStyle(header).getPropertyValue('--conversation-header-tint').trim()), '');
+  const initialGradient = await activeHeader.evaluate(header => getComputedStyle(header).backgroundImage);
+  await expect(inactiveHeader).not.toHaveCSS('background-image', initialGradient);
+  const initialTheme = await page.evaluate(() => window.YoluTheme.current());
+  await page.evaluate(() => window.YoluTheme.apply('dark'));
+  await expect(activeHeader).toHaveCSS('background-image', /^linear-gradient\(/);
+  await expect(activeHeader).not.toHaveCSS('background-image', initialGradient);
+  await page.evaluate(theme => window.YoluTheme.apply(theme), initialTheme);
+  await expect(activeHeader).toHaveCSS('background-image', initialGradient);
   await page.getByRole('button', {name:'项目',exact:true}).click();
   await page.getByRole('button', {name:'对话',exact:true}).click();
   await expect((await pane(first)).locator('textarea.aui-composer-input')).toHaveValue('Keep the first draft');
@@ -318,6 +471,44 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   // Shared foundation components are exercised through both real host entries.
   for (const width of [1440, 760]) {
     await page.setViewportSize({width,height:1000});
+    const currentPane = await pane(second);
+    const conversationHeader = currentPane.locator('.conversation-surface-header');
+    const workingDetails = currentPane.locator('.chat-panel-actions > .chat-workspace-context > summary[aria-label="工作详情"]');
+    const filesButton = currentPane.locator('.chat-workspace-context + .chat-file-toggle-slot #toggleConversationFiles');
+    const workingPopover = currentPane.locator('.conversation-context-popover');
+    await expect(conversationHeader).toHaveCSS('border-bottom-width', '0px');
+    const messageEdge = () => currentPane.locator('.chat-reading').evaluate(thread => {
+      const viewport = thread.querySelector('[data-slot="aui_thread-viewport"]');
+      const header = thread.previousElementSibling;
+      const headerBox = header.getBoundingClientRect();
+      const overlap = headerBox.bottom - viewport.getBoundingClientRect().top;
+      return {
+        headerGradient: getComputedStyle(header).backgroundImage.startsWith('linear-gradient('),
+        startsAtHeaderTop: overlap > 0 && Math.abs(overlap - headerBox.height) < 1,
+        compensatesForOverlap: Math.abs(overlap - Number.parseFloat(getComputedStyle(viewport).paddingTop)) < 1,
+      };
+    });
+    const fullHeader = {headerGradient:true, startsAtHeaderTop:true, compensatesForOverlap:true};
+    await expect.poll(messageEdge).toEqual(fullHeader);
+    await expect(workingDetails).toBeVisible();
+    await expect(filesButton).toBeVisible();
+    await expect(workingDetails).toHaveText('');
+    await workingDetails.press('Enter');
+    await expect(workingPopover).toBeVisible();
+    assert.equal(Math.round(await rightEdge(conversationHeader) - await rightEdge(workingPopover)), 12);
+    await workingDetails.press('Escape');
+    await expect(workingPopover).toBeHidden();
+    await expect(workingDetails).toBeFocused();
+    if (width === 1440) {
+      await conversationHeader.getByRole('button', {name:'更多对话操作'}).click();
+      await currentPane.getByRole('menuitem', {name:'查找消息'}).click();
+      const messageSearch = conversationHeader.getByRole('searchbox', {name:'查找对话内容'});
+      await expect(messageSearch).toBeVisible();
+      await expect.poll(messageEdge).toEqual(fullHeader);
+      await messageSearch.press('Escape');
+      await expect(messageSearch).toBeHidden();
+      await expect.poll(messageEdge).toEqual(fullHeader);
+    }
     const history = await page.locator('.window-history').boundingBox();
     const search = await page.locator('.window-search-trigger').boundingBox();
     assert(history && search);

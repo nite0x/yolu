@@ -147,6 +147,14 @@ export function createConversationState({storage, scopeKey, sessionKey}: {
       }
       return {
         current, errors,
+        needsCached(environment: string) {
+          return !previous.some(session => session.environment_id === environment)
+        },
+        receiveCached(environment: string, sessions: Session[]) {
+          if (!current() || !pending.has(environment) || !sessions.length) return false
+          results.set(environment, sessions)
+          return true
+        },
         receive(environment: string, sessions: Session[], error?: string) {
           if (!current()) return
           if (!error || sessions.length) results.set(environment, sessions)
@@ -157,7 +165,10 @@ export function createConversationState({storage, scopeKey, sessionKey}: {
         settled(environment: string) { pending.delete(environment) },
         publish() {
           if (!current()) return false
-          view.sessions = [...results.values()].flat().concat(previous.filter(s => pending.has(s.environment_id || "") || errors.has(s.environment_id || "") && !results.has(s.environment_id || ""))).sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))
+          view.sessions = [...results.values()].flat().concat(previous.filter(s => {
+            const environment = s.environment_id || ""
+            return !results.has(environment) && (pending.has(environment) || errors.has(environment))
+          })).sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))
           view.error = [...errors.values()].join("\n")
           if (view.requestedSession) {
             if (view.sessions.some(s => sessionKey(s) === view.requestedSession)) view.requestedSession = null

@@ -180,7 +180,7 @@ export function ConversationPanel({
         {beforeThread}
         <div
           ref={reading.container}
-          className="relative min-h-0 flex-1"
+          className="chat-reading relative min-h-0 flex-1"
           onChange={onChange}
         >
           <Thread

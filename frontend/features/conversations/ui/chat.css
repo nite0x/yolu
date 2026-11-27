@@ -17,6 +17,20 @@
   --color-muted: var(--muted);
   --color-accent: var(--accent);
 }
+.assistant-chat-scope > .conversation-surface-header { border-bottom: 0; }
+.assistant-chat-scope > .conversation-surface-header:has(+ .chat-reading) {
+  --conversation-header-background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--conversation-header-tint, var(--background)) 92%, transparent),
+    color-mix(in srgb, var(--background) 90%, transparent) 44%,
+    color-mix(in srgb, var(--background) 45%, transparent) 80%,
+    transparent
+  );
+}
+.assistant-chat-scope > .conversation-surface-header + .chat-reading {
+  --chat-header-overlap: var(--chat-header-height, 0px);
+  margin-block-start: calc(-1 * var(--chat-header-overlap));
+}
 
 /* The official registry components expect Preflight. Keep its essential reset
    local to this panel so the existing project/workspace pages retain their CSS. */
@@ -87,7 +101,14 @@
 .aui-md-table-resize:is(:hover, :focus-visible) { background: var(--accent); color: var(--foreground); }
 .aui-md-table-resize:focus-visible, .aui-md-table-wrapper:focus-visible, .aui-md-pre:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .assistant-chat-scope [data-chat-message-id] { content-visibility: visible; }
-.assistant-chat-scope [data-slot="aui_thread-viewport"] { overflow-anchor: none; scroll-behavior: auto; }
+.chat-reading .aui-thread-root { position: relative; }
+.chat-reading .conversation-scrollbar { inset-block-start: var(--chat-header-overlap, 0px); }
+.chat-reading [data-slot="aui_thread-viewport"] {
+  padding-block-start: var(--chat-header-overlap, 0px);
+  scroll-padding-block-start: var(--chat-header-overlap, 0px);
+  overflow-anchor: none;
+  scroll-behavior: auto;
+}
 
 .assistant-chat-scope [data-search-hit] { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 6px; }
 .assistant-chat-scope .aui-composer-action-wrapper button { min-width: 32px; min-height: 32px; }

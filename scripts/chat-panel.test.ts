@@ -700,17 +700,20 @@ test("failed file edits retain readable error output and stay out of the success
   } finally {h.dispose();}
 });
 
-test("the project summary opens working details and its project link navigates directly", async () => {
+test("the icon next to Files opens working details and its project link", async () => {
   const opened: [string, string | undefined][] = [];
-  const h = mount(true, [], {openProject: (id, path) => {opened.push([id, path]);}});
+  const h = mount(true, [], {openProject: (id, path) => {opened.push([id, path]);}}, true);
   try {
     await until(() => h.input());
     const context = h.w.document.querySelector<HTMLDetailsElement>(".chat-workspace-context")!;
-    const heading = h.w.document.querySelector(".chat-panel-heading")!;
-    assert(heading.contains(context));
-    assert(!context.closest(".chat-panel-actions"));
-    assert.match(context.querySelector("summary")?.textContent || "", /项目/);
+    assert(context.matches(".chat-panel-actions > .chat-workspace-context"));
+    assert(context.nextElementSibling?.querySelector("#toggleConversationFiles"));
+    const trigger = context.querySelector(":scope > summary")!;
+    assert.equal(trigger.getAttribute("aria-label"), "工作详情");
+    assert.equal(trigger.textContent, "");
+    assert(trigger.querySelector('svg[aria-hidden="true"]'));
     context.open = true;
+    assert.match(context.querySelector(".chat-context-facts")?.textContent || "", /feature\/current/);
     context.querySelector<HTMLButtonElement>('[aria-label="打开项目详情：项目"]')!.click();
     assert.deepEqual(opened, [["p","/workspace/project"]]);
     assert.deepEqual(h.errors, []);

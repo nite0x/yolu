@@ -1,18 +1,19 @@
 var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.text(message, ...values) : message.replace(/\{(\d+)\}/g, (match, index) => Number(index) < values.length ? String(values[Number(index)]) : match);
 // Load the React chat island only when the user opens a conversation.
 (() => {
-  let loading, mounted, currentOverview, version = 0;
+  let loading, mounted, currentOverview, draftExecution, version = 0;
   window.WorkHubAssistant = {
     draftTitle() { return mounted?.draftTitle() || ''; },
     async open(options) {
       const current = ++version;
       currentOverview = options.overview;
+      draftExecution = options.draftExecution;
       try {
         loading ||= import('/chat/assistant.js');
         const { bridge } = await loading;
         if (current !== version) return;
         mounted = bridge;
-        bridge.open({...options, overview: currentOverview});
+        bridge.open({...options, overview: currentOverview, draftExecution});
       } catch (error) {
         loading = null;
         if (current !== version) return;
@@ -26,6 +27,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     close() { version++; mounted?.close(); },
     async flushDraft() { return await (mounted?.flushDraft() ?? true); },
     updateOverview(overview) { currentOverview = overview; mounted?.updateOverview(overview); },
+    selectDraftExecution(execution) { draftExecution = execution; mounted?.selectDraftExecution(execution); },
     updateSession(session) { mounted?.updateSession(session); }
   };
 })();

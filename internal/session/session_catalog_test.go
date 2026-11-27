@@ -4,15 +4,76 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"worktree-hub/internal/acp"
 	"worktree-hub/internal/codex"
 	"worktree-hub/internal/model"
 )
+
+func TestSavedSessionListUsesScopeWithoutStartingProviders(t *testing.T) {
+	a := testApp(t)
+	cwd, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range []model.Session{
+		{ID: "active", Cwd: cwd, Provider: model.ProviderCursor},
+		{ID: "archived", Cwd: cwd, Provider: model.ProviderCodex},
+		{ID: "other", Cwd: t.TempDir(), Provider: model.ProviderCodex},
+		{ID: "cloud", Cwd: cwd, Provider: model.ProviderCodexCloud},
+	} {
+		if err := a.Execution.Store.SaveSession(session); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := a.Execution.Store.OrganizeSession("archived", true, true); err != nil {
+		t.Fatal(err)
+	}
+	noCodex := func(context.Context) (codex.SessionClient, error) {
+		t.Error("saved list started Codex")
+		return nil, fmt.Errorf("offline")
+	}
+	noACP := func(context.Context, ...string) (acp.Client, acp.InitializeResult, error) {
+		t.Error("saved list started an ACP provider")
+		return nil, acp.InitializeResult{}, fmt.Errorf("offline")
+	}
+	a.openSessions, a.openCloudSessions = noCodex, noCodex
+	a.openAgy, a.openCursor = noACP, noACP
+
+	for _, tc := range []struct {
+		query, id string
+	}{
+		{"&cwd=" + url.QueryEscape(cwd), "active"},
+		{"&archived=true", "archived"},
+	} {
+		code, raw := call(t, a, "GET", "/api/sessions?cached=1"+tc.query, nil)
+		var response struct {
+			Sessions []model.Session `json:"sessions"`
+		}
+		if code != 200 || json.Unmarshal(raw, &response) != nil || len(response.Sessions) != 1 ||
+			response.Sessions[0].ID != tc.id || !response.Sessions[0].Available {
+			t.Fatalf("saved list %s: %d %s", tc.query, code, raw)
+		}
+	}
+	code, raw := call(t, a, "GET", "/api/sessions?cached=1", nil)
+	var response struct {
+		Sessions []model.Session `json:"sessions"`
+	}
+	if code != 200 || json.Unmarshal(raw, &response) != nil || len(response.Sessions) != 2 {
+		t.Fatalf("saved local list: %d %s", code, raw)
+	}
+	for _, session := range response.Sessions {
+		if session.Provider == model.ProviderCodexCloud {
+			t.Fatalf("saved list exposed an unverified cloud session: %s", raw)
+		}
+	}
+}
 
 func TestCatalogCoalescesPaginationAndReturnsIndependentMaps(t *testing.T) {
 	a := testApp(t)

@@ -612,6 +612,8 @@ async function refreshConversations(force = false) {
   if (view.scope.kind === 'project') params.set('project_id', view.scope.id);
   const cwd = selectedDirectory?.cwd || directory || (view.scope.kind === 'directory' ? view.scope.cwd : '');
   if (cwd) params.set('cwd', cwd);
+  const cachedParams = new URLSearchParams(params);
+  cachedParams.set('cached', '1');
   const query = conversationState.beginQuery(view, requestKey, environments.map(e => e.id), () => activeEnvironment);
   renderConversationList();
   const current = query.current, errors = query.errors;
@@ -632,6 +634,11 @@ async function refreshConversations(force = false) {
       conversationState.rememberOverview(environment, data);
       if (view === conversationState.current && conversationVisible()) renderConversationBrowser();
     }).catch(() => {});
+    if (query.needsCached(environment)) {
+      void conversationRequests.load(api, environment, cachedParams.toString()).then(result => {
+        if (query.receiveCached(environment, conversationListedSessions(result, environment))) publish();
+      }).catch(() => {});
+    }
     try {
       const result = await conversationRequests.load(api, environment, params.toString(), force);
       if (!current()) return;
@@ -675,6 +682,10 @@ function showConversationSelection() {
   const environment = session?.environment_id || view.targetEnvironment || conversationScopeEnvironment(view.scope) || activeEnvironment;
   if (sessionHistoryState?.environment === environment && (session ? sessionHistoryState.session === session.id : !sessionHistoryState.session && sessionHistoryState.browserTarget === targetKey)) {
     if (session) window.WorkHubAssistant?.updateSession?.(session);
+    else if (view.draftExecution) {
+      window.WorkHubAssistant?.selectDraftExecution?.(view.draftExecution);
+      view.draftExecution = undefined;
+    }
     return;
   }
   $('#sessionBrowserEmpty').hidden = true;
@@ -687,6 +698,7 @@ function showConversationSelection() {
     session, environment, overview: conversationOverview(environment), browserTarget: targetKey, focusComposer:!!view.focusComposer,
     target: bindings?.length ? {...view.target, bindings} : view.target,
     draftTarget: view.creating ? view.draftTarget : undefined,
+    draftExecution: view.creating ? view.draftExecution : undefined,
     updateDraftBindings: chooseDraftDirectories ? bindings => {
       view.creationBindings = {...view.creationBindings,[environment]:bindings};
       window.dispatchEvent(new Event('workhub:chat-draft'));
@@ -714,6 +726,7 @@ function showConversationSelection() {
       window.dispatchEvent(new CustomEvent('workhub:session-loaded'));
     }
   });
+  view.draftExecution = undefined;
   view.focusComposer = false;
   // Background selection after filtering must not pull focus out of the controls.
   if (focusedControl?.isConnected && !focusedControl.closest('[hidden]') && (!focusedControl.closest('details:not([open])') || focusedControl.matches('summary'))) focusedControl.focus({preventScroll:true});

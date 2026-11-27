@@ -1151,11 +1151,16 @@ test('late directory responses cannot replace the latest filter, including switc
   h.window.setConversationDirectory('/workspace/workspace/app');
   h.window.setConversationDirectory('/workspace/workspace');
   h.window.setConversationDirectory('/workspace/workspace/app');
-  assert.equal(pending.length, 3);
+  const cached = pending.filter(request => request.url.includes('cached=1'));
+  const live = pending.filter(request => !request.url.includes('cached=1'));
+  assert.equal(cached.length, 2);
+  assert.equal(live.length, 3);
   const ok = sessions => ({ ok: true, json: async () => ({ sessions }) });
-  pending[2].resolve(ok([{ id: 'latest', name: 'Latest response', cwd: '/workspace/workspace/app' }])); await settle();
-  pending[0].resolve(ok([{ id: 'stale', name: 'Old response', cwd: '/workspace/workspace/app' }]));
-  pending[1].resolve(ok([{ id: 'wrong-dir', name: 'Wrong directory', cwd: '/workspace/workspace' }])); await settle();
+  live[2].resolve(ok([{ id: 'latest', name: 'Latest response', cwd: '/workspace/workspace/app' }])); await settle();
+  for (const request of [...cached, ...live.slice(0, 2)]) {
+    request.resolve(ok([{ id: 'stale', name: 'Old response', cwd: new URL(request.url, 'http://localhost').searchParams.get('cwd') }]));
+  }
+  await settle();
   assert.equal(h.$('[data-conversation-session]').dataset.conversationSession, 'latest');
   assert.equal(h.window.WorkHubConversations.current.directory, '/workspace/workspace/app');
 });
@@ -2250,9 +2255,10 @@ test('startup restores the selected conversation without waiting for state, inve
 
 test('startup list loading never advertises zero conversations and local results do not wait for workspace metadata', async t => {
   const host=pageHost(t), pending=[];
-  let releaseList;
+  let releaseCached, releaseList;
   const h=await harness(t,true,{pageHost:host.window,route:'/sessions',intercept:url=>{
     if(url==='/api/state'||url === '/api/environments')return new Promise(resolve=>pending.push({url,resolve}));
+    if(url.startsWith('/api/sessions?') && url.includes('cached=1'))return new Promise(resolve=>{releaseCached=resolve;});
     if(url.startsWith('/api/sessions?'))return new Promise(resolve=>{releaseList=resolve;});
   }});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
@@ -2263,6 +2269,10 @@ test('startup list loading never advertises zero conversations and local results
   assert.doesNotMatch(h.$('#sessionBrowserCount').getAttribute('aria-label'),/0 个对话/);
   assert.equal(h.$('#sessionBrowserList').getAttribute('aria-busy'),'true');
   assert.equal(h.requests.some(request=>request.url.includes('/history')),false,'navigation does not load a conversation body');
+  releaseCached({ok:true,json:async()=>({sessions:h.sessions})});
+  await settle();
+  assert(h.$('[data-conversation-session="session-1"]'));
+  assert.equal(h.$('#sessionBrowserList').getAttribute('aria-busy'),'true');
   releaseList({ok:true,json:async()=>({sessions:h.sessions})});
   await settle();await settle();
   assert(h.$('[data-conversation-session="session-1"]'));
@@ -2273,9 +2283,10 @@ test('startup list loading never advertises zero conversations and local results
 
 test('shared startup fills an unselected reader from list results while metadata is still pending', async t => {
   const host=pageHost(t), pending=[];
-  let releaseList;
+  let releaseCached, releaseList;
   const h=await harness(t,true,{pageHost:host.window,route:'/sessions',intercept:url=>{
     if(url==='/api/state'||url === '/api/environments')return new Promise(resolve=>pending.push({url,resolve}));
+    if(url.startsWith('/api/sessions?') && url.includes('cached=1'))return new Promise(resolve=>{releaseCached=resolve;});
     if(url.startsWith('/api/sessions?'))return new Promise(resolve=>{releaseList=resolve;});
   }});
   const post=data=>h.window.dispatchEvent(new h.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
@@ -2287,13 +2298,14 @@ test('shared startup fills an unselected reader from list results while metadata
   assert.match(h.$('#sessionBrowserCount').getAttribute('aria-label'),/正在加载/);
   assert(host.messages.some(message=>message.type==='workhub:page-restored'));
   assert(!host.messages.some(message=>message.type==='workhub:conversation-select'));
-  releaseList({ok:true,json:async()=>({sessions:h.sessions})});
+  releaseCached({ok:true,json:async()=>({sessions:h.sessions})});
   await settle();await settle();
   const selection=host.messages.find(message=>message.type==='workhub:conversation-select');
   assert(selection?.initial);
   assert.equal(selection.snapshot.conversation.selected,'session-1');
   assert.equal(h.requests.some(request=>request.url.includes('/history')),false,'the shared list does not fetch hidden history');
   post({type:'workhub:conversation-group',split:false,sessions:['session-1'],selected:'session-1',autoSelect:false});
+  releaseList({ok:true,json:async()=>({sessions:h.sessions})});
   for(const request of pending) request.resolve({ok:true,json:async()=>request.url==='/api/state'?h.data:h.environments});
   await settle();
   assert.equal(host.messages.filter(message=>message.type==='workhub:conversation-select').length,1);

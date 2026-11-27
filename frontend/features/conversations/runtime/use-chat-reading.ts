@@ -1,5 +1,6 @@
 import {useLayoutEffect, useRef} from "react"
 import type {ThreadRuntime} from "@assistant-ui/react"
+import {setupConversationScrollbar} from "../scrollbar"
 import type {DraftRecord} from "./drafts"
 
 export interface ConversationReadingController {
@@ -15,14 +16,25 @@ export interface ConversationReadingController {
 export function useChatReading(controller: ConversationReadingController, thread: ThreadRuntime) {
   const container = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    const viewport = container.current?.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
-    if (!viewport) return;
+    const reader = container.current;
+    const viewport = reader?.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
+    if (!reader || !viewport) return;
+    const disposeScrollbar = setupConversationScrollbar(viewport);
+    const header = reader.parentElement?.querySelector(':scope > .conversation-surface-header');
+    const syncHeaderHeight = () => {
+      if (!header) return;
+      const height = `${header.getBoundingClientRect().height}px`;
+      if (reader.style.getPropertyValue('--chat-header-height') !== height) reader.style.setProperty('--chat-header-height', height);
+    };
+    syncHeaderHeight();
     let frame = 0;
     let restoring = false;
     let initialized = false;
     let disposed = false;
     const visible = () => !disposed && viewport.isConnected && !!viewport.ownerDocument.documentElement && !viewport.ownerDocument.documentElement.hasAttribute('data-workspace-inactive') && !viewport.closest('[hidden]') && (typeof viewport.checkVisibility !== 'function' || viewport.checkVisibility());
     const messages = () => [...viewport.querySelectorAll<HTMLElement>('[data-chat-message-id]')];
+    // Anchor to the readable edge below the header, including for saved offsets.
+    const readingTop = () => viewport.getBoundingClientRect().top + (Number.parseFloat(getComputedStyle(viewport).scrollPaddingTop) || 0);
     const loadEarlier = () => {
       const state = controller.getReadingSnapshot();
       if (!initialized || restoring || !visible() || controller.opening || state.loading || state.historyError || !state.cursor) return;
@@ -40,7 +52,7 @@ export function useChatReading(controller: ConversationReadingController, thread
     const record = () => {
       if (restoring || !initialized || !visible()) return;
       const bottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 80;
-      const top = viewport.getBoundingClientRect().top;
+      const top = readingTop();
       const anchor = messages().find(node => node.getBoundingClientRect().bottom > top);
       controller.reading = {top: viewport.scrollTop, bottom, anchor: anchor?.dataset.chatMessageId || "", offset: anchor ? anchor.getBoundingClientRect().top - top : 0, latest: bottom ? controller.latestMessage() : controller.reading.latest};
       controller.readingChanged();
@@ -49,10 +61,11 @@ export function useChatReading(controller: ConversationReadingController, thread
     const restore = () => {
       frame = 0;
       if (!visible()) return;
+      syncHeaderHeight();
       const saved = controller.reading;
       const anchor = messages().find(node => node.dataset.chatMessageId === saved.anchor);
       restoring = true;
-      viewport.scrollTop = saved.bottom ? viewport.scrollHeight : anchor ? viewport.scrollTop + anchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - saved.offset : saved.top;
+      viewport.scrollTop = saved.bottom ? viewport.scrollHeight : anchor ? viewport.scrollTop + anchor.getBoundingClientRect().top - readingTop() - saved.offset : saved.top;
       restoring = false;
       if (!controller.opening) {
         initialized = true;
@@ -69,6 +82,7 @@ export function useChatReading(controller: ConversationReadingController, thread
     const observer = new MutationObserver(schedule);
     observer.observe(viewport.querySelector('[data-slot="aui_message-group"]') || viewport, {childList: true, subtree: true, characterData: true});
     const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(schedule);
+    if (header) resize?.observe(header, {box: 'border-box'});
     resize?.observe(viewport);
     if (viewport.firstElementChild) resize?.observe(viewport.firstElementChild);
     viewport.addEventListener('scroll', onScroll, {passive: true});
@@ -83,6 +97,8 @@ export function useChatReading(controller: ConversationReadingController, thread
     schedule();
     return () => {
       record(); disposed = true; cancelAnimationFrame(frame); observer.disconnect(); resize?.disconnect();
+      disposeScrollbar();
+      reader.style.removeProperty('--chat-header-height');
       viewport.removeEventListener('scroll', onScroll); window.removeEventListener('workhub:chat-layout', layout);
       unsubscribe();
     };

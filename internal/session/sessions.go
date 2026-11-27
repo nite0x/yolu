@@ -89,8 +89,12 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, status, err.Error())
 		return
 	}
-	titleObservedAt := time.Now().UnixNano()
 	archived := r.URL.Query().Get("archived") == "true"
+	if r.URL.Query().Get("cached") == "1" {
+		a.cachedSessions(w, scope, archived)
+		return
+	}
+	titleObservedAt := time.Now().UnixNano()
 	force := r.URL.Query().Get("refresh") == "1"
 	var cloudIdentity string
 	var cloudErr error
@@ -219,6 +223,27 @@ func (a *Service) SessionsHandler(w http.ResponseWriter, r *http.Request) {
 		cloudErr = nil
 	}
 	respond(sessions, cloudErr)
+}
+
+func (a *Service) cachedSessions(w http.ResponseWriter, scope sessionScope, archived bool) {
+	// Cloud records require the currently authenticated account and workspace.
+	// The live list adds them once that identity has been verified.
+	saved, err := a.cachedScope(scope, "")
+	if err != nil {
+		httpx.DbError(w, err)
+		return
+	}
+	sessions := saved[:0]
+	for _, s := range saved {
+		if s.Archived != archived {
+			continue
+		}
+		// Opening a reader independently validates the provider session.
+		s.Available = true
+		a.decorateSessionActivity(&s)
+		sessions = append(sessions, s)
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"sessions": sessions})
 }
 
 func hasProviderSessions(sessions []model.Session, provider string) bool {

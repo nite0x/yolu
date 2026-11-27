@@ -301,9 +301,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let builder = builder.decorations(false).visible(false);
             #[cfg(target_os = "macos")]
             let builder = {
-                // Overlay the web header while AppKit lays out the native buttons.
+                // Center AppKit's buttons on the 36-point macOS web header.
                 builder.title_bar_style(tauri::TitleBarStyle::Overlay)
                     .hidden_title(true)
+                    .traffic_light_position(tauri::LogicalPosition::new(7.0, 16.0))
             };
             let window = builder
                 .on_permission_request(|view, kind| {
