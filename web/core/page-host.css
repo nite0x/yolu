@@ -46,8 +46,6 @@ button{font:inherit;cursor:pointer}
 .global-search-result-kind { flex: none; }
 .global-search-status { margin: 0; padding: 10px 14px; color: var(--yolu-muted-ink); font-size: var(--yolu-font-size-compact); }
 .global-search-error { display: flex; align-items: center; gap: 8px; padding-block: 4px; }
-@media (max-width: 760px) {
-}
 @media (max-width: 420px) {
   .global-search-field kbd { display: none; }
 }
@@ -55,18 +53,14 @@ html[data-workhub-desktop],html[data-workhub-desktop] body{background:var(--yolu
 html[data-workhub-desktop] .workspace-page{background:var(--yolu-subtle,#f3f5fa)}
 html[data-workhub-desktop] .workspace-pages{top:var(--workspace-window-header-height,36px)}
 
-.workspace-pane-chrome{display:contents}
-body[data-workspace-conversations] .workspace-pages{top:0;display:grid;grid-template-rows:minmax(0,1fr);padding:6px 8px 8px}
-body[data-workspace-conversations] .workspace-page{position:relative;inset:auto;grid-row:1;top:0;height:100%;min-width:0;border:1px solid var(--yolu-border,#dfe4ee);border-radius:8px;background:var(--yolu-surface,#fff);box-shadow:0 1px 3px #25324d05;transition:border-color .12s}
-body[data-workspace-conversations] .workspace-page[data-focused=true]{border-color:var(--yolu-primary-border,#bdc6df)}
-.workspace-pane-resize{position:relative;min-height:0;cursor:col-resize;touch-action:none;outline:none;z-index:3}
-.workspace-pane-resize::after{content:"";position:absolute;left:3px;right:3px;top:50%;height:32px;transform:translateY(-50%);border-radius:2px;background:var(--yolu-border-strong,#d6ddeb)}
-.workspace-pane-resize:hover::after,.workspace-pane-resize:focus-visible::after,.workspace-pages[data-split-resizing] .workspace-pane-resize::after{background:var(--yolu-primary-border,#aeb8e1)}
-.workspace-pane-resize:focus-visible::after{box-shadow:0 0 0 2px var(--yolu-ring-soft,#818cf84d)}
+.workspace-pane-chrome{position:absolute;inset:0;pointer-events:none;z-index:4}
+body[data-workspace-conversations] .workspace-pages{top:0;padding:0}
+body[data-workspace-conversations] .workspace-page{position:absolute;top:0;left:0;width:100%;height:100%;min-width:0;border:0;border-radius:0;background:var(--yolu-surface,#fff);box-shadow:none}
 .workspace-pages[data-split-resizing] .workspace-page{pointer-events:none}
-.workspace-pages[data-split-resizing]{cursor:col-resize;user-select:none}
-html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages{top:var(--workspace-window-header-height,36px)}
-html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages{padding:var(--workspace-pane-top-inset) var(--workspace-pane-inset) var(--workspace-pane-inset) var(--workspace-pane-gap)}
+.workspace-pages[data-split-resizing="x"]{cursor:col-resize;user-select:none}
+.workspace-pages[data-split-resizing="y"]{cursor:row-resize;user-select:none}
+.workspace-pages[data-pane-dragging] .workspace-page:not([data-drag-source="true"]){pointer-events:none}
+html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages{top:var(--workspace-window-header-height,36px);padding:0}
 #workspaceNarrowPanes{position:absolute;top:6px;left:8px;right:8px;z-index:5;height:29px;padding:0 38px 0 15px;border:1px solid var(--yolu-border,#dfe4ee);background:var(--yolu-surface,#fff) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371809a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center/14px;border-radius:8px;appearance:none;-webkit-appearance:none;font:inherit;color:var(--yolu-secondary-ink,#475569);text-overflow:ellipsis;cursor:pointer}
 #workspaceNarrowPanes:focus-visible{outline:2px solid var(--yolu-ring,#818cf8);outline-offset:2px}
 .workspace-pages:has(#workspaceNarrowPanes:not([hidden])) .workspace-page{top:37px;height:calc(100% - 37px)}
@@ -93,7 +87,7 @@ html[data-workhub-desktop] .workspace-list-placeholder{top:var(--workspace-pane-
 .workspace-shared-list-resize:focus-visible::after{box-shadow:0 0 0 2px var(--yolu-ring-soft,#818cf84d)}
 html[data-workhub-desktop] .workspace-shared-list-resize{top:var(--workspace-window-header-height,36px)}
 body[data-split-resizing]{cursor:col-resize}
-body[data-split-resizing] .workspace-page,body[data-split-resizing] .workspace-navigation-frame{pointer-events:none}
+body[data-split-resizing] .workspace-page,body[data-split-resizing] .workspace-navigation-frame,body[data-pane-dragging] .workspace-navigation-frame{pointer-events:none}
 
 
 

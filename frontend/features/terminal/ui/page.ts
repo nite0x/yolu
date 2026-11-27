@@ -16,7 +16,14 @@ type Snapshot = PageSnapshot & {environment: string; title: string}
 
 export function mountTerminalPage() {
   const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
-  const unmountSurface = mountTerminalSurface(command => {if (command === "close" || command === "zoom") postPageMessage(window.parent, location.origin, "workhub:page-pane-command", {command})})
+  const paneCommands = new Set(["close", "zoom", "split-left", "split-right", "split-up", "split-down"])
+  const unmountSurface = mountTerminalSurface(command => {
+    if (paneCommands.has(command)) {
+      postPageMessage(window.parent, location.origin, "workhub:page-pane-command", {
+        command: command as "close" | "zoom" | "split-left" | "split-right" | "split-up" | "split-down",
+      })
+    }
+  })
   const terminalTools = mountTerminalTools(id => void launchTerminal(id))
   const projectSelect = element<HTMLSelectElement>("terminalProject"), profileSelect = element<HTMLSelectElement>("terminalProfile")
   const customTerminal = element<HTMLDetailsElement>("customTerminal")
@@ -136,6 +143,9 @@ export function mountTerminalPage() {
     projectSelect.disabled = restoring || waiting || !!saved.terminal?.bindingID || projectSelect.options.length <= 1 || !local
     element("terminalDirectoryHint").hidden = restoring || !local || !!saved.terminal?.cwd || projectSelect.options.length > 1
     element<HTMLButtonElement>("terminalKindUI").disabled = restoring || waiting
+    const cloudKind = element<HTMLButtonElement>("terminalKindCloud")
+    cloudKind.hidden = !local
+    cloudKind.disabled = restoring || waiting
     terminalTools.render([...profiles, ...customProfiles], unavailable, startingProfile)
     element("terminalForm").setAttribute("aria-busy", String(restoring || waiting))
   }
@@ -375,14 +385,16 @@ export function mountTerminalPage() {
     const project = saved.terminal?.projectID
     if (project) post("workhub:page-open", {snapshot:{route:`/projects/${encodeURIComponent(project)}?${new URLSearchParams({directory:saved.terminal?.cwd || ""})}`,environment:saved.environment}})
   }
-  element("terminalKindUI").onclick = () => {
+  function openConversationForm(kind: "ui" | "cloud") {
     if (current || startingProfile || savingProfile) return
     const project = saved.terminal?.projectID
     const cwd = saved.terminal?.cwd
-    post("workhub:conversation-kind", {kind:"ui", snapshot:{...saved,terminal:{projectID:project,cwd},conversation:{...saved.conversation,
+    post("workhub:conversation-kind", {kind, snapshot:{...saved,terminal:{projectID:project,cwd},conversation:{...saved.conversation,
       scope:project ? {kind:"project",id:project,environment:saved.environment} : {kind:"all"},
       creationDirectory:cwd || "",selected:null,creating:true,pane:"detail"}}})
   }
+  element("terminalKindUI").onclick = () => openConversationForm("ui")
+  element("terminalKindCloud").onclick = () => openConversationForm("cloud")
   element("refreshTerminals").onclick = () => void refreshRows().catch(error => feedback(error.message))
   element("reconnectTerminal").onclick = () => {if (finished) {feedback(uiText("终端已退出，请新建终端。")); return}; feedback(); void connect()}
   function showSearch(open: boolean) {
@@ -394,7 +406,7 @@ export function mountTerminalPage() {
   element("openTerminalSearch").onclick = () => showSearch(!!element("terminalSearchBar").hidden)
   element("closeTerminalSearch").onclick = () => showSearch(false)
   element("terminalSearchNext").onclick = () => search?.findNext(element<HTMLInputElement>("terminalSearch").value)
-  element("terminalSearch").onkeydown = event => {if (event.key === "Enter") search?.findNext(element<HTMLInputElement>("terminalSearch").value); else if (event.key === "Escape") {event.stopPropagation(); showSearch(false)}}
+  element("terminalSearch").onkeydown = event => {if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey) {event.preventDefault(); search?.findNext(element<HTMLInputElement>("terminalSearch").value)} else if (event.key === "Escape") {event.stopPropagation(); showSearch(false)}}
   element("stopTerminal").onclick = () => {element<HTMLDetailsElement>("terminalActionMenu").open = false; element<HTMLDialogElement>("stopTerminalDialog").showModal()}
   element<HTMLDialogElement>("stopTerminalDialog").onclose = () => {
     if (element<HTMLDialogElement>("stopTerminalDialog").returnValue !== "stop" || !current) return
@@ -411,6 +423,12 @@ export function mountTerminalPage() {
 
   document.addEventListener("pointerdown", () => post("workhub:page-focus"), {...listenerOptions,capture:true})
   document.addEventListener("focusin", () => post("workhub:page-focus"), listenerOptions)
+  window.addEventListener("workhub:pane-drag", event => {
+    const detail = (event as CustomEvent<{phase: "start" | "move" | "end" | "cancel"; clientX?: number; clientY?: number}>).detail
+    if (detail && ["start", "move", "end", "cancel"].includes(detail.phase)) {
+      post("workhub:page-pane-drag", detail)
+    }
+  }, listenerOptions)
   function dispose() {
     if (disposed) return
     disposed = true; ++restoreRevision; listeners.abort(); disconnect(); resize.disconnect(); term?.dispose(); term = undefined; fit = undefined; search = undefined; clearInterval(poll)
@@ -425,8 +443,19 @@ export function mountTerminalPage() {
     if (message.type === "workhub:page-restore") {active = !!message.active; void restore(message.snapshot)}
     else if (message.type === "workhub:page-active") {active = !!message.active; if (active) requestAnimationFrame(measure)}
     else if (message.type === "workhub:parallel-layout") {
-      document.documentElement.toggleAttribute("data-workspace-pane", !!message.split)
-      document.documentElement.toggleAttribute("data-workspace-focused", !!message.focused)
+      const root = document.documentElement
+      root.setAttribute("data-workspace-layout-synced", "")
+      root.toggleAttribute("data-workspace-pane", !!message.split)
+      root.toggleAttribute("data-workspace-focused", !!message.focused)
+      root.toggleAttribute("data-workspace-zoomed", !!message.zoomed)
+      root.toggleAttribute("data-workspace-compact", !!message.compact)
+      root.toggleAttribute("data-workspace-can-zoom", !!message.canZoom)
+      root.toggleAttribute("data-workspace-can-split-right", message.canSplitRight ?? message.canSplit !== false)
+      root.toggleAttribute("data-workspace-can-split-down", message.canSplitDown ?? message.canSplit !== false)
+      root.toggleAttribute("data-workspace-can-split-left", message.canSplitLeft ?? message.canSplit !== false)
+      root.toggleAttribute("data-workspace-can-split-up", message.canSplitUp ?? message.canSplit !== false)
+      root.toggleAttribute("data-workspace-can-close", !!message.canClose)
+      window.dispatchEvent(new Event("workhub:parallel-layout"))
       element("closeTerminalView").hidden = !message.split
       element("zoomTerminal").hidden = !message.split || !message.canZoom
       const zoomLabel = message.zoomed ? uiText("恢复分栏") : uiText("放大当前对话")

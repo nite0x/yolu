@@ -54,6 +54,8 @@ export class ChatController {
   private defaultsRefreshPending = false;
   private defaultAgentLoaded = false;
   private providerChosen = false;
+  private draftExecution?: ChatOptions["draftExecution"];
+  private lastCloudEnvironment = "";
   private draftPersistence: ReturnType<typeof createDraftPersistence>;
  private forkRequest?: {id:string;turn:string};
  private pageHide = () => this.persist();
@@ -100,6 +102,11 @@ export class ChatController {
           else if (!this.options.readOnly) void this.loadOptions();
         }
         this.options.loaded?.(session);
+      },
+      missing: sessionId => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("workhub:conversation-missing", {detail: {sessionId, environment: this.options.environment}}));
+        }
       },
       synchronized: () => { this.historyNeedsSync = false; },
     });
@@ -159,7 +166,7 @@ export class ChatController {
     if (echo) this.update({entries: this.snapshot.entries.filter(e => e.id !== echo.entry.id)});
   }
   private base() { return `/api/sessions/${encodeURIComponent(this.snapshot.session!.id)}`; }
-  canSend = () => !this.options.readOnly && !this.snapshot.session?.archived && (!!this.snapshot.session || this.snapshot.cloudEnvironment !== "" && !this.snapshot.optionsLoading);
+  canSend = () => !this.options.readOnly && !this.snapshot.session?.archived && (!!this.snapshot.session || (this.snapshot.cloudEnvironment === undefined ? !this.snapshot.optionsLoading : !!this.snapshot.cloudEnvironment));
   resume = async () => {
     if (!this.snapshot.session) return;
     const flags: {native_permissions?:boolean; allow_shared?:boolean} = {};
@@ -192,11 +199,16 @@ export class ChatController {
       this.update({session: merged, provider, capabilities: defaultCapabilities(provider, isCloudSession(merged))});
     }
   };
-  setCloudEnvironment = (cloudEnvironment?: string) => {
-    if (this.snapshot.session || this.snapshot.submitting || this.isYoluAssistant()) return;
-    if (cloudEnvironment !== undefined) this.providerChosen = true;
+  selectDraftExecution = (execution: NonNullable<ChatOptions["draftExecution"]>, persist = true) => {
+    this.setCloudEnvironment(execution === "cloud" ? this.lastCloudEnvironment : undefined, persist);
+  };
+  setCloudEnvironment = (cloudEnvironment?: string, persist = true) => {
+    if (this.snapshot.session || this.snapshot.submitting || this.options.readOnly || this.options.environment !== "local" || this.isYoluAssistant()) return;
+    this.draftExecution = cloudEnvironment === undefined ? "local" : "cloud";
+    if (cloudEnvironment !== undefined) this.lastCloudEnvironment = cloudEnvironment;
+    if (this.snapshot.cloudEnvironment === cloudEnvironment) return;
     this.update({cloudEnvironment, error: ""});
-    this.draftChanged();
+    if (persist) this.draftChanged();
   };
   isCloud = () => isCloudSession(this.snapshot.session) || this.snapshot.cloudEnvironment !== undefined;
   isYoluAssistant = () => !!(this.snapshot.session?.yolu_assistant || !this.snapshot.session && this.options.target?.yolu_assistant);
@@ -206,7 +218,7 @@ export class ChatController {
     const normalized = normalizeProvider(provider);
     if (normalized === this.snapshot.provider) return;
     if (this.snapshot.optionsLoading) this.defaultsRefreshPending = true;
-    this.update({provider: normalized, cloudEnvironment: normalized === "codex" ? this.snapshot.cloudEnvironment : undefined, capabilities: defaultCapabilities(normalized), settings: {}, models: [], modes: [], defaults: {}, error: ""});
+    this.update({provider: normalized, capabilities: defaultCapabilities(normalized), settings: {}, models: [], modes: [], defaults: {}, error: ""});
     this.draftChanged();
     if (!this.options.readOnly) void this.loadOptions();
   };
@@ -393,7 +405,7 @@ export class ChatController {
     const target: SessionTarget = before.session ? {allow_shared:update.allow_shared}
       : before.cloudEnvironment !== undefined ? {cloud_environment:before.cloudEnvironment} : {...this.options.target, ...update};
     const settings = this.isCloud() ? {} : before.settings;
-    const createProvider: AgentProvider | undefined = !before.session && before.provider !== "codex" ? before.provider : undefined;
+    const createProvider: AgentProvider | undefined = !before.session && !this.isCloud() && before.provider !== "codex" ? before.provider : undefined;
     const samePending = this.pending?.text === messageText && this.pending.project_id === target.project_id && this.pending.cwd === target.cwd && this.pending.cloud_environment === target.cloud_environment && this.pending.yolu_assistant === target.yolu_assistant
       && this.pending.provider === createProvider && this.pending.access === target.access && this.pending.allow_shared === target.allow_shared
       && JSON.stringify(this.pending.bindings) === JSON.stringify(target.bindings)
@@ -416,7 +428,7 @@ export class ChatController {
         chat = result.chat;
       } else if (!before.session) {
         const result = await this.options.request<{session: Session; chat: ChatState}>("/api/sessions/new", {method: "POST", body: JSON.stringify(pending satisfies CreateSessionInput)});
-        const createdProvider = normalizeProvider(result.session.provider || before.provider);
+        const createdProvider = normalizeProvider(result.session.provider || createProvider);
         const session = {...result.session, provider: result.session.provider || createdProvider};
         this.update({session, provider: createdProvider, capabilities: defaultCapabilities(createdProvider, isCloudSession(session))}); this.options.created(session); chat = result.chat;
       } else {
@@ -456,7 +468,11 @@ export class ChatController {
     }
     if (record.provider) this.providerChosen = true;
     const restoredProvider = !this.snapshot.session && !this.isYoluAssistant() && record.provider ? normalizeProvider(record.provider) : this.snapshot.provider;
-    this.update({draft:record.text,cloudEnvironment:!this.snapshot.session && !this.isYoluAssistant() && restoredProvider === "codex" && typeof record.cloudEnvironment === "string" ? record.cloudEnvironment : undefined,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider, isCloudSession(this.snapshot.session)),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
+    const cloudAllowed = !this.snapshot.session && !this.isYoluAssistant() && this.options.environment === "local";
+    const savedCloud = typeof record.cloudEnvironment === "string" ? record.cloudEnvironment : undefined;
+    if (cloudAllowed && savedCloud !== undefined) this.lastCloudEnvironment = savedCloud;
+    const cloudEnvironment = cloudAllowed && (this.draftExecution === "cloud" || this.draftExecution === undefined && savedCloud !== undefined) ? this.lastCloudEnvironment : undefined;
+    this.update({draft:record.text,cloudEnvironment,provider:restoredProvider,capabilities:defaultCapabilities(restoredProvider, isCloudSession(this.snapshot.session)),settings:this.snapshot.session ? record.settings : newConversationSettings(record.settings),project:record.project || this.snapshot.project,draftRestore:this.snapshot.draftRestore+1});
   }
   private loadDraft() { return this.draftPersistence.load(); }
   private draftChanged() { this.draftPersistence.changed(); }

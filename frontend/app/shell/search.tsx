@@ -172,31 +172,39 @@ function SearchItem({ result, showKind, environmentName, select }: { result: Res
   </Command.Item>
 }
 
-function SearchPanel({ source, recent, close, select }: { source: ReturnType<typeof createCatalog>; recent: string[]; close: () => void; select: (result: Result) => void }) {
+function SearchPanel({ source, recent, close, select, conversationsOnly }: { source: ReturnType<typeof createCatalog>; recent: string[]; close: () => void; select: (result: Result) => void; conversationsOnly?: boolean }) {
   const [query, setQuery] = useState("")
   const catalog = useSyncExternalStore(source.subscribe, source.getSnapshot)
   const term = query.trim().toLocaleLowerCase()
   const searching = !!term
   useEffect(() => { if (searching) void source.discover() }, [searching, source])
 
+  const allowedKinds = conversationsOnly ? (["conversation"] as const) : kinds
   const matches = term ? [...catalog.results.values()].flatMap(item => {
+    if (conversationsOnly && item.kind !== "conversation") return []
     const name = item.name.toLocaleLowerCase()
     const index = name.indexOf(term)
     return index < 0 ? [] : [{ item, rank: name === term ? 0 : index === 0 ? 1 : 2 }]
   }).sort((a, b) => a.rank - b.rank || a.item.name.localeCompare(b.item.name) || identity(a.item).localeCompare(identity(b.item))) : []
-  const recentItems = term ? [] : recent.flatMap(key => catalog.results.get(key) || []).slice(0, 8)
-  const sections = term ? kinds.map(kind => ({ key: kind, label: uiText(names[kind]), items: matches.filter(match => match.item.kind === kind).map(match => match.item) }))
-    : [{ key: "recent", label: uiText("最近使用"), items: recentItems }]
+  const recentItems = term ? [] : recent.flatMap(key => {
+    const item = catalog.results.get(key)
+    return item && (!conversationsOnly || item.kind === "conversation") ? [item] : []
+  }).slice(0, 8)
+  const fallbackConversations = !term && conversationsOnly && recentItems.length === 0
+    ? [...catalog.results.values()].filter(item => item.kind === "conversation").slice(0, 8)
+    : []
+  const sections = term ? allowedKinds.map(kind => ({ key: kind, label: uiText(names[kind]), items: matches.filter(match => match.item.kind === kind).map(match => match.item) }))
+    : [{ key: "recent", label: uiText(recentItems.length > 0 ? "最近使用" : "已有对话"), items: recentItems.length > 0 ? recentItems : fallbackConversations }]
   const hasResults = sections.some(section => section.items.length > 0)
   const loading = catalog.loading || searching && (!catalog.discovered || catalog.discovering)
   const incomplete = catalog.incomplete || searching && catalog.discoveryIncomplete
   const shortcut = navigator.platform.startsWith("Mac") ? "⌘ K" : "Ctrl K"
 
-  return <Command label={uiText("全局搜索")} shouldFilter={false} loop vimBindings={false}>
+  return <Command label={uiText(conversationsOnly ? "打开已有对话" : "全局搜索")} shouldFilter={false} loop vimBindings={false}>
     <div className="global-search-field">
       <Search aria-hidden="true" />
-      <Command.Input placeholder={uiText("搜索项目和对话…")} value={query} onValueChange={setQuery} autoComplete="off" />
-      <kbd>{shortcut}</kbd>
+      <Command.Input placeholder={uiText(conversationsOnly ? "搜索已有对话…" : "搜索项目和对话…")} value={query} onValueChange={setQuery} autoComplete="off" />
+      {!conversationsOnly && <kbd>{shortcut}</kbd>}
       <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label={uiText("关闭")} title={uiText("关闭")}><X aria-hidden="true" /></Button>
     </div>
     <Command.List className="global-search-list" label={uiText("搜索结果")}>
@@ -230,7 +238,7 @@ export function createGlobalSearch(dialog: HTMLDialogElement, { read, navigate }
     if (event.target === dialog) close()
   })
   return {
-    open(trigger?: HTMLElement) {
+    open(trigger?: HTMLElement, options?: { conversationsOnly?: boolean; onSelect?: (target: Target) => void }) {
       if (dialog.open) {
         dialog.querySelector("input")?.focus()
         return
@@ -240,14 +248,33 @@ export function createGlobalSearch(dialog: HTMLDialogElement, { read, navigate }
       const select = ({ id, kind, name, environment, session }: Result) => {
         selected = true
         close()
-        navigate(kind === "conversation"
+        const target: Target = kind === "conversation"
           ? { route: "/sessions", environment, title: name, conversation: { scope: { kind: "all" }, selected: conversationEnvironmentKey(environment, id), pane: "detail", archived: session?.archived, session } }
-          : { route: `/${kind}s/${encodeURIComponent(id)}`, environment, title: name })
+          : { route: `/${kind}s/${encodeURIComponent(id)}`, environment, title: name }
+        if (options?.onSelect) options.onSelect(target)
+        else navigate(target)
       }
       void source.load()
-      flushSync(() => root.render(<SearchPanel source={source} recent={recent} close={close} select={select} />))
+      flushSync(() => root.render(<SearchPanel source={source} recent={recent} close={close} select={select} conversationsOnly={options?.conversationsOnly} />))
       dialog.showModal()
       dialog.querySelector("input")?.focus()
+    },
+    recentConversations() {
+      const state = source.getSnapshot()
+      const items = recent.flatMap(key => {
+        const item = state.results.get(key)
+        return item?.kind === "conversation" ? [item] : []
+      })
+      const list = items.length > 0 ? items : [...state.results.values()].filter(item => item.kind === "conversation")
+      return list.slice(0, 6).map(item => ({
+        id: conversationEnvironmentKey(item.environment, item.id),
+        title: item.name,
+        environment: item.environment,
+        detail: item.detail,
+      }))
+    },
+    preload() {
+      void source.load()
     },
     remember(snapshot: Snapshot) {
       const resource = snapshotIdentity(snapshot)

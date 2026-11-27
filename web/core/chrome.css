@@ -94,32 +94,10 @@ html[data-workhub-desktop] :is(.workspaces-page,.projects-page:not(.project-tool
 html[data-workhub-desktop] :is(.workspaces-page,.projects-page) #workContent { background: transparent; box-shadow: none; }
 html[data-workhub-desktop] .workspace-pane { border: 0; }
 html[data-workhub-desktop][data-workspace-conversation] body .shell { border-radius: 0; box-shadow: none; }
-body[data-workspace-conversations] .workspace-page[data-focused=true] {
-  border-color: transparent;
-}
-html[data-workspace-pane][data-workspace-focused] .conversation-surface-header.chat-panel-header {
-  background: color-mix(in srgb, var(--yolu-primary) 5%, var(--background));
-}
-
-/* Headers meet the divider without a surface-colored gutter.
-   Keep the resize target wider than its single-pixel grid track. */
-.workspace-pane-resize { width: 12px; justify-self: center; }
-.workspace-pane-resize::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 calc(50% - .5px);
-  width: 1px;
-  background: var(--yolu-border, #e2e8e4);
-  pointer-events: none;
-  transition: background-color .15s;
-}
-.workspace-pane-resize:hover::before,
-.workspace-pane-resize:focus-visible::before,
-.workspace-pages[data-split-resizing] .workspace-pane-resize::before { background: var(--yolu-primary-border); }
-.workspace-pane-resize::after, .workspace-shared-list-resize::after { width: 3px; inset: 50% auto auto 50%; height: 40px; transform: translate(-50%, -50%); border-radius: 3px; background: transparent; transition: background-color .15s; }
-.workspace-pane-resize:hover::after, .workspace-pane-resize:focus-visible::after, .workspace-pages[data-split-resizing] .workspace-pane-resize::after,
+/* Shared sidebar list splitter grip. Recursive pane split dividers are styled
+   by frontend/app/pane-layout/components/pane-layout.css. */
+.workspace-shared-list-resize::after { width: 3px; inset: 50% auto auto 50%; height: 40px; transform: translate(-50%, -50%); border-radius: 3px; background: transparent; transition: background-color .15s; }
 .workspace-shared-list-resize:hover::after, .workspace-shared-list-resize:focus-visible::after, body[data-split-resizing] .workspace-shared-list-resize::after { background: color-mix(in srgb, var(--yolu-primary, #1f5f5a) 45%, transparent); }
-.workspace-pane-resize::after { width: 2px; height: 32px; }
 
 /* Tabs: quiet text until active, then a lifted chip. */
 html[data-workhub-desktop] .workspace-tab-item { border-color: transparent; border-radius: 8px; background: transparent; transition: background-color .15s, box-shadow .15s; }
@@ -201,14 +179,21 @@ html[data-workspace-page]:not([data-workspace-navigation]) body .shell { margin-
 html[data-workspace-navigation] body .shell { display: none; }
 html[data-workspace-navigation] .sidebar {
   position: absolute; inset: 0 auto 0 0; box-sizing: border-box;
-  width: var(--workspace-shared-list-width,280px); max-height: none; padding: 8px 8px 0;
+  --navigator-content-inset: 8px;
+  width: var(--workspace-shared-list-width,280px); max-height: none;
+  padding: 8px 0 0;
+  padding-inline-start: var(--navigator-content-inset);
   display: flex; flex-direction: column; gap: 4px; overflow: hidden;
   border-inline-end: 1px solid var(--yolu-border);
 }
 html[data-workspace-navigation] .sidebar :is(.brand,nav,.sidebar-footer) { display: none; }
 html[data-workspace-navigation] .sidebar #sessionsPage { flex: 1; min-height: 0; }
 html[data-workspace-navigation] .sidebar :is(.session-browser,.session-browser-list) { background: transparent; }
-html[data-workspace-navigation] .sidebar .session-browser-list-tools { gap: 0; padding: 2px 4px 10px; border-bottom: 0; }
+html[data-workspace-navigation] .sidebar .session-browser-list-tools {
+  gap: 0; padding: 2px 4px 4px; border-bottom: 0;
+  padding-inline-end: calc(4px + var(--navigator-content-inset));
+}
+html[data-workspace-navigation] .sidebar #sessionBrowserError { margin-inline-end: calc(12px + var(--navigator-content-inset)); }
 .session-sidebar-modes:not([hidden]) {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px;
   padding: 2px; border-radius: var(--yolu-chip-radius); background: var(--yolu-hover);
@@ -217,14 +202,9 @@ html[data-workspace-navigation] .sidebar .session-browser-list-tools { gap: 0; p
 .session-sidebar-modes button[aria-pressed="true"] { background: var(--yolu-surface); color: var(--yolu-foreground); box-shadow: var(--yolu-elevation-sm); }
 .session-sidebar-modes button:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: -2px; }
 @media (pointer: coarse) { .session-sidebar-modes button { min-height: 44px; } }
-html[data-workspace-navigation] .sidebar #sessionBrowserList { --session-row-inset: 8px; padding: 0 2px 12px; scrollbar-gutter: auto; scrollbar-color: transparent transparent; }
-html[data-workspace-navigation] .sidebar #sessionBrowserList:is(:hover, :focus-within) { scrollbar-color: color-mix(in srgb, var(--yolu-shadow-ink) 20%, transparent) transparent; }
-@supports not (scrollbar-color: currentColor transparent) {
-  html[data-workspace-navigation] .sidebar #sessionBrowserList { scrollbar-width: auto; }
-  html[data-workspace-navigation] .sidebar #sessionBrowserList::-webkit-scrollbar { width: 6px; background: transparent; }
-  html[data-workspace-navigation] .sidebar #sessionBrowserList::-webkit-scrollbar-thumb { border-radius: 6px; background: transparent; }
-  html[data-workspace-navigation] .sidebar #sessionBrowserList:is(:hover, :focus-within)::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--yolu-shadow-ink) 20%, transparent); }
-  html[data-workspace-navigation] .sidebar #sessionBrowserList::-webkit-scrollbar-thumb:hover { background: var(--yolu-muted-ink); }
+html[data-workspace-navigation] .sidebar #sessionBrowserList {
+  --session-row-inset: 8px; padding: 0 2px 12px;
+  padding-inline-end: calc(2px + var(--navigator-content-inset));
 }
 html[data-workspace-navigation] .sidebar .session-collection-toggle .shortcut-badge { width: 16px; height: 16px; border-radius: 0; }
 html[data-workspace-navigation] .sidebar .session-workspace-name { font-size: var(--yolu-font-size-compact); font-weight: 600; }

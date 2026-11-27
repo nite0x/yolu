@@ -1,5 +1,5 @@
 import {uiText} from "@/shared/i18n"
-import {useEffect, useLayoutEffect, useRef, useState} from "react"
+import {useEffect, useState} from "react"
 import type {Root} from "react-dom/client"
 import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {flushSync} from "react-dom"
@@ -7,32 +7,18 @@ import {ArrowLeft, ArrowRight, Ellipsis, FolderGit2, MessageSquare, Search, Refr
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/shared/ui/primitives/tooltip"
 import {CodexUsage} from "@/features/conversations/usage/codex-usage"
 import {setupSplitResize} from "@/shared/lib/split-resize"
+import {LayoutRoot, type LayoutRootProps} from "@/app/pane-layout/components/layout-root"
+import {resolveDropTarget} from "@/app/pane-layout/interactions/drag-and-drop"
+import {matchPaneShortcut} from "@/app/pane-layout/interactions/shortcuts"
+import {createInitialLayout} from "@/app/pane-layout/model/operations"
+import {countPanes, findPane, findPaneByConversationId, listPanes} from "@/app/pane-layout/model/tree"
+import {DEFAULT_LAYOUT_CONSTRAINTS} from "@/app/pane-layout/model/types"
+import {createPaneLayoutPersistence} from "@/app/pane-layout/persistence/serializer"
+import {createPaneLayoutStore} from "@/app/pane-layout/state/layout-store"
+import {computeLayoutView, getPaneCapabilities} from "@/app/pane-layout/state/selectors"
 
 export { setupSplitResize }
 export { createGlobalSearch } from "./search"
-
-interface PaneProps {
-  count: number
-  resize: (index: number, width: number) => void
-  frames: HTMLIFrameElement[]; container: HTMLElement
-}
-function PaneSeparator({ index, frames, container, resize }: PaneProps & {index: number}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const frame = frames[index], adjacent = frames[index + 1]
-  useLayoutEffect(() => setupSplitResize({
-    handle:ref.current!, container, panel:frame, axis:"x",
-    bounds:() => {
-      const pair = frame.getBoundingClientRect().width + adjacent.getBoundingClientRect().width
-      return pair > 0 ? {min:Math.min(280, pair / 2), max:pair - Math.min(280, pair / 2)} : null
-    },
-    resize:width => resize(index, width),
-  }), [index, frame, adjacent, container, resize])
-  return <div ref={ref} role="separator" aria-valuenow={0} tabIndex={0} aria-orientation="vertical" aria-label={uiText("调整第 {0} 栏宽度", index + 1)} className="workspace-pane-resize" style={{gridColumn:index * 2 + 2, gridRow:1}} />
-}
-function PaneHeaders(props: PaneProps) {
-  // biome-ignore lint/suspicious/noArrayIndexKey: Dividers are identified by their fixed pane position.
-  return <>{Array.from({length:props.count - 1}, (_, index) => <PaneSeparator key={`resize-${index}`} {...props} index={index} />)}</>
-}
 
 const roots = new WeakMap<HTMLElement, Root>()
 const destinations = [
@@ -99,7 +85,7 @@ function WindowChrome(props: WindowChromeProps) {
             <SquarePen aria-hidden="true" />
           </button>
           <button type="button" className="window-utility-button" aria-label={uiText("在右侧分栏新建")}
-            title={props.canCreateConversation && !props.canSplitConversation ? uiText("最多支持三栏，请先打开对话并留出空栏") : uiText("在右侧分栏新建")}
+            title={props.canCreateConversation && !props.canSplitConversation ? uiText("已达到最大分屏数量或空间不足") : uiText("在右侧分栏新建")}
             disabled={!props.canCreateConversation || !props.canSplitConversation} onClick={() => props.createConversation?.("split")}>
             <SquareSplitHorizontal aria-hidden="true" />
           </button>
@@ -141,10 +127,27 @@ export function renderChrome(container: HTMLElement, props: WindowChromeProps) {
   if (!root) { root = createRoot(container); roots.set(container, root) }
   flushSync(() => root.render(<WindowChrome {...props} />))
 }
-export function renderPanes(container: HTMLElement, props: PaneProps | null) {
+
+export function renderPaneLayout(container: HTMLElement, props: LayoutRootProps | null) {
   let root = roots.get(container)
   if (!root) { root = createRoot(container); roots.set(container, root) }
-  flushSync(() => root.render(props ? <PaneHeaders {...props} /> : null))
+  flushSync(() => root.render(props ? <LayoutRoot {...props} /> : null))
+}
+
+export const paneLayout = {
+  constraints: DEFAULT_LAYOUT_CONSTRAINTS,
+  createInitialLayout,
+  createStore: createPaneLayoutStore,
+  createPersistence: createPaneLayoutPersistence,
+  computeLayoutView,
+  getPaneCapabilities,
+  findPane,
+  findPaneByConversationId,
+  listPanes,
+  countPanes,
+  resolveDropTarget,
+  matchPaneShortcut,
+  render: renderPaneLayout,
 }
 
 export { conversationDefaults } from "@/shared/lib/preferences"

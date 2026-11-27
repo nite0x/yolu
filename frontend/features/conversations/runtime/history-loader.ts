@@ -23,6 +23,7 @@ export function createHistoryLoader(options: {
   readOnly: () => boolean;
   update: (patch: Partial<Snapshot>) => void;
   loaded: (session: Session) => void;
+  missing?: (sessionId: string) => void;
   synchronized: () => void;
 }) {
   let loading = false;
@@ -60,7 +61,13 @@ export function createHistoryLoader(options: {
         for (const entry of fresh) savedKeys.add(entryKey(entry));
         if (!older && observed.revision === options.lifecycle().revision) options.synchronized();
       } catch (error) {
-        if (current() && !observed.signal?.aborted) options.update({historyError: (error as Error).message});
+        if (current() && !observed.signal?.aborted) {
+          const status = (error as {status?: number})?.status;
+          if (!older && !background && status === 404 && initial.session?.id) {
+            options.missing?.(initial.session.id);
+          }
+          options.update({historyError: (error as Error).message});
+        }
       } finally {
         if (current()) { loading = false; options.update({loading: false}); }
       }

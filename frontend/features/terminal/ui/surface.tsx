@@ -1,8 +1,47 @@
 import {uiText} from "@/shared/i18n"
 import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
+import {useEffect, useState} from "react"
 import {createPortal, flushSync} from "react-dom"
 import {ALargeSmall, ArrowRight, Bot, Minus, MoreHorizontal, Plus, RefreshCw, Search, Terminal, X} from "lucide-react"
 import {ConversationCreationIntro, ConversationHeader, ConversationIconButton, ConversationPaneButtons, ConversationStatusBadge, ConversationWorkingContext} from "@/shared/ui/conversation-surface"
+
+function readTerminalPaneLayout() {
+  const root = document.documentElement
+  const split = root.hasAttribute("data-workspace-pane")
+  return {
+    split,
+    zoomed: root.hasAttribute("data-workspace-zoomed"),
+    canZoom: root.hasAttribute("data-workspace-can-zoom"),
+    canSplitRight: !root.hasAttribute("data-workspace-layout-synced") || root.hasAttribute("data-workspace-can-split-right"),
+    canSplitDown: !root.hasAttribute("data-workspace-layout-synced") || root.hasAttribute("data-workspace-can-split-down"),
+    canSplitLeft: !root.hasAttribute("data-workspace-layout-synced") || root.hasAttribute("data-workspace-can-split-left"),
+    canSplitUp: !root.hasAttribute("data-workspace-layout-synced") || root.hasAttribute("data-workspace-can-split-up"),
+    canClose: split || root.hasAttribute("data-workspace-can-close"),
+  }
+}
+
+function TerminalPaneControls({command}: {command: (command: string) => void}) {
+  const [layout, setLayout] = useState(readTerminalPaneLayout)
+  useEffect(() => {
+    const sync = () => setLayout(readTerminalPaneLayout())
+    window.addEventListener("workhub:parallel-layout", sync)
+    return () => window.removeEventListener("workhub:parallel-layout", sync)
+  }, [])
+  return <ConversationPaneButtons
+    split={layout.split}
+    canZoom={layout.canZoom}
+    zoomed={layout.zoomed}
+    canSplitRight={layout.canSplitRight}
+    canSplitDown={layout.canSplitDown}
+    canSplitLeft={layout.canSplitLeft}
+    canSplitUp={layout.canSplitUp}
+    canClose={layout.canClose}
+    showSplitControls
+    command={command}
+    zoomID="zoomTerminal"
+    closeID="closeTerminalView"
+  />
+}
 
 function mountElement(id: string) {
   const node = document.getElementById(id)
@@ -45,7 +84,7 @@ export function mountTerminalTools(launch: (id: string) => void) {
 export function mountTerminalSurface(command: (command: string) => void) {
   const root = createRoot(mountElement("terminalSurface"))
   flushSync(() => root.render(<>
-    {createPortal(<ConversationCreationIntro kind="terminal" uiID="terminalKindUI" />, mountElement("terminalCreationSetup"))}
+    {createPortal(<ConversationCreationIntro kind="terminal" uiID="terminalKindUI" cloudID="terminalKindCloud" cloudHidden />, mountElement("terminalCreationSetup"))}
     <ConversationHeader title={uiText("新建对话")} titleID="terminalTitle"
       actions={<>
         <ConversationStatusBadge id="terminalStatusBadge" hidden><span className="chat-status-dot" aria-hidden="true" /><span id="terminalStatus">{uiText("正在连接…")}</span></ConversationStatusBadge>
@@ -66,7 +105,7 @@ export function mountTerminalSurface(command: (command: string) => void) {
           <ConversationIconButton id="reconnectTerminal" label={uiText("重连终端")}><RefreshCw aria-hidden="true" /></ConversationIconButton>
           <details id="terminalActionMenu" className="terminal-action-menu"><summary className="conversation-icon-button" aria-label={uiText("更多终端操作")} title={uiText("更多终端操作")}><MoreHorizontal aria-hidden="true" /></summary><div><button id="stopTerminal" className="danger" type="button">{uiText("结束进程")}</button></div></details>
         </span>
-        <ConversationPaneButtons split canZoom zoomed={false} command={command} zoomID="zoomTerminal" closeID="closeTerminalView" />
+        <TerminalPaneControls command={command} />
       </>}
       context={<ConversationWorkingContext id="terminalDirectoryContext" trigger={<>
         <span className="chat-workspace-project"><span id="terminalDirectoryName">{uiText("工作目录")}</span></span>

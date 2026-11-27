@@ -10,7 +10,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   let active = false, restoring = true, timer, disposed = false, parallelPane = false, navigationOnly = new URLSearchParams(location.search).has('app-navigation');
   let restoreRevision = 0;
   let creationHint = {};
-  let parallelSessions = [], parallelFull = false, parallelSelected = '', groupSignature = '', canSplit = false;
+  let parallelSessions = [], parallelFull = false, parallelSelected = '', groupSignature = '', canSplit = false, canCloseSingle = false;
   let autoSelect = false;
   function selectInitialConversation() {
     if (!navigationOnly || !autoSelect || !window.WorkHubConversations.current?.listItems?.length || restoring || !active) return;
@@ -62,7 +62,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const title = view ? view.creating ? draftTitle ? uiText("草稿：{0}", draftTitle) : uiText(view.creatingYoluAssistant ? "Yolu 助手" : "新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? uiText("任务") : state.view === 'projects' ? uiText("项目") : uiText("对话");
     return {
       route, environment: activeEnvironment, title, kind: state.view, draftTitle,
-      terminal:view?.creating ? creationHint : undefined,
+      terminal:view?.creating ? view.target ? {...creationHint,projectID:view.target.project_id,cwd:view.target.cwd} : creationHint : undefined,
       context: view ? (() => {
         const environment = session?.environment_id || activeEnvironment;
         const context = session ? window.WorkHubUI.conversationContext(session.cwd, conversationOverview(environment), session.primary_project_id) : null;
@@ -84,6 +84,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     window.dispatchEvent(new CustomEvent('workhub:chat-layout', {detail:{phase:'before'}}));
     root.toggleAttribute('data-workspace-pane', split);
     root.toggleAttribute('data-workspace-conversation', shared);
+    window.dispatchEvent(new Event('workhub:parallel-layout'));
     if (window.WorkHubConversations.current && !navigationOnly) {
       if (shared) window.WorkHubConversations.current.pane = 'detail';
       renderConversationBrowser();
@@ -132,7 +133,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
           windowStart:Number.isSafeInteger(savedView.windowStart) && savedView.windowStart >= 0 ? savedView.windowStart : 0, locateSelection:null,
           statusFilter:savedView.statusFilter || 'all', environmentFilter:savedView.environmentFilter || '',
           archived:!!savedView.archived, selected:savedView.selected, requestedSession:savedView.selected || null,
-          pane:document.documentElement.hasAttribute('data-workspace-conversation') ? 'detail' : savedView.pane || 'detail', creating:!!savedView.creating && !sessionReadOnly && !navigationOnly, creatingYoluAssistant:!!savedView.creatingYoluAssistant && activeEnvironment === 'local', target:null,
+          pane:document.documentElement.hasAttribute('data-workspace-conversation') ? 'detail' : savedView.pane || 'detail', creating:!!savedView.creating && !sessionReadOnly && !navigationOnly, creatingYoluAssistant:!!savedView.creatingYoluAssistant && activeEnvironment === 'local', draftExecution:savedView.draftExecution, target:null,
           requestID:(window.WorkHubConversations.current.requestID || 0) + 1, requestKey:null, loading:false, checkedAt:0,
         });
         window.WorkHubConversations.mode = 'page';
@@ -275,7 +276,32 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   window.addEventListener('workhub:app-refreshed', schedule);
   window.addEventListener('workhub:session-loaded', schedule);
   window.addEventListener('workhub:chat-draft', schedule);
-  window.addEventListener('workhub:parallel-command',event => {if (parallelPane && ['close','zoom'].includes(event.detail)) post('workhub:page-pane-command',{command:event.detail});});
+  window.addEventListener('workhub:parallel-command', event => {
+    const command = event.detail;
+    if (['split-left', 'split-right', 'split-up', 'split-down'].includes(command)) {
+      if (parallelPane || document.documentElement.hasAttribute('data-workspace-conversation')) {
+        post('workhub:page-pane-command', {command});
+      }
+      return;
+    }
+    if (command === 'zoom' && parallelPane) {
+      post('workhub:page-pane-command', {command});
+    } else if (command === 'close' && (parallelPane || canCloseSingle)) {
+      post('workhub:page-pane-command', {command});
+    }
+  });
+  window.addEventListener('workhub:pane-drag', event => {
+    const detail = event.detail;
+    if (parallelPane && detail && ['start', 'move', 'end', 'cancel'].includes(detail.phase)) {
+      post('workhub:page-pane-drag', detail);
+    }
+  });
+  window.addEventListener('workhub:conversation-missing', event => {
+    const detail = event.detail;
+    if (detail && typeof detail.sessionId === 'string' && detail.sessionId) {
+      post('workhub:conversation-missing', {sessionId: detail.sessionId, environment: detail.environment || activeEnvironment});
+    }
+  });
   window.addEventListener('message', event => {
     if (event.source !== host || event.origin !== location.origin) return;
     const message = window.WorkHubBrowser.readPageMessage(event.data);
@@ -330,13 +356,31 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
     else if (message?.type === 'workhub:page-navigation') {navigationOnly = true; document.documentElement.setAttribute('data-workspace-navigation','');}
     else if (message?.type === 'workhub:page-restore') { visibility(!!message.active); void restore(message.snapshot); }
+    else if (message?.type === 'workhub:conversation-kind' && message.kind !== 'terminal') {
+      const view = window.WorkHubConversations.current;
+      if (view?.creating && !view.creatingYoluAssistant) {
+        view.draftExecution = message.kind === 'cloud' ? 'cloud' : 'local';
+        if (active && !restoring) showConversationSelection();
+      }
+    }
     else if (message?.type === 'workhub:parallel-layout') {
       canSplit = !!message.canSplit;
+      canCloseSingle = !!message.canClose;
       const root = document.documentElement;
-      const attributes = {'data-workspace-focused':!!message.focused,'data-workspace-zoomed':!!message.zoomed,'data-workspace-can-zoom':!!message.canZoom};
-      const changed = Object.entries(attributes).some(([name,value]) => root.hasAttribute(name) !== value);
+      const attributes = {
+        'data-workspace-focused': !!message.focused,
+        'data-workspace-zoomed': !!message.zoomed,
+        'data-workspace-compact': !!message.compact,
+        'data-workspace-can-zoom': !!message.canZoom,
+        'data-workspace-can-split-right': message.canSplitRight ?? !!message.canSplit,
+        'data-workspace-can-split-down': message.canSplitDown ?? !!message.canSplit,
+        'data-workspace-can-split-left': message.canSplitLeft ?? !!message.canSplit,
+        'data-workspace-can-split-up': message.canSplitUp ?? !!message.canSplit,
+        'data-workspace-can-close': !!message.canClose,
+      };
+      const changed = Object.entries(attributes).some(([name, value]) => root.hasAttribute(name) !== value);
       if (changed) {
-        for (const [name,value] of Object.entries(attributes)) root.toggleAttribute(name,value);
+        for (const [name, value] of Object.entries(attributes)) root.toggleAttribute(name, value);
         window.dispatchEvent(new Event('workhub:parallel-layout'));
       }
     }
@@ -389,7 +433,17 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       window.addEventListener('workhub:page-visibility', visibilityChanged);
     });
   }
-  window.WorkHubPage = {snapshot,canClose,dispose,environmentName,refresh:refreshFromHeader,createConversation,get canCreateConversation() {return !sessionReadOnly;},get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
+  function recentConversations(limit = 5) {
+    const list = window.WorkHubConversations?.current?.listItems;
+    if (!Array.isArray(list)) return [];
+    return list.filter(item => !item.terminal && item.available !== false).slice(0, limit).map(item => ({
+      id: item.browser_key || item.id,
+      title: item.name || uiText("未命名对话"),
+      environment: item.environment_id || 'local',
+      detail: [item.context?.project, item.context?.branch].filter(Boolean).join(' · ') || item.cwd || '',
+    }));
+  }
+  window.WorkHubPage = {snapshot,canClose,dispose,environmentName,refresh:refreshFromHeader,createConversation,recentConversations,get canCreateConversation() {return !sessionReadOnly;},get restoring() {return restoring;},get active() {return active;},get canSplit() {return canSplit;},get navigationOnly() {return navigationOnly;},get parallelSessions() {return parallelSessions;},get parallelFull() {return parallelFull;},get parallelSelected() {return parallelSelected;}};
   visibility(false);
   window.addEventListener('workhub:app-ready', () => post('workhub:page-ready'), {once:true});
 })();

@@ -52,7 +52,22 @@ function OccupiedConversation({controller, send}: {controller: ChatController; s
     onRetry={() => void retry()} onFork={() => void controller.manage("fork")} />;
 }
 
-const readParallelLayout = () => ({split:document.documentElement.hasAttribute("data-workspace-pane"),zoomed:document.documentElement.hasAttribute("data-workspace-zoomed"),canZoom:document.documentElement.hasAttribute("data-workspace-can-zoom")})
+const readParallelLayout = () => {
+  const root = document.documentElement
+  const split = root.hasAttribute("data-workspace-pane")
+  const hosted = split || root.hasAttribute("data-workspace-conversation")
+  return {
+    hosted,
+    split,
+    zoomed: root.hasAttribute("data-workspace-zoomed"),
+    canZoom: root.hasAttribute("data-workspace-can-zoom"),
+    canSplitRight: root.hasAttribute("data-workspace-can-split-right"),
+    canSplitDown: root.hasAttribute("data-workspace-can-split-down"),
+    canSplitLeft: root.hasAttribute("data-workspace-can-split-left"),
+    canSplitUp: root.hasAttribute("data-workspace-can-split-up"),
+    canClose: split || root.hasAttribute("data-workspace-can-close"),
+  }
+}
 function ParallelPaneControls() {
   const [layout,setLayout] = useState(readParallelLayout)
   useEffect(() => {
@@ -60,9 +75,20 @@ function ParallelPaneControls() {
     window.addEventListener("workhub:parallel-layout",update)
     return () => window.removeEventListener("workhub:parallel-layout",update)
   }, [])
-  if (!layout.split) return null
+  if (!layout.hosted) return null
   const command = (detail: string) => window.dispatchEvent(new CustomEvent("workhub:parallel-command",{detail}))
-  return <ConversationPaneButtons {...layout} command={command} />
+  return <ConversationPaneButtons
+    split={layout.split}
+    canZoom={layout.canZoom}
+    zoomed={layout.zoomed}
+    canSplitRight={layout.canSplitRight}
+    canSplitDown={layout.canSplitDown}
+    canSplitLeft={layout.canSplitLeft}
+    canSplitUp={layout.canSplitUp}
+    canClose={layout.canClose}
+    showSplitControls
+    command={command}
+  />
 }
 
 const chatComponents = {Text: ChatMessageText, UserText: ChatUserText, UserImage: ChatUserImage, ToolFallback: ChatToolFallback, ToolGroup: ChatToolGroup, AssistantMessageEnd: ChatChangeSummary};
@@ -81,26 +107,51 @@ function ChatFileToggle() {
   return <span ref={slot} className="chat-file-toggle-slot" />;
 }
 
-function ConversationCreationSetup({children}: {children?: React.ReactNode}) {
+function ConversationCreationSetup({controller, cloud, disabled, children}: {controller: ChatController; cloud: boolean; disabled: boolean; children?: React.ReactNode}) {
   const slot = useRef<HTMLDivElement>(null);
+  const canChooseCloud = controller.options.environment === "local" && !controller.isYoluAssistant();
   useLayoutEffect(() => {
     const setup = document.getElementById("sessionCreationSetup");
     const mount = setup?.parentElement;
     if (!setup || !mount || !slot.current) return;
     slot.current.append(setup);
-    return () => {mount.append(setup);};
-  }, []);
+    const chatButton = setup.querySelector<HTMLButtonElement>("#conversationCreationChat");
+    const cloudButton = setup.querySelector<HTMLButtonElement>("#conversationCreationCloud");
+    if (chatButton && cloudButton && canChooseCloud) {
+      cloudButton.hidden = false;
+      chatButton.onclick = () => controller.selectDraftExecution("local");
+      cloudButton.onclick = () => controller.selectDraftExecution("cloud");
+    }
+    return () => {
+      setup.removeAttribute("data-codex-cloud");
+      if (chatButton && cloudButton && canChooseCloud) {
+        chatButton.onclick = cloudButton.onclick = null;
+        chatButton.disabled = false;
+        chatButton.setAttribute("aria-pressed", "true");
+        cloudButton.hidden = true;
+      }
+      mount.append(setup);
+    };
+  }, [controller, canChooseCloud]);
+  useLayoutEffect(() => {
+    const setup = slot.current?.firstElementChild;
+    setup?.toggleAttribute("data-codex-cloud", cloud);
+    const chatButton = setup?.querySelector<HTMLButtonElement>("#conversationCreationChat");
+    const cloudButton = setup?.querySelector<HTMLButtonElement>("#conversationCreationCloud");
+    if (!chatButton || !cloudButton || !canChooseCloud) return;
+    chatButton.setAttribute("aria-pressed", String(!cloud));
+    cloudButton.setAttribute("aria-pressed", String(cloud));
+    chatButton.disabled = cloudButton.disabled = disabled;
+  }, [canChooseCloud, cloud, disabled]);
   return <div className="chat-creation-setup"><div ref={slot} />{children}</div>;
 }
 
-function CloudEnvironmentFields({controller, selected, disabled}: {controller: ChatController; selected?: string; disabled: boolean}) {
+function CloudEnvironmentField({controller, selected, disabled}: {controller: ChatController; selected: string; disabled: boolean}) {
   const [environments, setEnvironments] = useState<{id: string; name: string; shared: boolean}[] | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const cloud = selected !== undefined;
   /* biome-ignore lint/correctness/useExhaustiveDependencies: A retry counter explicitly re-runs the failed cloud inventory request. */
   useEffect(() => {
-    if (!cloud) return;
     const abort = new AbortController();
     setError("");
     setEnvironments(null);
@@ -111,21 +162,13 @@ function CloudEnvironmentFields({controller, selected, disabled}: {controller: C
       if (previous && !rows.some(row => row.id === previous)) controller.setCloudEnvironment("");
     }).catch(error => { if (!abort.signal.aborted) setError((error as Error).message); });
     return () => abort.abort();
-  }, [controller, cloud, retry]);
-  return <div className="grid w-full max-w-[400px] gap-3">
-    <div className="grid gap-1.5"><Label htmlFor="chat-execution-location">{uiText("执行位置")}</Label>
-      <NativeSelect id="chat-execution-location" disabled={disabled} value={cloud ? "cloud" : "local"} onChange={event => controller.setCloudEnvironment(event.target.value === "cloud" ? "" : undefined)}>
-        <NativeSelectOption value="local">{uiText("本机")}</NativeSelectOption>
-        <NativeSelectOption value="cloud">Codex Cloud</NativeSelectOption>
-      </NativeSelect>
-    </div>
-    {cloud && <div className="grid gap-1.5"><Label htmlFor="chat-cloud-environment">{uiText("云端环境")}</Label>
-      <NativeSelect id="chat-cloud-environment" disabled={disabled || !environments?.length} value={environments?.some(row => row.id === selected) ? selected : ""} onChange={event => controller.setCloudEnvironment(event.target.value)}>
-        <NativeSelectOption value="">{uiText(error ? "无法读取云端环境" : !environments ? "正在读取云端环境…" : environments.length ? "选择云端环境" : "没有可用的云端环境")}</NativeSelectOption>
-        {environments?.map(environment => <NativeSelectOption key={environment.id} value={environment.id}>{environment.shared ? uiText("{0}（工作区共享）", environment.name) : environment.name}</NativeSelectOption>)}
-      </NativeSelect>
-      {error && <div className="flex items-center gap-2"><p role="alert" className="m-0 text-sm text-destructive">{error}</p><Button type="button" size="xs" variant="outline" onClick={() => setRetry(value => value+1)}>{uiText("重试")}</Button></div>}
-    </div>}
+  }, [controller, retry]);
+  return <div className="mt-4 grid w-full max-w-[400px] gap-1.5"><Label htmlFor="chat-cloud-environment">{uiText("云端环境")}</Label>
+    <NativeSelect id="chat-cloud-environment" disabled={disabled || !environments?.length} value={environments?.some(row => row.id === selected) ? selected : ""} onChange={event => controller.setCloudEnvironment(event.target.value)}>
+      <NativeSelectOption value="">{uiText(error ? "无法读取云端环境" : !environments ? "正在读取云端环境…" : environments.length ? "选择云端环境" : "没有可用的云端环境")}</NativeSelectOption>
+      {environments?.map(environment => <NativeSelectOption key={environment.id} value={environment.id}>{environment.shared ? uiText("{0}（工作区共享）", environment.name) : environment.name}</NativeSelectOption>)}
+    </NativeSelect>
+    {error && <div className="flex items-center gap-2"><p role="alert" className="m-0 text-sm text-destructive">{error}</p><Button type="button" size="xs" variant="outline" onClick={() => setRetry(value => value+1)}>{uiText("重试")}</Button></div>}
   </div>;
 }
 
@@ -193,12 +236,6 @@ export function ChatPanel({controller}: {controller: ChatController}) {
   const state = useSyncExternalStore(controller.subscribe, controller.getViewSnapshot);
   const cloud = controller.isCloud();
   const assistantDraft = !state.session && controller.isYoluAssistant();
-  useLayoutEffect(() => {
-    const form = document.getElementById("sessionCreationSetup");
-    if (!form || !cloud) return;
-    form.setAttribute("data-codex-cloud", "");
-    return () => form.removeAttribute("data-codex-cloud");
-  }, [cloud]);
   const attachments = useMemo(() => new ChatAttachmentAdapter((name, data) => controller.options.request("/api/chat-attachments", {method: "POST", body: JSON.stringify({name, data})})), [controller]);
   const directories = useSessionDirectories(controller,state.session,state.provider,state.chat.busy || state.submitting);
   const question = !readOnly ? controller.question() : undefined;
@@ -276,45 +313,48 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       {state.capabilities.handoff && state.chat.can_handoff && !state.chat.busy && <Button type="button" size="sm" variant="outline" disabled={state.submitting} onClick={() => void controller.handoff()}>{uiText("在这里继续（等终端本轮结束）")}</Button>}
     </ConversationFeedback>;
   const terminal = state.terminal;
+  const showDirectoryPicker = !state.session && !!document.getElementById("sessionBrowserDirectoryChoices");
   const draftDirectoryName = !state.session && path && !isGeneralConversationDirectory(path) ? path.split(/[\\/]/).filter(Boolean).at(-1) : undefined;
-  const contextSummary = (context.project || context.branch || draftDirectoryName) ? <>
+  const contextSummary = state.session ? undefined : (context.project || context.branch || draftDirectoryName) ? <>
     <span className="chat-workspace-project" title={context.project}><span>{context.project || draftDirectoryName || uiText("工作目录")}</span></span>
     {context.branch && <span className="chat-workspace-branch" title={uiText("分支 · {0}", context.branch)}><span>{context.branch}</span></span>}
-  </> : (!state.session ? <span className="chat-workspace-project" title={uiText("默认目录（无需项目）")}><span>{uiText("默认目录")}</span></span> : undefined);
+  </> : <span className="chat-workspace-project" title={uiText("默认目录（无需项目）")}><span>{uiText("默认目录")}</span></span>;
   const contextTitle = [context.project || draftDirectoryName || (context.branch ? uiText("工作目录") : ""), context.branch].filter(Boolean).join(" · ") || (!state.session ? uiText("默认目录") : "");
+  const workingDetails = <ConversationWorkingContext trigger={contextSummary} triggerTitle={contextTitle || undefined} header={directories.header}>
+    {directories.context}
+    <div className="chat-context-footer">
+      <div className="chat-context-footer-row">
+        <details className="chat-context-meta">
+          <summary><span>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</span><span aria-hidden="true">·</span><span>{uiText("会话信息")}</span><ChevronDownIcon aria-hidden="true" /></summary>
+          <dl className="chat-context-facts grid gap-2 text-xs">
+            <dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd>
+            <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => context.projectID && controller.options.openProject?.(context.projectID,path)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
+            {context.branch && <><dt>{uiText("分支")}</dt><dd>{context.branch}</dd></>}
+            <dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd><code className="chat-workspace-path">{displayPath || uiText("普通对话")}</code></dd>
+            <dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd>
+            {additionalDirectories.length > 0 && <><dt>{uiText("额外工作目录")}</dt><dd>{additionalDirectories.map(directory => <code key={directory} className="chat-context-directory">{directory}</code>)}</dd></>}
+          </dl>
+        </details>
+        {!readOnly && state.session && <Button type="button" size="xs" variant="outline" className="chat-workspace-resume" disabled={!state.session.available} onClick={() => void controller.resume()}><TerminalIcon aria-hidden="true" />{uiText("在终端继续")}</Button>}
+      </div>
+      {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
+      {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
+    </div>
+  </ConversationWorkingContext>;
   return <ChatMediaProvider controller={controller} entries={entries}><ChatChangePathsProvider value={changePaths}>
     <ConversationPanel runtime={runtime} panelRef={panel} reading={reading}
       header={<ConversationHeader title={state.session ? state.session.name || uiText("未命名对话") : <ConversationDraftTitle controller={controller} />} titleID="assistantChatTitle" titleHint={state.session?.name}
         actions={<>
             {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
             {!readOnly && state.session && controller.options.newConversation && <TooltipIconButton tooltip={uiText("新建对话")} aria-label={uiText("新建对话")} onClick={controller.options.newConversation}><PlusIcon /></TooltipIconButton>}
+            {!cloud && !assistantDraft && !showDirectoryPicker && workingDetails}
             {!cloud && <ChatFileToggle />}
             <ChatSessionMenu controller={controller} portal={panel} onSearch={() => setSearchOpen(true)} />
             <ParallelPaneControls />
         </>}
-        context={assistantDraft ? undefined : cloud ? <span className="chat-workspace-project">{"Codex Cloud" + (state.session?.cloud_environment ? " · " + state.session.cloud_environment : "")}</span> : !state.session && document.getElementById("sessionBrowserDirectoryChoices") ? <button type="button" className="creation-header-directory" disabled={state.submitting} aria-label={uiText("选择工作目录")} aria-haspopup="dialog" aria-expanded={false} aria-controls="sessionBrowserDirectoryChoices-popover" aria-keyshortcuts="Meta+Shift+D Control+Shift+D" title={[contextTitle, displayPath].filter(Boolean).join("\n")} onClick={event => document.dispatchEvent(new CustomEvent("workhub:creation-directory", {detail:event.currentTarget}))}>
+        context={assistantDraft ? undefined : cloud ? <span className="chat-workspace-project">{"Codex Cloud" + (state.session?.cloud_environment ? " · " + state.session.cloud_environment : "")}</span> : showDirectoryPicker ? <button type="button" className="creation-header-directory" disabled={state.submitting} aria-label={uiText("选择工作目录")} aria-haspopup="dialog" aria-expanded={false} aria-controls="sessionBrowserDirectoryChoices-popover" aria-keyshortcuts="Meta+Shift+D Control+Shift+D" title={[contextTitle, displayPath].filter(Boolean).join("\n")} onClick={event => document.dispatchEvent(new CustomEvent("workhub:creation-directory", {detail:event.currentTarget}))}>
           <span className="conversation-context-summary">{contextSummary}</span><ChevronDownIcon aria-hidden="true" />
-        </button> : <ConversationWorkingContext trigger={contextSummary} triggerTitle={contextTitle || undefined} header={directories.header}>
-          {directories.context}
-          <div className="chat-context-footer">
-            <div className="chat-context-footer-row">
-              <details className="chat-context-meta">
-                <summary><span>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</span><span aria-hidden="true">·</span><span>{uiText("会话信息")}</span><ChevronDownIcon aria-hidden="true" /></summary>
-                <dl className="chat-context-facts grid gap-2 text-xs">
-                  <dt>{uiText("执行环境")}</dt><dd>{controller.options.environmentName || (controller.options.environment === "local" ? uiText("本机") : controller.options.environment)}</dd>
-                  <dt>{uiText("项目")}</dt><dd>{context.projectID && controller.options.openProject ? <button type="button" className="chat-workspace-link" aria-label={uiText("打开项目详情：{0}", context.project)} onClick={() => context.projectID && controller.options.openProject?.(context.projectID,path)}>{context.project}</button> : context.project || uiText("工作目录")}</dd>
-                  {context.branch && <><dt>{uiText("分支")}</dt><dd>{context.branch}</dd></>}
-                  <dt>{state.chat.busy ? uiText("运行目录") : uiText("工作目录")}</dt><dd><code className="chat-workspace-path">{displayPath || uiText("普通对话")}</code></dd>
-                  <dt>{uiText("目录类型")}</dt><dd>{context.kind}</dd>
-                  {additionalDirectories.length > 0 && <><dt>{uiText("额外工作目录")}</dt><dd>{additionalDirectories.map(directory => <code key={directory} className="chat-context-directory">{directory}</code>)}</dd></>}
-                </dl>
-              </details>
-              {!readOnly && state.session && <Button type="button" size="xs" variant="outline" className="chat-workspace-resume" disabled={!state.session.available} onClick={() => void controller.resume()}><TerminalIcon aria-hidden="true" />{uiText("在终端继续")}</Button>}
-            </div>
-            {(state.session || state.submitting || state.chat.blocked || state.chat.status !== "idle") && <ChatStatus controller={controller} />}
-            {readOnly && <div className="flex items-center gap-2"><ChatControls controller={controller} portal={panel} managedDirectories={directories.managed} />{state.session && <Button type="button" variant="ghost" size="sm" data-session-action="global-resume" data-session={state.session.id} onClick={() => void controller.resume()} disabled={!state.session.available}>{uiText("在终端继续 ↗")}</Button>}</div>}
-          </div>
-        </ConversationWorkingContext>}>
+        </button> : undefined}>
         {!cloud && directories.dialog}
         {state.session && <ChatSearch controller={controller} container={reading.container} open={searchOpen} onClose={closeSearch} />}
       </ConversationHeader>}
@@ -327,7 +367,7 @@ export function ChatPanel({controller}: {controller: ChatController}) {
       beforeThread={state.historyError && <Alert variant="destructive" className="shrink-0 rounded-none"><AlertDescription>{state.historyError}</AlertDescription></Alert>}
       thread={{
         dockComposer: !readOnly,
-        emptyState: !readOnly && !state.session && <ConversationCreationSetup>{!cloud && !assistantDraft && directories.creation}{!assistantDraft && controller.options.environment === "local" && state.provider === "codex" && <CloudEnvironmentFields controller={controller} selected={state.cloudEnvironment} disabled={state.submitting} />}</ConversationCreationSetup>,
+        emptyState: !readOnly && !state.session && <ConversationCreationSetup controller={controller} cloud={cloud} disabled={state.submitting}>{!cloud && !assistantDraft && directories.creation}{state.cloudEnvironment !== undefined && <CloudEnvironmentField controller={controller} selected={state.cloudEnvironment} disabled={state.submitting} />}</ConversationCreationSetup>,
         composerStatus: !readOnly && <>{!cloud && !occupied && directories.composer}<div className="chat-composer-status">{feedback}<ChatRunIndicator controller={controller} portal={panel} /></div></>, components: chatComponents,
         autoFocus: !!controller.options.focusComposer && !readOnly && !state.session && !document.documentElement.hasAttribute("data-workspace-inactive"), readOnly,
         composer: occupied ? null : question ? <QuestionComposer key={questionDraftKey(question, state.chat.id)} approval={question} controller={controller} /> : undefined,

@@ -83,7 +83,7 @@ export function SessionBrowser() {
           <ListCreateButton id="newBrowserSession" data-conversation-action="new" label={uiText("新建对话")} icon={<SquarePen aria-hidden="true" />} />
         </>} />
         <div id="sessionActiveFilterLabel" className="session-active-filter-label" hidden><span id="sessionActiveFilterText" /><button type="button" data-conversation-action="clear-scope-filters" aria-label={uiText("清除范围与筛选")} title={uiText("清除范围与筛选")}><X aria-hidden="true" /></button></div>
-      </div><div id="sessionBrowserError" role="alert" hidden /><section id="sessionBrowserList" aria-label={uiText("对话结果")} /></aside>
+      </div><div id="sessionBrowserError" role="alert" hidden /><div className="session-browser-list-scroll"><section id="sessionBrowserList" aria-label={uiText("对话结果")} /></div></aside>
       {/* biome-ignore lint/a11y/useSemanticElements: This focusable separator adjusts pane size through pointer and keyboard input. */}
       <div id="sessionBrowserResize" className="session-browser-resize" role="separator" tabIndex={0} aria-label={uiText("调整对话列表宽度")} aria-orientation="vertical" aria-controls="sessionBrowserListPane" aria-valuemin={220} aria-valuemax={520} aria-valuenow={280} />
       <section className="session-browser-detail" aria-label={uiText("对话详情")}>
@@ -91,7 +91,7 @@ export function SessionBrowser() {
         <div className="session-reading-layout" id="sessionReadingLayout"><div className="session-reading-chat">
         <div id="sessionCreationSetupHost" className="shrink-0" hidden>
           <div id="sessionCreationSetup" className="conversation-creation-setup" hidden>
-            <ConversationCreationIntro kind="ui" switchID="conversationCreationKind" switchHidden />
+            <ConversationCreationIntro kind="ui" switchID="conversationCreationKind" uiID="conversationCreationChat" switchHidden cloudID="conversationCreationCloud" cloudHidden />
             {/* biome-ignore lint/a11y/useSemanticElements: These command groups retain the shared controller layout, rather than native fieldset form styling. */}
             <div id="sessionBrowserNewDirectoryField" className="session-browser-new-directory" hidden><span id="sessionBrowserNewDirectoryLabel">{uiText("工作目录")}</span><div id="sessionBrowserDirectoryChoices" className="creation-choices" role="group" aria-labelledby="sessionBrowserNewDirectoryLabel" /><select id="sessionBrowserNewDirectory" hidden aria-label={uiText("工作目录")} /></div>
           </div>
@@ -191,7 +191,7 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
         {showEnvironment && <span className="session-browser-environment" title={location}>{location}</span>}
       </span>}
       {s.error && !rowError ? <span className="table-message">{s.error}</span> : null}
-    </button>{parallel ? <Button type="button" variant="ghost" size="icon-sm" className="parallel-list-add h-(--session-row-action-size) w-(--session-row-end-width) justify-end transition-none" data-conversation-parallel={key} data-conversation-terminal={s.terminal ? s.id : undefined} data-parallel-open={isParallel || undefined} disabled={s.available === false || parallelFull && !isParallel} aria-label={isParallel ? uiText("定位对话：{0}", s.name) : uiText("将对话加入并列：{0}", s.name)} title={isParallel ? `${uiText("已并列")} · ${uiText("定位到对应栏")}` : parallelFull ? uiText("最多并列三个对话，可在栏标题中更换") : uiText("加入右侧并列")}>
+    </button>{parallel ? <Button type="button" variant="ghost" size="icon-sm" className="parallel-list-add transition-none" data-conversation-parallel={key} data-conversation-terminal={s.terminal ? s.id : undefined} data-parallel-open={isParallel || undefined} disabled={s.available === false || parallelFull && !isParallel} aria-label={isParallel ? uiText("定位对话：{0}", s.name) : uiText("将对话加入并列：{0}", s.name)} title={isParallel ? `${uiText("已并列")} · ${uiText("定位到对应栏")}` : parallelFull ? uiText("已达到最大分屏数量，请先关闭其他面板") : uiText("加入右侧并列")}>
       {isParallel ? <Columns2 aria-hidden="true" /> : <SquareSplitHorizontal aria-hidden="true" />}
     </Button> : null}</li>
   }

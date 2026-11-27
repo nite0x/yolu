@@ -5,7 +5,7 @@ export interface PageSnapshot {
   environment?: string
   title?: string
   kind?: string
-  conversation?: {selected?: string | null; creating?: boolean; creatingYoluAssistant?: boolean; scope?: object; directory?: string; creationDirectory?: string; environmentFilter?: string; pane?: string; session?: unknown; creationBindings?: unknown; creationLocalDirectories?: unknown} | null
+  conversation?: {selected?: string | null; creating?: boolean; creatingYoluAssistant?: boolean; draftExecution?: "local" | "cloud"; scope?: object; directory?: string; creationDirectory?: string; environmentFilter?: string; pane?: string; session?: unknown; creationBindings?: unknown; creationLocalDirectories?: unknown} | null
   terminal?: {id?: string; cwd?: string; projectID?: string; sessionID?: string; bindingID?: string}
   context?: string
   draftTitle?: string
@@ -24,16 +24,18 @@ export interface PageMessages {
   'workhub:page-open': {snapshot: PageSnapshot; placement?: 'current' | 'split'; create?: boolean}
   'workhub:conversation-select': {snapshot: PageSnapshot; initial?: boolean}
   'workhub:conversation-add': {snapshot: PageSnapshot}
-  'workhub:conversation-kind': {snapshot: PageSnapshot; kind: 'ui' | 'terminal'}
+  'workhub:conversation-kind': {snapshot: PageSnapshot; kind: 'ui' | 'terminal' | 'cloud'}
   'workhub:page-restore': {snapshot: PageSnapshot; active: boolean}
   'workhub:page-active': {active: boolean}
   'workhub:page-pane': {split: boolean; shared?: boolean}
-  'workhub:page-pane-command': {command: 'close' | 'zoom'}
+  'workhub:page-pane-command': {command: 'close' | 'zoom' | 'split-left' | 'split-right' | 'split-up' | 'split-down'}
+  'workhub:page-pane-drag': {phase: 'start' | 'move' | 'end' | 'cancel'; clientX?: number; clientY?: number}
+  'workhub:conversation-missing': {sessionId: string; environment?: string}
   'workhub:navigation-modal': {open: boolean}
   'workhub:navigation-route': {route: string}
   'workhub:page-navigate': {route: string}
   'workhub:page-chrome': {chrome: {left: number; top: number}}
-  'workhub:parallel-layout': {split?: boolean; focused?: boolean; zoomed?: boolean; canZoom?: boolean; canSplit?: boolean}
+  'workhub:parallel-layout': {split?: boolean; focused?: boolean; zoomed?: boolean; compact?: boolean; canZoom?: boolean; canSplit?: boolean; canSplitRight?: boolean; canSplitDown?: boolean; canSplitLeft?: boolean; canSplitUp?: boolean; canClose?: boolean}
   'workhub:conversation-group': {sessions: (string | null | undefined)[]; selected?: string | null; target?: PageSnapshot; targetTitle?: string; full?: boolean; split?: boolean; canSplit?: boolean; listWidth?: number; autoSelect?: boolean; createdConversation?: boolean}
 }
 export type PageMessage = {[K in keyof PageMessages]: {type: K} & PageMessages[K]}[keyof PageMessages]
@@ -49,7 +51,7 @@ export function isPageSnapshot(value: unknown): value is PageSnapshot {
   if (!record(value) || !route(value.route) || !optional(value.environment, string) || !optional(value.title, string)) return false
   if (value.conversation != null) {
     const view = value.conversation
-    if (!record(view) || !optional(view.selected, v => v === null || string(v)) || !optional(view.creating, bool) || !optional(view.creatingYoluAssistant, bool)) return false
+    if (!record(view) || !optional(view.selected, v => v === null || string(v)) || !optional(view.creating, bool) || !optional(view.creatingYoluAssistant, bool) || !optional(view.draftExecution, v => v === 'local' || v === 'cloud')) return false
     if (view.scope !== undefined && (!record(view.scope) || !['all', 'project', 'directory'].includes(String(view.scope.kind)))) return false
   }
   const terminal = value.terminal
@@ -68,15 +70,17 @@ export function readPageMessage(value: unknown): PageMessage | null {
     case 'workhub:page-state': case 'workhub:conversation-add': valid = snapshot(); break
     case 'workhub:conversation-select': valid = snapshot() && optional(value.initial, bool); break
     case 'workhub:page-open': valid = snapshot() && optional(value.placement, v => v === 'current' || v === 'split') && optional(value.create, bool); break
-    case 'workhub:conversation-kind': valid = snapshot() && (value.kind === 'ui' || value.kind === 'terminal'); break
+    case 'workhub:conversation-kind': valid = snapshot() && (value.kind === 'ui' || value.kind === 'terminal' || value.kind === 'cloud'); break
     case 'workhub:page-restore': valid = snapshot() && bool(value.active); break
     case 'workhub:page-active': valid = bool(value.active); break
     case 'workhub:page-pane': valid = bool(value.split) && optional(value.shared, bool); break
-    case 'workhub:page-pane-command': valid = value.command === 'close' || value.command === 'zoom'; break
+    case 'workhub:page-pane-command': valid = ['close', 'zoom', 'split-left', 'split-right', 'split-up', 'split-down'].includes(String(value.command)); break
+    case 'workhub:page-pane-drag': valid = ['start', 'move', 'end', 'cancel'].includes(String(value.phase)) && optional(value.clientX, finite) && optional(value.clientY, finite); break
+    case 'workhub:conversation-missing': valid = string(value.sessionId) && optional(value.environment, string); break
     case 'workhub:navigation-modal': valid = bool(value.open); break
     case 'workhub:navigation-route': case 'workhub:page-navigate': valid = route(value.route); break
     case 'workhub:page-chrome': valid = record(value.chrome) && finite(value.chrome.left) && finite(value.chrome.top); break
-    case 'workhub:parallel-layout': valid = ['focused', 'zoomed', 'canZoom', 'canSplit', 'split'].every(key => optional(value[key], bool)); break
+    case 'workhub:parallel-layout': valid = ['focused', 'zoomed', 'compact', 'canZoom', 'canSplit', 'canSplitRight', 'canSplitDown', 'canSplitLeft', 'canSplitUp', 'canClose', 'split'].every(key => optional(value[key], bool)); break
     case 'workhub:conversation-group': valid = Array.isArray(value.sessions) && value.sessions.every(v => v == null || string(v))
       && optional(value.selected, v => v === null || string(v)) && optional(value.targetTitle, string) && optional(value.target, isPageSnapshot)
       && optional(value.listWidth, finite) && ['full', 'split', 'canSplit', 'autoSelect', 'createdConversation'].every(key => optional(value[key], bool)); break
