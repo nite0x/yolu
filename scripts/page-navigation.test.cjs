@@ -5,31 +5,54 @@ const path = require('node:path');
 const {JSDOM} = require('jsdom');
 const root = path.join(__dirname, '../web');
 
-function harness(t, hash = '#/projects', {desktop = false, listWidth} = {}) {
-  const dom = new JSDOM(fs.readFileSync(path.join(root,'app.html'),'utf8'), {url:'http://localhost:4317/' + hash, runScripts:'outside-only'});
-  t.after(() => dom.window.close());
+function harness(t, hash = '#/projects', {desktop = false, listWidth, width = 1800, height = 1000, savedLayout, bootstrapLayout} = {}) {
+  let html = fs.readFileSync(path.join(root,'app.html'),'utf8');
+  if (bootstrapLayout) html = html.replace('__PANE_LAYOUT__', bootstrapLayout.replaceAll('"', '&quot;'));
+  const dom = new JSDOM(html, {url:'http://localhost:4317/' + hash, runScripts:'outside-only'});
+  t.after(async () => { await new Promise(resolve => setTimeout(resolve, 10)); dom.window.close(); });
   const {window:w} = dom;
   w.Response = Response;
-  Object.defineProperty(w,'innerWidth',{value:1800,configurable:true});
+  Object.defineProperty(w,'innerWidth',{value:width,configurable:true});
+  Object.defineProperty(w,'innerHeight',{value:height,configurable:true});
   if (listWidth) w.localStorage.setItem('workhub:conversation-list-width:v1',String(listWidth));
+  if (savedLayout) w.localStorage.setItem('workhub:pane-layout:v1:default', savedLayout);
   if (desktop) {
     w.document.documentElement.setAttribute('data-workhub-desktop','');
     w.localStorage.setItem('workhub:sidebar-collapsed:v1','false');
     w.localStorage.setItem('workhub:sidebar-width:v1','360');
   }
   const layouts = [], splitters = [], chrome = [];
-  const search = { openers: [], visits: [] };
+  const search = { openers: [], visits: [], options: [] };
+  w.eval(fs.readFileSync(path.join(root,'ui/page-layout.js'),'utf8') + '\nwindow.WorkHubLayout = WorkHubLayout;');
+  const realLayout = w.WorkHubLayout;
+  const realPaneLayout = realLayout.paneLayout;
   w.WorkHubLayout = {
-    renderPanes:(_,props) => layouts.push(props), renderChrome(container,props) {chrome.push({container,props});}, setupSplitResize(options) { splitters.push(options); },
+    ...realLayout,
+    renderChrome(container,props) {chrome.push({container,props});},
+    setupSplitResize(options) { splitters.push(options); },
     createGlobalSearch(_, {navigate}) {
       search.navigate = navigate;
-      return {open(trigger){search.openers.push(trigger);},remember(snapshot){search.visits.push(snapshot);}};
+      return {
+        open(trigger, options){search.openers.push(trigger); search.options.push(options);},
+        remember(snapshot){search.visits.push(snapshot);},
+        preload(){},
+        recentConversations(){return [];},
+      };
     },
     conversationDefaults:{get() {return 'ui';},set() {}},
+    paneLayout: {
+      ...realPaneLayout,
+      render(container, props) {
+        layouts.push(props);
+        realPaneLayout.render(container, props);
+      },
+    },
   };
   const requests = [];
   w.fetch = async (...args) => {requests.push(args); return new Response('{}');};
   for (const file of ['ui/browser-runtime.js','core/conversation-list-width.js','core/page-host.js']) w.eval(fs.readFileSync(path.join(root,file),'utf8'));
+  const pagesEl = w.document.getElementById('workspacePages');
+  pagesEl.getBoundingClientRect = () => ({left:0, top:0, right:w.innerWidth, bottom:w.innerHeight, width:w.innerWidth, height:w.innerHeight});
   const frames = () => [...w.document.querySelectorAll('iframe.workspace-page')];
   const send = (frame,type,extra = {},origin = w.location.origin) => w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin,data:{type,...extra}}));
   const messages = new Map();
@@ -41,16 +64,19 @@ function harness(t, hash = '#/projects', {desktop = false, listWidth} = {}) {
     if (restored) send(frame,'workhub:page-restored');
     return received;
   };
-  const workspace = frames()[0]; ready(workspace);
-  return {w,frames,send,ready,messages,layouts,chrome,requests,splitters,search,workspace,nav:() => w.document.querySelector('.workspace-navigation-frame')};
+  const workspace = () => w.document.getElementById('page-workspace');
+  if (workspace()) ready(workspace());
+  return {w,frames,send,ready,messages,layouts,chrome,requests,splitters,search,get workspace(){return workspace();},nav:() => w.document.querySelector('.workspace-navigation-frame')};
 }
 const conversation = id => ({route:'/sessions',environment:'local',title:id,conversation:{scope:{kind:'all'},selected:id,pane:'detail'}});
 const open = (h,snapshot,placement) => {
-  h.send(h.workspace,'workhub:page-open',{snapshot,placement});
+  const source = h.workspace || h.nav();
+  if (!h.messages.has(source)) h.ready(source);
+  h.send(source,'workhub:page-open',{snapshot,placement});
   // Complete the normal frame handshake. Transition tests below deliver the
   // two readiness notifications individually to model slow document loads.
   if (h.nav() && !h.messages.has(h.nav())) h.ready(h.nav());
-  for (const frame of h.frames()) if (frame !== h.workspace && !h.messages.has(frame)) h.ready(frame);
+  for (const frame of h.frames()) if (!h.messages.has(frame)) h.ready(frame);
 };
 const visible = h => h.frames().filter(frame => !frame.hidden);
 
@@ -250,7 +276,7 @@ test('independent pages reuse one document and preserve project routes and direc
 });
 
 test('parallel Agents remain mounted while sidebar navigation opens independent pages', t => {
-  const h = harness(t);
+  const h = harness(t, '#/projects', {width: 2800, height: 1400});
   open(h,conversation('one')); h.ready(visible(h)[0]); h.ready(h.nav());
   open(h,conversation('two'),'split'); h.ready(visible(h)[1]);
   open(h,conversation('three'),'split'); h.ready(visible(h)[2]);
@@ -270,7 +296,15 @@ test('parallel Agents remain mounted while sidebar navigation opens independent 
   assert.equal(h.nav().parentElement.hidden,false);
   assert.equal(h.frames().length,4);
   open(h,conversation('four'),'split');
-  assert.equal(visible(h).length,3);
+  assert.equal(visible(h).length,4);
+  h.send(readers[0], 'workhub:page-focus');
+  open(h,conversation('five'),'split');
+  h.send(readers[0], 'workhub:page-focus');
+  open(h,conversation('six'),'split');
+  assert.equal(visible(h).length,6);
+  h.send(readers[0], 'workhub:page-focus');
+  open(h,conversation('seven'),'split');
+  assert.equal(visible(h).length,6,'product limit caps simultaneous panes at six');
 });
 
 test('history selection changes the focused reader and focuses an already open Agent', t => {
@@ -306,7 +340,7 @@ test('narrow windows expose every retained conversation through a selector', t =
   const h = harness(t);
   open(h,conversation('one')); h.ready(visible(h)[0]);
   open(h,conversation('two'),'split'); h.ready(visible(h)[1]);
-  Object.defineProperty(h.w,'innerWidth',{value:900}); h.w.dispatchEvent(new h.w.Event('resize'));
+  Object.defineProperty(h.w,'innerWidth',{value:640}); h.w.dispatchEvent(new h.w.Event('resize'));
   const selector = h.w.document.getElementById('workspaceNarrowPanes');
   assert.equal(selector.options.length,2);
   assert.equal(visible(h).length,1);
@@ -320,7 +354,7 @@ test('draft pane labels distinguish empty drafts and update without changing the
   open(h,draft);
   open(h,draft,'split');
   const panes = visible(h);
-  Object.defineProperty(h.w,'innerWidth',{value:900}); h.w.dispatchEvent(new h.w.Event('resize'));
+  Object.defineProperty(h.w,'innerWidth',{value:640}); h.w.dispatchEvent(new h.w.Event('resize'));
   const selector = h.w.document.getElementById('workspaceNarrowPanes');
   assert.equal(new Set([...selector.options].map(option=>option.textContent)).size,2);
   const focused = selector.value;
@@ -380,7 +414,8 @@ test('narrow navigation uses the retained navigator and dismisses on chat select
 test('removed global assistant cannot open a panel through links, messages or its former shortcut', t => {
   const h = harness(t, '#/assistant', {desktop:true});
   assert.equal(h.w.document.getElementById('workspaceAssistant'), null);
-  assert.equal(new URL(h.workspace.src).hash, '#/projects');
+  assert.equal(h.w.location.hash,'#/sessions');
+  assert.equal(h.workspace,null);
   h.send(h.nav(), 'workhub:assistant-toggle');
   h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {code:'KeyY', altKey:true, shiftKey:true, bubbles:true}));
   assert.equal(h.w.document.getElementById('workspaceAssistant'), null);
@@ -523,6 +558,46 @@ test('an initially empty conversation destination resolves in place instead of t
   assert.equal(h.chrome.at(-1).props.canGoBack,false);
 });
 
+test('starting in conversations loads the resource workspace on its first visit and retains it', t => {
+  const h = harness(t,'#/sessions');
+  assert.equal(h.workspace,null);
+  assert.deepEqual(h.frames(),[]);
+  open(h,conversation('one'));
+  const reader = visible(h)[0];
+  assert.equal(h.workspace,null);
+  open(h,{route:'/projects/app?directory=%2Frepo',environment:'remote'});
+  const workspace = h.workspace;
+  assert.deepEqual(visible(h),[workspace]);
+  const url = new URL(workspace.src);
+  assert.equal(url.searchParams.get('environment'),'remote');
+  assert.equal(url.hash,'#/projects/app?directory=%2Frepo');
+  open(h,conversation('one'));
+  assert.deepEqual(visible(h),[reader]);
+  open(h,{route:'/settings',environment:'local'});
+  assert.equal(h.workspace,workspace);
+  assert.equal(workspace.src,url.href);
+  assert.equal(h.messages.get(workspace).findLast(message=>message.type==='workhub:page-restore').snapshot.route,'/settings');
+});
+
+test('a deep-linked conversation starts restoring alongside the shared list', t => {
+  const h = harness(t,'#/sessions?session=one');
+  assert.equal(h.workspace,null);
+  assert(h.nav());
+  assert.equal(h.frames().length,1);
+  h.ready(h.frames()[0],false);
+  const restore = h.messages.get(h.frames()[0]).find(message=>message.type==='workhub:page-restore');
+  assert.equal(restore.snapshot.conversation.selected,'one');
+});
+
+test('a narrow conversation launch restores its reader while the navigator is closed', t => {
+  const h = harness(t,'#/sessions',{width:760});
+  assert.equal(h.workspace,null);
+  assert.equal(h.nav().parentElement.hidden,true);
+  assert.equal(h.frames().length,1);
+  h.ready(h.frames()[0]);
+  assert.deepEqual(visible(h),h.frames());
+});
+
 test('macOS history shortcuts preserve Option-arrow text editing inside a composer', async t => {
   const h = harness(t);
   Object.defineProperty(h.w.navigator,'platform',{value:'MacIntel',configurable:true});
@@ -534,4 +609,182 @@ test('macOS history shortcuts preserve Option-arrow text editing inside a compos
   await traverse(h, () => h.w.document.dispatchEvent(back));
   assert.equal(back.defaultPrevented,true);
   assert.equal(h.w.location.hash,'#/projects');
+});
+
+test('recursive pane splitting creates empty panes, preserves sibling iframes, and supports mixed directions', t => {
+  const h = harness(t);
+  open(h, conversation('one'));
+  const first = visible(h)[0], firstDoc = first.contentDocument;
+
+  // Split right from pane 1 -> creates an empty pane without reloading pane 1
+  h.send(first, 'workhub:page-pane-command', {command: 'split-right'});
+  assert.equal(first.contentDocument, firstDoc);
+  assert.equal(parseFloat(first.style.left), 0);
+  assert.equal(parseFloat(first.style.width), 50);
+  assert.ok(h.w.document.querySelector('.pane-layout-empty'), 'new split starts as an empty pane');
+
+  // Bind conversation two via sidebar selection into the focused empty pane
+  h.send(h.nav(), 'workhub:conversation-select', {snapshot: conversation('two')});
+  const second = h.frames().find(f => f !== h.workspace && f !== first);
+  h.ready(second);
+  assert.equal(visible(h).length, 2);
+  assert.equal(parseFloat(second.style.left), 50);
+  assert.equal(parseFloat(second.style.width), 50);
+
+  // Split down from pane 2 -> nested vertical split on right half
+  h.send(second, 'workhub:page-pane-command', {command: 'split-down'});
+  assert.equal(first.contentDocument, firstDoc);
+  assert.equal(parseFloat(second.style.top), 0);
+  assert.equal(parseFloat(second.style.height), 50);
+  assert.equal(h.w.document.querySelectorAll('.pane-layout-divider[role="separator"]').length, 2);
+
+  // Close last remaining pane resets to empty pane view and does NOT re-trigger autoSelect
+  const emptyClose = h.w.document.querySelector('.pane-layout-empty-cancel');
+  emptyClose.click();
+  h.send(second, 'workhub:page-pane-command', {command: 'close'});
+  assert.deepEqual(visible(h), [first]);
+  h.send(first, 'workhub:page-pane-command', {command: 'close'});
+  assert.equal(visible(h).length, 0);
+  assert.ok(h.w.document.querySelector('.pane-layout-empty'));
+  const lastGroup = h.messages.get(h.nav()).findLast(m => m.type === 'workhub:conversation-group');
+  assert.equal(lastGroup.autoSelect, false, 'closing the last pane must not autoSelect a conversation back over EmptyPane');
+});
+
+test('pane drag-and-drop moves and swaps panes without reloading iframes and Escape cancels cleanly', t => {
+  const h = harness(t);
+  open(h, conversation('one'));
+  open(h, conversation('two'), 'split');
+  const [first, second] = visible(h);
+  const firstDoc = first.contentDocument, secondDoc = second.contentDocument;
+
+  first.getBoundingClientRect = () => ({left:0, top:0, width:900, height:1000, right:900, bottom:1000});
+  // Drag first onto center of second, then cancel via Escape -> unchanged
+  h.send(first, 'workhub:page-pane-drag', {phase: 'start'});
+  h.send(first, 'workhub:page-pane-drag', {phase: 'move', clientX: 1350, clientY: 500});
+  assert.equal(h.w.document.querySelector('.pane-layout-drop-preview')?.dataset.zone, 'center');
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: 'Escape', cancelable: true}));
+  assert.equal(h.w.document.querySelector('.pane-layout-drop-preview'), null);
+  assert.equal(parseFloat(first.style.left), 0);
+
+  // Drag first onto bottom of second and commit -> vertical split, no iframe reloads
+  h.send(first, 'workhub:page-pane-drag', {phase: 'start'});
+  h.send(first, 'workhub:page-pane-drag', {phase: 'move', clientX: 1350, clientY: 920});
+  assert.equal(h.w.document.querySelector('.pane-layout-drop-preview')?.dataset.zone, 'bottom');
+  h.send(first, 'workhub:page-pane-drag', {phase: 'end'});
+  assert.equal(first.contentDocument, firstDoc);
+  assert.equal(second.contentDocument, secondDoc);
+  assert.equal(parseFloat(second.style.top), 0);
+  assert.equal(parseFloat(second.style.height), 50);
+  assert.equal(parseFloat(first.style.top), 50);
+  assert.equal(parseFloat(first.style.height), 50);
+});
+
+test('pane keyboard shortcuts handle split, directional focus, maximize/restore and close', t => {
+  const h = harness(t);
+  Object.defineProperty(h.w.navigator, 'platform', {value: 'MacIntel', configurable: true});
+  open(h, conversation('one'));
+  open(h, conversation('two'), 'split');
+  const [first, second] = visible(h);
+  const firstDoc = first.contentDocument, secondDoc = second.contentDocument;
+  assert.equal(second.dataset.focused, 'true');
+
+  // Focus left (Cmd+Opt+ArrowLeft)
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: 'ArrowLeft', metaKey: true, altKey: true, cancelable: true}));
+  assert.equal(first.dataset.focused, 'true');
+
+  // Maximize (Cmd+Shift+Enter) and restore preserves mounted documents without reloading
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: 'Enter', metaKey: true, shiftKey: true, cancelable: true}));
+  assert.deepEqual(visible(h), [first]);
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: 'Enter', metaKey: true, shiftKey: true, cancelable: true}));
+  assert.deepEqual(visible(h), [first, second]);
+  assert.equal(first.contentDocument, firstDoc);
+  assert.equal(second.contentDocument, secondDoc);
+
+  // Split down (Cmd+Shift+\)
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: '|', code: 'Backslash', metaKey: true, shiftKey: true, cancelable: true}));
+  assert.ok(h.w.document.querySelector('.pane-layout-empty'));
+
+  // Close empty pane via Opt+Shift+W
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: 'W', code: 'KeyW', altKey: true, shiftKey: true, cancelable: true}));
+  assert.equal(h.w.document.querySelector('.pane-layout-empty'), null);
+});
+
+test('persisted layout restores across restart, migrates legacy 3-column state, handles narrow->wide recovery, and degrades missing/corrupt data', t => {
+  const saved = JSON.stringify({
+    version: 1,
+    context: 'default',
+    layout: {
+      version: 1,
+      root: {
+        type: 'split',
+        id: 's1',
+        direction: 'vertical',
+        ratio: 0.35,
+        children: [
+          {type: 'pane', id: 'p1', content: {type: 'conversation', conversationId: '["local","one"]'}},
+          {type: 'pane', id: 'p2', content: {type: 'conversation', conversationId: '["local","two"]'}},
+        ],
+      },
+      activePaneId: 'p2',
+    },
+    conversations: {
+      '["local","one"]': {environment: 'local', route: '/sessions', title: 'One', selected: 'one'},
+      '["local","two"]': {environment: 'local', route: '/sessions', title: 'Two', selected: 'two'},
+    },
+  });
+
+  const h = harness(t, '#/sessions', {bootstrapLayout: saved});
+  h.ready(h.nav());
+  for (const frame of h.frames()) h.ready(frame);
+  const restored = visible(h);
+  assert.equal(restored.length, 2);
+  assert.equal(parseFloat(restored[0].style.height), 35);
+  assert.equal(parseFloat(restored[1].style.height), 65);
+  assert.equal(restored[1].dataset.focused, 'true');
+
+  // Narrow/short -> wide recovery preserves custom 35/65 ratio and blocks phantom drag in compact mode
+  const doc0 = restored[0].contentDocument, doc1 = restored[1].contentDocument;
+  Object.defineProperty(h.w, 'innerHeight', {value: 500, configurable: true});
+  h.w.dispatchEvent(new h.w.Event('resize'));
+  assert.equal(visible(h).length, 1);
+  assert.ok(h.w.document.getElementById('workspaceNarrowPanes'));
+  h.send(restored[1], 'workhub:page-pane-drag', {phase: 'start'});
+  assert.equal(h.w.document.getElementById('workspacePages').hasAttribute('data-pane-dragging'), false);
+  Object.defineProperty(h.w, 'innerHeight', {value: 1000, configurable: true});
+  h.w.dispatchEvent(new h.w.Event('resize'));
+  assert.equal(visible(h).length, 2);
+  assert.equal(parseFloat(restored[0].style.height), 35);
+  assert.equal(restored[0].contentDocument, doc0);
+  assert.equal(restored[1].contentDocument, doc1);
+
+  // Stale conversation-missing for a different session ID does NOT wipe active pane
+  h.send(restored[1], 'workhub:conversation-missing', {sessionId: 'stale-other', environment: 'local'});
+  assert.equal(visible(h).length, 2);
+
+  // Matching missing/deleted conversation degrades only that pane to empty without harming sibling
+  h.send(restored[1], 'workhub:conversation-missing', {sessionId: 'two', environment: 'local'});
+  assert.deepEqual(visible(h), [restored[0]]);
+  assert.ok(h.w.document.querySelector('.pane-layout-empty'));
+
+  // pagehide flushes layout to PUT /api/settings/pane-layout with keepalive: true
+  h.w.dispatchEvent(new h.w.Event('pagehide'));
+  const putReq = h.requests.findLast(([url, init]) => String(url).includes('/api/settings/pane-layout') && init?.method === 'PUT');
+  assert.ok(putReq);
+  assert.equal(putReq[1].keepalive, true);
+
+  // Corrupt saved layout degrades gracefully to a single empty pane
+  const corrupt = harness(t, '#/sessions', {savedLayout: '{corrupt-json'});
+  corrupt.ready(corrupt.nav());
+  assert.equal(corrupt.frames().length, 1);
+
+  // Legacy 3-column state migrates cleanly to binary tree
+  const legacy = JSON.stringify({
+    pages: [{id: 'c1', conversationId: '["local","a"]', width: 1}, {id: 'c2', conversationId: '["local","b"]', width: 1}],
+    focused: 'c1',
+  });
+  const migrated = harness(t, '#/sessions', {savedLayout: legacy});
+  migrated.ready(migrated.nav());
+  for (const frame of migrated.frames()) migrated.ready(frame);
+  assert.equal(visible(migrated).length, 2);
+  assert.equal(visible(migrated)[0].dataset.focused, 'true');
 });

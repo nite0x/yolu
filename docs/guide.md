@@ -89,7 +89,7 @@ Send the first message to start in a dedicated default directory. Use **Working 
 
 ### Codex Cloud conversations
 
-In **New conversation**, select Codex, set **Run in** to **Codex Cloud**, and choose a cloud environment. Yolu lists environments available to the ChatGPT login in the host’s Codex CLI. Send a text message to start the cloud conversation. The **Codex Cloud** group at the top of the grouped conversation list shows conversations accessible in that login and workspace, including conversations started outside Yolu. Open a conversation to read its history or continue in the same cloud workspace. Codex Cloud manages its repositories and permissions. This integration uses the native Cloud preview protocol and supports text messages.
+In the local creation form, choose **Codex Cloud** beside **Chat** and **Terminal**, then select a cloud environment. Yolu lists environments available to the ChatGPT login in the host’s Codex CLI. Send a text message to start the cloud conversation. The **Codex Cloud** group at the top of the grouped conversation list shows conversations accessible in that login and workspace, including conversations started outside Yolu. Open a conversation to read its history or continue in the same cloud workspace. Codex Cloud manages its repositories and permissions. This integration uses the native Cloud preview protocol and supports text messages.
 
 ### Voice dictation
 
@@ -127,7 +127,7 @@ Conversation management includes renaming, local pinning, native Codex archive/r
 
 ## Navigation, panes and embedded terminals
 
-Use the shared conversation navigator to open Projects, Issues or Settings. Search and group by project, or switch to Recent to see the latest conversations across environments. On narrow windows, open the navigator from the header. Conversations can open side by side in up to three panes.
+Use the shared conversation navigator to open Projects, Issues or Settings. Search and group by project, or switch to Recent to see the latest conversations across environments. On narrow windows, open the navigator from the header. Conversations support recursive horizontal and vertical split panes (up to six panes by default).
 
 The new-conversation entry also offers a terminal mode. Choose an available directory and an installed shell or CLI, such as Codex, Claude Code, Gemini CLI or OpenCode, or supply a custom executable and JSON argument array. These tools use their own authentication and permission prompts. When resuming a managed conversation in the native Codex terminal, confirm that native Codex will control access. The selected directory and conversation history remain available.
 

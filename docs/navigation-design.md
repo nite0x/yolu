@@ -12,7 +12,9 @@ Yolu keeps the conversation navigator beside the active pane. Desktop and browse
 
 ## Pane behavior
 
-The navigator stays mounted when the main pane changes. An open conversation keeps its session identity, reader and draft while showing a project or settings. On wide windows, panes can sit side by side. On narrow windows, a header button opens the navigator and the pane selector switches between open conversations.
+The navigator stays mounted when the main pane changes. An open conversation keeps its session identity, reader and draft while showing a project or settings. Conversations support recursive horizontal and vertical splits (up to six panes by default), divider resizing with double-click reset, temporary pane maximization/restoration, pane header drag-and-drop move/swap, and persistence across reloads (see [flexible pane layout](pane-layout.md)). Splitting creates an empty pane that offers creating a new conversation with inherited context, opening an existing/recent conversation, or cancelling the split. On narrow windows, a header button opens the navigator and the pane selector switches between open panes without discarding the underlying split tree.
+
+On a wide window that opens Conversations without a selection, the shared navigator initializes before the empty reader. A conversation link starts restoring its reader alongside the navigator. The resource pane loads on the first visit to Projects, Issues or Settings and stays mounted for later visits.
 
 ## Verification
 

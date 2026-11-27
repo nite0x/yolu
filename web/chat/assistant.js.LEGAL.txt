@@ -93,6 +93,7 @@ lucide-react/dist/esm/icons/circle-alert.mjs:
 lucide-react/dist/esm/icons/circle-check.mjs:
 lucide-react/dist/esm/icons/circle-minus.mjs:
 lucide-react/dist/esm/icons/circle-x.mjs:
+lucide-react/dist/esm/icons/columns-2.mjs:
 lucide-react/dist/esm/icons/copy.mjs:
 lucide-react/dist/esm/icons/download.mjs:
 lucide-react/dist/esm/icons/eighth-notes.mjs:
@@ -134,6 +135,7 @@ lucide-react/dist/esm/icons/pin.mjs:
 lucide-react/dist/esm/icons/play.mjs:
 lucide-react/dist/esm/icons/plus.mjs:
 lucide-react/dist/esm/icons/refresh-cw.mjs:
+lucide-react/dist/esm/icons/rows-2.mjs:
 lucide-react/dist/esm/icons/search.mjs:
 lucide-react/dist/esm/icons/shield-alert.mjs:
 lucide-react/dist/esm/icons/shield-check.mjs:

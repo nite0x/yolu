@@ -80,7 +80,7 @@ The application composes project, session, terminal and execution services. Each
 
 The [frontend module guide](../frontend/README.md) defines the source tree and dependency rules enforced by `npm run web:architecture`. Entry files call explicit startup functions. Features own their rendering adapters; `frontend/app/bridge/workspace-ui.tsx` composes the browser contract.
 
-Most product components render through `renderToStaticMarkup` and `window.WorkHubUI`. Page controllers manage navigation, data, polling and dialogs. The interactive chat UI mounts through its React bridge. The page host retains one shared application document and up to three independent same-origin conversation panes. Conversation history and drafts retain their own identities across view changes.
+Most product components render through `renderToStaticMarkup` and `window.WorkHubUI`. Page controllers manage navigation, data, polling and dialogs. The interactive chat UI mounts through its React bridge. The page host retains one shared application document and recursive split conversation panes (up to six by default). Conversation history and drafts retain their own identities across view changes.
 
 The conversation page controller delegates resource appearance to `frontend/shared/lib/resource-icons.ts` and list mechanics to `frontend/features/conversations/list/list.ts`. Appearance is environment-specific. The list module owns the bounded scroll window, keyboard positioning and DOM row reuse. `frontend/features/conversations/list/state.ts` owns scope preferences, environment caches, request generations and partial-result publication.
 

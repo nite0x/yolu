@@ -80,7 +80,12 @@ test('page boundaries ignore malformed state, routes, commands and layout payloa
   const valid = {type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'remote',conversation:{selected:'native'}}}
   assert.deepEqual(readPageMessage(valid), valid)
   assert(readPageMessage({type:'workhub:page-state',snapshot:{route:'/projects',conversation:null}}))
-  assert(readPageMessage({type:'workhub:parallel-layout',split:true,canZoom:true}))
+  assert(readPageMessage({type:'workhub:parallel-layout',split:true,canZoom:true,canSplitRight:true,canSplitDown:false,canClose:true}))
+  assert(readPageMessage({type:'workhub:page-pane-command',command:'split-right'}))
+  assert(readPageMessage({type:'workhub:page-pane-command',command:'split-down'}))
+  assert(readPageMessage({type:'workhub:page-pane-drag',phase:'move',clientX:120,clientY:80}))
+  assert.equal(readPageMessage({type:'workhub:page-pane-drag',phase:'invalid'}), null)
+  assert(readPageMessage({type:'workhub:conversation-missing',sessionId:'s1',environment:'local'}))
   const sent: unknown[] = []
   postPageMessage({postMessage:message => {sent.push(message)}}, 'http://localhost', 'workhub:page-ready', {})
   assert.deepEqual(sent, [{type:'workhub:page-ready'}])

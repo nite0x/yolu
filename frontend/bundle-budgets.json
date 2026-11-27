@@ -2,7 +2,7 @@
   "assets": [
     {"path": "web/ui/ui.js", "bytes": 940000, "gzip_bytes": 285000},
     {"path": "web/chat/assistant.js", "bytes": 1260000, "gzip_bytes": 380000},
-    {"path": "web/ui/page-layout.js", "bytes": 405000, "gzip_bytes": 130000},
+    {"path": "web/ui/page-layout.js", "bytes": 440000, "gzip_bytes": 140000},
     {"path": "web/chat/mermaid.js", "bytes": 40000, "gzip_bytes": 16000}
   ],
   "critical": ["web/ui/ui.js", "web/chat/assistant.js", "web/ui/page-layout.js"],

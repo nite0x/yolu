@@ -15,14 +15,27 @@ test('LAN HTTP pages generate RFC 4122 UUIDs and mount the application without n
   const ids = Array.from({length:100}, () => w.crypto.randomUUID());
   assert.equal(new Set(ids).size, 100);
   for (const id of ids) assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-  w.WorkHubLayout = {renderPanes(){},renderChrome(){},setupSplitResize(){},createGlobalSearch(){return {open(){},remember(){}};}};
+  w.eval(fs.readFileSync('web/ui/page-layout.js', 'utf8') + '\nwindow.WorkHubLayout = WorkHubLayout;');
+  const realLayout = w.WorkHubLayout;
+  w.WorkHubLayout = {
+    ...realLayout,
+    renderChrome(){},
+    setupSplitResize(){},
+    createGlobalSearch(){return {open(){},remember(){},preload(){},recentConversations(){return [];}};},
+    paneLayout: {...realLayout.paneLayout, render(){}},
+  };
   for (const file of ['web/ui/browser-runtime.js','web/core/conversation-list-width.js','web/core/page-host.js']) w.eval(fs.readFileSync(file,'utf8'));
-  assert.equal(w.document.querySelectorAll('iframe.workspace-page').length, 2);
-  assert([...w.document.querySelectorAll('iframe.workspace-page')].some(frame => new URL(frame.src).hash === '#/sessions'));
+  assert.equal(w.document.querySelectorAll('iframe.workspace-page').length, 0);
+  const navigator = w.document.querySelector('.workspace-navigation-frame');
+  assert(navigator);
+  for (const type of ['workhub:page-ready','workhub:page-restored']) {
+    w.dispatchEvent(new w.MessageEvent('message',{source:navigator.contentWindow,origin:w.location.origin,data:{type}}));
+  }
+  assert.equal(w.document.querySelectorAll('iframe.workspace-page').length, 1);
   const page = new URL(w.document.querySelector('iframe.workspace-page').src);
+  assert.equal(page.hash, '#/sessions');
   assert.equal(page.searchParams.get('app-desktop'), '1');
   assert.equal(page.searchParams.has('app-sidebar-width'), false);
-  assert(w.document.querySelector('.workspace-navigation-frame'));
   assert.equal(w.__TAURI_INTERNALS__, undefined);
 });
 
