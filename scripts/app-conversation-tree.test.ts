@@ -18,15 +18,19 @@ const listed = (rows:ReturnType<typeof conversationTree>) => rows.flatMap(row =>
 
 test("project previews prioritize active and selected sessions before filling available slots", () => {
   const items = [
-    ...["first","second","third","hidden"].map(id => session(id,"app")),
+    ...["first","second","third","fourth","fifth","hidden"].map(id => session(id,"app")),
     session("running","app",{chat_status:"running"}),session("unread","app",{unread:true}),session("pinned","app",{pinned:true}),session("selected","app"),
   ]
   const rows = conversationTree(items,setup({selected:"selected"}))
-  assert.deepEqual(listed(rows).map(row => row.session.id), ["running","selected"])
-  assert.equal(rows.find(row => row.kind === "more")?.group.total,8)
-  assert.deepEqual(listed(conversationTree(items,setup())).map(row => row.session.id), ["first","running"])
-  const active = [...items, session("starting","app",{chat_status:"starting"})]
-  assert.deepEqual(listed(conversationTree(active,setup({selected:"selected"}))).map(row => row.session.id), ["running","selected","starting"])
+  assert.deepEqual(listed(rows).map(row => row.session.id), ["first","second","third","running","selected"])
+  assert.equal(rows.find(row => row.kind === "more")?.group.total,10)
+  assert.deepEqual(listed(conversationTree(items,setup())).map(row => row.session.id), ["first","second","third","fourth","running"])
+  const active = [
+    ...items,
+    ...["r1","r2","r3","r4"].map(id => session(id,"app",{chat_status:"running"})),
+    session("starting","app",{chat_status:"starting"}),
+  ]
+  assert.deepEqual(listed(conversationTree(active,setup({selected:"selected"}))).map(row => row.session.id), ["running","selected","r1","r2","r3","r4","starting"])
 })
 
 test("grouping claims a session only once using its primary project across multiple bindings", () => {
@@ -47,12 +51,12 @@ test("older imported sessions appear with their inferred repository and worktree
 })
 
 test("project groups reveal selected conversations and honor limits, collapse and search", () => {
-  const items = ["a","b","c","d","e"].map(id => session(id,"app"))
+  const items = ["a","b","c","d","e","f","g"].map(id => session(id,"app"))
   const key = conversationTree(items,setup()).find(row => row.kind === "group")!.group.key
   assert.equal(listed(conversationTree(items,setup({collapsed:[key]}))).length,0)
-  assert(listed(conversationTree(items,setup({collapsed:[key],reveal:"e",selected:"e"}))).some(row => row.session.id === "e"))
-  assert.equal(listed(conversationTree(items,setup({limits:{[key]:4}}))).length,4)
-  assert.equal(listed(conversationTree(items,setup({filtered:true}))).length,5)
+  assert(listed(conversationTree(items,setup({collapsed:[key],reveal:"g",selected:"g"}))).some(row => row.session.id === "g"))
+  assert.equal(listed(conversationTree(items,setup({limits:{[key]:6}}))).length,6)
+  assert.equal(listed(conversationTree(items,setup({filtered:true}))).length,7)
   const filtered = conversationTree(items,setup({collapsed:[key],filtered:true,selectedSession:session("outside the results","app")}))
   assert.equal(listed(filtered).length,0)
   assert.equal(filtered.find(row => row.kind === "group")?.group.containsSelection,true)
@@ -69,33 +73,39 @@ test("grouping omits empty projects and recent mode uses registered project name
 test("unbound conversations are automatically grouped into one collapsible empty project group", () => {
   const items = [
     session("app", "app"),
-    session("standalone-1", undefined, {updated_at: 30}),
-    session("standalone-2", undefined, {updated_at: 20}),
-    session("standalone-3", undefined, {updated_at: 10, chat_status: "running"}),
+    session("standalone-1", undefined, {updated_at: 60}),
+    session("standalone-2", undefined, {updated_at: 50, unread: true}),
+    session("standalone-3", undefined, {updated_at: 40, chat_status: "waiting"}),
+    session("standalone-4", undefined, {updated_at: 30, chat_status: "failed"}),
+    session("standalone-5", undefined, {updated_at: 20}),
+    session("standalone-6", undefined, {updated_at: 10, chat_status: "running"}),
   ]
   const expanded = conversationTree(items, setup())
   const header = expanded.find(row => row.kind === "group" && row.group.collection === "independent")
   assert(header)
   assert.equal(header.group.key, "independent")
   assert.equal(header.group.href, undefined)
-  assert.equal(header.group.total, 3)
-  assert.equal(header.group.shown, 2)
-  assert.deepEqual(listed(expanded).filter(row => row.group.collection === "independent").map(row => row.session.id), ["standalone-1", "standalone-3"])
+  assert.equal(header.group.total, 6)
+  assert.equal(header.group.shown, 5)
+  assert.deepEqual(listed(expanded).filter(row => row.group.collection === "independent").map(row => row.session.id), ["standalone-1", "standalone-2", "standalone-3", "standalone-4", "standalone-6"])
   assert(expanded.some(row => row.kind === "more" && row.group.key === "independent"))
 
-  const collapsed = conversationTree(items, setup({collapsed: ["independent"], selected: "standalone-2"}))
+  const collapsed = conversationTree(items, setup({collapsed: ["independent"], selected: "standalone-5"}))
   const collapsedHeader = collapsed.find(row => row.kind === "group" && row.group.collection === "independent")
   assert(collapsedHeader)
   assert.equal(collapsedHeader.group.collapsed, true)
   assert.equal(collapsedHeader.group.containsSelection, true)
   assert.equal(collapsedHeader.group.running, true)
+  assert.equal(collapsedHeader.group.waiting, true)
+  assert.equal(collapsedHeader.group.failed, true)
+  assert.equal(collapsedHeader.group.unread, true)
   assert.equal(listed(collapsed).some(row => row.group.collection === "independent"), false)
 
-  const revealed = conversationTree(items, setup({collapsed: ["independent"], reveal: "standalone-2", selected: "standalone-2"}))
-  assert.equal(listed(revealed).some(row => row.session.id === "standalone-2"), true)
+  const revealed = conversationTree(items, setup({collapsed: ["independent"], reveal: "standalone-5", selected: "standalone-5"}))
+  assert.equal(listed(revealed).some(row => row.session.id === "standalone-5"), true)
 })
 
-test("projects receive distinct preset theme icons across filters without letter initials", () => {
+test("projects default to a uniform folder icon while preserving explicit custom icons", () => {
   const directories = [
     {...directory("a"), name:"North Market"},
     {...directory("b"), name:"North Maps", appearance:{icon:"rocket", color:"theme"}},
@@ -107,10 +117,27 @@ test("projects receive distinct preset theme icons across filters without letter
   const second = session("two","b")
   const third = session("three","c")
   const [firstIcon, secondIcon, thirdIcon] = badges([first, second, third])
-  assert(firstIcon && firstIcon.icon !== "auto")
-  assert.equal(firstIcon.color, "theme")
-  assert.equal(secondIcon?.icon, "rocket")
-  assert(thirdIcon && thirdIcon.icon !== "auto")
-  assert.equal(new Set([firstIcon.icon, secondIcon?.icon, thirdIcon.icon]).size, 3)
+  assert.deepEqual(firstIcon, {icon:"folder", color:"theme"})
+  assert.deepEqual(secondIcon, {icon:"rocket", color:"theme"})
+  assert.deepEqual(thirdIcon, {icon:"folder", color:"theme"})
   assert.deepEqual(badges([first]), [firstIcon])
+})
+
+test("grouped navigation optionally appends a collapsible recent section omitted during filtering", () => {
+  const items = Array.from({length: 12}, (_, index) => session(`item-${index}`, "app", {updated_at: 100 - index, context: {project: "Application", projectID: "app", cwd: "/repo/app", kind: "Project", branch: "main"}}))
+  const rows = conversationTree(items, setup({showRecent: true}))
+  const recentHeader = rows.find(row => row.kind === "group" && row.group.collection === "recent")
+  assert(recentHeader)
+  assert.equal(recentHeader.group.total, 12)
+  assert.equal(recentHeader.group.shown, 10)
+  const recentRows = listed(rows).filter(row => row.group.collection === "recent")
+  assert.equal(recentRows.length, 10)
+  assert.equal(recentRows[0].projectName, "Application")
+  assert(rows.some(row => row.kind === "more" && row.group.key === "recent"))
+
+  const collapsedRecent = conversationTree(items, setup({showRecent: true, collapsed: ["recent"]}))
+  assert.equal(listed(collapsedRecent).filter(row => row.group.collection === "recent").length, 0)
+
+  const filtered = conversationTree(items, setup({showRecent: true, filtered: true}))
+  assert.equal(filtered.some(row => row.group.collection === "recent"), false)
 })

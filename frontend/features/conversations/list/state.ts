@@ -1,7 +1,7 @@
 import type {Session} from "@/entities/conversations/catalog"
 import type {Project} from "@/entities/projects/model"
 import type {BindingInput, SessionTarget} from "@/entities/conversations/bindings"
-import {projectConversationPreview, type ConversationTreeRow} from "./tree"
+import {projectConversationPreview, recentConversationPreview, type ConversationTreeRow} from "./tree"
 
 export interface ConversationScope {
   kind: "all" | "project" | "directory"
@@ -97,7 +97,7 @@ export function createConversationState({storage, scopeKey, sessionKey}: {
         view = {key, environment, environmentFilter: "", scope, directory: typeof saved?.directory === "string" ? saved.directory : "", selected: typeof saved?.selected === "string" ? saved.selected : undefined, archived: !!saved?.archived, search: "", statusFilter: "all", pane: "list", sessions: [], loading: false, error: "", checkedAt: 0, scrollTop: 0, creating: false, groupLimits: {}, collapsedGroups: [], loadedCount: typeof loadedCount === "number" && Number.isSafeInteger(loadedCount) && loadedCount >= 20 ? loadedCount : 20, windowStart: typeof windowStart === "number" && Number.isSafeInteger(windowStart) && windowStart >= 0 ? windowStart : 0}
         const collapsedGroups = Array.isArray(saved?.collapsedGroups) ? saved.collapsedGroups.filter(key => typeof key === "string") : []
         view.collapsedGroups = collapsedGroups
-        view.groupLimits = Object.fromEntries(Object.entries(saved?.groupLimits || {}).filter(([group, count]) => Number.isSafeInteger(count) && count > projectConversationPreview && !collapsedGroups.includes(group)))
+        view.groupLimits = Object.fromEntries(Object.entries(saved?.groupLimits || {}).filter(([group, count]) => Number.isSafeInteger(count) && count > (group === "recent" ? recentConversationPreview : projectConversationPreview) && !collapsedGroups.includes(group)))
         views.set(key, view)
       }
       return view

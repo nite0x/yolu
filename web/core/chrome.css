@@ -193,6 +193,20 @@ html[data-workspace-navigation] .sidebar .session-browser-list-tools {
   gap: 0; padding: 2px 4px 4px; border-bottom: 0;
   padding-inline-end: calc(4px + var(--navigator-content-inset));
 }
+html[data-workspace-navigation] .sidebar .session-sidebar-new-chat {
+  height: 30px;
+  border-radius: 7px; color: var(--yolu-foreground);
+  font-size: var(--yolu-font-size-compact); font-weight: 500;
+}
+html[data-workspace-navigation] .sidebar .session-sidebar-new-chat svg { width: 15px; height: 15px; color: var(--muted-foreground); flex: none; }
+html[data-workspace-navigation] .sidebar .session-sidebar-new-chat:hover { background: color-mix(in srgb, currentColor 7%, transparent); }
+html[data-workspace-navigation] .sidebar .session-search-toggle {
+  flex: none; color: var(--muted-foreground);
+}
+html[data-workspace-navigation] .sidebar .session-search-toggle svg { width: 15px; height: 15px; }
+html[data-workspace-navigation] .sidebar #sessionBrowserScopeBar:not([data-search-open]) .list-search-field {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;
+}
 html[data-workspace-navigation] .sidebar #sessionBrowserError { margin-inline-end: calc(12px + var(--navigator-content-inset)); }
 .session-sidebar-modes:not([hidden]) {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px;
@@ -207,8 +221,8 @@ html[data-workspace-navigation] .sidebar #sessionBrowserList {
   padding-inline-end: calc(2px + var(--navigator-content-inset));
 }
 html[data-workspace-navigation] .sidebar .session-collection-toggle .shortcut-badge { width: 16px; height: 16px; border-radius: 0; }
-html[data-workspace-navigation] .sidebar .session-workspace-name { font-size: var(--yolu-font-size-compact); font-weight: 600; }
-html[data-workspace-navigation] .sidebar .session-browser-item { padding: var(--session-row-block-inset, 6px) var(--session-row-inset, 8px); border-radius: 7px; }
+html[data-workspace-navigation] .sidebar .session-workspace-name { font-size: var(--yolu-font-size-compact); font-weight: 500; }
+html[data-workspace-navigation] .sidebar .session-browser-item { min-height: 30px; padding: var(--session-row-block-inset, 5px) var(--session-row-inset, 8px); border-radius: 7px; }
 html[data-workspace-navigation] .sidebar .session-browser-item-title { font-size: var(--yolu-font-size-compact); font-weight: 450; }
 html[data-workspace-navigation] .sidebar .session-browser-item-time { font-size: 11px; --session-time-muted-opacity: .75; }
 /* Shared 44px flush desktop pane header matching .conversation-surface-header. */

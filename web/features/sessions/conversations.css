@@ -76,7 +76,23 @@ html[data-workspace-navigation] .session-sidebar-group-control { inline-size: 28
 .session-browser-workspaces { --session-project-indent: 22px; }
 [data-hide-project-icons] .session-browser-workspaces { --session-project-indent: 10px; }
 .session-browser-workspaces .session-browser-group { min-width: 0; }
-.session-browser-workspaces .session-browser-group + .session-browser-group { margin-top: 14px; }
+.session-browser-workspaces .session-browser-group + .session-browser-group { margin-top: 2px; }
+.session-browser-workspaces .session-browser-group:has(.session-browser-items) + .session-browser-group { margin-top: 10px; }
+.session-sidebar-section-label {
+  display: flex; align-items: center;
+  margin: 12px 0 4px; padding: 2px 8px;
+  color: var(--muted-foreground); font-size: 11px; font-weight: 500; line-height: 1.4;
+  user-select: none;
+}
+.session-recent-group { margin-top: 14px !important; }
+.session-recent-heading > .session-recent-toggle {
+  min-height: 24px; padding: 2px 8px; margin-bottom: 2px;
+  color: var(--muted-foreground); font-size: 11px; font-weight: 500;
+}
+.session-recent-heading > .session-recent-toggle .session-workspace-name { font-size: 11px; font-weight: 500; color: var(--muted-foreground); }
+.session-recent-heading > .session-recent-toggle:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.session-browser-workspaces .session-recent-group .session-browser-items { margin-inline-start: 0; }
+.session-browser-workspaces .session-recent-group .session-workspace-preview { margin-inline-start: 0; }
 .session-browser-workspaces .session-browser-items { gap: 2px; }
 .session-browser-workspaces [data-collection] .session-browser-items {
   margin-inline-start: max(0px, calc(var(--session-project-indent) - var(--session-agent-column)));
@@ -95,6 +111,9 @@ html[data-workspace-navigation] .session-sidebar-group-control { inline-size: 28
 .session-browser-item[data-conversation-terminal] .session-browser-item-heading,
 .session-browser-item-meta { padding-inline-start: var(--session-agent-column); }
 .session-browser-item-trailing { display: flex; align-items: center; gap: 6px; min-width: 0; flex-shrink: 0; }
+.session-browser-item-badge { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; flex-shrink: 0; color: var(--muted-foreground); opacity: .78; }
+.session-browser-item-badge svg { width: 12px; height: 12px; }
+.session-browser-item-badge-worktree { color: var(--yolu-primary, var(--primary)); opacity: .82; }
 .session-browser-item-agent { flex: none; width: var(--session-agent-size); height: var(--session-agent-size); }
 .session-browser-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 1.6; font-weight: 500; }
 .session-browser-item[aria-pressed="true"] .session-browser-item-title { font-weight: 600; color: var(--yolu-primary-ink,#3e478f); }
@@ -266,7 +285,7 @@ html[data-workspace-conversation] .session-browser[data-pane="detail"] .session-
 }
 .parallel-list-item {
   --parallel-action-visibility: hidden;
-  --session-row-block-inset: 6px;
+  --session-row-block-inset: 5px;
   --session-row-heading-height: 18px;
 }
 .parallel-list-item > .session-browser-item {
@@ -311,15 +330,19 @@ html[data-workspace-conversation] .ui-narrow-list{display:none!important}
   display: grid; grid-template-columns: minmax(0, 1fr) var(--session-collection-actions-width);
   align-items: center; border-radius: 7px;
 }
-.session-browser-workspaces .session-workspace-heading > button { gap: 6px; min-height: 32px; padding-block: 4px; padding-inline-start: 6px; border-radius: 7px; }
+.session-browser-workspaces .session-workspace-heading > button { gap: 6px; min-height: 30px; padding-block: 4px; padding-inline-start: 6px; border-radius: 7px; }
+.session-browser-workspaces .session-recent-heading > .session-recent-toggle { min-height: 24px; padding: 2px 8px; }
 .session-browser-workspaces .session-browser-item-title,
 .parallel-list-item .session-browser-item-title { line-height: var(--session-row-heading-height, 18px); }
 .session-browser-workspaces .session-browser-item-meta { margin-top: 2px; line-height: 15px; }
-.session-workspace-heading .session-workspace-running svg { width: 14px; height: 14px; color: inherit; }
+.session-workspace-heading :is(.session-workspace-running, .session-workspace-status) svg { width: 14px; height: 14px; color: inherit; }
+.session-collection-trailing { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; flex: none; margin-inline-start: auto; }
+.session-collection-count { opacity: .72; font-size: 11px; }
 .session-collection-heading > .session-collection-toggle { width: auto; padding-inline-end: 6px; }
 .session-collection-heading > [data-project-reorder] { cursor: grab; touch-action: none; user-select: none; }
 .session-collection-heading > [data-project-reorder]:active { cursor: grabbing; }
 .session-collection-toggle .shortcut-badge, .session-collection-toggle .session-collection-fallback-icon { width: 16px; height: 16px; flex: none; }
+.session-collection-toggle .shortcut-badge[data-icon="folder"][data-tone="neutral"] { color: var(--muted-foreground); }
 .session-collection-toggle .shortcut-badge svg { width: 15px; height: 15px; color: inherit; }
 .session-collection-actions {
   display: flex; align-items: center; justify-content: flex-end;
@@ -333,8 +356,8 @@ html[data-workspace-conversation] .ui-narrow-list{display:none!important}
   content: ""; position: absolute; z-index: 1; pointer-events: none;
   inset-inline: 0; height: 2px; border-radius: 2px; background: var(--primary);
 }
-.session-browser-group[data-project-drop="before"]::after { inset-block-start: -4px; }
-.session-browser-group[data-project-drop="after"]::after { inset-block-end: -4px; }
+.session-browser-group[data-project-drop="before"]::after { inset-block-start: -2px; }
+.session-browser-group[data-project-drop="after"]::after { inset-block-end: -2px; }
 [data-hide-project-counts] .session-collection-count,
 [data-hide-project-icons] .session-collection-toggle > :is(.shortcut-badge, .session-collection-fallback-icon) { display: none; }
 @media (hover: hover) {
@@ -346,13 +369,13 @@ html[data-workspace-conversation] .ui-narrow-list{display:none!important}
   .session-collection-heading:has(> .session-collection-actions) > .session-collection-toggle {
     padding-inline-end: calc(var(--session-collection-actions-width) + 6px);
   }
-  .session-collection-heading:has(> .session-collection-actions) .session-collection-count {
+  .session-collection-heading:has(> .session-collection-actions) .session-collection-trailing {
     position: absolute;
     inset-inline-end: var(--session-row-inset);
   }
   .session-collection-actions { grid-area: 1 / 2; }
   .session-collection-heading:not(:hover, :focus-within) .session-collection-actions { visibility: hidden; }
-  .session-collection-heading:has(> .session-collection-actions):is(:hover, :focus-within) .session-collection-count { visibility: hidden; }
+  .session-collection-heading:has(> .session-collection-actions):is(:hover, :focus-within) .session-collection-trailing { visibility: hidden; }
 }
 @media (hover: none) {
   .parallel-list-item:has(> .parallel-list-add:enabled) { --parallel-action-visibility: visible; }

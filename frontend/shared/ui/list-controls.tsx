@@ -11,11 +11,12 @@ export function ListCreateButton({ label, showLabel, icon, ...props }: Component
   </Button>
 }
 
-export function ListSearch({ id, className = "", input, label, placeholder, clear, filter, variant = "default", actions }: {
-  id?: string; className?: string; variant?: "default" | "plain"; actions?: ReactNode; input: string; label: string; placeholder: string;
+export function ListSearch({ id, className = "", input, label, placeholder, clear, filter, variant = "default", leading, actions }: {
+  id?: string; className?: string; variant?: "default" | "plain"; leading?: ReactNode; actions?: ReactNode; input: string; label: string; placeholder: string;
   clear: ButtonHTMLAttributes<HTMLButtonElement> & { [attribute: `data-${string}`]: string | undefined }; filter: ReactNode;
 }) {
   return <div id={id} className={`list-search ${variant === "plain" ? "list-search-plain" : ""} ${className}`}>
+    {leading}
     <div className="list-search-field">
       <Search aria-hidden="true" />
       <Input id={input} aria-label={label} type="search" placeholder={placeholder} autoComplete="off" className="h-[32px] rounded-none border-0 px-[28px] text-xs shadow-none focus-visible:ring-0 md:text-xs" />
