@@ -285,7 +285,7 @@ html[data-workspace-conversation] .session-browser[data-pane="detail"] .session-
 }
 .parallel-list-item {
   --parallel-action-visibility: hidden;
-  --session-row-block-inset: 5px;
+  --session-row-block-inset: 6px;
   --session-row-heading-height: 18px;
 }
 .parallel-list-item > .session-browser-item {
