@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"regexp"
@@ -31,16 +32,35 @@ func resolvePaneLayoutContext(ctxName string) (string, bool) {
 	return name, true
 }
 
+// Keep the envelope aligned with its storage key while preserving metadata and
+// fields written by newer clients. This also repairs historical blank contexts.
+func normalizePaneLayoutRecord(raw []byte, ctxName string) (string, error) {
+	var record map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return "", err
+	}
+	if record == nil {
+		return "", errors.New("invalid pane layout record")
+	}
+	record["context"], _ = json.Marshal(ctxName)
+	normalized, err := json.Marshal(record)
+	return string(normalized), err
+}
+
 func (a *App) savedPaneLayout(ctx context.Context, ctxName string) string {
 	resolved, ok := resolvePaneLayoutContext(ctxName)
 	if !ok {
 		return ""
 	}
 	value, err := a.Execution.Store.Setting(ctx, paneLayoutKeyPrefix+resolved)
-	if err != nil || !json.Valid([]byte(value)) {
+	if err != nil {
 		return ""
 	}
-	return value
+	normalized, err := normalizePaneLayoutRecord([]byte(value), resolved)
+	if err != nil {
+		return ""
+	}
+	return normalized
 }
 
 func (a *App) paneLayoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -72,11 +92,12 @@ func (a *App) paneLayoutHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var envelope struct {
-			Version int             `json:"version"`
-			Context string          `json:"context"`
-			Layout  json.RawMessage `json:"layout"`
+			Version   int             `json:"version"`
+			Context   string          `json:"context"`
+			UpdatedAt float64         `json:"updatedAt"`
+			Layout    json.RawMessage `json:"layout"`
 		}
-		if err := json.Unmarshal(body, &envelope); err != nil || envelope.Version < 1 {
+		if err := json.Unmarshal(body, &envelope); err != nil || envelope.Version < 1 || envelope.UpdatedAt < 0 {
 			httpx.WriteError(w, http.StatusBadRequest, "布局数据格式无效")
 			return
 		}
@@ -98,7 +119,23 @@ func (a *App) paneLayoutHandler(w http.ResponseWriter, r *http.Request) {
 		if queryCtx != "" {
 			targetCtx = resolvedQueryCtx
 		}
-		if err := a.Execution.Store.SaveSetting(r.Context(), paneLayoutKeyPrefix+targetCtx, string(body)); err != nil {
+		normalized, err := normalizePaneLayoutRecord(body, targetCtx)
+		if err != nil {
+			httpx.WriteError(w, http.StatusBadRequest, "布局数据格式无效")
+			return
+		}
+		err = a.Execution.Store.UpdateSetting(r.Context(), paneLayoutKeyPrefix+targetCtx, "", func(previous string) (string, error) {
+			var saved struct {
+				UpdatedAt float64 `json:"updatedAt"`
+			}
+			// Compare and replace in one transaction: an older normal request may
+			// arrive after a newer pagehide keepalive request. Legacy records use 0.
+			if json.Unmarshal([]byte(previous), &saved) == nil && saved.UpdatedAt > 0 && saved.UpdatedAt >= envelope.UpdatedAt {
+				return previous, nil
+			}
+			return normalized, nil
+		})
+		if err != nil {
 			httpx.DbError(w, err)
 			return
 		}

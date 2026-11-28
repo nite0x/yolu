@@ -3,7 +3,12 @@ import { test } from "node:test"
 import { createInitialLayout } from "../frontend/app/pane-layout/model/operations"
 import { countPanes, findPane } from "../frontend/app/pane-layout/model/tree"
 import type { SplitNode } from "../frontend/app/pane-layout/model/types"
-import { createPaneLayoutPersistence } from "../frontend/app/pane-layout/persistence/serializer"
+import {
+  createPaneLayoutPersistence,
+  deserializePaneLayout,
+  layoutStorageKey,
+  serializePaneLayout,
+} from "../frontend/app/pane-layout/persistence/serializer"
 import { createPaneLayoutStore } from "../frontend/app/pane-layout/state/layout-store"
 import {
   computeLayoutView,
@@ -198,4 +203,79 @@ test("closing a pane mid-drag or mid-resize clears stale transient interaction I
   assert.equal(store.getInteraction().draggingPaneId, null)
   assert.equal(store.getInteraction().dropTarget, null)
   assert.equal(store.getInteraction().resizingSplitId, null)
+})
+
+test("persistence normalizes context in storage keys, records, restore and remote saves", async t => {
+  const layout = createInitialLayout({ type: "empty" }, "saved-pane")
+  for (const [input, expected] of [["", "default"], [" \t ", "default"], [" workspace-main ", "workspace-main"]]) {
+    assert.equal(layoutStorageKey(input), layoutStorageKey(expected))
+    assert.equal(JSON.parse(serializePaneLayout(layout, input)).context, expected)
+    const restored = deserializePaneLayout({ version: 1, context: input, layout }, expected)
+    assert.equal(restored.degraded, false)
+    assert.equal(restored.layout.activePaneId, "saved-pane")
+    assert.equal(deserializePaneLayout({ version: 1, context: "other", layout }, input).degraded, true)
+    const writes: string[] = []
+    const persistence = createPaneLayoutPersistence({
+      context: input, debounceMs: 0, readLocal: () => null, writeLocal: () => {},
+      saveRemote: async (context, payload) => { writes.push(context, payload.context) },
+    })
+    t.after(() => persistence.dispose())
+    persistence.scheduleSave(layout)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(writes, [expected, expected])
+  }
+})
+
+test("keepalive supersedes queued saves and late completions cannot regress remote synchronization", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] })
+  const first = Promise.withResolvers<void>()
+  const writes: { id: string; keepalive?: boolean }[] = []
+  const persistence = createPaneLayoutPersistence({
+    debounceMs: 250, now: () => 100, readLocal: () => null, writeLocal: () => {},
+    saveRemote: async (_context, payload, options) => {
+      writes.push({ id: payload.layout.activePaneId, keepalive: options?.keepalive })
+      if (payload.layout.activePaneId === "old") await first.promise
+    },
+  })
+  t.after(() => persistence.dispose())
+  const old = createInitialLayout({ type: "empty" }, "old")
+  const queued = createInitialLayout({ type: "empty" }, "queued")
+  const latest = createInitialLayout({ type: "empty" }, "latest")
+  persistence.scheduleSave(old)
+  t.mock.timers.tick(250)
+  await new Promise(resolve => setImmediate(resolve))
+  persistence.scheduleSave(queued)
+  t.mock.timers.tick(250)
+  persistence.scheduleSave(latest)
+  persistence.flush()
+  assert.deepEqual(writes, [{ id: "old", keepalive: false }, { id: "latest", keepalive: true }])
+  await new Promise(resolve => setImmediate(resolve))
+  first.resolve()
+  await new Promise(resolve => setImmediate(resolve))
+  persistence.scheduleSave(latest)
+  t.mock.timers.tick(250)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(writes.length, 2, "superseded queued saves and stale completions must not trigger old writes or retries")
+})
+
+test("returning to the last acknowledged layout still saves over an in-flight change", async t => {
+  const changed = Promise.withResolvers<void>()
+  const writes: string[] = []
+  const persistence = createPaneLayoutPersistence({
+    debounceMs: 0, readLocal: () => null, writeLocal: () => {},
+    saveRemote: async (_context, payload) => {
+      writes.push(payload.layout.activePaneId)
+      if (payload.layout.activePaneId === "changed") await changed.promise
+    },
+  })
+  t.after(() => persistence.dispose())
+  const original = createInitialLayout({ type: "empty" }, "original")
+  persistence.scheduleSave(original)
+  await new Promise(resolve => setImmediate(resolve))
+  persistence.scheduleSave(createInitialLayout({ type: "empty" }, "changed"))
+  await new Promise(resolve => setImmediate(resolve))
+  persistence.scheduleSave(original)
+  changed.resolve()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(writes, ["original", "changed", "original"])
 })

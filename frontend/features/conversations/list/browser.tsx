@@ -1,7 +1,8 @@
 import {uiText, uiLocale} from "@/shared/i18n"
+import {Fragment} from "react"
 import {ConversationCreationIntro} from "@/shared/ui/conversation-surface"
 import {ShortcutBadge} from "@/shared/ui/resource-icons"
-import {Search, ArrowLeft, X, ChevronUp, ChevronsDownUp, ChevronsUpDown, Pin, GitBranch, RotateCw, Folder, FolderOpen, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, SquareSplitHorizontal, ListFilter as ListFilterIcon, type LucideIcon} from "lucide-react"
+import {Search, ArrowLeft, X, ChevronUp, ChevronsDownUp, ChevronsUpDown, Pin, GitBranch, Cloud, RotateCw, Folder, FolderOpen, MessageSquare, CircleAlert, Files, Maximize2, LoaderCircle, CircleHelp, CircleStop, ArrowRightLeft, CircleCheck, Columns2, SquarePen, SquareSplitHorizontal, ListFilter as ListFilterIcon, type LucideIcon} from "lucide-react"
 import {AgentIcon} from "@/entities/conversations/agent-icon"
 import {ListCreateButton, ListFilter, ListSearch} from "@/shared/ui/list-controls"
 import {Button} from "@/shared/ui/primitives/button"
@@ -50,7 +51,15 @@ export function SessionBrowser() {
         <span id="sessionBrowserCount" className="sr-only" role="status" aria-live="polite" />
         <span id="sessionProjectOrderStatus" className="sr-only" role="status" />
         <p id="sessionBrowserContext" className="sr-only" />
-        <ListSearch variant="plain" id="sessionBrowserScopeBar" input="sessionBrowserSearch" label={uiText("搜索对话、项目或分支")} placeholder={uiText("搜索对话…")} clear={{ id:"sessionSearchClear", "data-conversation-action":"clear-search" }} filter={
+        <ListSearch variant="plain" id="sessionBrowserScopeBar" input="sessionBrowserSearch" label={uiText("搜索对话、项目或分支")} placeholder={uiText("搜索对话…")} clear={{ id:"sessionSearchClear", "data-conversation-action":"clear-search" }} leading={
+          <Button type="button" variant="ghost" size="sm" id="sessionSidebarNewChat" className="session-sidebar-new-chat flex-1 min-w-0 justify-start gap-1.5 px-1.5" data-conversation-action="new" data-conversation-standalone="true" title={uiText("新建对话")} hidden>
+            <SquarePen aria-hidden="true" /><span>{uiText("新建对话")}</span>
+          </Button>
+        } filter={<>
+          <Button type="button" variant="ghost" size="icon-sm" id="sessionSearchToggle" className="session-search-toggle size-[28px] rounded-[5px]"
+            aria-label={uiText("搜索对话")} title={uiText("搜索对话")} aria-controls="sessionBrowserSearch" aria-expanded={false} hidden>
+            <Search aria-hidden="true" />
+          </Button>
           <ListFilter id="sessionScopePicker" label={uiText("筛选对话")} descriptionID="sessionScopeLabel" description={uiText("全部对话")} menuClass="session-scope-menu" icon={<ListFilterIcon aria-hidden="true" />}>
           <Label className="sr-only" htmlFor="sessionScopeSearch">{uiText("切换对话范围")}</Label><Input id="sessionScopeSearch" className="h-[32px] text-[12px] shadow-none focus-visible:ring-2 focus-visible:ring-ring/20" type="search" placeholder={uiText("搜索项目或目录")} />
           {/* biome-ignore lint/a11y/useSemanticElements: These command groups retain the shared controller layout, rather than native fieldset form styling. */}
@@ -61,7 +70,8 @@ export function SessionBrowser() {
           {/* biome-ignore lint/a11y/useSemanticElements: These command groups retain the shared controller layout, rather than native fieldset form styling. */}
           <div id="sessionSidebarProjectDisplay" role="group" aria-label={uiText("项目分组显示")} hidden>
             <Checkbox name="icons" defaultChecked label={uiText("显示项目图标")} />
-            <Checkbox name="counts" defaultChecked label={uiText("显示项目对话数量")} />
+            <Checkbox name="counts" label={uiText("显示项目对话数量")} />
+            <Checkbox name="recent" defaultChecked label={uiText("显示最近对话")} />
           </div>
           <Button type="button" variant="ghost" size="sm" data-conversation-action="all" id="sessionScopeAll" hidden>{uiText("查看全部对话")}</Button>
           <div id="sessionScopeOptions" />
@@ -73,7 +83,7 @@ export function SessionBrowser() {
             <Button type="button" variant="ghost" size="sm" id="sessionClearFilters" data-conversation-action="clear-filters" hidden>{uiText("清除筛选")}</Button>
           </div>
           </ListFilter>
-        } actions={<>
+        </>} actions={<>
           <span className="session-sidebar-group-control">
             <Button type="button" variant="ghost" size="icon-sm" className="list-create-button size-[28px] rounded-[5px]"
               id="sessionToggleAllGroups" aria-controls="sessionBrowserList" aria-label={uiText("全部收起")} title={uiText("全部收起")} hidden>
@@ -141,17 +151,21 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
     const cloud = s.provider === "codex-cloud"
     const agent = s.yolu_assistant ? "yolu-assistant" : cloud ? "codex-cloud" : s.provider === "cursor" ? "cursor" : s.provider === "agy" ? "agy" : "codex"
     const collection = row?.group.collection
+    const isRecentSection = collection === "recent"
     const showProject = !collection && directoryContext && !!s.context?.project
     const showProjectDirectory = collection === "project" && !!s.cwd && conversationPathKey(s.cwd) !== conversationPathKey(row?.group.projectPath || "")
     const showPath = collection === "independent" || showProjectDirectory || !collection && showDirectory && directoryContext && !s.context?.project
     const environmentName = sidebarMode && s.environment_id === "local" ? undefined : s.environment_name
     const location = cloud ? [collection === "cloud" ? "" : "Codex Cloud", s.cloud_environment || s.cwd].filter(Boolean).join(" · ") : environmentName
-    const showEnvironment = !!location && !row?.group.environmentName
+    const showEnvironment = !isRecentSection && !!location && !row?.group.environmentName
     const isParallel = parallel && parallelSessions.includes(s.browser_key || s.id)
     const general = isGeneralConversationDirectory(s.cwd)
     const directory = general ? uiText("普通对话") : s.cwd.replace(/\\/g, "/").replace(/\/+$/, "").split("/").pop() || s.cwd
     const branch = s.context?.branch || ""
-    const showBranch = collection === "project" && !!branch
+    const defaultBranch = !branch || /^(main|master)$/i.test(branch)
+    const showBranch = collection === "project" && !!branch && (!defaultBranch || showProjectDirectory)
+    const showRecentCloud = isRecentSection && cloud
+    const showRecentBranch = isRecentSection && !cloud && (s.context?.kind === "Worktree" || (!!branch && !defaultBranch))
     const branchMatch = search ? branch.toLowerCase().indexOf(search) : -1
     const pathMatch = search ? s.cwd.toLowerCase().indexOf(search) : -1
     const matchValue = branchMatch >= 0 ? branch : s.cwd
@@ -161,11 +175,13 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
     const date = s.updated_at ? new Date(s.updated_at * 1000) : null
     const dateLabel = date ? date >= today ? date.toLocaleTimeString(uiLocale(), {hour: "2-digit", minute: "2-digit", hour12: false}) : date >= yesterday ? uiText("昨天") : date.toLocaleDateString(uiLocale(), {year: date.getFullYear() !== today.getFullYear() ? "numeric" : undefined, month: "numeric", day: "numeric"}) : ""
     const timestamp = <time className="session-browser-item-time" title={date?.toLocaleString(uiLocale(), {hour12: false})} dateTime={date?.toISOString()}>{dateLabel}</time>
-    return <li key={key} className={parallel ? "parallel-list-item" : undefined}><button type="button" className="session-browser-item" data-conversation-list-row={row?.key} data-conversation-session={onSelect ? undefined : key} onClick={onSelect ? () => onSelect(key) : undefined} data-conversation-terminal={s.terminal ? s.id : undefined} data-environment={s.environment_id} data-parallel-member={isParallel || undefined} aria-pressed={selected === key} aria-description={isParallel ? uiText("已并列") : undefined} title={[s.name || uiText("未命名对话"), location, !general && s.cwd, s.context?.branch, isParallel && uiText("已并列")].filter(Boolean).join("\n")}>
+    return <li key={key} className={parallel ? "parallel-list-item" : undefined}><button type="button" className="session-browser-item" data-conversation-list-row={row?.key} data-conversation-session={onSelect ? undefined : key} onClick={onSelect ? () => onSelect(key) : undefined} data-conversation-terminal={s.terminal ? s.id : undefined} data-environment={s.environment_id} data-parallel-member={isParallel || undefined} aria-pressed={selected === key} aria-description={isParallel ? uiText("已并列") : undefined} title={[s.name || uiText("未命名对话"), isRecentSection && row?.projectName, location, !general && s.cwd, s.context?.branch, isParallel && uiText("已并列")].filter(Boolean).join("\n")}>
       <span className="session-browser-item-heading">
         {s.terminal ? <span className="sr-only">{uiText("终端")}</span> : <AgentIcon agent={agent} className="session-browser-item-agent" />}
         <span className="session-browser-item-title" title={s.name || uiText("未命名对话")}>{s.name || uiText("未命名对话")}</span>
         <span className="session-browser-item-trailing">
+          {showRecentCloud && <span className="session-browser-item-badge" aria-hidden="true" title={location || "Codex Cloud"}><Cloud aria-hidden="true" /></span>}
+          {showRecentBranch && <span className="session-browser-item-badge session-browser-item-badge-worktree" aria-hidden="true" title={branch || s.context?.kind}><GitBranch aria-hidden="true" /></span>}
           <span className="session-browser-item-status" data-session-indicators={s.terminal ? undefined : s.id} data-environment={s.environment_id}
             data-state={rowError ? "failed" : state} role="img" aria-label={status?.label} title={status?.label} hidden={!status}>
             {StatusIcon && <StatusIcon aria-hidden="true" />}
@@ -180,7 +196,7 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
       </span> : sidebarMode === "recent" ? <span className="session-browser-item-meta">
         {!cloud && <span className="session-browser-item-directory" title={!general && s.cwd || undefined}><MiddleTruncate text={row?.projectName || directory || uiText("未选择项目")} /></span>}
         {showEnvironment && <span className="session-browser-environment" title={location}>{location}</span>}
-      </span> : (showProject || showPath || showBranch || showEnvironment) && <span className="session-browser-item-meta">
+      </span> : !isRecentSection && (showProject || showPath || showBranch || showEnvironment) && <span className="session-browser-item-meta">
         {showBranch && <span className="session-browser-item-branch" title={branch}><GitBranch aria-hidden="true" /><MiddleTruncate text={branch} /></span>}
         {showProject && <span className="session-browser-item-project" title={`${s.cwd}${s.context?.branch ? `\n${s.context.branch}` : ""}`}>
           <span>{s.context?.project}</span>{s.context?.branch && <span className="session-browser-item-branch"><GitBranch aria-hidden="true" /><MiddleTruncate text={s.context.branch} /></span>}
@@ -203,36 +219,58 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
       if (!section) { section = {group: row.group, rows: []}; sections.set(row.group.key, section) }
       section.rows.push(row)
     }
-    return <div className="session-browser-groups session-browser-workspaces">{[...sections.values()].map(({group, rows}) => {
+    const sectionList = [...sections.values()]
+    const firstProjectIndex = sidebarMode === "grouped"
+      ? sectionList.findIndex(({group}) => group.collection === "project" || group.collection === "independent")
+      : -1
+    return <div className="session-browser-groups session-browser-workspaces">{sectionList.map(({group, rows}, sectionIndex) => {
       const environmentName = sidebarMode && group.environment === "local" ? undefined : group.environmentName
       const collection = !!group.collection
+      const isRecentSection = group.collection === "recent"
       const sortable = group.collection === "project" && canReorderProjects
       const reorderHint = sortable ? uiText("拖动标题排序，或按 Alt 加上、下方向键") : ""
       const countLabel = uiText("{0} 个对话", group.total)
+      const collapsedStatus = group.collapsed && !isRecentSection
+        ? group.waiting ? {state: "waiting", label: uiText("有对话待确认"), icon: CircleHelp, className: "session-workspace-status"}
+        : group.running ? {state: "running", label: uiText("有对话正在运行"), icon: LoaderCircle, className: "session-workspace-running"}
+        : group.failed ? {state: "failed", label: uiText("有对话本轮未完成"), icon: CircleAlert, className: "session-workspace-status"}
+        : group.unread ? {state: "unread", label: uiText("有未读对话")}
+        : null
+        : null
+      const CollapsedIcon = collapsedStatus?.icon
       const description = [
         group.collapsed && group.containsSelection && group.collection === "project" && uiText("当前对话所在项目"),
-        group.collapsed && group.running && uiText("有对话正在运行"),
-        collection && countLabel,
+        collapsedStatus?.label,
+        collection && !isRecentSection && countLabel,
         reorderHint,
       ].filter(Boolean).join(" · ")
-      const count = <span className={collection ? "session-workspace-count session-collection-count" : "session-workspace-count"} title={countLabel}>{group.total}</span>
-      return <section className="session-browser-group" key={group.key} data-conversation-group={group.key} data-collection={group.collection} aria-label={[group.name, environmentName].filter(Boolean).join(" · ") || undefined}>
-      {rows.filter(row => row.kind === "group").map(row => <h3 className={collection ? "session-workspace-heading session-collection-heading" : "session-workspace-heading"} key={row.key}>
+      const count = !isRecentSection && <span className={collection ? "session-workspace-count session-collection-count" : "session-workspace-count"} title={countLabel}>{group.total}</span>
+      const usesDefaultFolder = group.collection === "project" && (!group.icon?.icon || group.icon.icon === "folder" || group.icon.icon === "auto")
+      const sectionElement = <section className={isRecentSection ? "session-browser-group session-recent-group" : "session-browser-group"} key={group.key} data-conversation-group={group.key} data-collection={group.collection} aria-label={[group.name, environmentName].filter(Boolean).join(" · ") || undefined}>
+      {rows.filter(row => row.kind === "group").map(row => <h3 className={isRecentSection ? "session-workspace-heading session-recent-heading" : collection ? "session-workspace-heading session-collection-heading" : "session-workspace-heading"} key={row.key}>
         <button type="button" data-conversation-group-toggle={group.key} data-conversation-list-row={row.key} aria-expanded={!group.collapsed}
           data-project-reorder={sortable ? "" : undefined} aria-keyshortcuts={sortable ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           data-current-conversation={group.collapsed && group.containsSelection || undefined}
           aria-description={description || undefined}
-          aria-label={collection ? uiText("展开或折叠 {0} 的对话", group.name) : undefined} className={collection ? "session-collection-toggle" : undefined}
+          aria-label={isRecentSection ? uiText("展开或折叠最近对话") : collection ? uiText("展开或折叠 {0} 的对话", group.name) : undefined}
+          className={isRecentSection ? "session-recent-toggle" : collection ? "session-collection-toggle" : undefined}
           title={[group.name, reorderHint].filter(Boolean).join("\n")}>
-          {collection && (group.collection === "cloud" || group.collection === "yolu-assistant"
+          {!isRecentSection && collection && (group.collection === "cloud" || group.collection === "yolu-assistant"
             ? <AgentIcon agent={group.collection === "cloud" ? "codex-cloud" : "yolu-assistant"} className="session-collection-fallback-icon" decorative />
+            : usesDefaultFolder ? <span className="shortcut-badge" data-icon="folder" data-tone="neutral" aria-hidden="true">{group.collapsed ? <Folder /> : <FolderOpen />}</span>
             : group.identity ? <ShortcutBadge name={group.iconName || group.name} identity={group.identity} appearance={group.icon} /> : <Folder className="session-collection-fallback-icon" aria-hidden="true" />)}
           <span className="session-workspace-name">{group.name}</span>
           {environmentName && <small>{environmentName}</small>}
-          {group.collapsed && group.running && <span className="session-workspace-running session-browser-item-status" data-state="running" aria-hidden="true" title={uiText("有对话正在运行")}><LoaderCircle /></span>}
-          {count}
+          {!isRecentSection && (collapsedStatus || count) && <span className="session-collection-trailing">
+            {collapsedStatus && (collapsedStatus.state === "unread"
+              ? <span className="session-workspace-unread session-browser-unread-dot" aria-hidden="true" title={collapsedStatus.label} />
+              : <span className={`${collapsedStatus.className} session-browser-item-status`} data-state={collapsedStatus.state} aria-hidden="true" title={collapsedStatus.label}>
+                  {CollapsedIcon && <CollapsedIcon aria-hidden="true" />}
+                </span>)}
+            {count}
+          </span>}
         </button>
-        {collection && (group.href || group.collection !== "cloud") && <span className="session-collection-actions">
+        {collection && !isRecentSection && (group.href || group.collection !== "cloud") && <span className="session-collection-actions">
           {group.href && <Button asChild variant="ghost" size="icon-sm" className="session-collection-details transition-colors">
             <a href={group.href} data-collection-href={group.href} data-collection-environment={group.environment} data-collection-name={group.name}
               aria-label={uiText("打开项目详情：{0}", group.name)} title={uiText("打开项目详情：{0}", group.name)}><FolderOpen aria-hidden="true" /></a>
@@ -257,6 +295,13 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
         </div>
       })}
       </section>
+      if (sectionIndex === firstProjectIndex) {
+        return <Fragment key={group.key}>
+          <div className="session-sidebar-section-label" data-sidebar-section="projects" aria-hidden="true"><span>{uiText("项目")}</span></div>
+          {sectionElement}
+        </Fragment>
+      }
+      return sectionElement
     })}</div>
   }
   return <div className="session-browser-groups">{groups.map(g => <section className="session-browser-group" key={g.label} aria-label={g.label}>

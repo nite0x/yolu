@@ -317,7 +317,7 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const nav = page.frameLocator('iframe.workspace-navigation-frame');
-  const row = id => nav.locator(`[data-conversation-session="${id}"]`);
+  const row = id => nav.locator(`[data-collection="project"] [data-conversation-session="${id}"]`);
   const reader = id => page.frameLocator(`iframe.workspace-page[data-test-session="${id}"]`);
   // Locate the real reader after host restoration, without invoking controller
   // methods. Tag only the frame element so assertions remain readable.
@@ -389,33 +389,30 @@ for (const entry of ['browser', 'desktop-chrome']) test(`${entry} preserves draf
   const projectHeading = nav.locator('[data-collection="project"] .session-collection-heading');
   const projectName = projectHeading.locator('.session-workspace-name');
   const count = projectHeading.locator('.session-collection-count');
-  const timestamp = row(second).locator('time');
-  const agent = row(second).getByRole('img', {name:'Codex',exact:true});
-  const title = row(second).locator('.session-browser-item-title');
-  const branch = row(second).locator('.session-browser-item-branch');
-  const splitAction = nav.locator(`[data-conversation-parallel="${second}"]`);
+  const projectGroup = nav.locator('[data-collection="project"]');
+  const projectRow = id => projectGroup.locator(`[data-conversation-session="${id}"]`);
+  const timestamp = projectRow(second).locator('time');
+  const agent = projectRow(second).getByRole('img', {name:'Codex',exact:true});
+  const title = projectRow(second).locator('.session-browser-item-title');
+  const splitAction = projectGroup.locator(`[data-conversation-parallel="${second}"]`);
   const rightEdge = async locator => {
     const box = await locator.boundingBox();
     assert(box);
     return box.x + box.width;
   };
   await expect(projectHeading.locator('.session-collection-actions')).toBeHidden();
-  await expect(branch).toBeVisible();
+  await expect(projectRow(second).locator('.session-browser-item-meta')).toHaveCount(0);
+  await expect(count).toBeHidden();
   const restingTime = await timestamp.boundingBox();
   assert(restingTime);
-  const rowStart = (await row(second).boundingBox()).x;
+  const rowStart = (await projectRow(second).boundingBox()).x;
   const titleStart = (await title.boundingBox()).x;
   assert((await agent.boundingBox()).x >= rowStart && await rightEdge(agent) < titleStart);
-  assert.equal((await branch.boundingBox()).x, titleStart);
-  await expect(count).toBeVisible();
-  const restingEdges = {count:await rightEdge(count), project:await rightEdge(projectName), time:await rightEdge(timestamp), agent:await rightEdge(agent), title:await rightEdge(title)};
+  const restingEdges = {project:await rightEdge(projectName), time:await rightEdge(timestamp), agent:await rightEdge(agent), title:await rightEdge(title)};
   await projectHeading.hover();
-  await expect(count).toBeHidden();
   const createEdge = await rightEdge(projectHeading.locator('.session-collection-create svg'));
-  assert(Math.abs(createEdge - restingEdges.count) < 1);
   assert.equal(await rightEdge(projectName), restingEdges.project);
-  await row(second).hover();
-  await expect(count).toBeVisible();
+  await projectRow(second).hover();
   await expect(timestamp).toHaveCSS('opacity','0');
   const hoverAction = await splitAction.boundingBox();
   assert(hoverAction);

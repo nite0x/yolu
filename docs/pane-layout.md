@@ -40,5 +40,7 @@ Shortcuts are handled centrally in `frontend/app/pane-layout/interactions/shortc
 
 - Durable layout state is persisted per layout context (`default`) via `PUT /api/settings/pane-layout` in SQLite (`internal/app/pane_layout.go`), bootstrapped synchronously in `web/app.html` (`<meta name="pane-layout">`), and cached in `localStorage` (`workhub:pane-layout:v1:<context>`).
 - Splitter drags never write on every pointer move; writes are debounced and flushed on drag completion and `pagehide`.
+- Normal saves are serialized and superseded queued snapshots are skipped. `pagehide` dispatches keepalive immediately; SQLite compares `updatedAt` inside the existing settings transaction so late or duplicate requests cannot replace a newer timestamped record. Records without timestamps remain readable and writable until the first timestamped save.
+- Context names are trimmed, with blank names resolving to `default`. Stored envelopes use the resolved context, and reads repair historical envelopes whose context differs from their storage key without discarding conversation metadata.
 - Corrupt or unsupported payloads degrade cleanly to a single empty pane. Deleted/missing conversations (`workhub:conversation-missing`) degrade only the affected pane to `{ type: "empty" }`.
 - Legacy three-column state (`pages`/`sessions`, `widths`, `focused`) is migrated automatically to a horizontal binary tree preserving order, relative widths, bindings, and focus.

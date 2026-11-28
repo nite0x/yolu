@@ -142,5 +142,43 @@ test("grouped list omits project chevrons, middle-truncates long branch and dire
   assert.equal(unboundToggle.querySelector(".session-workspace-name")?.textContent, uiText("未绑定项目"))
   assert.equal(unboundGroup.querySelector(".session-collection-details"), null)
   assert(unboundGroup.querySelector(".session-collection-create[data-conversation-standalone='true']"))
+  assert.equal(doc.querySelector('[data-sidebar-section="projects"]')?.textContent, uiText("项目"))
+  dom.window.close()
+})
+
+test("grouped list keeps main-branch project rows single-line, aggregates collapsed status signals, and renders compact recent badges", () => {
+  const sessions: Session[] = [
+    {id: "main-chat", name: "Main chat", cwd: "/repo/app", primary_project_id: "app", updated_at: 40, context: {project: "App", projectID: "app", branch: "main", cwd: "/repo/app", kind: "Project"}},
+    {id: "wt-chat", name: "Worktree chat", cwd: "/repo/worktrees/feat", primary_project_id: "app", updated_at: 30, context: {project: "App", projectID: "app", branch: "feature/ui", cwd: "/repo/worktrees/feat", kind: "Worktree"}},
+    {id: "unread-chat", name: "Unread chat", cwd: "/repo/api", primary_project_id: "api", updated_at: 20, unread: true},
+    {id: "waiting-chat", name: "Waiting chat", cwd: "/repo/ops", primary_project_id: "ops", updated_at: 15, chat_status: "waiting", unread: true},
+    {id: "cloud-chat", name: "Cloud chat", cwd: "", provider: "codex-cloud", cloud_environment: "apix", updated_at: 50},
+  ]
+  const directories = [
+    {key: "local:/repo/app", cwd: "/repo/app", environment: "local", environmentName: "Local", name: "App", projectID: "app", projectName: "App", projectRoot: true},
+    {key: "local:/repo/api", cwd: "/repo/api", environment: "local", environmentName: "Local", name: "API", projectID: "api", projectName: "API", projectRoot: true},
+    {key: "local:/repo/ops", cwd: "/repo/ops", environment: "local", environmentName: "Local", name: "Ops", projectID: "ops", projectName: "Ops", projectRoot: true},
+  ]
+  const collapsed = [JSON.stringify(["local", "project", "api"]), JSON.stringify(["local", "project", "ops"])]
+  const rows = conversationTree(sessions, {
+    navigator: {directories},
+    limits: {}, collapsed, filtered: false, showRecent: true,
+  })
+  const dom = new JSDOM(renderToStaticMarkup(createElement(ConversationList, {sessions, rows, showDirectory: true, sidebarMode: "grouped"})))
+  const doc = dom.window.document
+  const appGroup = doc.querySelector('[data-collection="project"][aria-label="App"]')!
+  assert.equal(appGroup.querySelector('[data-conversation-session="main-chat"] .session-browser-item-meta'), null)
+  assert(appGroup.querySelector('[data-conversation-session="wt-chat"] .session-browser-item-branch'))
+
+  const apiGroup = doc.querySelector('[data-collection="project"][aria-label="API"]')!
+  assert(apiGroup.querySelector('.session-workspace-unread.session-browser-unread-dot'))
+  const opsGroup = doc.querySelector('[data-collection="project"][aria-label="Ops"]')!
+  assert.equal(opsGroup.querySelector('.session-workspace-status')?.getAttribute('data-state'), 'waiting')
+
+  const recentGroup = doc.querySelector('[data-collection="recent"]')!
+  assert.equal(recentGroup.querySelector('.session-recent-toggle')?.textContent, uiText("最近"))
+  assert.equal(recentGroup.querySelector('[data-conversation-session="wt-chat"] .session-browser-item-meta'), null)
+  assert(recentGroup.querySelector('[data-conversation-session="wt-chat"] .session-browser-item-badge-worktree'))
+  assert(recentGroup.querySelector('[data-conversation-session="cloud-chat"] .session-browser-item-badge'))
   dom.window.close()
 })

@@ -1349,7 +1349,8 @@ test('compact conversation filters expose active choices, clear together and set
   assert.equal(h.$('.session-browser-list-heading [data-conversation-action="refresh"]'), null);
   assert.equal(h.$('.session-browser-list-caption'), null);
   assert.equal(h.$('#sessionScopePicker').parentElement, h.$('#sessionBrowserSearch').closest('.list-search'));
-  assert.equal(h.$('#sessionBrowserScopeBar').firstElementChild, h.$('#sessionBrowserSearch').parentElement);
+  assert.equal(h.$('#sessionBrowserScopeBar').firstElementChild, h.$('#sessionSidebarNewChat'));
+  assert.equal(h.$('#sessionSidebarNewChat').nextElementSibling, h.$('#sessionBrowserSearch').parentElement);
   assert.equal(h.$('#sessionBrowserScopeBar').lastElementChild, h.$('#newBrowserSession').parentElement);
   assert(h.$('#sessionScopeLabel').classList.contains('sr-only'));
   assert.equal(h.$('#sessionScopePicker summary').querySelectorAll('svg').length, 1);
@@ -2630,20 +2631,29 @@ test('grouped navigation expands by project name, saves display preferences and 
   const displayKey = 'workhub:conversation-project-display:v1';
   const options = '#sessionSidebarProjectDisplay';
   const list = nav.$('#sessionBrowserList');
-  for (const option of ['icons', 'counts']) assert.equal(nav.$(`${options} input[name="${option}"]`).checked,true);
-  nav.click(`${options} input[name="icons"]`);
-  assert.equal(list.hasAttribute('data-hide-project-icons'),true);
-  assert.equal(list.hasAttribute('data-hide-project-counts'),false);
-  nav.click(`${options} input[name="counts"]`);
-  assert.equal(list.hasAttribute('data-hide-project-counts'),true);
-  const savedDisplay = nav.window.localStorage.getItem(displayKey);
-  assert.deepEqual(JSON.parse(savedDisplay),{icons:false,counts:false});
-  nav.window.dispatchEvent(new nav.window.StorageEvent('storage',{key:displayKey,newValue:'{"icons":true,"counts":false}'}));
+  assert.equal(nav.$(`${options} input[name="icons"]`).checked,true);
+  assert.equal(nav.$(`${options} input[name="counts"]`).checked,false);
+  assert.equal(nav.$(`${options} input[name="recent"]`).checked,true);
   assert.equal(list.hasAttribute('data-hide-project-icons'),false);
   assert.equal(list.hasAttribute('data-hide-project-counts'),true);
+  assert(nav.$('[data-collection="recent"]'));
+  nav.click(`${options} input[name="icons"]`);
+  assert.equal(list.hasAttribute('data-hide-project-icons'),true);
+  assert.equal(list.hasAttribute('data-hide-project-counts'),true);
+  nav.click(`${options} input[name="counts"]`);
+  assert.equal(list.hasAttribute('data-hide-project-counts'),false);
+  nav.click(`${options} input[name="recent"]`);
+  assert.equal(nav.$('[data-collection="recent"]'),null);
+  const savedDisplay = nav.window.localStorage.getItem(displayKey);
+  assert.deepEqual(JSON.parse(savedDisplay),{icons:false,counts:true,recent:false});
+  nav.window.dispatchEvent(new nav.window.StorageEvent('storage',{key:displayKey,newValue:'{"icons":true,"counts":false,"recent":true}'}));
+  assert.equal(list.hasAttribute('data-hide-project-icons'),false);
+  assert.equal(list.hasAttribute('data-hide-project-counts'),true);
+  assert(nav.$('[data-collection="recent"]'));
   const reopened = await harness(t,false,{pageHost:host.window,storage:{[displayKey]:savedDisplay}});
   assert.equal(reopened.$('#sessionBrowserList').hasAttribute('data-hide-project-icons'),true);
-  assert.equal(reopened.$('#sessionBrowserList').hasAttribute('data-hide-project-counts'),true);
+  assert.equal(reopened.$('#sessionBrowserList').hasAttribute('data-hide-project-counts'),false);
+  assert.equal(reopened.$('[data-collection="recent"]'),null);
   const details = projectHeading().querySelector('[data-collection-href]');
   assert(details.nextElementSibling.matches('[data-action="project-conversation-new"]'));
   details.click(); await settle();
@@ -2699,12 +2709,13 @@ test('Cloud conversations appear above local projects and open in the shared rea
   assert.equal(group().dataset.conversationGroup,'codex-cloud');
   assert.equal(group().querySelector('.session-workspace-name').textContent,'Codex Cloud');
   const row = '[data-conversation-session="cloud-task"]';
-  assert.equal(nav.window.document.querySelectorAll(row).length,1);
+  assert.equal(group().querySelectorAll(row).length,1);
   assert.match(group().querySelector(row).textContent,/apix/);
   nav.click('[data-conversation-group-toggle="codex-cloud"]');
-  assert.equal(nav.$(row),null);
+  assert.equal(group().querySelector(row),null);
+  assert(nav.$(`[data-collection="recent"] ${row}`));
   nav.click('[data-conversation-group-toggle="codex-cloud"]');
-  nav.click(row); await settle();
+  group().querySelector(row).click(); await settle();
   assert.equal(host.messages.findLast(message=>message.type==='workhub:conversation-select').snapshot.conversation.selected,'cloud-task');
   nav.click('[data-conversation-list-mode="recent"]');
   assert.match(nav.$(row).textContent,/Codex Cloud · apix/);
@@ -2788,39 +2799,41 @@ test('project group ordering defaults to Yolu, preserves hidden slots and surviv
 test('grouped navigation expands in five-row steps, resets the preview and shares one list with independent conversations', async t => {
   const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
   const post = data => nav.window.dispatchEvent(new nav.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
-  nav.sessions.splice(0, 1, ...Array.from({length: 9}, (_, index) => ({
+  nav.sessions.splice(0, 1, ...Array.from({length: 12}, (_, index) => ({
     id: 'project-' + index, name: 'Project ' + index, cwd: '/workspace/workspace/app', updated_at: 100 - index,
-    primary_project_id: 'app', chat_status: index === 8 ? 'running' : '',
+    primary_project_id: 'app', chat_status: index === 11 ? 'running' : '',
   })), {id:'outside', name:'Outside', cwd:'/other/worktree', updated_at:90});
   post({type:'workhub:page-navigation'});
   post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
   await settle();
   const project = () => nav.$('[data-collection="project"]');
   const independent = () => nav.$('[data-collection="independent"]');
+  const recent = () => nav.$('[data-collection="recent"]');
   const projectRows = () => [...project().querySelectorAll('[data-conversation-session]')];
   const toggle = () => project().querySelector('[data-conversation-group-toggle]');
   const more = () => project().querySelector('[data-conversation-group-more]');
   const less = () => project().querySelector('[data-conversation-group-less]');
-  assert.deepEqual(projectRows().map(row => row.dataset.conversationSession), ['project-0','project-8']);
+  assert.deepEqual(projectRows().map(row => row.dataset.conversationSession), ['project-0','project-1','project-2','project-3','project-11']);
   assert.equal(projectRows()[0].querySelector('.session-browser-item-project'),null);
   assert.equal(projectRows()[0].querySelector('.session-browser-item-branch').textContent,'feature/workspace');
   assert.equal(less(),null);
   more().click();
-  assert.equal(projectRows().length,7);
+  assert.equal(projectRows().length,10);
   assert.equal(more().parentNode,less().parentNode);
   more().click();
-  assert.equal(projectRows().length,9);
+  assert.equal(projectRows().length,12);
   assert.equal(more(),null);
   assert.equal(less().textContent,'收起对话');
   less().click();
-  assert.equal(projectRows().length,2);
+  assert.equal(projectRows().length,5);
   assert.equal(nav.document.activeElement,toggle());
   more().click();
   toggle().click();
   assert.equal(projectRows().length,0);
   assert(toggle().querySelector('.session-workspace-running'));
+  assert(recent().querySelectorAll('[data-conversation-session]').length > 0);
   toggle().click();
-  assert.equal(projectRows().length,2);
+  assert.equal(projectRows().length,5);
 
   const standalone = independent().querySelector('[data-conversation-session]');
   assert.equal(standalone.querySelector('.session-browser-item-location').textContent,'worktree');
@@ -2865,6 +2878,13 @@ test('search group overrides preserve saved expansion, explain matches and suppo
   assert.equal(toggleAll.getAttribute('aria-label'),'全部展开');
   assert(group('App').hasAttribute('data-current-conversation'));
   assert.equal(group('Backend').getAttribute('aria-expanded'),'false');
+  assert(nav.$('[data-collection="recent"] [data-conversation-session]'),'collapsing all project groups keeps the recent section open');
+  nav.click('#sessionSearchToggle');
+  assert.equal(nav.$('#sessionBrowserScopeBar').hasAttribute('data-search-open'),true);
+  assert.equal(nav.document.activeElement,nav.$('#sessionBrowserSearch'));
+  move('Escape');
+  assert.equal(nav.$('#sessionBrowserScopeBar').hasAttribute('data-search-open'),false);
+  assert.equal(nav.document.activeElement,nav.$('#sessionSearchToggle'));
   toggleAll.click();
   assert.equal(group('App').getAttribute('aria-expanded'),'true');
   assert.equal(group('Backend').getAttribute('aria-expanded'),'true');
@@ -3029,7 +3049,7 @@ test('resizing a shared list with 738 conversations does not regenerate its rows
  await settle(); await settle();
  const group = {type:'workhub:conversation-group',sessions:['session-1'],selected:'session-1',split:false,full:false,listWidth:280,targetTitle:'当前对话'};
  post(group);
- assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,2);
+ assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,15);
  const row = h.$('[data-conversation-session="session-1"]'), ui = h.window.WorkHubUI;
  let renders = 0;
  h.window.WorkHubUI = {...ui,conversationList:props=>{renders++; return ui.conversationList(props);}};
@@ -3060,7 +3080,7 @@ test('dedicated conversation panes do not generate hidden lists and ordinary bro
  assert.equal(h.$('#sessionChatInput').value,'保留对话草稿');
  post({type:'workhub:page-pane',split:false,shared:false});
  h.click('[data-conversation-action="back"]'); await settle();
- assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,2,'leaving host-managed conversation mode restores project previews');
+ assert.equal(h.document.querySelectorAll('[data-conversation-session]').length,5,'leaving host-managed conversation mode restores project previews');
  assert(renders>0);
  assert(!h.requests.some(request=>request.url.endsWith('/chat/stop')));
 });
