@@ -3,20 +3,24 @@ import {useEffect, useState} from "react"
 import type {Root} from "react-dom/client"
 import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {flushSync} from "react-dom"
-import {ArrowLeft, ArrowRight, Ellipsis, FolderGit2, MessageSquare, Search, RefreshCw, Settings, SquarePen, Ticket} from "lucide-react"
+import {ArrowLeft, ArrowRight, Ellipsis, FolderGit2, MessageSquare, PanelRight, Search, RefreshCw, Settings, SquarePen, Ticket} from "lucide-react"
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/shared/ui/primitives/tooltip"
 import {CodexUsage} from "@/features/conversations/usage/codex-usage"
 import {setupSplitResize} from "@/shared/lib/split-resize"
 import {LayoutRoot, type LayoutRootProps} from "@/app/pane-layout/components/layout-root"
 import {resolveDropTarget} from "@/app/pane-layout/interactions/drag-and-drop"
 import {matchPaneShortcut} from "@/app/pane-layout/interactions/shortcuts"
+import {findGroupForConversation, isMultiPaneLayout} from "@/app/pane-layout/model/groups"
 import {createInitialLayout} from "@/app/pane-layout/model/operations"
-import {countPanes, findPane, findPaneByConversationId, listPanes} from "@/app/pane-layout/model/tree"
+import {canSplitPaneInDirection, countPanes, findPane, findPaneByConversationId, listPanes} from "@/app/pane-layout/model/tree"
 import {resourceContent, resourceSnapshot, resourceIdentity} from "@/app/pane-layout/model/content"
 import {DEFAULT_LAYOUT_CONSTRAINTS} from "@/app/pane-layout/model/types"
 import {createPaneLayoutPersistence} from "@/app/pane-layout/persistence/serializer"
 import {createPaneLayoutStore} from "@/app/pane-layout/state/layout-store"
 import {computeLayoutView, getPaneCapabilities} from "@/app/pane-layout/state/selectors"
+import {RightPanel, type RightPanelProps} from "@/app/right-panel/right-panel"
+import {createInitialRightPanelState, createRightPanelStore} from "@/app/right-panel/store"
+import {DEFAULT_RIGHT_PANEL_WIDTH, MAX_RIGHT_PANEL_WIDTH, MIN_RIGHT_PANEL_WIDTH} from "@/app/right-panel/types"
 
 export { setupSplitResize }
 export { createGlobalSearch } from "./search"
@@ -44,6 +48,9 @@ interface WindowChromeProps {
   search?: (trigger: HTMLButtonElement) => void
   appMenu?: (trigger: HTMLButtonElement) => void
   refresh?: () => Promise<RefreshResult>
+  rightPanelOpen?: boolean
+  rightPanelTabCount?: number
+  toggleRightPanel?: () => void
 }
 function WindowChrome(props: WindowChromeProps) {
   const [refreshing, setRefreshing] = useState(false)
@@ -109,6 +116,19 @@ function WindowChrome(props: WindowChromeProps) {
       </Tooltip>
       <span className="window-refresh-status" role="status" data-result={refreshResult || undefined}>{refreshMessage}</span>
       <CodexUsage portal={document.body} placement="header" />
+      {props.toggleRightPanel && <Tooltip>
+        <TooltipTrigger asChild><button type="button" className="window-utility-button window-right-panel-toggle"
+          aria-label={props.rightPanelOpen ? uiText("收起右侧文件面板") : uiText("展开右侧文件面板")}
+          aria-pressed={!!props.rightPanelOpen}
+          data-open={props.rightPanelOpen || undefined}
+          onClick={props.toggleRightPanel}>
+          <PanelRight aria-hidden="true" />
+          {(props.rightPanelTabCount ?? 0) > 0 && <span className="window-right-panel-count">{props.rightPanelTabCount}</span>}
+        </button></TooltipTrigger>
+        <TooltipContent side="bottom" className="window-header-tooltip">
+          {props.rightPanelOpen ? uiText("收起右侧文件面板") : uiText("展开右侧文件面板")}
+        </TooltipContent>
+      </Tooltip>}
       {appMenu && <button type="button" className="window-utility-button window-app-menu" aria-label={uiText("应用菜单")} title={uiText("应用菜单")} aria-haspopup="menu"
         onClick={event => appMenu(event.currentTarget)} onKeyDown={event => {
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
@@ -130,6 +150,12 @@ export function renderPaneLayout(container: HTMLElement, props: LayoutRootProps 
   flushSync(() => root.render(props ? <LayoutRoot {...props} /> : null))
 }
 
+export function renderRightPanel(container: HTMLElement, props: RightPanelProps | null) {
+  let root = roots.get(container)
+  if (!root) { root = createRoot(container); roots.set(container, root) }
+  flushSync(() => root.render(props ? <RightPanel {...props} /> : null))
+}
+
 export const paneLayout = {
   constraints: DEFAULT_LAYOUT_CONSTRAINTS,
   resourceContent,
@@ -140,6 +166,9 @@ export const paneLayout = {
   createPersistence: createPaneLayoutPersistence,
   computeLayoutView,
   getPaneCapabilities,
+  canSplitPaneInDirection,
+  findGroupForConversation,
+  isMultiPaneLayout,
   findPane,
   findPaneByConversationId,
   listPanes,
@@ -147,6 +176,15 @@ export const paneLayout = {
   resolveDropTarget,
   matchPaneShortcut,
   render: renderPaneLayout,
+}
+
+export const rightPanel = {
+  defaultWidth: DEFAULT_RIGHT_PANEL_WIDTH,
+  minWidth: MIN_RIGHT_PANEL_WIDTH,
+  maxWidth: MAX_RIGHT_PANEL_WIDTH,
+  createInitialState: createInitialRightPanelState,
+  createStore: createRightPanelStore,
+  render: renderRightPanel,
 }
 
 export { conversationDefaults } from "@/shared/lib/preferences"

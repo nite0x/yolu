@@ -92,6 +92,65 @@ body[data-split-resizing] .workspace-page,body[data-split-resizing] .workspace-n
 
 
 body[data-workspace-navigation-visible] .workspace-pages { left: var(--workspace-conversation-list-width,280px); }
+body[data-right-panel-open]:not([data-right-panel-overlay]) .workspace-pages { right: var(--workspace-right-panel-width,500px); }
+.workspace-right-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--workspace-right-panel-width, 500px);
+  max-width: calc(100vw - 16px);
+  z-index: 14;
+  background: var(--yolu-surface, #fff);
+}
+html[data-workhub-desktop] .workspace-right-panel { top: var(--workspace-window-header-height,36px); }
+body[data-right-panel-overlay] .workspace-right-panel { z-index: 16; }
+.workspace-right-panel-resize {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--workspace-right-panel-width, 500px) - 4px);
+  width: 8px;
+  z-index: 17;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.workspace-right-panel-resize::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 50%;
+  height: 32px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--yolu-border-strong,#d6ddeb);
+  transition: background-color .12s;
+}
+.workspace-right-panel-resize:hover::after,
+.workspace-right-panel-resize:focus-visible::after,
+body[data-split-resizing] .workspace-right-panel-resize::after { background: var(--yolu-primary-border,#939fc5); }
+.workspace-right-panel-resize:focus-visible::after { box-shadow: 0 0 0 2px var(--yolu-ring-soft,#818cf84d); }
+html[data-workhub-desktop] .workspace-right-panel-resize { top: var(--workspace-window-header-height,36px); }
+.workspace-drag-ghost {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  transform: translate(12px, 12px);
+  max-width: 260px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--yolu-primary, #1f5f5a);
+  background: var(--yolu-surface, #fff);
+  color: var(--yolu-foreground, #182a2b);
+  font-size: var(--yolu-font-size-label, 12px);
+  font-weight: 600;
+  box-shadow: var(--yolu-elevation-float, 0 10px 30px rgb(0 0 0 / 0.14));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .workspace-compact-navigation { display: none; }
 @media (max-width: 760px) {
   .workspace-compact-navigation {
@@ -107,7 +166,9 @@ body[data-workspace-navigation-visible] .workspace-pages { left: var(--workspace
   .workspace-compact-navigation button:focus-visible { outline: 2px solid var(--yolu-ring); }
   html body .workspace-pages, html[data-workhub-desktop] body .workspace-pages,
   html[data-workhub-desktop] body[data-workspace-conversations] .workspace-pages,
-  html body .workspace-shared-navigation, html[data-workhub-desktop] body .workspace-shared-navigation {
+  html body .workspace-shared-navigation, html[data-workhub-desktop] body .workspace-shared-navigation,
+  html body .workspace-right-panel, html[data-workhub-desktop] body .workspace-right-panel,
+  html body .workspace-right-panel-resize, html[data-workhub-desktop] body .workspace-right-panel-resize {
     top: calc(var(--workspace-window-header-height,0px) + 39px);
   }
   .workspace-shared-navigation[data-modal] { background: var(--yolu-sidebar); }

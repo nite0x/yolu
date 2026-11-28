@@ -17,15 +17,21 @@ export interface ClientPoint {
 
 const EDGE_THRESHOLD = 0.28
 
+export interface ResolveDropTargetOptions {
+  /** Optional predicate to disallow splitting a pane along a specific edge zone. */
+  canSplitZone?: (targetPaneId: string, zone: Exclude<DropZone, "center">) => boolean
+}
+
 /**
- * Resolves the drop zone (left, right, top, bottom, or center swap) for a
- * dragged pane given pointer coordinates in host viewport space.
+ * Resolves the drop zone (left, right, top, bottom, or center swap/replace) for a
+ * dragged pane or external conversation given pointer coordinates in host viewport space.
  */
 export function resolveDropTarget(
   root: LayoutNode,
   containerBox: ContainerBox,
   point: ClientPoint,
-  sourcePaneId: string,
+  sourcePaneId?: string | null,
+  options?: ResolveDropTargetOptions,
 ): DropTarget | null {
   if (containerBox.width <= 0 || containerBox.height <= 0) return null
   const nx = (point.clientX - containerBox.left) / containerBox.width
@@ -42,11 +48,14 @@ export function resolveDropTarget(
     ) {
       continue
     }
-    if (paneId === sourcePaneId) return null
+    if (sourcePaneId && paneId === sourcePaneId) return null
 
     const localX = rect.width > 0 ? (nx - rect.x) / rect.width : 0.5
     const localY = rect.height > 0 ? (ny - rect.y) / rect.height : 0.5
-    const zone = classifyDropZone(localX, localY)
+    let zone = classifyDropZone(localX, localY)
+    if (zone !== "center" && options?.canSplitZone && !options.canSplitZone(paneId, zone)) {
+      zone = "center"
+    }
     return {
       targetPaneId: paneId,
       zone,

@@ -28,12 +28,47 @@ export function createConversationFiles(document: Document, request: BrowserRequ
   let readingRevision = 0
   let referenceVersion = 0
   let props: BrowserProps | undefined
+  const hosted = ownerWindow.parent !== ownerWindow
+  const openInRightPanel = (detail: {
+    environment: string
+    cwd: string
+    projectId?: string
+    sessionId?: string
+    bindingId?: string
+    git?: boolean
+    path?: string
+    line?: number
+    mode?: "all" | "working" | "index"
+    title?: string
+  }) => {
+    window.dispatchEvent(new window.CustomEvent("workhub:open-file-pane", {detail: {
+      environment: detail.environment,
+      title: detail.title,
+      file: {
+        cwd: detail.cwd,
+        projectId: detail.projectId,
+        sessionId: detail.sessionId,
+        bindingId: detail.bindingId,
+        git: detail.git,
+        ...(detail.path ? {path: detail.path} : {}),
+        ...(detail.line ? {line: detail.line} : {}),
+        ...(detail.mode ? {mode: detail.mode} : {}),
+      },
+    }}))
+  }
   const openInPane: NonNullable<BrowserProps["onOpenInPane"]> = file => {
     if (!props) return
-    window.dispatchEvent(new window.CustomEvent("workhub:open-file-pane", {detail: {
+    openInRightPanel({
       environment: props.environment,
-      file: {cwd: props.path, projectId: props.project, sessionId: props.session, bindingId: props.binding, git: props.git, ...file},
-    }}))
+      cwd: props.path,
+      projectId: props.project,
+      sessionId: props.session,
+      bindingId: props.binding,
+      git: props.git,
+      path: file.path,
+      line: file.line,
+      mode: file.mode === "working" || file.mode === "index" ? file.mode : "all",
+    })
   }
   let bindings: DirectoryContext[] = []
   const layout = (before: boolean) => window.dispatchEvent(new window.CustomEvent("workhub:chat-layout", {detail: before ? {phase: "before"} : {visible: true}}))
@@ -101,7 +136,21 @@ export function createConversationFiles(document: Document, request: BrowserRequ
     before:()=>layout(true),after:()=>layout(false),
   })
   window.addEventListener("pagehide",disposeResize,{once:true})
-  toggle.addEventListener("click", () => wanted ? close() : open())
+  toggle.addEventListener("click", () => {
+    if (hosted && current && props) {
+      openInRightPanel({
+        environment: props.environment,
+        cwd: props.path,
+        projectId: props.project,
+        sessionId: props.session,
+        bindingId: props.binding,
+        git: props.git,
+        mode: "all",
+      })
+      return
+    }
+    wanted ? close() : open()
+  })
   node("closeConversationFiles").addEventListener("click", close)
   expand.addEventListener("click", () => {
     if (expanded) { restore(true); return }
@@ -129,15 +178,31 @@ export function createConversationFiles(document: Document, request: BrowserRequ
     const roots = [...new Set([current.path, ...bindings.map(binding => binding.path), ...(current.additionalDirectories || [])])]
     const path = absolute ? roots.sort((a, b) => b.length - a.length).find(root => {
       const key = conversationPathKey(root)
-      return conversationPathKey(normalized).startsWith(key === "/" ? "/" : key + "/")
+      return conversationPathKey(normalized).startsWith(key === "/" ? "/" : `${key}/`)
     }) : current.path
     const root = path ? conversationPathKey(path) : ""
     const relative = absolute && path ? normalized.slice(root === "/" ? 1 : root.length + 1) : normalized.replace(/^\.\//, "")
     if (!relative || relative.split("/").some(part => part === ".." || part.toLowerCase() === ".git")) return
     const browserPath = path || current.path
-    const changedRoot = props?.path !== browserPath
     const binding = bindings.find(binding => conversationPathKey(binding.path) === conversationPathKey(browserPath))
-    props = { ...props, path: browserPath, project: binding?.project || (browserPath === current.path ? current.project : undefined), binding:binding?.id,git:binding?.git, reference: {path: relative, line: detail.line, version: ++referenceVersion} }
+    const projectId = binding?.project || (browserPath === current.path ? current.project : undefined)
+    if (hosted) {
+      event.preventDefault()
+      openInRightPanel({
+        environment: props.environment,
+        cwd: browserPath,
+        projectId,
+        sessionId: props.session,
+        bindingId: binding?.id,
+        git: binding?.git,
+        path: relative,
+        line: detail.line,
+        mode: "all",
+      })
+      return
+    }
+    const changedRoot = props?.path !== browserPath
+    props = { ...props, path: browserPath, project: projectId, binding:binding?.id,git:binding?.git, reference: {path: relative, line: detail.line, version: ++referenceVersion} }
     restore()
     if (changedRoot) mountFileBrowser(mount)
     event.preventDefault()
@@ -157,8 +222,21 @@ export function createConversationFiles(document: Document, request: BrowserRequ
   window.addEventListener("workhub:binding-files", event => {
     const detail = (event as CustomEvent<DirectoryContext & {session:string;environment:string;file?:string;mode?:"all"|"working"|"index"}>).detail
     if (!current || detail.session !== current.session || detail.environment !== current.environment || !props) return
-    restore()
     const nextMode = detail.mode || "all"
+    if (hosted) {
+      openInRightPanel({
+        environment: props.environment,
+        cwd: detail.path,
+        projectId: detail.project,
+        sessionId: detail.session,
+        bindingId: detail.id,
+        git: detail.git,
+        path: detail.file,
+        mode: nextMode,
+      })
+      return
+    }
+    restore()
     const changedView = props.path !== detail.path || (!detail.file && props.initialMode !== nextMode)
     props = {...props,path:detail.path,project:detail.project,binding:detail.id,git:detail.git,initialMode:nextMode,
       reference:detail.file ? {path:detail.file,mode:detail.mode === "all" ? undefined : detail.mode,version:++referenceVersion} : undefined}

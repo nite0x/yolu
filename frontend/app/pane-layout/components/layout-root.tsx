@@ -193,7 +193,11 @@ export function LayoutRoot(props: LayoutRootProps) {
       data-split={view.isSplit || undefined}
       data-compact={view.isCompactFocusMode || undefined}
       data-maximized={view.maximizedPaneId !== null || undefined}
-      data-dragging={props.interaction.draggingPaneId !== null || undefined}
+      data-dragging={
+        props.interaction.draggingPaneId !== null ||
+        props.interaction.draggingExternal !== null ||
+        undefined
+      }
     >
       {showNarrowSwitcher && props.narrowPaneOptions && (
         <select
@@ -275,15 +279,25 @@ export function LayoutRoot(props: LayoutRootProps) {
             }}
           >
             <span className="pane-layout-drop-badge">
-              {dropTarget.zone === "center"
-                ? uiText("交换位置")
-                : dropTarget.zone === "left"
-                  ? uiText("移到左侧")
-                  : dropTarget.zone === "right"
-                    ? uiText("移到右侧")
-                    : dropTarget.zone === "top"
-                      ? uiText("移到上方")
-                      : uiText("移到下方")}
+              {props.interaction.draggingExternal
+                ? dropTarget.zone === "center"
+                  ? uiText("替换面板")
+                  : dropTarget.zone === "left"
+                    ? uiText("放到左侧")
+                    : dropTarget.zone === "right"
+                      ? uiText("放到右侧")
+                      : dropTarget.zone === "top"
+                        ? uiText("放到上方")
+                        : uiText("放到下方")
+                : dropTarget.zone === "center"
+                  ? uiText("交换位置")
+                  : dropTarget.zone === "left"
+                    ? uiText("移到左侧")
+                    : dropTarget.zone === "right"
+                      ? uiText("移到右侧")
+                      : dropTarget.zone === "top"
+                        ? uiText("移到上方")
+                        : uiText("移到下方")}
             </span>
           </div>
         )}

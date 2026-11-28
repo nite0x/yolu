@@ -279,3 +279,73 @@ test("returning to the last acknowledged layout still saves over an in-flight ch
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(writes, ["original", "changed", "original"])
 })
+
+test("implicit multi-pane groups preserve layouts across standalone switches and enforce 1:1 membership", async () => {
+  const { createRightPanelStore } = await import("../frontend/app/right-panel/store")
+  const store = createPaneLayoutStore(
+    createInitialLayout({ type: "conversation", conversationId: "c1" }, "p1"),
+  )
+  // Splitting c1 + c2 automatically creates an implicit group.
+  store.split("p1", "right", {
+    newPaneId: "p2",
+    splitId: "s1",
+    ratio: 0.35,
+    content: { type: "conversation", conversationId: "c2" },
+  })
+  const group1Id = store.getActiveGroupId()
+  assert.ok(group1Id)
+  assert.equal(Object.keys(store.getGroups()).length, 1)
+
+  // Opening standalone c3 preserves group1 intact.
+  const p3 = store.activateStandalone({ type: "conversation", conversationId: "c3" }, "p3")
+  assert.equal(p3, "p3")
+  assert.equal(store.getActiveGroupId(), null)
+  assert.equal(countPanes(store.getLayout().root), 1)
+  assert.ok(store.findGroupForConversation("c1"))
+  assert.ok(store.findGroupForConversation("c2"))
+  assert.equal(store.findGroupForConversation("c3"), null)
+
+  // Switching back to group1 via c1 restores the exact layout and ratio.
+  const match = store.findGroupForConversation("c1")!
+  assert.equal(store.activateGroup(match.groupId, match.paneId), true)
+  assert.equal(store.getLayout().activePaneId, "p1")
+  assert.ok(Math.abs((store.getLayout().root as SplitNode).ratio - 0.35) < 1e-6)
+
+  // Open standalone c3 again, then split c1 onto c3 -> c1 leaves group1, dissolving group1!
+  store.activateStandalone({ type: "conversation", conversationId: "c3" }, "p3")
+  store.split("p3", "right", {
+    newPaneId: "p1-moved",
+    splitId: "s2",
+    content: { type: "conversation", conversationId: "c1" },
+  })
+  const group2Id = store.getActiveGroupId()
+  assert.ok(group2Id && group2Id !== group1Id)
+  assert.equal(store.findGroupForConversation("c2"), null, "group1 dissolved when only c2 remained")
+  assert.equal(store.findGroupForConversation("c1")?.groupId, group2Id)
+  assert.equal(store.findGroupForConversation("c3")?.groupId, group2Id)
+  assert.equal(Object.keys(store.getGroups()).length, 1)
+
+  // Persistence round-trip keeps groups and independent right panel tabs.
+  const rightStore = createRightPanelStore()
+  const tab1 = rightStore.openTab({ cwd: "/repo/a", projectId: "a", path: "src/index.ts", line: 10 })
+  const tab2 = rightStore.openTab({ cwd: "/repo/b", projectId: "b", path: "src/index.ts", mode: "working" })
+  assert.ok(tab1 && tab2 && tab1.id !== tab2.id)
+  // Reopening same file focuses existing tab and bumps version.
+  const reopened = rightStore.openTab({ cwd: "/repo/a", projectId: "a", path: "src/index.ts", line: 42 })
+  assert.equal(reopened?.id, tab1.id)
+  assert.equal(reopened?.line, 42)
+  assert.equal(rightStore.getState().tabs.length, 2)
+
+  const serialized = serializePaneLayout(store.getLayout(), "default", undefined, 1000, {
+    groups: store.getGroups(),
+    activeGroupId: store.getActiveGroupId(),
+    rightPanel: rightStore.getState(),
+  })
+  const restored = deserializePaneLayout(serialized, "default")
+  assert.equal(restored.degraded, false)
+  assert.equal(restored.activeGroupId, group2Id)
+  assert.equal(Object.keys(restored.groups).length, 1)
+  assert.equal(restored.rightPanel.open, true)
+  assert.equal(restored.rightPanel.tabs.length, 2)
+  assert.equal(restored.rightPanel.activeTabId, tab1.id)
+})

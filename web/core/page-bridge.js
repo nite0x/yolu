@@ -199,7 +199,95 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     return null;
   }
   const open = saved => post('workhub:page-open', {snapshot:saved});
+  let suppressNextNavClick = false;
+  let activeNavDrag = null;
+  function cancelNavDrag() {
+    if (!activeNavDrag) return;
+    const current = activeNavDrag;
+    activeNavDrag = null;
+    current.cleanup();
+    if (current.started) post('workhub:conversation-drag', {phase: 'cancel'});
+  }
+  if (navigationOnly) {
+    const DRAG_THRESHOLD_PX = 6;
+    document.addEventListener('pointerdown', event => {
+      if (disposed || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.target.closest('.parallel-list-add, [data-conversation-group-toggle], [data-conversation-action]')) return;
+      const row = event.target.closest('[data-conversation-session], [data-conversation-terminal]');
+      if (!row || row.disabled) return;
+      const saved = destination(row);
+      if (!saved || !(saved.conversation?.selected || saved.terminal?.id)) return;
+      cancelNavDrag();
+      const pointerId = event.pointerId;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let started = false;
+      const cleanup = () => {
+        if (row.hasPointerCapture?.(pointerId)) {
+          try { row.releasePointerCapture(pointerId); } catch {}
+        }
+        document.removeEventListener('pointermove', onMove, true);
+        document.removeEventListener('pointerup', onUp, true);
+        document.removeEventListener('pointercancel', onCancel, true);
+        document.removeEventListener('keydown', onKeyDown, true);
+        window.removeEventListener('blur', onCancel);
+        row.removeAttribute('data-dragging-row');
+      };
+      const onMove = moveEvent => {
+        if (moveEvent.pointerId !== pointerId) return;
+        if (!started) {
+          if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < DRAG_THRESHOLD_PX) return;
+          started = true;
+          if (activeNavDrag) activeNavDrag.started = true;
+          row.setAttribute('data-dragging-row', '');
+          try { row.setPointerCapture?.(pointerId); } catch {}
+          post('workhub:conversation-drag', {phase: 'start', snapshot: saved, clientX: moveEvent.clientX, clientY: moveEvent.clientY});
+          return;
+        }
+        post('workhub:conversation-drag', {phase: 'move', clientX: moveEvent.clientX, clientY: moveEvent.clientY});
+      };
+      const onUp = upEvent => {
+        if (upEvent.pointerId !== pointerId) return;
+        const wasStarted = started;
+        activeNavDrag = null;
+        cleanup();
+        if (wasStarted) {
+          suppressNextNavClick = true;
+          setTimeout(() => { suppressNextNavClick = false; }, 120);
+          post('workhub:conversation-drag', {phase: 'end', clientX: upEvent.clientX, clientY: upEvent.clientY});
+        }
+      };
+      const onCancel = () => {
+        const wasStarted = started;
+        activeNavDrag = null;
+        cleanup();
+        if (wasStarted) {
+          suppressNextNavClick = true;
+          setTimeout(() => { suppressNextNavClick = false; }, 120);
+          post('workhub:conversation-drag', {phase: 'cancel'});
+        }
+      };
+      const onKeyDown = keyEvent => {
+        if (keyEvent.key !== 'Escape') return;
+        keyEvent.preventDefault();
+        keyEvent.stopPropagation();
+        onCancel();
+      };
+      activeNavDrag = {cleanup, started: false};
+      document.addEventListener('pointermove', onMove, true);
+      document.addEventListener('pointerup', onUp, true);
+      document.addEventListener('pointercancel', onCancel, true);
+      document.addEventListener('keydown', onKeyDown, true);
+      window.addEventListener('blur', onCancel);
+    }, true);
+  }
   document.addEventListener('click', event => {
+    if (suppressNextNavClick) {
+      suppressNextNavClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (event.target.closest('#openGlobalSearch')) {
       post('workhub:global-search');
       return;
@@ -410,6 +498,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
   function dispose() {
     if (disposed) return;
+    cancelNavDrag();
     // Existing pagehide handlers persist drafts and dispose UI subscriptions.
     window.dispatchEvent(new Event('pagehide'));
     disposed = true; clearTimeout(timer); observer.disconnect(); chromeObserver.disconnect(); chromeResize?.disconnect(); modalObserver?.disconnect();

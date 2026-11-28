@@ -31,6 +31,7 @@ export interface PageMessages {
   'workhub:page-pane': {split: boolean; shared?: boolean}
   'workhub:page-pane-command': {command: 'close' | 'zoom' | 'split-left' | 'split-right' | 'split-up' | 'split-down'}
   'workhub:page-pane-drag': {phase: 'start' | 'move' | 'end' | 'cancel'; clientX?: number; clientY?: number}
+  'workhub:conversation-drag': {phase: 'start' | 'move' | 'end' | 'cancel'; snapshot?: PageSnapshot; clientX?: number; clientY?: number}
   'workhub:conversation-missing': {sessionId: string; environment?: string}
   'workhub:navigation-modal': {open: boolean}
   'workhub:navigation-route': {route: string}
@@ -84,6 +85,7 @@ export function readPageMessage(value: unknown): PageMessage | null {
     case 'workhub:page-pane': valid = bool(value.split) && optional(value.shared, bool); break
     case 'workhub:page-pane-command': valid = ['close', 'zoom', 'split-left', 'split-right', 'split-up', 'split-down'].includes(String(value.command)); break
     case 'workhub:page-pane-drag': valid = ['start', 'move', 'end', 'cancel'].includes(String(value.phase)) && optional(value.clientX, finite) && optional(value.clientY, finite); break
+    case 'workhub:conversation-drag': valid = ['start', 'move', 'end', 'cancel'].includes(String(value.phase)) && optional(value.snapshot, isPageSnapshot) && optional(value.clientX, finite) && optional(value.clientY, finite); break
     case 'workhub:conversation-missing': valid = string(value.sessionId) && optional(value.environment, string); break
     case 'workhub:navigation-modal': valid = bool(value.open); break
     case 'workhub:navigation-route': case 'workhub:page-navigate': valid = route(value.route); break

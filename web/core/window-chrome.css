@@ -190,7 +190,8 @@ html[data-workhub-platform=windows] .workhub-window-controls {
 .window-utility-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; min-width: 28px; padding: 0 6px; border: 0; border-radius: var(--yolu-chip-radius,8px); background: transparent; color: var(--yolu-muted-ink); font: inherit; font-size: var(--yolu-font-size-label); white-space: nowrap; }
 .window-utility-button svg { width: var(--window-header-icon-size, 14px); height: var(--window-header-icon-size, 14px); flex: none; }
 .window-utility-button:hover { background: var(--yolu-hover); color: var(--yolu-foreground); }
-.window-utility-button[aria-current=page] { background: var(--yolu-selected); color: var(--yolu-primary-ink); }
+.window-utility-button[aria-current=page],.window-utility-button[data-open] { background: var(--yolu-selected); color: var(--yolu-primary-ink); }
+.window-right-panel-count { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
 .window-utility-button:is(:disabled,[aria-disabled=true]) { opacity: .45; cursor: default; }
 .window-utility-button:focus-visible,.window-utilities .codex-quota-trigger:focus-visible { outline: 2px solid var(--yolu-ring); outline-offset: -2px; }
 .window-utilities .codex-quota-trigger { width: auto; min-height: 0; height: 28px; gap: 5px; padding: 0 7px; font-size: 11px; }

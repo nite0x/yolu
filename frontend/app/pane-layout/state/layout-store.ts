@@ -1,7 +1,16 @@
 import {
+  findGroupForConversation,
+  removeConversationFromGroups,
+  sanitizePaneGroups,
+  syncActiveGroup,
+  type ConversationGroupMatch,
+  type PaneGroupMap,
+} from "../model/groups"
+import {
   bindPaneContent,
   closePane,
   createInitialLayout,
+  defaultIdGenerator,
   movePane,
   resetSplitRatio,
   resizeSplit,
@@ -23,6 +32,11 @@ import {
   type SplitPlacement,
 } from "../model/types"
 
+export interface ExternalDragInfo {
+  label?: string
+  conversationId?: string
+}
+
 /**
  * Transient interaction state — strictly separated from durable LayoutState
  * and never persisted to storage.
@@ -30,24 +44,38 @@ import {
 export interface PaneInteractionState {
   maximizedPaneId: string | null
   draggingPaneId: string | null
+  draggingExternal: ExternalDragInfo | null
   dropTarget: DropTarget | null
   resizingSplitId: string | null
 }
 
 export interface PaneStoreSnapshot {
   layout: PaneLayout
+  groups: PaneGroupMap
+  activeGroupId: string | null
   interaction: PaneInteractionState
 }
 
 export interface PaneLayoutStore {
   getSnapshot: () => PaneStoreSnapshot
   getLayout: () => PaneLayout
+  getGroups: () => PaneGroupMap
+  getActiveGroupId: () => string | null
   getInteraction: () => PaneInteractionState
+  findGroupForConversation: (conversationId: string) => ConversationGroupMatch | null
   subscribe: (listener: () => void) => () => void
   subscribeLayout: (listener: (layout: PaneLayout) => void) => () => void
 
   // Durable layout mutations
   replaceLayout: (layout: PaneLayout) => void
+  replaceWorkspace: (
+    layout: PaneLayout,
+    groups?: PaneGroupMap,
+    activeGroupId?: string | null,
+  ) => void
+  activateGroup: (groupId: string, focusPaneId?: string) => boolean
+  activateStandalone: (content: PaneContent, paneId?: string) => string
+  removeConversationFromOtherGroups: (conversationId: string) => void
   split: (
     targetPaneId: string,
     placement: SplitPlacement,
@@ -66,6 +94,7 @@ export interface PaneLayoutStore {
   toggleMaximize: (paneId?: string) => void
   setMaximized: (paneId: string | null) => void
   startDrag: (paneId: string) => void
+  startExternalDrag: (info?: ExternalDragInfo) => void
   updateDropTarget: (target: DropTarget | null) => void
   commitDrag: () => boolean
   cancelDrag: () => void
@@ -75,16 +104,30 @@ export interface PaneLayoutStore {
 const INITIAL_INTERACTION: PaneInteractionState = {
   maximizedPaneId: null,
   draggingPaneId: null,
+  draggingExternal: null,
   dropTarget: null,
   resizingSplitId: null,
+}
+
+export interface CreatePaneLayoutStoreOptions {
+  groups?: PaneGroupMap
+  activeGroupId?: string | null
 }
 
 export function createPaneLayoutStore(
   initialLayout: PaneLayout = createInitialLayout(),
   constraints: LayoutConstraints = DEFAULT_LAYOUT_CONSTRAINTS,
+  options: CreatePaneLayoutStoreOptions = {},
 ): PaneLayoutStore {
+  const initialSanitized = sanitizePaneGroups(
+    options.groups ?? {},
+    initialLayout,
+    options.activeGroupId ?? null,
+  )
   let snapshot: PaneStoreSnapshot = {
     layout: initialLayout,
+    groups: initialSanitized.groups,
+    activeGroupId: initialSanitized.activeGroupId,
     interaction: { ...INITIAL_INTERACTION },
   }
   const listeners = new Set<() => void>()
@@ -97,19 +140,10 @@ export function createPaneLayoutStore(
     }
   }
 
-  function updateLayout(
+  function validateInteraction(
     nextLayout: PaneLayout,
-    interactionPatch?: Partial<PaneInteractionState>,
-  ) {
-    const layoutChanged = nextLayout !== snapshot.layout
-    let nextInteraction = snapshot.interaction
-
-    const merged = interactionPatch
-      ? { ...nextInteraction, ...interactionPatch }
-      : nextInteraction
-
-    // Automatically clear stale transient IDs if referenced panes/splits disappeared
-    // or if the layout collapsed back to a single pane.
+    merged: PaneInteractionState,
+  ): PaneInteractionState {
     const isSplit = nextLayout.root.type === "split"
     const validMaximized =
       merged.maximizedPaneId && isSplit && findPane(nextLayout.root, merged.maximizedPaneId)
@@ -119,8 +153,10 @@ export function createPaneLayoutStore(
       merged.draggingPaneId && isSplit && findPane(nextLayout.root, merged.draggingPaneId)
         ? merged.draggingPaneId
         : null
+    const validExternal = merged.draggingExternal
+    const hasDrag = !!validDragging || !!validExternal
     const validDropTarget =
-      validDragging &&
+      hasDrag &&
       merged.dropTarget &&
       findPane(nextLayout.root, merged.dropTarget.targetPaneId)
         ? merged.dropTarget
@@ -133,25 +169,53 @@ export function createPaneLayoutStore(
         : null
 
     if (
-      interactionPatch ||
-      validMaximized !== nextInteraction.maximizedPaneId ||
-      validDragging !== nextInteraction.draggingPaneId ||
-      validDropTarget !== nextInteraction.dropTarget ||
-      validResizing !== nextInteraction.resizingSplitId
+      validMaximized === snapshot.interaction.maximizedPaneId &&
+      validDragging === snapshot.interaction.draggingPaneId &&
+      validExternal === snapshot.interaction.draggingExternal &&
+      validDropTarget === snapshot.interaction.dropTarget &&
+      validResizing === snapshot.interaction.resizingSplitId
     ) {
-      nextInteraction = {
-        maximizedPaneId: validMaximized,
-        draggingPaneId: validDragging,
-        dropTarget: validDropTarget,
-        resizingSplitId: validResizing,
-      }
+      return snapshot.interaction
     }
+    return {
+      maximizedPaneId: validMaximized,
+      draggingPaneId: validDragging,
+      draggingExternal: validExternal,
+      dropTarget: validDropTarget,
+      resizingSplitId: validResizing,
+    }
+  }
 
+  function updateLayout(
+    nextLayout: PaneLayout,
+    interactionPatch?: Partial<PaneInteractionState>,
+    groupOverride?: { groups: PaneGroupMap; activeGroupId: string | null },
+  ) {
+    const layoutChanged = nextLayout !== snapshot.layout
+    const syncedGroups = groupOverride
+      ? groupOverride
+      : layoutChanged
+        ? syncActiveGroup(snapshot.groups, snapshot.activeGroupId, nextLayout)
+        : { groups: snapshot.groups, activeGroupId: snapshot.activeGroupId }
+    const groupsChanged =
+      syncedGroups.groups !== snapshot.groups ||
+      syncedGroups.activeGroupId !== snapshot.activeGroupId
+
+    const merged = interactionPatch
+      ? { ...snapshot.interaction, ...interactionPatch }
+      : snapshot.interaction
+    const nextInteraction = validateInteraction(nextLayout, merged)
     const interactionChanged = nextInteraction !== snapshot.interaction
-    if (!layoutChanged && !interactionChanged) return
 
-    snapshot = { layout: nextLayout, interaction: nextInteraction }
-    emit(layoutChanged)
+    if (!layoutChanged && !groupsChanged && !interactionChanged) return
+
+    snapshot = {
+      layout: nextLayout,
+      groups: syncedGroups.groups,
+      activeGroupId: syncedGroups.activeGroupId,
+      interaction: nextInteraction,
+    }
+    emit(layoutChanged || groupsChanged)
   }
 
   function updateInteraction(patch: Partial<PaneInteractionState>) {
@@ -159,6 +223,7 @@ export function createPaneLayoutStore(
     if (
       next.maximizedPaneId === snapshot.interaction.maximizedPaneId &&
       next.draggingPaneId === snapshot.interaction.draggingPaneId &&
+      next.draggingExternal === snapshot.interaction.draggingExternal &&
       next.resizingSplitId === snapshot.interaction.resizingSplitId &&
       next.dropTarget?.targetPaneId === snapshot.interaction.dropTarget?.targetPaneId &&
       next.dropTarget?.zone === snapshot.interaction.dropTarget?.zone
@@ -172,7 +237,11 @@ export function createPaneLayoutStore(
   return {
     getSnapshot: () => snapshot,
     getLayout: () => snapshot.layout,
+    getGroups: () => snapshot.groups,
+    getActiveGroupId: () => snapshot.activeGroupId,
     getInteraction: () => snapshot.interaction,
+    findGroupForConversation: conversationId =>
+      findGroupForConversation(snapshot.groups, conversationId),
     subscribe(listener) {
       listeners.add(listener)
       return () => {
@@ -187,7 +256,61 @@ export function createPaneLayoutStore(
     },
 
     replaceLayout(layout) {
-      updateLayout(layout, { ...INITIAL_INTERACTION })
+      const sanitized = sanitizePaneGroups(snapshot.groups, layout, snapshot.activeGroupId)
+      updateLayout(layout, { ...INITIAL_INTERACTION }, sanitized)
+    },
+
+    replaceWorkspace(layout, groups = {}, activeGroupId = null) {
+      const sanitized = sanitizePaneGroups(groups, layout, activeGroupId)
+      updateLayout(layout, { ...INITIAL_INTERACTION }, sanitized)
+    },
+
+    activateGroup(groupId, focusPaneId) {
+      const targetGroup = snapshot.groups[groupId]
+      if (targetGroup?.root.type !== "split") return false
+      // Preserve current active multi-pane group before switching away.
+      const savedCurrent = syncActiveGroup(snapshot.groups, snapshot.activeGroupId, snapshot.layout)
+      const latestTarget = savedCurrent.groups[groupId]
+      if (latestTarget?.root.type !== "split") return false
+      const nextLayout =
+        focusPaneId && findPane(latestTarget.root, focusPaneId)
+          ? setActivePane(latestTarget, focusPaneId)
+          : latestTarget
+      const nextGroups =
+        nextLayout === latestTarget
+          ? savedCurrent.groups
+          : { ...savedCurrent.groups, [groupId]: nextLayout }
+      updateLayout(
+        nextLayout,
+        { ...INITIAL_INTERACTION },
+        { groups: nextGroups, activeGroupId: groupId },
+      )
+      return true
+    },
+
+    activateStandalone(content, paneId = defaultIdGenerator()) {
+      // Preserve current active multi-pane group untouched before opening standalone pane.
+      const savedCurrent = syncActiveGroup(snapshot.groups, snapshot.activeGroupId, snapshot.layout)
+      const standalone = createInitialLayout(content, paneId)
+      updateLayout(
+        standalone,
+        { ...INITIAL_INTERACTION },
+        { groups: savedCurrent.groups, activeGroupId: null },
+      )
+      return standalone.activePaneId ?? paneId
+    },
+
+    removeConversationFromOtherGroups(conversationId) {
+      const result = removeConversationFromGroups(
+        snapshot.groups,
+        conversationId,
+        snapshot.activeGroupId,
+      )
+      if (result.groups === snapshot.groups) return
+      updateLayout(snapshot.layout, undefined, {
+        groups: result.groups,
+        activeGroupId: snapshot.activeGroupId,
+      })
     },
 
     split(targetPaneId, placement, options = {}) {
@@ -251,12 +374,12 @@ export function createPaneLayoutStore(
 
     move(sourcePaneId, targetPaneId, zone) {
       const next = movePane(snapshot.layout, sourcePaneId, targetPaneId, zone)
-      updateLayout(next, { draggingPaneId: null, dropTarget: null })
+      updateLayout(next, { draggingPaneId: null, draggingExternal: null, dropTarget: null })
     },
 
     swap(paneAId, paneBId) {
       const next = swapPanes(snapshot.layout, paneAId, paneBId)
-      updateLayout(next, { draggingPaneId: null, dropTarget: null })
+      updateLayout(next, { draggingPaneId: null, draggingExternal: null, dropTarget: null })
     },
 
     toggleMaximize(paneId) {
@@ -285,18 +408,26 @@ export function createPaneLayoutStore(
     startDrag(paneId) {
       if (snapshot.layout.root.type !== "split") return
       if (!findPane(snapshot.layout.root, paneId)) return
-      updateInteraction({ draggingPaneId: paneId, dropTarget: null })
+      updateInteraction({ draggingPaneId: paneId, draggingExternal: null, dropTarget: null })
+    },
+
+    startExternalDrag(info = {}) {
+      updateInteraction({
+        draggingPaneId: null,
+        draggingExternal: { ...info },
+        dropTarget: null,
+      })
     },
 
     updateDropTarget(target) {
-      if (!snapshot.interaction.draggingPaneId) return
+      if (!snapshot.interaction.draggingPaneId && !snapshot.interaction.draggingExternal) return
       updateInteraction({ dropTarget: target })
     },
 
     commitDrag() {
       const { draggingPaneId, dropTarget } = snapshot.interaction
       if (!draggingPaneId || !dropTarget || draggingPaneId === dropTarget.targetPaneId) {
-        updateInteraction({ draggingPaneId: null, dropTarget: null })
+        updateInteraction({ draggingPaneId: null, draggingExternal: null, dropTarget: null })
         return false
       }
       const previous = snapshot.layout
@@ -306,12 +437,12 @@ export function createPaneLayoutStore(
         dropTarget.targetPaneId,
         dropTarget.zone,
       )
-      updateLayout(next, { draggingPaneId: null, dropTarget: null })
+      updateLayout(next, { draggingPaneId: null, draggingExternal: null, dropTarget: null })
       return next !== previous
     },
 
     cancelDrag() {
-      updateInteraction({ draggingPaneId: null, dropTarget: null })
+      updateInteraction({ draggingPaneId: null, draggingExternal: null, dropTarget: null })
     },
 
     setResizingSplit(splitId) {

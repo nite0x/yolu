@@ -38,6 +38,7 @@ type NavigatorDirectory = {cwd: string; key: string; environment: string; enviro
 interface TreeOptions {
   selected?: string | null
   selectedSession?: Session
+  parallelSessions?: string[]
   reveal?: string | null
   limits: Record<string, number>
   collapsed: string[]
@@ -72,6 +73,11 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
     const group = {key: "recent", name: "", environment: "", showContext: false, collapsed: false, total: sessions.length, shown: sessions.length}
     return sessions.map(session => ({key: JSON.stringify(["recent", sessionIdentity(session)]), group, kind: "session", session, projectName: session.context?.project}))
   }
+  const parallelSet = new Set((options.parallelSessions || []).filter(Boolean))
+  const isHighlighted = (session: Session) => {
+    const id = sessionIdentity(session)
+    return id === options.selected || parallelSet.has(id)
+  }
   const groups = new Map<string, { group: ConversationGroup; sessions: Session[] }>()
   const filed = new Set<string>()
   const cloud = sessions.filter(session => session.provider === "codex-cloud")
@@ -83,7 +89,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
       for (const session of assistants) filed.add(sessionIdentity(session))
       groups.set(key, {group: {
         key, name: uiText("Yolu 助手"), collection: "yolu-assistant", environment: "local",
-        containsSelection: assistants.some(session => sessionIdentity(session) === options.selected),
+        containsSelection: assistants.some(isHighlighted),
         collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
       }, sessions: assistants})
     }
@@ -110,7 +116,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
     const href = projectID ? `#/projects/${encodeURIComponent(projectID)}` : undefined
     projectGroups.set(key, {group: {key, name, environment, environmentName:directory.environmentName, collapsed:options.collapsed.includes(key), total:0, shown:0, showContext:false,
       collection:"project", projectID, projectPath:cwd, href, icon:projectBadgeAppearance(directory), identity:projectID ? `project:${projectID}` : directory.key, iconName:directory.name,
-      containsSelection:options.selectedSession ? matchesDirectory(options.selectedSession) : matching.some(session => sessionIdentity(session) === options.selected)}, sessions:matching})
+      containsSelection:(options.selectedSession ? matchesDirectory(options.selectedSession) : false) || matching.some(isHighlighted)}, sessions:matching})
   }
   if (options.navigator) {
     for (const key of conversationProjectOrder(directories, options.navigator.projectOrder)) {
@@ -123,14 +129,14 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
       const key = "independent"
       const name = uiText("未绑定项目")
       groups.set(key, {group:{key, name, collection:"independent", environment:"", icon:{icon:"folder", color:"slate"}, identity:key, iconName:name,
-        containsSelection:options.selectedSession ? options.selectedSession.provider !== "codex-cloud" && !options.selectedSession.yolu_assistant && !selectedInProject : independent.some(session => sessionIdentity(session) === options.selected),
+        containsSelection:(options.selectedSession ? options.selectedSession.provider !== "codex-cloud" && !options.selectedSession.yolu_assistant && !selectedInProject : false) || independent.some(isHighlighted),
         collapsed:options.collapsed.includes(key), total:0, shown:0, showContext:true}, sessions:independent})
     }
     if (cloud.length) {
       const key = "codex-cloud"
       groups.set(key, { group: {
         key, name: "Codex Cloud", collection: "cloud", environment: "",
-        containsSelection: cloud.some(session => sessionIdentity(session) === options.selected),
+        containsSelection: cloud.some(isHighlighted),
         collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
       }, sessions: cloud })
     }
@@ -139,7 +145,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
       const recentSessions = [...sessions].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))
       groups.set(key, {group: {
         key, name: uiText("最近"), collection: "recent", environment: "",
-        containsSelection: recentSessions.some(session => sessionIdentity(session) === options.selected),
+        containsSelection: recentSessions.some(isHighlighted),
         collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
       }, sessions: recentSessions})
     }
@@ -178,7 +184,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
     const limit = options.limits[group.key] || basePreview
     const preview = new Set(isRecent ? [] : sessions.filter(session => {
       const identity = sessionIdentity(session)
-      return identity === options.selected || identity === options.reveal || conversationStatusMatches(session, "running")
+      return identity === options.selected || parallelSet.has(identity) || identity === options.reveal || conversationStatusMatches(session, "running")
     }))
     const previewSize = Math.max(basePreview, preview.size)
     const showAll = options.filtered

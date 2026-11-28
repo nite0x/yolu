@@ -416,6 +416,7 @@ function renderConversationList() {
     } : undefined,
     selected,
     selectedSession: selected ? annotatedItems.find(session => conversationSessionKey(session) === selected) : undefined,
+    parallelSessions: window.WorkHubPage?.parallelSessions || [],
     reveal: view.locateSelection, limits: view.groupLimits, collapsed: groupState.collapsedGroups, filtered,
   });
   if (view.locateSelection) groupState.collapsedGroups = groupState.collapsedGroups.filter(key => !view.listRows.some(row => row.kind === 'session' && row.group.key === key && row.group.collection !== 'recent' && conversationSessionKey(row.session) === view.locateSelection));

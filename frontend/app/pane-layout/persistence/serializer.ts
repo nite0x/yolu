@@ -1,6 +1,24 @@
-import { createInitialLayout, normalizeLayout } from "../model/operations"
+import {
+  createInitialRightPanelState,
+  deriveRightTabTitle,
+  rightTabIdentity,
+  sanitizeRightPanelState,
+  serializeRightPanelState,
+} from "@/app/right-panel/store"
+import {
+  MAX_RIGHT_PANEL_TABS,
+  type PersistedRightPanelState,
+  type RightPanelState,
+  type RightPanelTab,
+} from "@/app/right-panel/types"
+import {
+  sanitizePaneGroups,
+  stripNonConversationPanes,
+  type PaneGroupMap,
+} from "../model/groups"
+import { createInitialLayout, defaultIdGenerator, normalizeLayout } from "../model/operations"
 import { listPanes } from "../model/tree"
-import { PANE_LAYOUT_VERSION, type PaneLayout } from "../model/types"
+import { PANE_LAYOUT_VERSION, type PaneContent, type PaneLayout } from "../model/types"
 import { migrateSavedLayout } from "./migration"
 
 export interface PersistedConversationMeta {
@@ -15,6 +33,11 @@ export interface PersistedPaneLayoutRecord {
   context: string
   updatedAt?: number
   layout: PaneLayout
+  /** Implicit multi-pane conversation layout groups (>= 2 panes each). */
+  groups?: PaneGroupMap
+  activeGroupId?: string | null
+  /** Independent right multi-tab file/diff workbench panel state. */
+  rightPanel?: PersistedRightPanelState
   /** Minimal metadata per conversationId so panes restore with environment and title immediately. */
   conversations?: Record<string, PersistedConversationMeta>
 }
@@ -36,14 +59,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function sanitizeConversationsMeta(
   layout: PaneLayout,
+  groups?: PaneGroupMap,
   meta?: Record<string, PersistedConversationMeta>,
 ): Record<string, PersistedConversationMeta> | undefined {
   if (!meta) return undefined
-  const activeIds = new Set(
-    listPanes(layout.root).flatMap(pane =>
-      pane.content.type === "conversation" ? [pane.content.conversationId] : [],
-    ),
-  )
+  const activeIds = new Set<string>()
+  const collect = (target: PaneLayout) => {
+    for (const pane of listPanes(target.root)) {
+      if (pane.content.type === "conversation" && pane.content.conversationId.trim()) {
+        activeIds.add(pane.content.conversationId)
+      }
+    }
+  }
+  collect(layout)
+  if (groups) {
+    for (const groupLayout of Object.values(groups)) collect(groupLayout)
+  }
+
   const result: Record<string, PersistedConversationMeta> = {}
   for (const id of activeIds) {
     const entry = meta[id]
@@ -65,8 +97,58 @@ function sanitizeConversationsMeta(
   return Object.keys(result).length > 0 ? result : undefined
 }
 
+function mergeMigratedFilesIntoRightPanel(
+  base: RightPanelState,
+  extractedFiles: Extract<PaneContent, { type: "file" }>[],
+): RightPanelState {
+  if (!extractedFiles.length) return base
+  const tabs: RightPanelTab[] = [...base.tabs]
+  const seenKeys = new Set(tabs.map(rightTabIdentity))
+  for (const file of extractedFiles) {
+    if (tabs.length >= MAX_RIGHT_PANEL_TABS) break
+    if (!file.cwd?.trim() || (!file.projectId && !file.sessionId)) continue
+    const tab: RightPanelTab = {
+      id: defaultIdGenerator(),
+      kind: "file",
+      environment: file.environment || "local",
+      title: deriveRightTabTitle({
+        title: file.title,
+        path: file.path,
+        cwd: file.cwd,
+        mode: file.mode,
+      }),
+      cwd: file.cwd,
+      ...(file.path ? { path: file.path } : {}),
+      ...(file.projectId ? { projectId: file.projectId } : {}),
+      ...(file.sessionId ? { sessionId: file.sessionId } : {}),
+      ...(file.bindingId ? { bindingId: file.bindingId } : {}),
+      ...(file.line ? { line: file.line } : {}),
+      ...(typeof file.git === "boolean" ? { git: file.git } : {}),
+      mode: file.mode || "all",
+      version: 1,
+    }
+    const key = rightTabIdentity(tab)
+    if (seenKeys.has(key)) continue
+    seenKeys.add(key)
+    tabs.push(tab)
+  }
+  return {
+    ...base,
+    open: base.open || tabs.length > base.tabs.length,
+    activeTabId: base.activeTabId ?? tabs[0]?.id ?? null,
+    tabs,
+  }
+}
+
+export interface SerializePaneLayoutExtras {
+  groups?: PaneGroupMap
+  activeGroupId?: string | null
+  rightPanel?: RightPanelState
+}
+
 /**
- * Serializes ONLY durable LayoutState (tree, ratios, bindings, activePaneId, context).
+ * Serializes ONLY durable LayoutState (active tree, implicit multi-pane groups,
+ * right-panel tabs, conversation metadata, context).
  * Transient InteractionState (maximizedPaneId, drag, resize) is never included.
  */
 export function serializePaneLayout(
@@ -74,62 +156,74 @@ export function serializePaneLayout(
   context: string = DEFAULT_LAYOUT_CONTEXT,
   conversations?: Record<string, PersistedConversationMeta>,
   updatedAt?: number,
+  extras?: SerializePaneLayoutExtras,
 ): string {
-  const normalized = normalizeLayout(layout)
+  const normalized = normalizeLayout(stripNonConversationPanes(layout).layout)
+  const sanitizedGroups = sanitizePaneGroups(
+    extras?.groups ?? {},
+    normalized,
+    extras?.activeGroupId ?? null,
+  )
+  const serializedRightPanel = extras?.rightPanel
+    ? serializeRightPanelState(extras.rightPanel)
+    : undefined
   const record: PersistedPaneLayoutRecord = {
     version: PANE_LAYOUT_VERSION,
     context: normalizeLayoutContext(context),
     ...(typeof updatedAt === "number" && Number.isFinite(updatedAt) ? { updatedAt } : {}),
     layout: normalized,
-    ...(conversations ? { conversations: sanitizeConversationsMeta(normalized, conversations) } : {}),
+    ...(Object.keys(sanitizedGroups.groups).length > 0
+      ? { groups: sanitizedGroups.groups }
+      : {}),
+    ...(sanitizedGroups.activeGroupId ? { activeGroupId: sanitizedGroups.activeGroupId } : {}),
+    ...(serializedRightPanel ? { rightPanel: serializedRightPanel } : {}),
+    ...(conversations
+      ? { conversations: sanitizeConversationsMeta(normalized, sanitizedGroups.groups, conversations) }
+      : {}),
   }
   return JSON.stringify(record)
+}
+
+export interface DeserializedPaneLayout {
+  layout: PaneLayout
+  groups: PaneGroupMap
+  activeGroupId: string | null
+  rightPanel: RightPanelState
+  conversations: Record<string, PersistedConversationMeta>
+  updatedAt: number
+  migrated: boolean
+  degraded: boolean
+}
+
+function emptyDeserialized(degraded: boolean): DeserializedPaneLayout {
+  return {
+    layout: createInitialLayout(),
+    groups: {},
+    activeGroupId: null,
+    rightPanel: createInitialRightPanelState(),
+    conversations: {},
+    updatedAt: 0,
+    migrated: false,
+    degraded,
+  }
 }
 
 export function deserializePaneLayout(
   raw: string | unknown,
   expectedContext: string = DEFAULT_LAYOUT_CONTEXT,
-): {
-  layout: PaneLayout
-  conversations: Record<string, PersistedConversationMeta>
-  updatedAt: number
-  migrated: boolean
-  degraded: boolean
-} {
+): DeserializedPaneLayout {
   let parsed: unknown = raw
   if (typeof raw === "string") {
     const trimmed = raw.trim()
-    if (!trimmed) {
-      return {
-        layout: createInitialLayout(),
-        conversations: {},
-        updatedAt: 0,
-        migrated: false,
-        degraded: false,
-      }
-    }
+    if (!trimmed) return emptyDeserialized(false)
     try {
       parsed = JSON.parse(trimmed)
     } catch {
-      return {
-        layout: createInitialLayout(),
-        conversations: {},
-        updatedAt: 0,
-        migrated: false,
-        degraded: true,
-      }
+      return emptyDeserialized(true)
     }
   }
 
-  if (!isRecord(parsed)) {
-    return {
-      layout: createInitialLayout(),
-      conversations: {},
-      updatedAt: 0,
-      migrated: false,
-      degraded: true,
-    }
-  }
+  if (!isRecord(parsed)) return emptyDeserialized(true)
 
   const payload = parsed.layout !== undefined ? parsed.layout : parsed
   const isLegacy =
@@ -141,40 +235,58 @@ export function deserializePaneLayout(
     typeof parsed.context === "string" &&
     normalizeLayoutContext(parsed.context) !== normalizeLayoutContext(expectedContext)
   ) {
-    return {
-      layout: createInitialLayout(),
-      conversations: {},
-      updatedAt: 0,
-      migrated: false,
-      degraded: true,
-    }
+    return emptyDeserialized(true)
   }
 
   const migrated = migrateSavedLayout(payload)
-  if (!migrated) {
-    return {
-      layout: createInitialLayout(),
-      conversations: {},
-      updatedAt: 0,
-      migrated: false,
-      degraded: true,
+  if (!migrated) return emptyDeserialized(true)
+
+  const strippedMain = stripNonConversationPanes(migrated)
+  const extractedFiles = [...strippedMain.extractedFiles]
+
+  const rawGroups: PaneGroupMap = {}
+  if (isRecord(parsed.groups)) {
+    for (const [groupId, candidate] of Object.entries(parsed.groups)) {
+      if (!groupId.trim()) continue
+      const validGroup = migrateSavedLayout(candidate)
+      if (!validGroup) continue
+      const strippedGroup = stripNonConversationPanes(validGroup)
+      extractedFiles.push(...strippedGroup.extractedFiles)
+      rawGroups[groupId] = strippedGroup.layout
     }
   }
+
+  const requestedActiveGroupId =
+    typeof parsed.activeGroupId === "string" && parsed.activeGroupId.trim()
+      ? parsed.activeGroupId
+      : null
+  const sanitizedGroups = sanitizePaneGroups(
+    rawGroups,
+    strippedMain.layout,
+    requestedActiveGroupId,
+  )
+
+  const baseRightPanel = sanitizeRightPanelState(parsed.rightPanel)
+  const rightPanel = mergeMigratedFilesIntoRightPanel(baseRightPanel, extractedFiles)
 
   const rawMeta = isRecord(parsed.conversations)
     ? (parsed.conversations as Record<string, PersistedConversationMeta>)
     : undefined
-  const conversations = sanitizeConversationsMeta(migrated, rawMeta) ?? {}
+  const conversations =
+    sanitizeConversationsMeta(strippedMain.layout, sanitizedGroups.groups, rawMeta) ?? {}
   const updatedAt =
     typeof parsed.updatedAt === "number" && Number.isFinite(parsed.updatedAt)
       ? parsed.updatedAt
       : 0
 
   return {
-    layout: migrated,
+    layout: strippedMain.layout,
+    groups: sanitizedGroups.groups,
+    activeGroupId: sanitizedGroups.activeGroupId,
+    rightPanel,
     conversations,
     updatedAt,
-    migrated: isLegacy,
+    migrated: isLegacy || strippedMain.changed,
     degraded: false,
   }
 }
@@ -199,6 +311,9 @@ export interface PaneLayoutPersistenceOptions {
 export interface PaneLayoutPersistence {
   load: (bootstrapRaw?: string | null) => {
     layout: PaneLayout
+    groups: PaneGroupMap
+    activeGroupId: string | null
+    rightPanel: RightPanelState
     conversations: Record<string, PersistedConversationMeta>
     restored: boolean
     degraded: boolean
@@ -206,6 +321,7 @@ export interface PaneLayoutPersistence {
   scheduleSave: (
     layout: PaneLayout,
     conversations?: Record<string, PersistedConversationMeta>,
+    extras?: SerializePaneLayoutExtras,
   ) => void
   flush: () => void
   dispose: () => void
@@ -243,8 +359,11 @@ export function createPaneLayoutPersistence(
     })
 
   let timer: ReturnType<typeof setTimeout> | undefined
-  let pending: { layout: PaneLayout; conversations?: Record<string, PersistedConversationMeta> } | null =
-    null
+  let pending: {
+    layout: PaneLayout
+    conversations?: Record<string, PersistedConversationMeta>
+    extras?: SerializePaneLayoutExtras
+  } | null = null
   let lastLocalSignature = ""
   let lastRemoteSignature = ""
   let lastRemoteTimestamp = 0
@@ -261,16 +380,18 @@ export function createPaneLayoutPersistence(
   function commitNow(
     layout: PaneLayout,
     conversations?: Record<string, PersistedConversationMeta>,
+    extras?: SerializePaneLayoutExtras,
     keepalive = false,
   ) {
-    const signature = serializePaneLayout(layout, context, conversations)
+    const signature = serializePaneLayout(layout, context, conversations, undefined, extras)
     const needsLocal = signature !== lastLocalSignature
-    const needsRemote = !!options.saveRemote &&
+    const needsRemote =
+      !!options.saveRemote &&
       (signature !== lastRemoteSignature || latestRemoteTimestamp > lastRemoteTimestamp)
     if (!needsLocal && !needsRemote) return
 
     const timestamp = nextTimestamp()
-    const serialized = serializePaneLayout(layout, context, conversations, timestamp)
+    const serialized = serializePaneLayout(layout, context, conversations, timestamp, extras)
     if (needsLocal) {
       lastLocalSignature = signature
       writeLocal(key, serialized)
@@ -280,13 +401,11 @@ export function createPaneLayoutPersistence(
       const saveFn = options.saveRemote
       latestRemoteTimestamp = timestamp
       const acknowledge = () => {
-        // An older request can complete after the synchronous keepalive save.
         if (timestamp <= lastRemoteTimestamp) return
         lastRemoteTimestamp = timestamp
         lastRemoteSignature = signature
       }
       if (keepalive) {
-        // Dispatch synchronously on unload/pagehide so keepalive requests start immediately.
         void saveFn(context, parsed, { keepalive: true }).then(
           acknowledge,
           () => {
@@ -295,7 +414,6 @@ export function createPaneLayoutPersistence(
         )
       } else {
         writeChain = writeChain.then(async () => {
-          // Keepalive has already dispatched a newer snapshot; do not send queued old ones.
           if (timestamp < latestRemoteTimestamp) return
           try {
             await saveFn(context, parsed, { keepalive: false })
@@ -323,7 +441,6 @@ export function createPaneLayoutPersistence(
         .filter(entry => !entry.parsed.degraded)
 
       if (valid.length > 0) {
-        // Prefer the fresher record when timestamps exist; otherwise prefer SQLite bootstrap.
         valid.sort((a, b) => {
           if (b.parsed.updatedAt !== a.parsed.updatedAt) {
             return b.parsed.updatedAt - a.parsed.updatedAt
@@ -331,10 +448,17 @@ export function createPaneLayoutPersistence(
           return a.source === "bootstrap" ? -1 : 1
         })
         const chosen = valid[0]
+        const extras: SerializePaneLayoutExtras = {
+          groups: chosen.parsed.groups,
+          activeGroupId: chosen.parsed.activeGroupId,
+          rightPanel: chosen.parsed.rightPanel,
+        }
         const signature = serializePaneLayout(
           chosen.parsed.layout,
           context,
           chosen.parsed.conversations,
+          undefined,
+          extras,
         )
         lastTimestamp = Math.max(lastTimestamp, chosen.parsed.updatedAt)
         lastLocalSignature = signature
@@ -351,11 +475,15 @@ export function createPaneLayoutPersistence(
               context,
               chosen.parsed.conversations,
               nextTimestamp(),
+              extras,
             ),
           )
         }
         return {
           layout: chosen.parsed.layout,
+          groups: chosen.parsed.groups,
+          activeGroupId: chosen.parsed.activeGroupId,
+          rightPanel: chosen.parsed.rightPanel,
           conversations: chosen.parsed.conversations,
           restored: true,
           degraded: false,
@@ -364,18 +492,21 @@ export function createPaneLayoutPersistence(
 
       return {
         layout: createInitialLayout(),
+        groups: {},
+        activeGroupId: null,
+        rightPanel: createInitialRightPanelState(),
         conversations: {},
         restored: false,
         degraded: candidates.length > 0,
       }
     },
-    scheduleSave(layout, conversations) {
-      pending = { layout, conversations }
+    scheduleSave(layout, conversations, extras) {
+      pending = { layout, conversations, extras }
       if (timer !== undefined) clearTimeout(timer)
       if (debounceMs <= 0) {
         const next = pending
         pending = null
-        commitNow(next.layout, next.conversations, false)
+        commitNow(next.layout, next.conversations, next.extras, false)
         return
       }
       timer = setTimeout(() => {
@@ -383,7 +514,7 @@ export function createPaneLayoutPersistence(
         if (!pending) return
         const next = pending
         pending = null
-        commitNow(next.layout, next.conversations, false)
+        commitNow(next.layout, next.conversations, next.extras, false)
       }, debounceMs)
     },
     flush() {
@@ -394,7 +525,7 @@ export function createPaneLayoutPersistence(
       if (!pending) return
       const next = pending
       pending = null
-      commitNow(next.layout, next.conversations, true)
+      commitNow(next.layout, next.conversations, next.extras, true)
     },
     dispose() {
       if (timer !== undefined) {

@@ -451,9 +451,9 @@ test("bindPaneContent and normalizeLayout handle empty/duplicate states cleanly"
   assert.equal(crampedBounds.min, crampedBounds.max)
 })
 
-test("mixed resource panes preserve environment, directory, binding and file location across persistence", async () => {
+test("legacy mixed resource panes migrate files into independent right-panel tabs and keep conversation splits pure", async () => {
   const {resourceContent, resourceSnapshot, resourceIdentity} = await import("../frontend/app/pane-layout/model/content")
-  const {serializePaneLayout, deserializePaneLayout} = await import("../frontend/app/pane-layout/persistence/serializer")
+  const {deserializePaneLayout} = await import("../frontend/app/pane-layout/persistence/serializer")
   const file = resourceContent({route: "/files", environment: "remote", title: "main.ts", file: {
     cwd: "/workspace/secondary", projectId: "p2", sessionId: "c1", bindingId: "b2", path: "src/main.ts", line: 42, mode: "index", git: true,
   }})!
@@ -461,11 +461,20 @@ test("mixed resource panes preserve environment, directory, binding and file loc
   let layout = createInitialLayout({type: "conversation", conversationId: "c1"}, "chat")
   layout = splitPane(layout, "chat", "right", {newPaneId: "file", splitId: "s1", content: file})
   layout = splitPane(layout, "file", "down", {newPaneId: "project", splitId: "s2", content: project})
-  const restored = deserializePaneLayout(serializePaneLayout(layout))
+  const rawLegacy = JSON.stringify({version: 1, context: "default", layout})
+  const restored = deserializePaneLayout(rawLegacy)
   assert.equal(restored.degraded, false)
+  assert.equal(restored.migrated, true)
   const contents = listPanes(restored.layout.root).map(pane => pane.content)
-  assert.deepEqual(contents, JSON.parse(JSON.stringify([{type: "conversation", conversationId: "c1"}, file, project])))
-  assert.deepEqual(resourceSnapshot(contents[1])?.file, JSON.parse(JSON.stringify(resourceSnapshot(file)?.file)))
+  assert.deepEqual(contents, [{type: "conversation", conversationId: "c1"}])
+  assert.equal(restored.rightPanel.open, true)
+  assert.equal(restored.rightPanel.tabs.length, 1)
+  assert.equal(restored.rightPanel.tabs[0].environment, "remote")
+  assert.equal(restored.rightPanel.tabs[0].cwd, "/workspace/secondary")
+  assert.equal(restored.rightPanel.tabs[0].bindingId, "b2")
+  assert.equal(restored.rightPanel.tabs[0].path, "src/main.ts")
+  assert.equal(restored.rightPanel.tabs[0].line, 42)
+  assert.equal(restored.rightPanel.tabs[0].mode, "index")
   assert.notEqual(resourceIdentity(resourceSnapshot(file)!), resourceIdentity({...resourceSnapshot(file)!, environment: "local"}))
   assert.notEqual(resourceIdentity(resourceSnapshot(file)!), resourceIdentity({...resourceSnapshot(file)!, file: {...resourceSnapshot(file)!.file!, bindingId: "other"}}))
   assert.equal(resourceContent({route: "/files", file: {cwd: "/workspace"}}), null)

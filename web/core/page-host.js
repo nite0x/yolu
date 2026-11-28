@@ -3,20 +3,25 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 
 // A single workspace document handles page navigation. Conversation readers
 // stay mounted as flat iframes positioned by the recursive binary layout tree,
-// so splitting, closing, resizing, maximizing, or moving panes never reloads
-// an iframe or interrupts an active Agent runtime.
+// so splitting, closing, resizing, maximizing, switching groups, or dragging
+// panes never reloads a retained iframe or interrupts an active Agent runtime.
 (() => {
   const desktop = document.documentElement.hasAttribute('data-workhub-desktop');
   const sharedListWidth = window.WorkHubListWidth;
   const layoutEngine = window.WorkHubLayout.paneLayout;
+  const rightPanelEngine = window.WorkHubLayout.rightPanel;
   const constraints = layoutEngine.constraints;
   const SIDEBAR_PARALLEL_LIMIT = 3;
+  const MAX_BACKGROUND_PAGES = 8;
+  const BUSY_STATUSES = new Set(['running', 'starting', 'waiting', 'stopping', 'handoff']);
   let navigation = null, compactNavigationOpen = false, conversationListWidth = 280;
   let conversationsVisible = false, conversationsPresented = false, appliedURL = location.href;
   const panePages = new Map(); // Map<paneId, HostPage>
+  const paneLastUsed = new Map(); // Map<paneId, number>
   const conversationMeta = new Map(); // Map<conversationId, PersistedConversationMeta>
   const historyID = crypto.randomUUID(), visits = [];
   let visitIndex = -1, restoringVisit = false, historyPending = false;
+  let usageTick = 0;
   try {
     const width = Number(localStorage.getItem('workhub:conversation-list-width:v1'));
     if (width >= 220 && width <= 520) conversationListWidth = width;
@@ -61,6 +66,25 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   paneChrome.className = 'workspace-pane-chrome';
   pages.append(paneChrome);
 
+  // Independent right multi-tab panel (lives at host shell level, outside conversation splits).
+  const rightPanelContainer = document.createElement('div');
+  rightPanelContainer.id = 'workspaceRightPanel';
+  rightPanelContainer.className = 'workspace-right-panel';
+  rightPanelContainer.hidden = true;
+  const rightPanelResize = document.createElement('div');
+  rightPanelResize.className = 'workspace-right-panel-resize';
+  rightPanelResize.setAttribute('role', 'separator');
+  rightPanelResize.tabIndex = 0;
+  rightPanelResize.setAttribute('aria-label', uiText("调整右侧文件面板宽度"));
+  rightPanelResize.setAttribute('aria-orientation', 'vertical');
+  rightPanelResize.setAttribute('aria-controls', rightPanelContainer.id);
+  rightPanelResize.title = uiText("拖动调整右侧面板宽度，双击恢复默认");
+  rightPanelResize.hidden = true;
+  const dragGhost = document.createElement('div');
+  dragGhost.className = 'workspace-drag-ghost';
+  dragGhost.hidden = true;
+  document.body.append(rightPanelContainer, rightPanelResize, dragGhost);
+
   const persistence = layoutEngine.createPersistence({
     context: 'default',
     debounceMs: 250,
@@ -80,9 +104,57 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const bootstrapRaw = bootstrapMeta && bootstrapMeta !== '__PANE_LAYOUT__' ? bootstrapMeta : '';
   const initialRestored = persistence.load(bootstrapRaw);
   let allowInitialAutoSelect = !initialRestored.restored;
-  const store = layoutEngine.createStore(initialRestored.layout, constraints);
+  const store = layoutEngine.createStore(initialRestored.layout, constraints, {
+    groups: initialRestored.groups,
+    activeGroupId: initialRestored.activeGroupId,
+  });
+  const rightPanelStore = rightPanelEngine.createStore(initialRestored.rightPanel);
   for (const [id, meta] of Object.entries(initialRestored.conversations || {})) {
     conversationMeta.set(id, meta);
+  }
+
+  let rightPanelLiveWidth = rightPanelStore.getState().width;
+  let rightPanelResizeWired = false;
+  const rightPanelBounds = () => {
+    const leftReserve = sharedLayout() ? renderedConversationListWidth() : 0;
+    const max = Math.max(rightPanelEngine.minWidth, Math.min(rightPanelEngine.maxWidth, innerWidth - leftReserve - 360));
+    return {min: rightPanelEngine.minWidth, max};
+  };
+  let rightResizeFrame = 0;
+  const paintRightWidth = () => {
+    rightResizeFrame = 0;
+    document.body.style.setProperty('--workspace-right-panel-width', rightPanelLiveWidth + 'px');
+  };
+  function ensureRightPanelResize() {
+    if (rightPanelResizeWired) return;
+    rightPanelResizeWired = true;
+    window.WorkHubLayout.setupSplitResize({
+      handle: rightPanelResize,
+      container: document.body,
+      panel: rightPanelContainer,
+      axis: 'x',
+      direction: -1,
+      bounds: rightPanelBounds,
+      resize: width => {
+        rightPanelLiveWidth = Math.round(width);
+        if (typeof requestAnimationFrame !== 'function') paintRightWidth();
+        else if (!rightResizeFrame) rightResizeFrame = requestAnimationFrame(paintRightWidth);
+      },
+      commit: () => {
+        if (rightResizeFrame) { cancelAnimationFrame(rightResizeFrame); rightResizeFrame = 0; }
+        rightPanelStore.setWidth(rightPanelLiveWidth);
+        paintRightWidth();
+        schedulePersist();
+        renderLayout();
+      },
+    });
+    rightPanelResize.addEventListener('dblclick', () => {
+      rightPanelLiveWidth = Math.min(rightPanelEngine.defaultWidth, rightPanelBounds().max);
+      rightPanelStore.setWidth(rightPanelLiveWidth);
+      paintRightWidth();
+      schedulePersist();
+      renderLayout();
+    });
   }
 
   const versions = page => [page, ...(page.alternate ? [page.alternate] : [])];
@@ -90,14 +162,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const isConversation = snapshot => snapshot.route === '/sessions' && typeof snapshot.conversation?.selected === 'string' && !!snapshot.conversation.selected;
   const isConversationView = snapshot => isConversation(snapshot) || snapshot.route === '/sessions' && snapshot.conversation?.creating === true;
   const isTerminal = snapshot => snapshot.route === '/terminals';
+  const isFileSnapshot = snapshot => snapshot.route === '/files' && !!snapshot.file && typeof snapshot.file.cwd === 'string' && !!snapshot.file.cwd.trim() && !!(snapshot.file.projectId || snapshot.file.sessionId);
   const listIdentity = snapshot => isTerminal(snapshot) && snapshot.terminal?.id ? JSON.stringify(['terminal', snapshot.environment, snapshot.terminal.id]) : snapshot.conversation?.selected;
-  const isResource = snapshot => !!layoutEngine.resourceContent(snapshot);
-  const isPaneView = snapshot => isConversationView(snapshot) || isTerminal(snapshot) || isResource(snapshot);
-  const contentForSnapshot = (snapshot, paneId) => layoutEngine.resourceContent(snapshot) || {type: 'conversation', conversationId: paneContentKey(snapshot, paneId)};
+  const isPaneView = snapshot => isConversationView(snapshot) || isTerminal(snapshot);
+  const contentForSnapshot = (snapshot, paneId) => ({type: 'conversation', conversationId: paneContentKey(snapshot, paneId)});
 
   // Local IDs remain plain strings; remote identities already include their environment.
   const identity = snapshot => {
-    if (isResource(snapshot)) return layoutEngine.resourceIdentity(snapshot);
     if (isTerminal(snapshot)) return snapshot.terminal?.id ? JSON.stringify(['terminal', snapshot.environment, snapshot.terminal.id]) : '';
     if (!isConversation(snapshot)) return '';
     let id = snapshot.conversation.selected;
@@ -122,9 +193,17 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const sharedLayout = () => innerWidth > 760;
   const conversationListBounds = () => sharedListWidth?.bounds() ?? {min:220, max:Math.max(220, Math.min(520, innerWidth - 360))};
   const renderedConversationListWidth = () => sharedListWidth?.current() ?? conversationListWidth;
+  function rightPanelOverlay() {
+    const st = rightPanelStore.getState();
+    if (!st.open) return false;
+    const leftReserve = sharedLayout() ? renderedConversationListWidth() : 0;
+    return innerWidth - leftReserve - st.width < 360;
+  }
   function layoutViewport() {
     const box = pages.getBoundingClientRect?.();
-    const fallbackWidth = Math.max(0, innerWidth - (sharedLayout() ? renderedConversationListWidth() : 0));
+    const st = rightPanelStore.getState();
+    const rightReserve = st.open && !rightPanelOverlay() ? st.width : 0;
+    const fallbackWidth = Math.max(0, innerWidth - (sharedLayout() ? renderedConversationListWidth() : 0) - rightReserve);
     const fallbackHeight = Math.max(0, (typeof innerHeight === 'number' && innerHeight > 0 ? innerHeight : 900) - (desktop ? 36 : 0));
     return {
       width: box && box.width > 0 ? box.width : fallbackWidth,
@@ -180,19 +259,23 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
 
   function collectPersistableLayout() {
-    const raw = store.getLayout();
     const meta = {};
     const sanitizeNode = node => {
       if (node.type === 'split') {
         return {...node, children: [sanitizeNode(node.children[0]), sanitizeNode(node.children[1])]};
       }
       if (node.content.type !== 'conversation') {
-        const resource = panePages.get(node.id);
-        return resource && isResource(resource.snapshot) ? {...node, content: layoutEngine.resourceContent(resource.snapshot)} : node;
+        return {...node, content: {type: 'empty'}};
       }
       const page = panePages.get(node.id);
       if (!page) {
-        if (node.content.conversationId.startsWith('landing:')) return {...node, content: {type: 'empty'}};
+        if (
+          node.content.conversationId.startsWith('landing:') ||
+          node.content.conversationId.startsWith('draft:') ||
+          node.content.conversationId.startsWith('terminal:')
+        ) {
+          return {...node, content: {type: 'empty'}};
+        }
         const known = conversationMeta.get(node.content.conversationId);
         if (known) meta[node.content.conversationId] = known;
         return node;
@@ -211,15 +294,30 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       // Unsaved drafts and ephemeral terminal launchers degrade cleanly to empty panes across restarts.
       return {...node, content: {type: 'empty'}};
     };
+
+    const sanitizeTree = layout => ({...layout, root: sanitizeNode(layout.root)});
+    const sanitizedActive = sanitizeTree(store.getLayout());
+    const sanitizedGroups = {};
+    for (const [groupId, groupLayout] of Object.entries(store.getGroups())) {
+      sanitizedGroups[groupId] = sanitizeTree(groupLayout);
+    }
+
     return {
-      layout: {...raw, root: sanitizeNode(raw.root)},
+      layout: sanitizedActive,
+      groups: sanitizedGroups,
+      activeGroupId: store.getActiveGroupId(),
+      rightPanel: rightPanelStore.getState(),
       conversations: meta,
     };
   }
 
   function schedulePersist() {
     const payload = collectPersistableLayout();
-    persistence.scheduleSave(payload.layout, payload.conversations);
+    persistence.scheduleSave(payload.layout, payload.conversations, {
+      groups: payload.groups,
+      activeGroupId: payload.activeGroupId,
+      rightPanel: payload.rightPanel,
+    });
   }
 
   const visitKey = (snapshot, pageID) => JSON.stringify([snapshot.environment, snapshot.route, identity(snapshot) || (isPaneView(snapshot) ? pageID : '')]);
@@ -245,9 +343,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
     const url = new URL(location.href), snapshot = page.snapshot;
     if (snapshot.environment === 'local') url.searchParams.delete('environment'); else url.searchParams.set('environment', snapshot.environment);
-    url.hash = snapshot.file ? '/files?' + new URLSearchParams(Object.entries(snapshot.file).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))
-      : conversationsVisible && isConversation(snapshot) ? '/sessions?' + new URLSearchParams({session:snapshot.conversation.selected})
-        : conversationsVisible && !isResource(snapshot) ? '/sessions' : snapshot.route;
+    url.hash = conversationsVisible && isConversation(snapshot)
+      ? '/sessions?' + new URLSearchParams({session:snapshot.conversation.selected})
+      : conversationsVisible ? '/sessions' : snapshot.route;
     if (!restoringVisit) {
       const snapshotCopy = JSON.parse(JSON.stringify(snapshot));
       const key = visitKey(snapshot, page.id), previous = visits[visitIndex];
@@ -276,12 +374,77 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     return workspace;
   }
 
+  function renderRightPanel() {
+    const state = rightPanelStore.getState();
+    if (state.open) ensureRightPanelResize();
+    const overlay = rightPanelOverlay();
+    rightPanelLiveWidth = state.width;
+    document.body.style.setProperty('--workspace-right-panel-width', state.width + 'px');
+    document.body.toggleAttribute('data-right-panel-open', state.open);
+    document.body.toggleAttribute('data-right-panel-overlay', state.open && overlay);
+    rightPanelContainer.hidden = !state.open;
+    rightPanelResize.hidden = !state.open || overlay;
+    rightPanelEngine.render(
+      rightPanelContainer,
+      state.open
+        ? {
+            state,
+            overlay,
+            onActivateTab: tabId => {
+              rightPanelStore.activateTab(tabId);
+              schedulePersist();
+              renderRightPanel();
+              renderChrome();
+            },
+            onCloseTab: tabId => {
+              const wasOpen = rightPanelStore.getState().open;
+              rightPanelStore.closeTab(tabId);
+              schedulePersist();
+              if (wasOpen !== rightPanelStore.getState().open) renderLayout();
+              else { renderRightPanel(); renderChrome(); }
+            },
+            onCloseAllTabs: () => {
+              rightPanelStore.closeAllTabs();
+              schedulePersist();
+              renderLayout();
+            },
+            onSelectFile: (tabId, path, mode) => {
+              if (!['all', 'working', 'index'].includes(mode)) return;
+              rightPanelStore.updateTab(tabId, {path, mode});
+              schedulePersist();
+              renderRightPanel();
+            },
+            onCollapse: () => {
+              rightPanelStore.setOpen(false);
+              schedulePersist();
+              renderLayout();
+            },
+          }
+        : null,
+    );
+  }
+
+  function openRightFileTab(snapshot) {
+    const clean = normalize(snapshot);
+    if (!isFileSnapshot(clean)) return false;
+    const tab = rightPanelStore.openTab({
+      environment: clean.environment || 'local',
+      title: clean.title,
+      ...clean.file,
+    });
+    if (!tab) return false;
+    schedulePersist();
+    renderLayout();
+    return true;
+  }
+
   function renderChrome() {
     const page = currentPage();
     const navigator = navigation?.restored && navigation.frame.contentWindow.WorkHubPage;
     const controls = document.getElementById('workhubWindowControls');
-    const activeView = conversationsPresented && !isResource(page?.snapshot || {}) ? 'sessions' : page?.snapshot.kind;
+    const activeView = conversationsPresented ? 'sessions' : page?.snapshot.kind;
     const ready = conversationsPresented ? (!!navigation?.restored || !!page?.ready || layoutEngine.listPanes(store.getLayout().root).some(p => p.content.type === 'empty')) : !!page?.ready;
+    const rpState = rightPanelStore.getState();
     if (controls) window.WorkHubLayout.renderChrome(controls, {
       ready,
       activeView,
@@ -307,6 +470,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         if (statuses.includes('pending')) return 'pending';
         return statuses.includes('updated') ? 'updated' : 'cancelled';
       },
+      rightPanelOpen: rpState.open,
+      rightPanelTabCount: rpState.tabs.length,
+      toggleRightPanel: () => {
+        rightPanelStore.toggleOpen();
+        schedulePersist();
+        renderLayout();
+      },
       appMenu: window.WorkHubDesktopWindow ? trigger => window.WorkHubDesktopWindow.showMenu(ready, trigger) : undefined,
     });
   }
@@ -315,12 +485,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const page = panePages.get(paneId);
     if (!page) return layoutEngine.findPane(store.getLayout().root, paneId)?.content.context;
     const snap = page.snapshot;
-    if (snap.file) return {environment: snap.environment, projectId: snap.file.projectId, cwd: snap.file.cwd, sessionId: snap.file.sessionId, bindingId: snap.file.bindingId, git: snap.file.git};
-    const projectId = snap.route.match(/^\/projects\/([\w-]+)/)?.[1];
-    if (projectId) {
-      const params = new URLSearchParams(snap.route.split('?')[1]);
-      return {environment: snap.environment, projectId, cwd: params.get('path') || params.get('directory') || undefined};
-    }
     const scope = pageScope(snap);
     return {
       environment: snap.environment || 'local',
@@ -375,7 +539,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
 
   function createConversationInPane(paneId, context) {
-    openPaneContent(preferredCreation(draftConversationSnapshot(context)), 'current', paneId);
+    openPaneContent(preferredCreation(draftConversationSnapshot(context)), 'current', paneId, {fillEmptyPane: true});
   }
 
   function narrowPaneOptions() {
@@ -403,13 +567,12 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (active) {
         page.frame.style.left = `${(rect.x * 100).toFixed(4)}%`;
         page.frame.style.width = `${(rect.width * 100).toFixed(4)}%`;
-        const headerInset = layoutEngine.resourceContent(page.snapshot)?.type === 'project' ? 44 : 0;
         if (compactOffset) {
-          page.frame.style.top = `${37 + headerInset}px`;
-          page.frame.style.height = `calc(100% - ${37 + headerInset}px)`;
+          page.frame.style.top = '37px';
+          page.frame.style.height = 'calc(100% - 37px)';
         } else {
-          page.frame.style.top = headerInset ? `calc(${(rect.y * 100).toFixed(4)}% + ${headerInset}px)` : `${(rect.y * 100).toFixed(4)}%`;
-          page.frame.style.height = headerInset ? `calc(${(rect.height * 100).toFixed(4)}% - ${headerInset}px)` : `${(rect.height * 100).toFixed(4)}%`;
+          page.frame.style.top = `${(rect.y * 100).toFixed(4)}%`;
+          page.frame.style.height = `${(rect.height * 100).toFixed(4)}%`;
         }
       } else {
         page.frame.style.left = '';
@@ -426,38 +589,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   // stays effective and SplitContainer's resize effect never tears down mid-drag.
   const paneLayoutHandlers = {
     onCreateConversation: (paneId, context) => createConversationInPane(paneId, context),
-    onPickResource: (paneId, kind, trigger) => {
-      store.focus(paneId);
-      const context = inheritedContextFromPane(paneId);
-      if (kind === 'file' && context?.cwd && (context.projectId || context.sessionId)) {
-        openPaneContent({route: '/files', environment: context.environment || 'local', title: uiText("文件预览"),
-          file: {cwd: context.cwd, projectId: context.projectId, sessionId: context.sessionId, bindingId: context.bindingId, git: context.git}}, 'current', paneId);
-        return;
-      }
-      search.open(trigger, {
-        projectsOnly: true,
-        onSelect: target => {
-          if (!layoutEngine.findPane(store.getLayout().root, paneId)) return;
-          if (kind === 'project') openPaneContent(target, 'current', paneId);
-          else if (target.terminal?.cwd) openPaneContent({route: '/files', environment: target.environment, title: target.title,
-            file: {projectId: target.terminal.projectID, cwd: target.terminal.cwd, git: true}}, 'current', paneId);
-        },
-      });
-    },
-    onSelectFile: (paneId, path, mode) => {
-      const page = panePages.get(paneId);
-      if (!page?.snapshot.file || !['all', 'working', 'index'].includes(mode)) return;
-      if ((page.snapshot.file.path || '') === path && (page.snapshot.file.mode || 'all') === mode) return;
-      page.snapshot = {...page.snapshot, title: path.split(/[\\/]/).pop() || uiText("文件预览"), file: {...page.snapshot.file, path, line: undefined, mode}};
-      store.bindContent(paneId, layoutEngine.resourceContent(page.snapshot));
-      schedulePersist();
-      update();
-    },
     onPickConversation: (paneId, trigger) => {
       store.focus(paneId);
       search.open(trigger, {
         conversationsOnly: true,
-        onSelect: target => openPaneContent(target, 'current', paneId),
+        onSelect: target => openPaneContent(target, 'current', paneId, {fillEmptyPane: true}),
       });
     },
     onOpenRecentConversation: (paneId, item) => {
@@ -466,7 +602,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         environment: item.environment || 'local',
         title: item.title,
         conversation: {scope: {kind: 'all'}, selected: item.id, pane: 'detail'},
-      }, 'current', paneId);
+      }, 'current', paneId, {fillEmptyPane: true});
     },
     onSplit: (paneId, placement) => splitPaneInDirection(paneId, placement),
     onToggleMaximize: paneId => toggleMaximizePane(paneId),
@@ -534,6 +670,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
 
   let dragContainerBox = null;
+  let externalDrag = null; // {snapshot, key}
   function startPaneDrag(paneId) {
     const view = currentView();
     if (!view.isSplit || view.isCompactFocusMode || store.getInteraction().maximizedPaneId) return;
@@ -579,13 +716,177 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
   }
   function cancelPaneDrag() {
-    if (!store.getInteraction().draggingPaneId && !pages.hasAttribute('data-pane-dragging')) return;
+    if (!store.getInteraction().draggingPaneId && !externalDrag && !pages.hasAttribute('data-pane-dragging')) return;
+    externalDrag = null;
     dragContainerBox = null;
+    dragGhost.hidden = true;
     pages.removeAttribute('data-pane-dragging');
     document.body.removeAttribute('data-pane-dragging');
     store.cancelDrag();
     applyPaneFrameGeometry(currentView());
     renderPaneChrome();
+  }
+
+  function placementForZone(zone) {
+    return zone === 'top' ? 'up' : zone === 'bottom' ? 'down' : zone;
+  }
+  function positionDragGhost(clientX, clientY) {
+    dragGhost.style.left = `${Math.round(clientX)}px`;
+    dragGhost.style.top = `${Math.round(clientY)}px`;
+  }
+  function hostPointFromNavigation(clientX, clientY) {
+    const box = navigation?.frame.getBoundingClientRect?.() || {left: 0, top: 0};
+    return {x: box.left + clientX, y: box.top + clientY};
+  }
+  function startExternalConversationDrag(snapshot, clientX, clientY) {
+    const clean = normalize(snapshot);
+    if (!isPaneView(clean)) return;
+    const key = identity(clean);
+    if (!conversationsVisible) {
+      conversationsVisible = true;
+      compactNavigationOpen = false;
+      renderLayout();
+    }
+    externalDrag = {snapshot: clean, key};
+    store.setMaximized(null);
+    store.startExternalDrag({label: clean.title, conversationId: key});
+    dragContainerBox = pages.getBoundingClientRect();
+    pages.setAttribute('data-pane-dragging', '');
+    document.body.setAttribute('data-pane-dragging', '');
+    dragGhost.textContent = clean.title || uiText("对话");
+    dragGhost.hidden = false;
+    if (typeof clientX === 'number' && typeof clientY === 'number') {
+      const point = hostPointFromNavigation(clientX, clientY);
+      positionDragGhost(point.x, point.y);
+      updateExternalConversationDrag(point.x, point.y);
+    } else {
+      renderPaneChrome();
+    }
+  }
+  function updateExternalConversationDrag(hostX, hostY) {
+    if (!externalDrag) return;
+    positionDragGhost(hostX, hostY);
+    const layout = store.getLayout();
+    const existingPaneId = findExistingPaneInActiveLayout(externalDrag.key);
+    const viewport = layoutViewport();
+    const box = dragContainerBox || pages.getBoundingClientRect();
+    const prevTarget = store.getInteraction().dropTarget;
+    const target = layoutEngine.resolveDropTarget(
+      layout.root,
+      box,
+      {clientX: hostX, clientY: hostY},
+      existingPaneId,
+      {
+        canSplitZone: (targetPaneId, zone) => {
+          // Moving an already-open pane within the active layout doesn't add a pane.
+          if (existingPaneId) return true;
+          return layoutEngine.canSplitPaneInDirection(
+            layout.root,
+            targetPaneId,
+            placementForZone(zone),
+            viewport,
+            constraints,
+          );
+        },
+      },
+    );
+    store.updateDropTarget(target);
+    const nextTarget = store.getInteraction().dropTarget;
+    if (
+      prevTarget?.targetPaneId !== nextTarget?.targetPaneId ||
+      prevTarget?.zone !== nextTarget?.zone
+    ) {
+      renderPaneChrome();
+    }
+  }
+  function commitExternalConversationDrop(snapshot, dropTarget) {
+    const clean = normalize(snapshot);
+    const key = identity(clean);
+    allowInitialAutoSelect = false;
+    compactNavigationOpen = false;
+    conversationsVisible = true;
+
+    const existingActiveId = findExistingPaneInActiveLayout(key);
+    if (existingActiveId) {
+      if (existingActiveId !== dropTarget.targetPaneId) {
+        store.move(existingActiveId, dropTarget.targetPaneId, dropTarget.zone);
+        schedulePersist();
+        update();
+      }
+      return;
+    }
+
+    // Rule 4: Moving a conversation into another panel removes it from its previous group
+    // (automatically dissolving the previous group if only 1 pane remains).
+    store.removeConversationFromOtherGroups(key);
+
+    if (dropTarget.zone === 'center') {
+      const targetId = dropTarget.targetPaneId;
+      const old = panePages.get(targetId);
+      const retainedId = findRetainedPaneByIdentity(key);
+      if (retainedId && retainedId !== targetId) {
+        const retainedPage = panePages.get(retainedId);
+        if (retainedPage) {
+          if (old && !canClose(old)) return;
+          panePages.delete(retainedId);
+          retainedPage.id = targetId;
+          retainedPage.frame.id = 'page-' + targetId;
+          if (old) detachOrDisposeReplacedPage(targetId, old);
+          panePages.set(targetId, retainedPage);
+          store.bindContent(targetId, contentForSnapshot(clean, targetId));
+          store.focus(targetId);
+          schedulePersist();
+          update();
+          return;
+        }
+      }
+      replacePanePageInPlace(targetId, clean);
+      store.focus(targetId);
+      schedulePersist();
+      update();
+      return;
+    }
+
+    const placement = placementForZone(dropTarget.zone);
+    const viewport = layoutViewport();
+    if (!layoutEngine.canSplitPaneInDirection(store.getLayout().root, dropTarget.targetPaneId, placement, viewport, constraints)) {
+      return;
+    }
+    const retainedId = findRetainedPaneByIdentity(key);
+    const newPaneId = retainedId || crypto.randomUUID();
+    const createdId = store.split(dropTarget.targetPaneId, placement, {
+      newPaneId,
+      content: contentForSnapshot(clean, newPaneId),
+    });
+    if (!createdId) return;
+    if (!panePages.has(createdId)) {
+      const page = createPage(clean, createdId);
+      panePages.set(createdId, page);
+    }
+    store.setMaximized(null);
+    schedulePersist();
+    update();
+  }
+  function endExternalConversationDrag(clientX, clientY) {
+    if (!externalDrag) return;
+    if (typeof clientX === 'number' && typeof clientY === 'number') {
+      const point = hostPointFromNavigation(clientX, clientY);
+      updateExternalConversationDrag(point.x, point.y);
+    }
+    const dragData = externalDrag;
+    const dropTarget = store.getInteraction().dropTarget;
+    externalDrag = null;
+    dragContainerBox = null;
+    dragGhost.hidden = true;
+    pages.removeAttribute('data-pane-dragging');
+    document.body.removeAttribute('data-pane-dragging');
+    store.cancelDrag();
+    if (dropTarget) {
+      commitExternalConversationDrop(dragData.snapshot, dropTarget);
+    } else {
+      applyPaneFrameGeometry(currentView());
+      renderPaneChrome();
+    }
   }
 
   function splitPaneInDirection(targetPaneId, placement) {
@@ -650,7 +951,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       search.open(event.currentTarget.activeElement);
       return;
     }
-    if (event.key === 'Escape' && store.getInteraction().draggingPaneId) {
+    if (event.key === 'Escape' && (store.getInteraction().draggingPaneId || externalDrag)) {
       event.preventDefault();
       cancelPaneDrag();
       return;
@@ -702,17 +1003,50 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (pane.content.type === 'empty') continue;
       let page = panePages.get(pane.id);
       if (!page) {
-        page = createPage(layoutEngine.resourceSnapshot(pane.content) || snapshotForConversationId(pane.content.conversationId), pane.id);
-        panePages.set(pane.id, page);
+        const key = pane.content.type === 'conversation' ? pane.content.conversationId : '';
+        const retainedId = key ? findRetainedPaneByIdentity(key) : null;
+        if (retainedId && retainedId !== pane.id && !layoutEngine.findPane(store.getLayout().root, retainedId)) {
+          page = panePages.get(retainedId);
+          panePages.delete(retainedId);
+          page.id = pane.id;
+          page.frame.id = 'page-' + pane.id;
+          panePages.set(pane.id, page);
+        } else {
+          page = createPage(snapshotForConversationId(key), pane.id);
+          panePages.set(pane.id, page);
+        }
       }
-      if (page.snapshot.file) continue;
       if (shared && !navigation.restored && !workspace.mounted && (page.initialLanding || !isPaneView(page.snapshot))) continue;
       mountPage(page);
     }
   }
 
+  function pruneInactivePages() {
+    const activeIds = new Set(layoutEngine.listPanes(store.getLayout().root).map(pane => pane.id));
+    for (const id of activeIds) paneLastUsed.set(id, ++usageTick);
+
+    const idleBackground = [];
+    for (const [paneId, page] of panePages) {
+      if (activeIds.has(paneId)) continue;
+      if (BUSY_STATUSES.has(page.snapshot.status)) continue;
+      if (isTerminal(page.snapshot) && page.snapshot.terminal?.id) continue;
+      if (!canClose(page)) continue;
+      idleBackground.push({paneId, page, used: paneLastUsed.get(paneId) || 0});
+    }
+    if (idleBackground.length <= MAX_BACKGROUND_PAGES) return;
+    idleBackground.sort((a, b) => a.used - b.used);
+    const excess = idleBackground.length - MAX_BACKGROUND_PAGES;
+    for (let i = 0; i < excess; i++) {
+      const {paneId, page} = idleBackground[i];
+      dispose(page);
+      panePages.delete(paneId);
+      paneLastUsed.delete(paneId);
+    }
+  }
+
   function renderLayout(includeChrome = true) {
     hydrateEmptyPanes(allowInitialAutoSelect);
+    renderRightPanel();
     const view = currentView();
     const split = view.isSplit;
     const shared = sharedLayout();
@@ -763,26 +1097,33 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const interaction = store.getInteraction();
     for (const [paneId, page] of panePages) {
       const active = conversationsPresented && view.paneRects.has(paneId);
-      const caps = layoutEngine.getPaneCapabilities(layout, interaction, paneId, viewport, constraints);
-      send(page, 'workhub:page-pane', {split, shared: !isResource(page.snapshot)});
+      const inCurrentLayout = !!layoutEngine.findPane(layout.root, paneId);
+      const caps = inCurrentLayout
+        ? layoutEngine.getPaneCapabilities(layout, interaction, paneId, viewport, constraints)
+        : null;
+      send(page, 'workhub:page-pane', {split: inCurrentLayout && split, shared: true});
       if (page.visible !== active) {
         page.visible = active;
         send(page, 'workhub:page-active', {active});
       }
-      send(page, 'workhub:parallel-layout', {
-        split,
-        focused: paneId === view.activePaneId,
-        zoomed: !!view.maximizedPaneId,
-        compact: view.isCompactFocusMode,
-        canZoom: caps.canZoom,
-        canSplit: caps.canSplit,
-        canSplitRight: caps.canSplitRight,
-        canSplitDown: caps.canSplitDown,
-        canSplitLeft: caps.canSplitLeft,
-        canSplitUp: caps.canSplitUp,
-        canClose: caps.canClose && (split || !page.snapshot.conversation?.creating),
-      });
+      if (caps) {
+        send(page, 'workhub:parallel-layout', {
+          split,
+          focused: paneId === view.activePaneId,
+          zoomed: !!view.maximizedPaneId,
+          compact: view.isCompactFocusMode,
+          canZoom: caps.canZoom,
+          canSplit: caps.canSplit,
+          canSplitRight: caps.canSplitRight,
+          canSplitDown: caps.canSplitDown,
+          canSplitLeft: caps.canSplitLeft,
+          canSplitUp: caps.canSplitUp,
+          canClose: caps.canClose && (split || !page.snapshot.conversation?.creating),
+        });
+      }
     }
+
+    pruneInactivePages();
 
     const focusedPage = panePages.get(view.activePaneId);
     const selected = conversationsVisible && focusedPage ? listIdentity(focusedPage.snapshot) : '';
@@ -793,11 +1134,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         return p ? listIdentity(p.snapshot) : pane.content.type === 'conversation' && !pane.content.conversationId.startsWith('landing:') ? pane.content.conversationId : null;
       })
       .filter(Boolean);
-    const hasAnyRealPane = view.allPanes.some(pane => {
-      if (pane.content.type === 'conversation' && !pane.content.conversationId.startsWith('landing:')) return true;
-      const p = panePages.get(pane.id);
-      return pane.content.type === 'file' || pane.content.type === 'project' || (p ? isPaneView(p.snapshot) : false);
-    });
     const full = view.allPanes.length >= SIDEBAR_PARALLEL_LIMIT;
     const canSplit = canSplitActive();
 
@@ -846,7 +1182,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     frame.id = 'page-' + id;
     frame.title = snapshot.title;
     frame.hidden = true;
-    return {id, snapshot, frame, ready: !!snapshot.file, mounted: false, restored: !!snapshot.file, visible: false};
+    return {id, snapshot, frame, ready: false, mounted: false, restored: false, visible: false};
   }
 
   function mountPage(page, container = pages) {
@@ -856,7 +1192,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const url = new URL('/', location.href);
     url.searchParams.set('app-page', id);
     if (id === 'shared-navigation') url.searchParams.set('app-navigation', '1');
-    else if (id !== 'workspace' && !isResource(snapshot)) url.searchParams.set('app-conversation', '1');
+    else if (id !== 'workspace') url.searchParams.set('app-conversation', '1');
     if (snapshot.environment !== 'local') url.searchParams.set('environment', snapshot.environment);
     if (isTerminal(snapshot)) url.searchParams.set('app-terminal', '1');
     if (layoutEngine.countPanes(store.getLayout().root) > 1 && panePages.get(id) === page) url.searchParams.set('app-pane', '1');
@@ -928,7 +1264,6 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
 
   function canClose(page) {
-    if (page.snapshot.file) return true;
     try { return !page.ready || page.frame.contentWindow.WorkHubPage.canClose(); } catch { return false; }
   }
   function dispose(page) {
@@ -944,6 +1279,22 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     delete page.alternate;
     dispose(alternate);
   }
+  function detachOrDisposeReplacedPage(oldPaneId, oldPage) {
+    const oldKey = identity(oldPage.snapshot);
+    if (oldKey && isConversation(oldPage.snapshot)) {
+      const parkedId = crypto.randomUUID();
+      oldPage.id = parkedId;
+      oldPage.frame.id = 'page-' + parkedId;
+      oldPage.frame.hidden = true;
+      oldPage.visible = false;
+      send(oldPage, 'workhub:page-active', {active: false});
+      panePages.set(parkedId, oldPage);
+      paneLastUsed.set(parkedId, ++usageTick);
+      return;
+    }
+    dispose(oldPage);
+    paneLastUsed.delete(oldPaneId);
+  }
 
   function closePaneById(paneId) {
     const layout = store.getLayout();
@@ -955,6 +1306,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (page) {
       dispose(page);
       panePages.delete(paneId);
+      paneLastUsed.delete(paneId);
     }
     store.close(paneId);
     schedulePersist();
@@ -976,8 +1328,15 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       ? {...message.snapshot, route: '/sessions', title: uiText("新建对话"), conversation: {scope: pageScope(message.snapshot), selected: null, creating: true, pane: 'detail'}}
       : message.snapshot;
     const target = message.create ? preferredCreation(snapshot) : snapshot;
-    if (isConversationView(target) || isTerminal(target) || target.file || isResource(target) && message.placement) openPaneContent(target, message.placement, pageID);
-    else openPage(target);
+    if (isFileSnapshot(target)) {
+      openRightFileTab(target);
+      return;
+    }
+    if (isConversationView(target) || isTerminal(target)) {
+      openPaneContent(target, message.placement, pageID, {create: !!message.create});
+    } else {
+      openPage(target);
+    }
   }
 
   function switchCreation(page, kind, snapshot) {
@@ -1015,7 +1374,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   function openPage(snapshot) {
     const clean = normalize(snapshot);
     compactNavigationOpen = false;
-    if (clean.route === '/sessions' || isTerminal(clean) || clean.file) {
+    if (isFileSnapshot(clean)) {
+      openRightFileTab(clean);
+      return;
+    }
+    if (clean.route === '/sessions' || isTerminal(clean)) {
       conversationsVisible = true;
       if (isPaneView(clean)) {
         openPaneContent(clean, 'current');
@@ -1044,35 +1407,109 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     update();
   }
 
-  function findExistingPaneForIdentity(key) {
+  function findExistingPaneInActiveLayout(key) {
+    if (!key) return null;
+    const layout = store.getLayout();
+    for (const pane of layoutEngine.listPanes(layout.root)) {
+      const page = panePages.get(pane.id);
+      if (page && identity(page.snapshot) === key) return pane.id;
+      if (pane.content.type === 'conversation' && pane.content.conversationId === key) return pane.id;
+    }
+    return null;
+  }
+
+  function findRetainedPaneByIdentity(key) {
     if (!key) return null;
     for (const [paneId, page] of panePages) {
       if (identity(page.snapshot) === key) return paneId;
     }
-    const found = layoutEngine.findPaneByConversationId(store.getLayout().root, key);
-    return found?.id || null;
+    return null;
   }
 
-  function openPaneContent(snapshot, placement = 'current', targetPaneId = activePaneId()) {
+  function replacePanePageInPlace(paneId, clean) {
+    const old = panePages.get(paneId);
+    if (old) {
+      if (!canClose(old)) return false;
+      disposeAlternate(old);
+      delete old.initialLanding;
+      store.bindContent(paneId, contentForSnapshot(clean, paneId));
+      if (isTerminal(old.snapshot) || isTerminal(clean)) {
+        const page = createPage(clean, paneId);
+        panePages.set(paneId, page);
+        dispose(old);
+      } else {
+        old.snapshot = clean;
+        old.frame.title = clean.title;
+        send(old, 'workhub:page-restore', {snapshot: clean, active: true});
+      }
+    } else {
+      store.bindContent(paneId, contentForSnapshot(clean, paneId));
+      const page = createPage(clean, paneId);
+      panePages.set(paneId, page);
+    }
+    return true;
+  }
+
+  function openStandaloneConversation(clean) {
+    const key = identity(clean);
+    const layout = store.getLayout();
+    const isMulti = layoutEngine.isMultiPaneLayout(layout);
+    const retainedId = key ? findRetainedPaneByIdentity(key) : null;
+
+    if (isMulti) {
+      // Preserve the active multi-pane group untouched and switch to a standalone maximized pane.
+      const nextPaneId = retainedId || crypto.randomUUID();
+      if (!panePages.has(nextPaneId)) {
+        panePages.set(nextPaneId, createPage(clean, nextPaneId));
+      }
+      store.activateStandalone(contentForSnapshot(clean, nextPaneId), nextPaneId);
+      schedulePersist();
+      update();
+      panePages.get(nextPaneId)?.frame.focus?.();
+      return;
+    }
+
+    const basePaneId = activePaneId();
+    if (retainedId && retainedId !== basePaneId) {
+      store.activateStandalone(contentForSnapshot(clean, retainedId), retainedId);
+      schedulePersist();
+      update();
+      panePages.get(retainedId)?.frame.focus?.();
+      return;
+    }
+
+    if (!replacePanePageInPlace(basePaneId, clean)) return;
+    store.setMaximized(null);
+    schedulePersist();
+    update();
+  }
+
+  function openPaneContent(snapshot, placement = 'current', targetPaneId = activePaneId(), options = {}) {
     const clean = normalize(snapshot);
+    if (isFileSnapshot(clean)) {
+      openRightFileTab(clean);
+      return;
+    }
     if (!isPaneView(clean)) { openPage(clean); return; }
     allowInitialAutoSelect = false;
     compactNavigationOpen = false;
     conversationsVisible = true;
 
+    // Rule 1: Global new conversation always creates a standalone maximized conversation window,
+    // preserving any existing multi-pane group untouched.
+    if (options.create && placement !== 'split') {
+      openStandaloneConversation(clean);
+      return;
+    }
+
     const key = identity(clean);
-    const existingPaneId = findExistingPaneForIdentity(key);
-    if (existingPaneId) {
-      const existing = panePages.get(existingPaneId);
-      if (clean.file && existing) {
-        existing.snapshot = clean;
-        store.bindContent(existingPaneId, contentForSnapshot(clean, existingPaneId));
-      }
+    const existingActiveId = findExistingPaneInActiveLayout(key);
+    if (existingActiveId) {
       store.setMaximized(null);
-      store.focus(existingPaneId);
+      store.focus(existingActiveId);
       schedulePersist();
       update();
-      panePages.get(existingPaneId)?.frame.focus();
+      panePages.get(existingActiveId)?.frame.focus();
       return;
     }
 
@@ -1083,43 +1520,48 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       const caps = layoutEngine.getPaneCapabilities(layout, store.getInteraction(), basePaneId, layoutViewport(), constraints);
       const splitDirection = caps.canSplitRight ? 'right' : caps.canSplitDown ? 'down' : null;
       if (!splitDirection) return;
-      const newPaneId = crypto.randomUUID();
+      // Rule 4: Adding a conversation into another split removes it from any previous group.
+      if (key) store.removeConversationFromOtherGroups(key);
+      const retainedId = key ? findRetainedPaneByIdentity(key) : null;
+      const newPaneId = retainedId || crypto.randomUUID();
       const createdId = store.split(basePaneId, splitDirection, {
         newPaneId,
         content: contentForSnapshot(clean, newPaneId),
       });
       if (!createdId) return;
-      const page = createPage(clean, createdId);
-      panePages.set(createdId, page);
+      if (!panePages.has(createdId)) {
+        const page = createPage(clean, createdId);
+        panePages.set(createdId, page);
+      }
       store.setMaximized(null);
       schedulePersist();
       update();
       return;
     }
 
-    const old = panePages.get(basePaneId);
-    if (old) {
-      if (!canClose(old)) return;
-      disposeAlternate(old);
-      delete old.initialLanding;
-      store.bindContent(basePaneId, contentForSnapshot(clean, basePaneId));
-      if (isTerminal(old.snapshot) || isTerminal(clean) || isResource(old.snapshot) || isResource(clean)) {
-        const page = createPage(clean, basePaneId);
-        panePages.set(basePaneId, page);
-        dispose(old);
-      } else {
-        old.snapshot = clean;
-        old.frame.title = clean.title;
-        send(old, 'workhub:page-restore', {snapshot: clean, active: true});
+    // Rule 3: Clicking a conversation that belongs to a remembered multi-pane group
+    // restores that entire group with its exact layout and focuses the clicked conversation.
+    if (key && !options.fillEmptyPane) {
+      const groupMatch = store.findGroupForConversation(key);
+      if (groupMatch) {
+        store.activateGroup(groupMatch.groupId, groupMatch.paneId);
+        schedulePersist();
+        update();
+        panePages.get(groupMatch.paneId)?.frame.focus?.();
+        return;
       }
-    } else {
-      store.bindContent(basePaneId, contentForSnapshot(clean, basePaneId));
-      const page = createPage(clean, basePaneId);
-      panePages.set(basePaneId, page);
     }
-    store.setMaximized(null);
-    schedulePersist();
-    update();
+
+    if (options.fillEmptyPane) {
+      if (key) store.removeConversationFromOtherGroups(key);
+      if (!replacePanePageInPlace(basePaneId, clean)) return;
+      store.setMaximized(null);
+      schedulePersist();
+      update();
+      return;
+    }
+
+    openStandaloneConversation(clean);
   }
 
   window.addEventListener('message', event => {
@@ -1148,12 +1590,23 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         if (message.initial && (!allowInitialAutoSelect || !conversationsVisible || hasRealPane)) return;
         openPaneContent(message.snapshot);
       } else if (message.type === 'workhub:conversation-add') {
-        const existing = findExistingPaneForIdentity(identity(normalize(message.snapshot)));
+        const existing = findExistingPaneInActiveLayout(identity(normalize(message.snapshot)));
         if (!existing && layoutEngine.countPanes(store.getLayout().root) >= SIDEBAR_PARALLEL_LIMIT) return;
         openPaneContent(message.snapshot, 'split');
+      } else if (message.type === 'workhub:conversation-drag') {
+        if (message.phase === 'start' && message.snapshot) {
+          startExternalConversationDrag(message.snapshot, message.clientX, message.clientY);
+        } else if (message.phase === 'move' && typeof message.clientX === 'number' && typeof message.clientY === 'number') {
+          const point = hostPointFromNavigation(message.clientX, message.clientY);
+          updateExternalConversationDrag(point.x, point.y);
+        } else if (message.phase === 'end') {
+          endExternalConversationDrag(message.clientX, message.clientY);
+        } else if (message.phase === 'cancel') {
+          cancelPaneDrag();
+        }
       } else if (message.type === 'workhub:page-open') {
-        if (message.placement === 'split') {
-          const existing = findExistingPaneForIdentity(identity(normalize(message.snapshot)));
+        if (message.placement === 'split' && !isFileSnapshot(normalize(message.snapshot))) {
+          const existing = findExistingPaneInActiveLayout(identity(normalize(message.snapshot)));
           if (!existing && layoutEngine.countPanes(store.getLayout().root) >= SIDEBAR_PARALLEL_LIMIT) return;
         }
         dispatchOpen(message);
@@ -1163,13 +1616,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 
     const page = allPages().find(candidate => candidate.mounted && candidate.frame.contentWindow === event.source);
     if (!page) return;
-    const displayed = page === workspace || panePages.get(page.id) === page;
+    const displayed = page === workspace || (panePages.get(page.id) === page && !!layoutEngine.findPane(store.getLayout().root, page.id));
     if (!displayed && !['workhub:page-ready', 'workhub:page-restored', 'workhub:page-state'].includes(message.type)) return;
 
     if (message.type === 'workhub:page-ready') {
       page.ready = true;
       page.frame.contentDocument?.addEventListener('keydown', workspaceKeydown);
-      send(page, 'workhub:page-pane', {split: page !== workspace && currentView().isSplit, shared: page !== workspace && !isResource(page.snapshot)});
+      send(page, 'workhub:page-pane', {split: page !== workspace && currentView().isSplit, shared: page !== workspace});
       send(page, 'workhub:page-restore', {snapshot: page.snapshot, active: !!page.visible});
       renderLayout();
     } else if (message.type === 'workhub:page-restored') {
@@ -1178,7 +1631,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     } else if (message.type === 'workhub:page-state') {
       const clean = normalize(message.snapshot);
       if (page === workspace && conversationsVisible && clean.route === '/sessions') return;
-      if (page !== workspace && clean.route !== '/sessions' && (!isPaneView(clean) || isResource(clean) && !isResource(page.snapshot))) {
+      if (page !== workspace && clean.route !== '/sessions' && !isPaneView(clean)) {
         const original = page.snapshot;
         openPage(clean);
         send(page, 'workhub:page-restore', {snapshot: original, active: false});
@@ -1212,6 +1665,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       allowInitialAutoSelect = false;
       dispose(page);
       panePages.delete(page.id);
+      paneLastUsed.delete(page.id);
       store.bindContent(page.id, {type: 'empty'});
       schedulePersist();
       update();
@@ -1268,18 +1722,22 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       historyPending = false;
       restoringVisit = true;
       const retained = panePages.get(visit.pageID);
+      const inActiveLayout = retained && !!layoutEngine.findPane(store.getLayout().root, retained.id);
       const retainedMatches = retained && visitKey(retained.snapshot, retained.id) === visit.key;
-      if (retainedMatches && (conversationsVisible || canClose(workspace))) {
+      const canLeaveWorkspace = conversationsVisible || canClose(workspace);
+      if (retainedMatches && inActiveLayout && canLeaveWorkspace) {
         conversationsVisible = true;
         compactNavigationOpen = false;
         store.focus(retained.id);
         update();
-      } else if (!retainedMatches) {
-        dispatchOpen({snapshot: visit.snapshot, placement: visit.pageID !== 'workspace' && isResource(visit.snapshot) ? 'current' : undefined});
+      } else if (canLeaveWorkspace && !retainedMatches) {
+        dispatchOpen({snapshot: visit.snapshot});
+      } else if (canLeaveWorkspace && !inActiveLayout) {
+        dispatchOpen({snapshot: visit.snapshot});
       }
       restoringVisit = false;
       const active = conversationsVisible ? panePages.get(activePaneId()) : workspace;
-      if (!active || visitKey(active.snapshot, visit.pageID) !== visit.key) {
+      if (!active || visitKey(active.snapshot, active.id) !== visit.key && visitKey(active.snapshot, visit.pageID) !== visit.key) {
         historyPending = true;
         history.go(previous - destination.index);
         return;
@@ -1308,7 +1766,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (params.has('line')) file.line = Number(params.get('line'));
       if (params.has('git')) file.git = params.get('git') === 'true';
       const snapshot = {route: '/files', environment, title: file.path?.split(/[\\/]/).pop() || uiText("文件预览"), file};
-      return isResource(snapshot) ? snapshot : {route: '/sessions', environment};
+      return isFileSnapshot(snapshot) ? snapshot : {route: '/sessions', environment};
     }
     const session = route === '/sessions' && new URLSearchParams(query).get('session');
     if (session) return {route, environment, conversation: {scope: {kind: 'all'}, selected: session, pane: 'detail'}};
@@ -1318,10 +1776,5 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const initial = normalize(locationSnapshot());
   const workspace = createPage(initial, 'workspace');
   sharedListWidth?.subscribe(paintConversationListWidth);
-  const restoredActive = layoutEngine.findPane(store.getLayout().root, activePaneId());
-  const restoredSnapshot = restoredActive && layoutEngine.resourceSnapshot(restoredActive.content);
-  if (initialRestored.restored && restoredSnapshot && identity(initial) === identity(restoredSnapshot)) {
-    conversationsVisible = true;
-    update();
-  } else openPage(initial);
+  openPage(initial);
 })();

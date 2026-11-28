@@ -105,6 +105,8 @@ html[data-workspace-navigation] .session-sidebar-group-control { inline-size: 28
 .session-workspace-preview button svg { width: 12px; height: 12px; flex: none; }
 .session-workspace-heading > button:focus-visible, .session-workspace-preview button:focus-visible, .session-collection-actions :is(a, button):focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .session-browser-item { cursor: pointer; display: block; width: 100%; min-height: 34px; padding: 6px var(--session-row-inset, 10px); border: 0; border-radius: 6px; background: transparent; color: var(--foreground); text-align: left; font: inherit; }
+html[data-workspace-navigation] .session-browser-item[data-conversation-session] { cursor: grab; }
+html[data-workspace-navigation] .session-browser-item[data-dragging-row] { opacity: 0.55; cursor: grabbing; }
 .session-browser-item:hover { background: var(--muted); }
 .session-browser-item[data-parallel-member]:not([aria-pressed="true"]) { background: color-mix(in srgb, var(--yolu-selected,#edf0ff) 62%, transparent); }
 .session-browser-item[aria-pressed="true"] { background: var(--yolu-selected,#edf0ff); }

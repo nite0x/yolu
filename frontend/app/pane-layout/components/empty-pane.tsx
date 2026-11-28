@@ -1,5 +1,5 @@
 import { uiText } from "@/shared/i18n"
-import { FileSearch, FolderGit2, MessageSquare, Search, SquarePen, X } from "lucide-react"
+import { MessageSquare, Search, SquarePen, X } from "lucide-react"
 import { memo } from "react"
 import type { PaneContextHint, SplitPlacement } from "../model/types"
 import type { PaneCapabilities } from "../state/selectors"
@@ -37,7 +37,6 @@ export const EmptyPane = memo(function EmptyPane({
   canCreateConversation,
   onCreateConversation,
   onPickConversation,
-  onPickResource,
   onOpenRecentConversation,
   onSplit,
   onToggleMaximize,
@@ -66,7 +65,7 @@ export const EmptyPane = memo(function EmptyPane({
       <div className="pane-layout-empty-body">
         <div className="pane-layout-empty-inner">
           <p className="pane-layout-empty-hint">
-            {uiText("开始对话，浏览文件，或查看项目详情。")}
+            {uiText("开始新对话，或打开已有对话。")}
           </p>
           <div className="pane-layout-empty-actions">
             <button
@@ -86,14 +85,6 @@ export const EmptyPane = memo(function EmptyPane({
               <Search aria-hidden="true" />
               <span>{uiText("打开已有对话")}</span>
             </button>
-            {onPickResource && <>
-              <button type="button" className="pane-layout-empty-secondary" onClick={event => onPickResource(paneId, "file", event.currentTarget)}>
-                <FileSearch aria-hidden="true" /><span>{uiText("浏览文件")}</span>
-              </button>
-              <button type="button" className="pane-layout-empty-secondary" onClick={event => onPickResource(paneId, "project", event.currentTarget)}>
-                <FolderGit2 aria-hidden="true" /><span>{uiText("项目详情")}</span>
-              </button>
-            </>}
             {capabilities.split && (
               <button
                 type="button"
