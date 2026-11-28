@@ -19,7 +19,7 @@ type Inventory = {
   environments: { id: string; name: string; connected: boolean; error?: string }[]
 }
 type Snapshot = { route: string; environment: string; conversation?: { selected?: string } }
-type Target = Snapshot & { title: string; conversation?: { scope: { kind: "all" }; selected: string; pane: "detail"; archived?: boolean; session?: Session } }
+type Target = Snapshot & { title: string; terminal?: {projectID: string; cwd?: string}; conversation?: { scope: { kind: "all" }; selected: string; pane: "detail"; archived?: boolean; session?: Session } }
 type Read = <T>(path: string, environment: string) => Promise<T>
 
 const recentKey = "workhub:recent-search-resources:v1"
@@ -172,39 +172,40 @@ function SearchItem({ result, showKind, environmentName, select }: { result: Res
   </Command.Item>
 }
 
-function SearchPanel({ source, recent, close, select, conversationsOnly }: { source: ReturnType<typeof createCatalog>; recent: string[]; close: () => void; select: (result: Result) => void; conversationsOnly?: boolean }) {
+function SearchPanel({ source, recent, close, select, conversationsOnly, projectsOnly }: { source: ReturnType<typeof createCatalog>; recent: string[]; close: () => void; select: (result: Result) => void; conversationsOnly?: boolean; projectsOnly?: boolean }) {
   const [query, setQuery] = useState("")
   const catalog = useSyncExternalStore(source.subscribe, source.getSnapshot)
   const term = query.trim().toLocaleLowerCase()
   const searching = !!term
-  useEffect(() => { if (searching) void source.discover() }, [searching, source])
+  useEffect(() => { if (searching && !projectsOnly) void source.discover() }, [searching, projectsOnly, source])
 
-  const allowedKinds = conversationsOnly ? (["conversation"] as const) : kinds
+  const allowedKinds = projectsOnly ? (["project"] as const) : conversationsOnly ? (["conversation"] as const) : kinds
+  const allowed = (item: Result) => allowedKinds.some(kind => item.kind === kind)
   const matches = term ? [...catalog.results.values()].flatMap(item => {
-    if (conversationsOnly && item.kind !== "conversation") return []
+    if (!allowed(item)) return []
     const name = item.name.toLocaleLowerCase()
     const index = name.indexOf(term)
     return index < 0 ? [] : [{ item, rank: name === term ? 0 : index === 0 ? 1 : 2 }]
   }).sort((a, b) => a.rank - b.rank || a.item.name.localeCompare(b.item.name) || identity(a.item).localeCompare(identity(b.item))) : []
   const recentItems = term ? [] : recent.flatMap(key => {
     const item = catalog.results.get(key)
-    return item && (!conversationsOnly || item.kind === "conversation") ? [item] : []
+    return item && allowed(item) ? [item] : []
   }).slice(0, 8)
-  const fallbackConversations = !term && conversationsOnly && recentItems.length === 0
-    ? [...catalog.results.values()].filter(item => item.kind === "conversation").slice(0, 8)
+  const fallbackConversations = !term && (conversationsOnly || projectsOnly) && recentItems.length === 0
+    ? [...catalog.results.values()].filter(allowed).slice(0, 8)
     : []
   const sections = term ? allowedKinds.map(kind => ({ key: kind, label: uiText(names[kind]), items: matches.filter(match => match.item.kind === kind).map(match => match.item) }))
-    : [{ key: "recent", label: uiText(recentItems.length > 0 ? "最近使用" : "已有对话"), items: recentItems.length > 0 ? recentItems : fallbackConversations }]
+    : [{ key: "recent", label: uiText(recentItems.length > 0 ? "最近使用" : projectsOnly ? "项目" : "已有对话"), items: recentItems.length > 0 ? recentItems : fallbackConversations }]
   const hasResults = sections.some(section => section.items.length > 0)
-  const loading = catalog.loading || searching && (!catalog.discovered || catalog.discovering)
+  const loading = catalog.loading || !projectsOnly && searching && (!catalog.discovered || catalog.discovering)
   const incomplete = catalog.incomplete || searching && catalog.discoveryIncomplete
   const shortcut = navigator.platform.startsWith("Mac") ? "⌘ K" : "Ctrl K"
 
-  return <Command label={uiText(conversationsOnly ? "打开已有对话" : "全局搜索")} shouldFilter={false} loop vimBindings={false}>
+  return <Command label={uiText(projectsOnly ? "打开项目" : conversationsOnly ? "打开已有对话" : "全局搜索")} shouldFilter={false} loop vimBindings={false}>
     <div className="global-search-field">
       <Search aria-hidden="true" />
-      <Command.Input placeholder={uiText(conversationsOnly ? "搜索已有对话…" : "搜索项目和对话…")} value={query} onValueChange={setQuery} autoComplete="off" />
-      {!conversationsOnly && <kbd>{shortcut}</kbd>}
+      <Command.Input placeholder={uiText(projectsOnly ? "搜索项目…" : conversationsOnly ? "搜索已有对话…" : "搜索项目和对话…")} value={query} onValueChange={setQuery} autoComplete="off" />
+      {!conversationsOnly && !projectsOnly && <kbd>{shortcut}</kbd>}
       <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label={uiText("关闭")} title={uiText("关闭")}><X aria-hidden="true" /></Button>
     </div>
     <Command.List className="global-search-list" label={uiText("搜索结果")}>
@@ -238,24 +239,24 @@ export function createGlobalSearch(dialog: HTMLDialogElement, { read, navigate }
     if (event.target === dialog) close()
   })
   return {
-    open(trigger?: HTMLElement, options?: { conversationsOnly?: boolean; onSelect?: (target: Target) => void }) {
+    open(trigger?: HTMLElement, options?: { conversationsOnly?: boolean; projectsOnly?: boolean; onSelect?: (target: Target) => void }) {
       if (dialog.open) {
         dialog.querySelector("input")?.focus()
         return
       }
       opener = trigger
       selected = false
-      const select = ({ id, kind, name, environment, session }: Result) => {
+      const select = ({ id, kind, name, environment, session, detail }: Result) => {
         selected = true
         close()
         const target: Target = kind === "conversation"
           ? { route: "/sessions", environment, title: name, conversation: { scope: { kind: "all" }, selected: conversationEnvironmentKey(environment, id), pane: "detail", archived: session?.archived, session } }
-          : { route: `/${kind}s/${encodeURIComponent(id)}`, environment, title: name }
+          : { route: `/${kind}s/${encodeURIComponent(id)}`, environment, title: name, terminal: {projectID: id, cwd: detail} }
         if (options?.onSelect) options.onSelect(target)
         else navigate(target)
       }
       void source.load()
-      flushSync(() => root.render(<SearchPanel source={source} recent={recent} close={close} select={select} conversationsOnly={options?.conversationsOnly} />))
+      flushSync(() => root.render(<SearchPanel source={source} recent={recent} close={close} select={select} conversationsOnly={options?.conversationsOnly} projectsOnly={options?.projectsOnly} />))
       dialog.showModal()
       dialog.querySelector("input")?.focus()
     },

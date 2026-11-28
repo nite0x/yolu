@@ -1,0 +1,10 @@
+/* Shared split control for conversation, resource and empty panes. */
+.pane-split-control{position:relative;display:inline-flex;align-items:center;flex-shrink:0;border-radius:6px}
+.pane-split-control:hover{background:var(--yolu-hover,var(--accent))}
+.pane-split-control .pane-split-primary{border-start-end-radius:0;border-end-end-radius:0}
+.pane-split-control .pane-split-directions{width:18px;min-width:18px;padding:0 2px;border-start-start-radius:0;border-end-start-radius:0}
+.pane-split-control .pane-split-directions svg{width:12px;height:12px}
+@media(pointer:coarse){
+  .pane-split-control .pane-split-primary{width:44px;min-width:44px;height:44px}
+  .pane-split-control .pane-split-directions{width:32px;min-width:32px;height:44px}
+}

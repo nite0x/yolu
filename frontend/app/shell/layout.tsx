@@ -3,7 +3,7 @@ import {useEffect, useState} from "react"
 import type {Root} from "react-dom/client"
 import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
 import {flushSync} from "react-dom"
-import {ArrowLeft, ArrowRight, Ellipsis, FolderGit2, MessageSquare, Search, RefreshCw, Settings, SquarePen, SquareSplitHorizontal, Ticket} from "lucide-react"
+import {ArrowLeft, ArrowRight, Ellipsis, FolderGit2, MessageSquare, Search, RefreshCw, Settings, SquarePen, Ticket} from "lucide-react"
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/shared/ui/primitives/tooltip"
 import {CodexUsage} from "@/features/conversations/usage/codex-usage"
 import {setupSplitResize} from "@/shared/lib/split-resize"
@@ -12,6 +12,7 @@ import {resolveDropTarget} from "@/app/pane-layout/interactions/drag-and-drop"
 import {matchPaneShortcut} from "@/app/pane-layout/interactions/shortcuts"
 import {createInitialLayout} from "@/app/pane-layout/model/operations"
 import {countPanes, findPane, findPaneByConversationId, listPanes} from "@/app/pane-layout/model/tree"
+import {resourceContent, resourceSnapshot, resourceIdentity} from "@/app/pane-layout/model/content"
 import {DEFAULT_LAYOUT_CONSTRAINTS} from "@/app/pane-layout/model/types"
 import {createPaneLayoutPersistence} from "@/app/pane-layout/persistence/serializer"
 import {createPaneLayoutStore} from "@/app/pane-layout/state/layout-store"
@@ -81,13 +82,8 @@ function WindowChrome(props: WindowChromeProps) {
         </nav>
         {props.createConversation && <div className="window-conversation-actions" role="group" aria-label={uiText("对话创建")}>
           <button type="button" className="window-utility-button" aria-label={uiText("新建对话")}
-            title={uiText("在当前栏新建对话")} disabled={!props.canCreateConversation} onClick={() => props.createConversation?.("current")}>
+            title={uiText("新建对话")} disabled={!props.canCreateConversation} onClick={() => props.createConversation?.("current")}>
             <SquarePen aria-hidden="true" />
-          </button>
-          <button type="button" className="window-utility-button" aria-label={uiText("在右侧分栏新建")}
-            title={props.canCreateConversation && !props.canSplitConversation ? uiText("已达到最大分屏数量或空间不足") : uiText("在右侧分栏新建")}
-            disabled={!props.canCreateConversation || !props.canSplitConversation} onClick={() => props.createConversation?.("split")}>
-            <SquareSplitHorizontal aria-hidden="true" />
           </button>
         </div>}
       </div>
@@ -136,6 +132,9 @@ export function renderPaneLayout(container: HTMLElement, props: LayoutRootProps 
 
 export const paneLayout = {
   constraints: DEFAULT_LAYOUT_CONSTRAINTS,
+  resourceContent,
+  resourceSnapshot,
+  resourceIdentity,
   createInitialLayout,
   createStore: createPaneLayoutStore,
   createPersistence: createPaneLayoutPersistence,

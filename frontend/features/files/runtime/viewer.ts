@@ -49,7 +49,7 @@ const display: FileDisplay = {
       if (preview.format === "file") {
         const line = preview.line ? Math.min(preview.line, preview.text.split("\n").length) : undefined
         let located = false
-        const instance = new File({ ...options, onPostRender(node) {
+        const instance = new File({ ...options, disableFileHeader: true, onPostRender(node) {
           applyStyles(node)
           const target = line && !located ? node.shadowRoot?.querySelector(`[data-line="${line}"]`) : undefined
           if (target) {

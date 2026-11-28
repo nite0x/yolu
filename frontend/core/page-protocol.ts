@@ -7,6 +7,7 @@ export interface PageSnapshot {
   kind?: string
   conversation?: {selected?: string | null; creating?: boolean; creatingYoluAssistant?: boolean; draftExecution?: "local" | "cloud"; scope?: object; directory?: string; creationDirectory?: string; environmentFilter?: string; pane?: string; session?: unknown; creationBindings?: unknown; creationLocalDirectories?: unknown} | null
   terminal?: {id?: string; cwd?: string; projectID?: string; sessionID?: string; bindingID?: string}
+  file?: {cwd: string; path?: string; projectId?: string; sessionId?: string; bindingId?: string; line?: number; git?: boolean; mode?: 'all' | 'working' | 'index'}
   context?: string
   draftTitle?: string
   status?: string
@@ -45,10 +46,17 @@ const optional = (value: unknown, test: (value: unknown) => boolean) => value ==
 const string = (value: unknown): value is string => typeof value === 'string'
 const bool = (value: unknown) => typeof value === 'boolean'
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value)
-const route = (value: unknown) => string(value) && /^\/(projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|issues)(?:\?[^#]*)?$/.test(value)
+const route = (value: unknown) => string(value) && /^\/(projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|files|terminals|settings|issues)(?:\?[^#]*)?$/.test(value)
 
 export function isPageSnapshot(value: unknown): value is PageSnapshot {
   if (!record(value) || !route(value.route) || !optional(value.environment, string) || !optional(value.title, string)) return false
+  if (value.file !== undefined) {
+    const file = value.file
+    if (!record(file) || !string(file.cwd) || !file.cwd.trim() || !['path', 'projectId', 'sessionId', 'bindingId'].every(key => optional(file[key], string))
+      || !optional(file.line, v => typeof v === 'number' && Number.isSafeInteger(v) && v > 0) || !optional(file.git, bool)
+      || !optional(file.mode, v => v === 'all' || v === 'working' || v === 'index') || !(file.projectId || file.sessionId)) return false
+  }
+  if (value.route === '/files' && value.file === undefined) return false
   if (value.conversation != null) {
     const view = value.conversation
     if (!record(view) || !optional(view.selected, v => v === null || string(v)) || !optional(view.creating, bool) || !optional(view.creatingYoluAssistant, bool) || !optional(view.draftExecution, v => v === 'local' || v === 'cloud')) return false

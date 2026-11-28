@@ -72,10 +72,10 @@ export function ProjectDetail({project, tool, view}: {project: Project; tool: Pr
         <ResourceSwitcherTrigger kind="project" />
       </div>
       <div className="project-detail-actions">
-        <Action action="project-conversation-new" id={project.id} data-path={project.path} variant="default" size="icon-sm" title={uiText("新建对话")} aria-label={uiText("新建对话")} disabled={!!project.error || !directoryUsable(main?.tree) || readOnly}><Plus aria-hidden="true" /></Action>
         <Action action="new-worktree" id={project.id} variant="ghost" size="icon-sm" title={uiText("创建 Worktree")} aria-label={uiText("创建 Worktree")} disabled={!!project.error}><GitBranchPlus aria-hidden="true" /></Action>
         <details className="workspace-project-details project-more"><summary title={uiText("更多项目操作")} aria-label={uiText("更多项目操作")}><MoreHorizontal aria-hidden="true" /></summary>
           <div className="workspace-project-details-body">
+            <Action action="project-conversation-new" id={project.id} data-path={project.path} variant="ghost" disabled={!!project.error || !directoryUsable(main?.tree) || readOnly}><Plus aria-hidden="true" />{uiText("新建对话")}</Action>
             <Action action="project-refresh" id={project.id} variant="ghost"><RefreshCw aria-hidden="true" />{uiText("刷新 Git 状态")}</Action>
             <Action action="git-open" id={project.id} variant="ghost" disabled={!!project.error}>{uiText("Git 操作 · 分支管理")}</Action>
             <Action action="project-open-remote" id={project.id} data-path={project.path} variant="ghost" disabled={!!project.error}>{uiText("打开远端仓库")}</Action>

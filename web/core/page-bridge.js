@@ -60,17 +60,15 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const project = state.projects.find(item => item.id === state.selectedProject);
     const draftTitle = view?.creating ? window.WorkHubAssistant?.draftTitle?.() || '' : '';
     const title = view ? view.creating ? draftTitle ? uiText("草稿：{0}", draftTitle) : uiText(view.creatingYoluAssistant ? "Yolu 助手" : "新建对话") : session?.name || conversationScopeName(view.scope) : state.view === 'projects' && projectDetailOpen ? project?.name || uiText("项目") : state.view === 'settings' ? uiText("设置") : state.view === 'issues' ? uiText("任务") : state.view === 'projects' ? uiText("项目") : uiText("对话");
+    const sessionEnvironment = session?.environment_id || activeEnvironment;
+    const sessionContext = session ? window.WorkHubUI.conversationContext(session.cwd, conversationOverview(sessionEnvironment), session.primary_project_id) : null;
     return {
       route, environment: activeEnvironment, title, kind: state.view, draftTitle,
       terminal:view?.creating ? view.target ? {...creationHint,projectID:view.target.project_id,cwd:view.target.cwd} : creationHint : undefined,
-      context: view ? (() => {
-        const environment = session?.environment_id || activeEnvironment;
-        const context = session ? window.WorkHubUI.conversationContext(session.cwd, conversationOverview(environment), session.primary_project_id) : null;
-        return (context?.project || conversationScopeName(view.scope)) + ' · ' + environmentName(environment);
-      })() : '',
+      context: view ? (sessionContext?.project || conversationScopeName(view.scope)) + ' · ' + environmentName(sessionEnvironment) : '',
       status:session?.chat_status || '',
       sessionEnvironment:session?.environment_id,
-      conversation: view ? {scope:view.scope, creating:!!view.creating, creatingYoluAssistant:view.creating ? view.creatingYoluAssistant : undefined, creationBindings:view.creating ? view.creationBindings : undefined, creationLocalDirectories:view.creationLocalDirectories, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(session.environment_id || activeEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,source:session.source,provider:session.provider,yolu_assistant:session.yolu_assistant,primary_project_id:session.primary_project_id,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
+      conversation: view ? {scope:view.scope, creating:!!view.creating, creatingYoluAssistant:view.creating ? view.creatingYoluAssistant : undefined, creationBindings:view.creating ? view.creationBindings : undefined, creationLocalDirectories:view.creationLocalDirectories, creationDirectory:view.creating ? view.creationDirectory : session?.cwd ? conversationEnvironmentKey(sessionEnvironment,conversationPathKey(session.cwd)) : undefined, selected:view.creating ? null : view.selected, session:session ? {id:session.id,name:session.name,cwd:session.cwd,source:session.source,provider:session.provider,yolu_assistant:session.yolu_assistant,primary_project_id:session.primary_project_id || sessionContext?.projectID,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined, search:view.search, directory:view.directory, statusFilter:view.statusFilter, environmentFilter:view.environmentFilter, archived:view.archived, pane:view.pane, loadedCount:view.loadedCount, windowStart:view.windowStart, scrollTop:$('#sessionBrowserList').scrollTop} : null,
     };
   }
   function publish() {
@@ -178,7 +176,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (sessionButton && window.WorkHubConversations.current) {
       const key = sessionButton.dataset.conversationSession || sessionButton.dataset.conversationParallel;
       const session = window.WorkHubConversations.current.sessions.find(item => conversationSessionKey(item) === key);
-      return {...current, title:session?.name || uiText("对话"), conversation:{...current.conversation, selected:key, pane:'detail'}};
+      const env = session?.environment_id || activeEnvironment;
+      const context = session ? window.WorkHubUI.conversationContext(session.cwd, conversationOverview(env), session.primary_project_id) : null;
+      const summary = session ? {id:session.id,name:session.name,cwd:session.cwd,source:session.source,provider:session.provider,yolu_assistant:session.yolu_assistant,primary_project_id:session.primary_project_id || context?.projectID,additional_directories:session.additional_directories,archived:session.archived,available:session.available} : undefined;
+      return {...current, environment:env, title:session?.name || uiText("对话"), conversation:{...current.conversation, selected:key, session:summary, pane:'detail'}};
     }
     const collection = target.closest('[data-collection-href]');
     if (collection) return {route:collection.dataset.collectionHref.slice(1),environment:collection.dataset.collectionEnvironment || activeEnvironment,title:collection.dataset.collectionName};
@@ -300,6 +301,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const detail = event.detail;
     if (detail && typeof detail.sessionId === 'string' && detail.sessionId) {
       post('workhub:conversation-missing', {sessionId: detail.sessionId, environment: detail.environment || activeEnvironment});
+    }
+  });
+  window.addEventListener('workhub:open-file-pane', event => {
+    const detail = event.detail;
+    const saved = {route: '/files', environment: detail?.environment || activeEnvironment, title: detail?.file?.path?.split(/[\\/]/).pop() || uiText("文件预览"), file: detail?.file};
+    if (window.WorkHubBrowser.readPageMessage({type: 'workhub:page-open', snapshot: saved, placement: 'split'})) {
+      post('workhub:page-open', {snapshot: saved, placement: 'split'});
     }
   });
   window.addEventListener('message', event => {

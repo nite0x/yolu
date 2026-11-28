@@ -2,17 +2,17 @@ import {uiText} from "@/shared/i18n"
 import {useEffect, useRef, useState} from "react"
 import {flushSync} from "react-dom"
 import {createRecoverableRoot as createRoot} from "@/shared/ui/feedback/root"
-import {ChevronDown, ChevronRight, Folder, FolderOpen} from "lucide-react"
+import {ChevronDown, ChevronRight, CodeXml, Folder, FolderOpen, PanelRightOpen, RefreshCw} from "lucide-react"
 import {FileTypeIcon} from "@/shared/ui/file-type-icon"
 import {FileSplit} from "./split"
 import {Button} from "@/shared/ui/primitives/button"
 import {NativeSelect, NativeSelectOption as Option} from "@/shared/ui/primitives/native-select"
-import {Action} from "@/shared/ui/actions/button"
+import {IconButton} from "@/shared/ui/actions/button"
 import type {ChangedFile} from "@/features/files/model/changes"
 import type {FileDisplay, FilePreview} from "../runtime/viewer"
 
 export type BrowserRequest = <T>(path: string, options?: RequestInit & {environment?: string}) => Promise<T>
-export interface BrowserProps { project?: string; session?: string; binding?: string; git?: boolean; path: string; environment: string; request: BrowserRequest; idPrefix?: string; initialMode?: string; reference?: {path: string; line?: number; version: number; mode?: "working" | "index"} }
+export interface BrowserProps { project?: string; session?: string; binding?: string; git?: boolean; path: string; environment: string; request: BrowserRequest; idPrefix?: string; initialMode?: string; reference?: {path: string; line?: number; version: number; mode?: "working" | "index"}; onSelectFile?: (path: string, mode: string) => void; onOpenInPane?: (file: {path?: string; line?: number; mode: string}) => void }
 interface Entry { name: string; path: string; directory: boolean; symlink?: boolean }
 interface Directory { entries: Entry[]; truncated: boolean }
 let displayPromise: Promise<FileDisplay> | undefined
@@ -96,7 +96,7 @@ function DirectoryTree({ directory = "", selected, choose, request, endpoint, en
   if (error) return <p role="alert">{error}</p>
   if (!data) return <p role="status" className="quiet">{uiText("正在读取目录…")}</p>
   return <ul className="browser-tree">{data.entries.map(entry => <li key={entry.path}>
-    <Button type="button" variant={selected === entry.path ? "secondary" : "ghost"} className="browser-tree-entry justify-start text-left font-normal [&&]:pl-[var(--tree-indent)]" style={{ "--tree-indent": `${8 + depth * 16}px` } as React.CSSProperties}
+    <Button type="button" variant={selected === entry.path ? "secondary" : "ghost"} className="browser-tree-entry aria-pressed:bg-[var(--yolu-selected)] aria-pressed:text-primary justify-start text-left font-normal [&&]:pl-[var(--tree-indent)]" style={{ "--tree-indent": `${8 + depth * 16}px` } as React.CSSProperties}
       disabled={entry.symlink} title={entry.symlink ? uiText("{0} · 符号链接请在 IDE 中打开", entry.path) : entry.path}
       aria-expanded={entry.directory ? expanded.includes(entry.path) : undefined} aria-pressed={entry.directory ? undefined : selected === entry.path}
       data-change-file={entry.directory ? undefined : entry.path}
@@ -107,10 +107,10 @@ function DirectoryTree({ directory = "", selected, choose, request, endpoint, en
   </li>)}{!data.entries.length && <li className="quiet">{uiText("空目录")}</li>}{data.truncated && <li role="status">{uiText("目录超过 5000 项，请在 IDE 中查看完整列表。")}</li>}</ul>
 }
 
-function FileBrowser({ project, session, binding, git = !!project, path, environment, request, idPrefix = "changes", initialMode = "working", reference }: BrowserProps) {
-  const [mode, setMode] = useState(git ? initialMode : "all")
+export function FileBrowser({ project, session, binding, git = !!project, path, environment, request, idPrefix = "changes", initialMode = "working", reference, onSelectFile, onOpenInPane }: BrowserProps) {
+  const [mode, setMode] = useState(reference?.mode || (reference ? "all" : git ? initialMode : "all"))
   const [files, setFiles] = useState<ChangedFile[]>([])
-  const [selected, setSelected] = useState("")
+  const [selected, setSelected] = useState(reference?.path || "")
   const [preview, setPreview] = useState<FilePreview>()
   const [listingError, setListingError] = useState("")
   const [previewError, setPreviewError] = useState("")
@@ -119,6 +119,9 @@ function FileBrowser({ project, session, binding, git = !!project, path, environ
   const [refresh, setRefresh] = useState(0)
   const [split, setSplit] = useState(true)
   const [branch, setBranch] = useState("")
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+  const choose = (file: string) => { setSelected(file); onSelectFile?.(file, mode) }
   const endpoint = `/api/projects/${encodeURIComponent(project || "")}`
   const filesEndpoint = session ? `/api/sessions/${encodeURIComponent(session)}/files` : `${endpoint}/files`
   useEffect(() => {
@@ -145,11 +148,13 @@ function FileBrowser({ project, session, binding, git = !!project, path, environ
       if (!active) return
       setFiles(data.files); setBranch(data.branch)
       const choices = data.files.filter(file => mode === "index" ? !file.untracked && file.index !== " " && file.index !== "?" : file.untracked || file.working !== " ")
-      setSelected(value => choices.some(file => file.path === value) ? value : choices[0]?.path || "")
+      const next = choices.some(file => file.path === selectedRef.current) ? selectedRef.current : choices[0]?.path || ""
+      setSelected(next)
+      onSelectFile?.(next, mode)
     }).catch(error => { if (active) setListingError(error instanceof Error ? error.message : String(error)) })
       .finally(() => { if (active) setListing(false) })
     return () => { active = false; abort.abort() }
-  }, [endpoint, bindingEndpoint, binding, query, environment, mode, refresh, request])
+  }, [endpoint, bindingEndpoint, binding, query, environment, mode, refresh, request, onSelectFile])
   // biome-ignore lint/correctness/useExhaustiveDependencies: The refresh counter explicitly reloads this resource without changing its API URL.
   useEffect(() => {
     setPreview(undefined)
@@ -168,14 +173,18 @@ function FileBrowser({ project, session, binding, git = !!project, path, environ
   const error = [listingError, previewError].filter(Boolean).join("\n")
   return <div className="file-browser" data-mode={mode}>
     <p id={`${idPrefix}Context`} className="dialog-description break-all" title={path}>{path}{branch ? ` · ${branch}` : ""}{" "}{uiText("· 只读")}</p>
-    <div className="changes-controls"><label htmlFor={`${idPrefix}Mode`}>{uiText("查看")}</label><NativeSelect id={`${idPrefix}Mode`} value={mode} onChange={event => { setMode(event.target.value); setSelected(""); setFiles([]); setPreview(undefined); setListingError(""); setPreviewError("") }}>
+    <div className="changes-controls"><div className="changes-control-field"><label htmlFor={`${idPrefix}Mode`}>{uiText("查看")}</label><NativeSelect size="sm" className="border-0 shadow-none text-xs hover:bg-accent" id={`${idPrefix}Mode`} value={mode} onChange={event => { setMode(event.target.value); setSelected(""); setFiles([]); setPreview(undefined); setListingError(""); setPreviewError(""); onSelectFile?.("", event.target.value) }}>
       <Option value="all">{uiText("全部文件")}</Option>{git && <><Option value="working">{uiText("未暂存改动（含未跟踪）")}</Option><Option value="index">{uiText("修改文件 · 暂存区")}</Option></>}
-    </NativeSelect><Button type="button" variant="outline" id={`${idPrefix}Refresh`} onClick={() => setRefresh(value => value + 1)}>{uiText("刷新")}</Button>
-      <label htmlFor={`${idPrefix}Layout`}>{uiText("差异布局")}</label><NativeSelect id={`${idPrefix}Layout`} value={split ? "split" : "unified"} onChange={event => setSplit(event.target.value === "split")} disabled={mode === "all"}><Option value="split">{uiText("并排")}</Option><Option value="unified">{uiText("统一")}</Option></NativeSelect>
-      {project && <Action action="project-open-vscode" id={project} data-path={path}>{uiText("在 VS Code 中打开 ↗")}</Action>}
+    </NativeSelect></div>
+      <div className="changes-control-field" hidden={mode === "all"}><label htmlFor={`${idPrefix}Layout`}>{uiText("差异布局")}</label><NativeSelect size="sm" className="border-0 shadow-none text-xs hover:bg-accent" id={`${idPrefix}Layout`} value={split ? "split" : "unified"} onChange={event => setSplit(event.target.value === "split")} disabled={mode === "all"}><Option value="split">{uiText("并排")}</Option><Option value="unified">{uiText("统一")}</Option></NativeSelect></div>
+      <div className="changes-control-actions">
+        <IconButton size="icon-sm" label={uiText("刷新")} id={`${idPrefix}Refresh`} onClick={() => setRefresh(value => value + 1)}><RefreshCw aria-hidden="true" /></IconButton>
+        {project && <IconButton size="icon-sm" label={uiText("在 VS Code 中打开 ↗")} data-action="project-open-vscode" data-id={project} data-path={path}><CodeXml aria-hidden="true" /></IconButton>}
+        {onOpenInPane && <IconButton size="icon-sm" label={uiText("在面板中打开")} onClick={() => onOpenInPane({path: selected || undefined, line: reference?.path === selected ? reference.line : undefined, mode})}><PanelRightOpen aria-hidden="true" /></IconButton>}
+      </div>
     </div>
     <FileSplit tree={<nav className="browser-files" id={`${idPrefix}Files`} aria-label={mode === "all" ? uiText("全部文件") : uiText("改动文件")}>
-      {mode === "all" ? <>{reference && /^(?:\/|[a-z]:[\\/])/i.test(reference.path) && <Button type="button" variant={selected === reference.path ? "secondary" : "ghost"} className="h-auto w-full justify-start whitespace-normal text-left break-all" data-change-file={reference.path} aria-pressed={selected === reference.path} onClick={() => setSelected(reference.path)}><FileTypeIcon path={reference.path} /><span>{reference.path}</span></Button>}<DirectoryTree key={refresh} selected={selected} choose={setSelected} request={request} endpoint={`${filesEndpoint}?${query}`} environment={environment} /></> : listing ? <p role="status">{uiText("正在读取改动文件…")}</p> : <div className="changes-file-list">{visible.length ? visible.map(file => <Button type="button" key={file.path} variant={file.path === selected ? "secondary" : "ghost"} className="h-auto w-full justify-start whitespace-normal text-left break-all" data-change-file={file.path} aria-pressed={file.path === selected} onClick={() => setSelected(file.path)}><FileTypeIcon path={file.path} /><code className="shrink-0 browser-change-status" data-status={file.untracked || file.index === "A" ? "added" : file.index === "D" || file.working === "D" ? "deleted" : "modified"}>{file.untracked ? "??" : `${file.index}${file.working}`}</code><span>{file.previous ? `${file.previous} → ` : ""}{file.path}</span></Button>) : <p className="quiet">{uiText("此区域没有改动。")}</p>}</div>}
+      {mode === "all" ? <>{reference && /^(?:\/|[a-z]:[\\/])/i.test(reference.path) && <Button type="button" variant={selected === reference.path ? "secondary" : "ghost"} className="h-auto w-full justify-start whitespace-normal text-left break-all aria-pressed:bg-[var(--yolu-selected)] aria-pressed:text-primary" data-change-file={reference.path} aria-pressed={selected === reference.path} onClick={() => choose(reference.path)}><FileTypeIcon path={reference.path} /><span>{reference.path}</span></Button>}<DirectoryTree key={refresh} selected={selected} choose={choose} request={request} endpoint={`${filesEndpoint}?${query}`} environment={environment} /></> : listing ? <p role="status">{uiText("正在读取改动文件…")}</p> : <div className="changes-file-list">{visible.length ? visible.map(file => <Button type="button" key={file.path} variant={file.path === selected ? "secondary" : "ghost"} className="h-auto w-full justify-start whitespace-normal text-left break-all aria-pressed:bg-[var(--yolu-selected)] aria-pressed:text-primary" data-change-file={file.path} aria-pressed={file.path === selected} onClick={() => choose(file.path)}><FileTypeIcon path={file.path} /><code className="shrink-0 browser-change-status" data-status={file.untracked || file.index === "A" ? "added" : file.index === "D" || file.working === "D" ? "deleted" : "modified"}>{file.untracked ? "??" : `${file.index}${file.working}`}</code><span>{file.previous ? `${file.previous} → ` : ""}{file.path}</span></Button>) : <p className="quiet">{uiText("此区域没有改动。")}</p>}</div>}
     </nav>}><div className="min-w-0 browser-content"><p id={`${idPrefix}Truncated`} role="status" hidden={!preview?.truncated}>{uiText("差异超过 256 KiB，已显示部分纯文本；请在 IDE 中查看完整内容。")}</p>
       {selected && <p className="file-preview-path" title={preview?.path || selected}>{preview?.path || selected}</p>}
       {preview ? preview.format === "image" ? <ImagePreview key={selected + refresh} preview={preview} id={`${idPrefix}Text`} /> : <Preview preview={preview} split={split} id={`${idPrefix}Text`} /> : <div id={`${idPrefix}Text`} className="changes-text" role="status">{loading ? uiText("正在读取文件…") : previewError ? uiText("无法预览此文件，请在 IDE 中打开。") : mode === "all" ? uiText("选择文件查看内容。") : uiText("选择修改文件查看差异。")}</div>}

@@ -150,9 +150,9 @@ test('the production React header replaces the Windows fallback and opens the na
     const history = doc.querySelector('.window-history');
     assert.equal(creation.parentElement.nextElementSibling,history);
     assert.equal(history.parentElement.nextElementSibling,doc.querySelector('.window-search-trigger'));
-    assert.deepEqual([...creation.querySelectorAll('button')].map(button => button.getAttribute('aria-label')),['新建对话','在右侧分栏新建']);
+    assert.deepEqual([...creation.querySelectorAll('button')].map(button => button.getAttribute('aria-label')),['新建对话']);
     for (const button of creation.querySelectorAll('button')) button.click();
-    assert.deepEqual(drafts,['current','split']);
+    assert.deepEqual(drafts,['current']);
     assert.deepEqual(destinations.map(button => button.dataset.view), ['sessions','projects','issues','settings']);
     assert(destinations.every(button => button.querySelector('svg') && button.getAttribute('aria-label') && !button.textContent));
     assert.equal(navigation.querySelector('[aria-current="page"]').dataset.view, 'projects');

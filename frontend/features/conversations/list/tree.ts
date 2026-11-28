@@ -75,15 +75,7 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
   const groups = new Map<string, { group: ConversationGroup; sessions: Session[] }>()
   const filed = new Set<string>()
   const cloud = sessions.filter(session => session.provider === "codex-cloud")
-  if (cloud.length) {
-    const key = "codex-cloud"
-    for (const session of cloud) filed.add(sessionIdentity(session))
-    groups.set(key, { group: {
-      key, name: "Codex Cloud", collection: "cloud", environment: "",
-      containsSelection: cloud.some(session => sessionIdentity(session) === options.selected),
-      collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
-    }, sessions: cloud })
-  }
+  for (const session of cloud) filed.add(sessionIdentity(session))
   if (options.navigator) {
     const assistants = sessions.filter(session => session.yolu_assistant && !filed.has(sessionIdentity(session)))
     if (assistants.length || options.showYoluAssistant) {
@@ -134,6 +126,14 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
         containsSelection:options.selectedSession ? options.selectedSession.provider !== "codex-cloud" && !options.selectedSession.yolu_assistant && !selectedInProject : independent.some(session => sessionIdentity(session) === options.selected),
         collapsed:options.collapsed.includes(key), total:0, shown:0, showContext:true}, sessions:independent})
     }
+    if (cloud.length) {
+      const key = "codex-cloud"
+      groups.set(key, { group: {
+        key, name: "Codex Cloud", collection: "cloud", environment: "",
+        containsSelection: cloud.some(session => sessionIdentity(session) === options.selected),
+        collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
+      }, sessions: cloud })
+    }
     if (options.showRecent && !options.filtered && sessions.length) {
       const key = "recent"
       const recentSessions = [...sessions].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0))
@@ -156,6 +156,14 @@ export function conversationTree(sessions: Session[], options: TreeOptions): Con
         groups.set(key,entry)
       }
       entry.sessions.push(session)
+    }
+    if (cloud.length) {
+      const key = "codex-cloud"
+      groups.set(key, { group: {
+        key, name: "Codex Cloud", collection: "cloud", environment: "",
+        containsSelection: cloud.some(session => sessionIdentity(session) === options.selected),
+        collapsed: options.collapsed.includes(key), total: 0, shown: 0, showContext: false,
+      }, sessions: cloud })
     }
   }
   const rows: ConversationTreeRow[] = []

@@ -5,6 +5,8 @@ import {
   type IdGenerator,
 } from "./operations"
 import { findPane } from "./tree"
+import { resourceContent } from "./content"
+import { isPageSnapshot } from "@/core/page-protocol"
 import {
   MAX_LAYOUT_DEPTH,
   PANE_LAYOUT_VERSION,
@@ -36,7 +38,10 @@ function validateContextHint(value: unknown): PaneContextHint | undefined | null
   if (
     !isOptionalString(value.environment) ||
     !isOptionalString(value.projectId) ||
-    !isOptionalString(value.cwd)
+    !isOptionalString(value.cwd) ||
+    !isOptionalString(value.sessionId) ||
+    !isOptionalString(value.bindingId) ||
+    (value.git !== undefined && typeof value.git !== "boolean")
   ) {
     return null
   }
@@ -64,6 +69,9 @@ function validateContextHint(value: unknown): PaneContextHint | undefined | null
     ...(value.environment !== undefined ? { environment: value.environment } : {}),
     ...(value.projectId !== undefined ? { projectId: value.projectId } : {}),
     ...(value.cwd !== undefined ? { cwd: value.cwd } : {}),
+    ...(value.sessionId !== undefined ? { sessionId: value.sessionId } : {}),
+    ...(value.bindingId !== undefined ? { bindingId: value.bindingId } : {}),
+    ...(value.git !== undefined ? { git: value.git } : {}),
     ...(scope ? { scope } : {}),
   }
 }
@@ -78,6 +86,18 @@ function validatePaneContent(value: unknown): PaneContent | null {
   if (value.type === "conversation") {
     if (!isNonEmptyString(value.conversationId)) return null
     return { type: "conversation", conversationId: value.conversationId }
+  }
+  if (value.type === "project" || value.type === "file") {
+    if (!isNonEmptyString(value.environment) || !isOptionalString(value.title)) return null
+    // Validate through the same page protocol used at iframe/host boundaries.
+    if (value.type === "project") {
+      if (!isNonEmptyString(value.route)) return null
+      return resourceContent({route: value.route, environment: value.environment, title: value.title})
+    }
+    if (!isNonEmptyString(value.cwd)) return null
+    const {type: _type, environment, title, ...file} = value
+    const snapshot = {route: "/files", environment, title, file}
+    return isPageSnapshot(snapshot) ? resourceContent(snapshot) : null
   }
   return null
 }

@@ -49,7 +49,7 @@ function harness(t, hash = '#/projects', {desktop = false, listWidth, width = 18
     },
   };
   const requests = [];
-  w.fetch = async (...args) => {requests.push(args); return new Response('{}');};
+  w.fetch = async (...args) => {requests.push(args); return new Response(String(args[0]).includes('/files?') ? JSON.stringify(String(args[0]).includes('file=') ? {text:'Fixture file',format:'text'} : {entries:[],truncated:false}) : '{}');};
   for (const file of ['ui/browser-runtime.js','core/conversation-list-width.js','core/page-host.js']) w.eval(fs.readFileSync(path.join(root,file),'utf8'));
   const pagesEl = w.document.getElementById('workspacePages');
   pagesEl.getBoundingClientRect = () => ({left:0, top:0, right:w.innerWidth, bottom:w.innerHeight, width:w.innerWidth, height:w.innerHeight});
@@ -611,43 +611,64 @@ test('macOS history shortcuts preserve Option-arrow text editing inside a compos
   assert.equal(h.w.location.hash,'#/projects');
 });
 
-test('recursive pane splitting creates empty panes, preserves sibling iframes, and supports mixed directions', t => {
+test('recursive pane splitting opens new conversation drafts directly, inherits project context, preserves sibling iframes, and supports mixed directions', t => {
   const h = harness(t);
-  open(h, conversation('one'));
+  const projectConv = {
+    route: '/sessions', environment: 'local', title: 'App chat',
+    conversation: {scope: {kind: 'project', id: 'app', environment: 'local'}, selected: 'one', pane: 'detail', session: {id: 'one', cwd: '/repo/app', primary_project_id: 'app'}},
+  };
+  open(h, projectConv);
   const first = visible(h)[0], firstDoc = first.contentDocument;
 
-  // Split right from pane 1 -> creates an empty pane without reloading pane 1
+  // Split right from a project conversation -> directly opens a new conversation draft inheriting the project without reloading pane 1
   h.send(first, 'workhub:page-pane-command', {command: 'split-right'});
+  const splitDraft = h.frames().find(f => f !== h.workspace && f !== first);
+  assert.ok(splitDraft, 'new split directly mounts a conversation draft iframe');
+  assert.equal(h.w.document.querySelector('.pane-layout-empty'), null);
+  h.ready(splitDraft);
   assert.equal(first.contentDocument, firstDoc);
   assert.equal(parseFloat(first.style.left), 0);
   assert.equal(parseFloat(first.style.width), 50);
-  assert.ok(h.w.document.querySelector('.pane-layout-empty'), 'new split starts as an empty pane');
+  assert.equal(parseFloat(splitDraft.style.left), 50);
+  assert.equal(parseFloat(splitDraft.style.width), 50);
+  const draftRestore = h.messages.get(splitDraft).findLast(m => m.type === 'workhub:page-restore').snapshot;
+  assert.equal(draftRestore.conversation.creating, true);
+  assert.equal(draftRestore.conversation.scope.id, 'app');
+  assert.equal(draftRestore.conversation.creationDirectory, '/repo/app');
 
-  // Bind conversation two via sidebar selection into the focused empty pane
+  // Bind conversation two via sidebar selection into the focused split pane (reuses iframe in place)
   h.send(h.nav(), 'workhub:conversation-select', {snapshot: conversation('two')});
-  const second = h.frames().find(f => f !== h.workspace && f !== first);
-  h.ready(second);
   assert.equal(visible(h).length, 2);
-  assert.equal(parseFloat(second.style.left), 50);
-  assert.equal(parseFloat(second.style.width), 50);
+  assert.equal(h.messages.get(splitDraft).findLast(m => m.type === 'workhub:page-restore').snapshot.conversation.selected, 'two');
 
-  // Split down from pane 2 -> nested vertical split on right half
-  h.send(second, 'workhub:page-pane-command', {command: 'split-down'});
+  // Split down from an unbound conversation -> nested vertical split falling back to default directory
+  h.send(splitDraft, 'workhub:page-pane-command', {command: 'split-down'});
+  const third = h.frames().find(f => f !== h.workspace && f !== first && f !== splitDraft);
+  h.ready(third);
   assert.equal(first.contentDocument, firstDoc);
-  assert.equal(parseFloat(second.style.top), 0);
-  assert.equal(parseFloat(second.style.height), 50);
+  assert.equal(parseFloat(splitDraft.style.top), 0);
+  assert.equal(parseFloat(splitDraft.style.height), 50);
+  assert.equal(parseFloat(third.style.top), 50);
+  assert.equal(parseFloat(third.style.height), 50);
+  const defaultDraft = h.messages.get(third).findLast(m => m.type === 'workhub:page-restore').snapshot;
+  assert.equal(defaultDraft.conversation.creating, true);
+  assert.equal(defaultDraft.conversation.scope.kind, 'all');
+  assert.equal(defaultDraft.conversation.creationDirectory, '');
   assert.equal(h.w.document.querySelectorAll('.pane-layout-divider[role="separator"]').length, 2);
 
-  // Close last remaining pane resets to empty pane view and does NOT re-trigger autoSelect
-  const emptyClose = h.w.document.querySelector('.pane-layout-empty-cancel');
-  emptyClose.click();
-  h.send(second, 'workhub:page-pane-command', {command: 'close'});
+  // Close panes down to the last remaining pane -> resets directly to a new conversation draft and does NOT autoSelect
+  h.send(third, 'workhub:page-pane-command', {command: 'close'});
+  h.send(splitDraft, 'workhub:page-pane-command', {command: 'close'});
   assert.deepEqual(visible(h), [first]);
   h.send(first, 'workhub:page-pane-command', {command: 'close'});
-  assert.equal(visible(h).length, 0);
-  assert.ok(h.w.document.querySelector('.pane-layout-empty'));
+  const resetDraft = h.frames().find(f => f !== h.workspace);
+  assert.ok(resetDraft, 'closing the last pane opens a fresh new conversation draft');
+  h.ready(resetDraft);
+  assert.equal(h.w.document.querySelector('.pane-layout-empty'), null);
+  assert.equal(h.messages.get(resetDraft).findLast(m => m.type === 'workhub:page-restore').snapshot.conversation.creating, true);
+  assert.equal(h.messages.get(resetDraft).findLast(m => m.type === 'workhub:parallel-layout').canClose, false);
   const lastGroup = h.messages.get(h.nav()).findLast(m => m.type === 'workhub:conversation-group');
-  assert.equal(lastGroup.autoSelect, false, 'closing the last pane must not autoSelect a conversation back over EmptyPane');
+  assert.equal(lastGroup.autoSelect, false, 'closing the last pane must not autoSelect a conversation back over the fresh draft');
 });
 
 test('pane drag-and-drop moves and swaps panes without reloading iframes and Escape cancels cleanly', t => {
@@ -700,13 +721,16 @@ test('pane keyboard shortcuts handle split, directional focus, maximize/restore 
   assert.equal(first.contentDocument, firstDoc);
   assert.equal(second.contentDocument, secondDoc);
 
-  // Split down (Cmd+Shift+\)
+  // Split down (Cmd+Shift+\) opens a new conversation draft directly
   h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: '|', code: 'Backslash', metaKey: true, shiftKey: true, cancelable: true}));
-  assert.ok(h.w.document.querySelector('.pane-layout-empty'));
+  const third = h.frames().find(f => f !== h.workspace && f !== first && f !== second);
+  assert.ok(third);
+  h.ready(third);
+  assert.deepEqual(visible(h), [first, second, third]);
 
-  // Close empty pane via Opt+Shift+W
+  // Close split draft pane via Opt+Shift+W
   h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', {key: 'W', code: 'KeyW', altKey: true, shiftKey: true, cancelable: true}));
-  assert.equal(h.w.document.querySelector('.pane-layout-empty'), null);
+  assert.deepEqual(visible(h), [first, second]);
 });
 
 test('persisted layout restores across restart, migrates legacy 3-column state, handles narrow->wide recovery, and degrades missing/corrupt data', t => {
@@ -761,10 +785,13 @@ test('persisted layout restores across restart, migrates legacy 3-column state, 
   h.send(restored[1], 'workhub:conversation-missing', {sessionId: 'stale-other', environment: 'local'});
   assert.equal(visible(h).length, 2);
 
-  // Matching missing/deleted conversation degrades only that pane to empty without harming sibling
+  // Matching missing/deleted conversation degrades only that pane to a fresh draft without harming sibling
   h.send(restored[1], 'workhub:conversation-missing', {sessionId: 'two', environment: 'local'});
-  assert.deepEqual(visible(h), [restored[0]]);
-  assert.ok(h.w.document.querySelector('.pane-layout-empty'));
+  const degraded = h.frames().find(f => f !== h.workspace && f !== restored[0]);
+  assert.ok(degraded);
+  h.ready(degraded);
+  assert.deepEqual(visible(h), [restored[0], degraded]);
+  assert.equal(h.messages.get(degraded).findLast(m => m.type === 'workhub:page-restore').snapshot.conversation.creating, true);
 
   // pagehide flushes layout to PUT /api/settings/pane-layout with keepalive: true
   h.w.dispatchEvent(new h.w.Event('pagehide'));
@@ -772,10 +799,12 @@ test('persisted layout restores across restart, migrates legacy 3-column state, 
   assert.ok(putReq);
   assert.equal(putReq[1].keepalive, true);
 
-  // Corrupt saved layout degrades gracefully to a single empty pane
+  // Corrupt saved layout degrades gracefully to a fresh new conversation draft
   const corrupt = harness(t, '#/sessions', {savedLayout: '{corrupt-json'});
   corrupt.ready(corrupt.nav());
   assert.equal(corrupt.frames().length, 1);
+  corrupt.ready(corrupt.frames()[0]);
+  assert.equal(corrupt.messages.get(corrupt.frames()[0]).findLast(m => m.type === 'workhub:page-restore').snapshot.conversation.creating, true);
 
   // Legacy 3-column state migrates cleanly to binary tree
   const legacy = JSON.stringify({
@@ -787,4 +816,159 @@ test('persisted layout restores across restart, migrates legacy 3-column state, 
   for (const frame of migrated.frames()) migrated.ready(frame);
   assert.equal(visible(migrated).length, 2);
   assert.equal(visible(migrated)[0].dataset.focused, 'true');
+});
+
+for (const desktop of [false, true]) test(`mixed conversation, project and file panes share layout controls and restore resource identity (desktop=${desktop})`, async t => {
+  const h = harness(t, '#/projects', {desktop});
+  open(h, conversation('one'));
+  const reader = visible(h)[0];
+  const readerSource = reader.src;
+  h.send(reader, 'workhub:page-pane-command', {command:'split-right'});
+  const firstEmpty = h.layouts.at(-1).layout.activePaneId;
+  h.layouts.at(-1).onPickResource(firstEmpty, 'project');
+  assert.equal(h.search.options.at(-1).projectsOnly, true);
+  h.search.options.at(-1).onSelect({route:'/projects/p1?path=%2Frepo%2Ffeature',environment:'remote',title:'Project One'});
+  const projectFrame = h.frames().find(frame => frame !== reader && frame !== h.workspace);
+  h.ready(projectFrame);
+  assert.equal(h.layouts.at(-1).layout.root.children[1].content.type, 'project');
+  assert.equal(new URL(projectFrame.src).searchParams.has('app-conversation'), false);
+  assert.ok(projectFrame.style.top.includes('44px'));
+  assert.equal(reader.src, readerSource);
+  assert.equal(reader.hidden, false);
+  // File promotion opens content directly, with the same session/binding access context.
+  const file = {cwd:'/repo/feature',projectId:'p1',sessionId:'s1',bindingId:'binding-2',path:'src/main.ts',line:23,git:true,mode:'all'};
+  h.send(projectFrame, 'workhub:page-open', {placement:'split',snapshot:{route:'/files',environment:'remote',title:'main.ts',file}});
+  assert.ok(h.w.document.querySelector('[data-pane-type="file"] .file-browser'));
+  assert.equal(h.w.location.hash.startsWith('#/files?'), true);
+  const filePaneId = h.layouts.at(-1).layout.activePaneId;
+  h.layouts.at(-1).onSelectFile(filePaneId, 'README.md', 'all');
+  assert.ok(h.w.location.hash.includes('path=README.md'));
+  await new Promise(resolve => setTimeout(resolve, 270));
+  const saved = JSON.parse(h.w.localStorage.getItem('workhub:pane-layout:v1:default'));
+  const contents = h.w.WorkHubLayout.paneLayout.listPanes(saved.layout.root).map(pane => pane.content);
+  assert.deepEqual(Array.from(contents, content => content.type), ['conversation','project','file']);
+  assert.equal(contents[2].bindingId, 'binding-2');
+  assert.equal(contents[2].path, 'README.md');
+  const restored = harness(t, h.w.location.search + h.w.location.hash, {savedLayout:JSON.stringify(saved), width:1800});
+  restored.ready(restored.nav());
+  for (const frame of restored.frames()) restored.ready(frame);
+  const restoredFile = restored.layouts.at(-1).layout.root.children[1].children[1].content;
+  assert.equal(restoredFile.environment, 'remote');
+  assert.equal(restoredFile.path, 'README.md');
+  assert.equal(restoredFile.bindingId, 'binding-2');
+  // A file resource has no iframe and must still close through normal pane commands.
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'w',altKey:true,shiftKey:true,bubbles:true}));
+  assert.equal(h.layouts.at(-1).layout.root.children[1].content.type, 'project');
+  assert.equal(reader.src, readerSource);
+});
+
+test('file panes inherit the actual remote session directory and reopen at a new line without duplicating panes', t => {
+  const h = harness(t);
+  const selected = JSON.stringify(['remote','thread']);
+  open(h, {route:'/sessions',environment:'remote',title:'Remote chat',conversation:{scope:{kind:'all'},selected,pane:'detail',creationDirectory:JSON.stringify(['remote','/repo/remote']),session:{id:'thread',cwd:'/repo/remote',primary_project_id:'p1'}}});
+  const reader = visible(h)[0];
+  const file = {cwd:'/repo/remote',sessionId:'thread',projectId:'p1',path:'main.ts',line:12};
+  h.send(reader,'workhub:page-open',{placement:'split',snapshot:{route:'/files',environment:'remote',file}});
+  const paneId = h.layouts.at(-1).layout.activePaneId;
+  let content = h.w.WorkHubLayout.paneLayout.findPane(h.layouts.at(-1).layout.root,paneId).content;
+  assert.equal(content.cwd,'/repo/remote');
+  assert.equal(content.sessionId,'thread');
+  assert.equal(content.environment,'remote');
+  assert.equal(content.line,12);
+  h.layouts.at(-1).onSelectFile(paneId,'main.ts','all');
+  h.send(reader,'workhub:page-open',{placement:'split',snapshot:{route:'/files',environment:'remote',file:{...file,line:48}}});
+  const panes = h.w.WorkHubLayout.paneLayout.listPanes(h.layouts.at(-1).layout.root);
+  assert.equal(panes.length,2);
+  content = panes.find(pane=>pane.id===paneId).content;
+  assert.equal(content.type,'file');
+  assert.equal(content.line,48);
+});
+
+for (const desktop of [false, true]) test(`global creation always opens in the active pane without auto-splitting or jumping panes (desktop=${desktop})`, t => {
+  const h = harness(t, '#/projects', {desktop});
+  open(h, conversation('one'));
+  const first = visible(h)[0], firstDoc = first.contentDocument;
+  open(h, conversation('two'), 'split');
+  const second = visible(h)[1];
+  const firstPaneId = h.layouts.at(-1).layout.root.children[0].id;
+  h.send(first, 'workhub:page-focus');
+  assert.equal(h.layouts.at(-1).layout.activePaneId, firstPaneId);
+  Object.assign(h.nav().contentWindow.WorkHubPage, {
+    canCreateConversation: true,
+    createConversation(placement) {
+      assert.equal(placement, 'current');
+      h.send(h.nav(), 'workhub:page-open', {create:true, placement, snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},creating:true,selected:null,pane:'detail'}}});
+    },
+  });
+  h.w.dispatchEvent(new h.w.Event('resize'));
+  h.chrome.at(-1).props.createConversation('current');
+  assert.equal(h.layouts.at(-1).layout.activePaneId, firstPaneId);
+  assert.equal(h.w.document.querySelectorAll('.pane-layout-divider').length, 1);
+  assert.equal(first.contentDocument, firstDoc);
+  assert.equal(h.messages.get(first).findLast(m => m.type === 'workhub:page-restore').snapshot.conversation.creating, true);
+  assert.equal(h.messages.get(second).findLast(m => m.type === 'workhub:page-restore').snapshot.conversation.selected, 'two');
+  assert.equal(visible(h).length, 2);
+});
+
+for (const desktop of [false, true]) test(`shared pane split controls open conversation drafts directly and support keyboard direction menu (desktop=${desktop})`, async t => {
+  const h = harness(t, '#/projects', {desktop, width: 1800, height: 1000});
+  open(h, conversation('one'));
+  const first = visible(h)[0];
+  const file = {cwd:'/repo/app', projectId:'app', path:'README.md'};
+  h.send(first, 'workhub:page-open', {placement:'split', snapshot:{route:'/files', environment:'local', title:'README.md', file}});
+  const header = () => h.w.document.querySelector('[data-pane-type="file"] .pane-layout-header');
+  assert.equal(header().querySelectorAll('[data-pane-action]').length, 1);
+  header().querySelector('[data-pane-action="split-right"]').click();
+  const splitRightFrame = h.frames().find(f => f !== h.workspace && f !== first);
+  assert.ok(splitRightFrame);
+  h.ready(splitRightFrame);
+  assert.equal(h.messages.get(splitRightFrame).findLast(m => m.type === 'workhub:page-restore').snapshot.conversation.scope.id, 'app');
+  const trigger = header().querySelector('[data-pane-menu-trigger]');
+  trigger.focus();
+  trigger.dispatchEvent(new h.w.KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true,cancelable:true}));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+  assert(h.w.document.activeElement.matches('[role="menuitem"]'));
+  h.w.document.activeElement.dispatchEvent(new h.w.KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(h.w.document.activeElement, trigger);
+  trigger.click();
+  await new Promise(resolve => setImmediate(resolve));
+  const down = [...header().querySelectorAll('[role="menuitem"]')].find(item => item.textContent === '向下分屏');
+  assert.equal(down.disabled, false);
+  down.click();
+  const splitDownFrame = h.frames().find(f => f !== h.workspace && f !== first && f !== splitRightFrame);
+  assert.ok(splitDownFrame);
+  h.ready(splitDownFrame);
+  assert.equal(h.w.document.querySelectorAll('.pane-layout-divider[data-direction="vertical"]').length, 1);
+  assert.equal(h.w.document.querySelector('[role="menu"]'), null);
+  assert(visible(h).includes(first));
+});
+
+test('sidebar parallel add caps at three panes while pane-header splitting still allows up to six', t => {
+  const h = harness(t, '#/projects', {width: 2800, height: 1400});
+  open(h, conversation('one'));
+  h.send(h.nav(), 'workhub:conversation-add', {snapshot: conversation('two')});
+  h.ready(h.frames().find(f => f !== h.workspace && !h.messages.has(f)));
+  h.send(h.nav(), 'workhub:conversation-add', {snapshot: conversation('three')});
+  h.ready(h.frames().find(f => f !== h.workspace && !h.messages.has(f)));
+  assert.equal(visible(h).length, 3);
+  assert.equal(h.messages.get(h.nav()).findLast(m => m.type === 'workhub:conversation-group').full, true);
+
+  // Sidebar add refuses a 4th unopened conversation
+  h.send(h.nav(), 'workhub:conversation-add', {snapshot: conversation('four')});
+  assert.equal(visible(h).length, 3);
+
+  // Sidebar add still focuses an already-open conversation when at 3 panes
+  const first = visible(h)[0];
+  h.send(h.nav(), 'workhub:conversation-add', {snapshot: conversation('one')});
+  assert.equal(first.dataset.focused, 'true');
+
+  // Pane header split still creates a 4th pane directly as a draft under the 6-pane limit
+  h.send(first, 'workhub:page-pane-command', {command: 'split-down'});
+  const fourth = h.frames().find(f => f !== h.workspace && !h.messages.has(f));
+  assert.ok(fourth);
+  h.ready(fourth);
+  assert.equal(visible(h).length, 4);
 });

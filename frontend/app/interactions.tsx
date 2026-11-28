@@ -80,7 +80,7 @@ function ActionMenu({ source, label, iconOnly }: { source: HTMLDetailsElement; l
   const items = Array.from(source.querySelectorAll<HTMLButtonElement | HTMLHRElement>("button, hr"))
   const portal = source.closest("dialog") || document.body
   const trigger = source.querySelector("summary")
-  const isSessionMenu = source.classList.contains("session-item-menu")
+  const isSessionMenu = source.matches(".session-item-menu")
   const isDirectoryMenu = !!source.closest(".directory-actions")
   const isSplitMenu = source.classList.contains("workspace-action-menu")
   return <DropdownMenu.Root modal={false} open={source.open} onOpenChange={open => { source.open = open }}>

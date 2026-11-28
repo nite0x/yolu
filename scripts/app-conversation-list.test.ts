@@ -141,13 +141,16 @@ test("grouped list omits project chevrons, middle-truncates long branch and dire
   const unboundToggle = unboundGroup.querySelector('[data-conversation-group-toggle="independent"]')!
   assert.equal(unboundToggle.querySelector(".session-workspace-name")?.textContent, uiText("未绑定项目"))
   assert.equal(unboundGroup.querySelector(".session-collection-details"), null)
-  assert(unboundGroup.querySelector(".session-collection-create[data-conversation-standalone='true']"))
+  assert.equal(unboundGroup.querySelector("details.session-collection-menu"), null)
+  assert(unboundGroup.querySelector("button.session-collection-create[data-conversation-standalone='true']"))
   assert.equal(doc.querySelector('[data-sidebar-section="projects"]')?.textContent, uiText("项目"))
+  assert.equal(doc.querySelector('[data-sidebar-section="cloud"]'), null)
   dom.window.close()
 })
 
 test("grouped list keeps main-branch project rows single-line, aggregates collapsed status signals, and renders compact recent badges", () => {
   const sessions: Session[] = [
+    {id: "assistant-chat", name: "Assistant chat", cwd: "/tmp/yolu", yolu_assistant: true, updated_at: 60},
     {id: "main-chat", name: "Main chat", cwd: "/repo/app", primary_project_id: "app", updated_at: 40, context: {project: "App", projectID: "app", branch: "main", cwd: "/repo/app", kind: "Project"}},
     {id: "wt-chat", name: "Worktree chat", cwd: "/repo/worktrees/feat", primary_project_id: "app", updated_at: 30, context: {project: "App", projectID: "app", branch: "feature/ui", cwd: "/repo/worktrees/feat", kind: "Worktree"}},
     {id: "unread-chat", name: "Unread chat", cwd: "/repo/api", primary_project_id: "api", updated_at: 20, unread: true},
@@ -162,11 +165,19 @@ test("grouped list keeps main-branch project rows single-line, aggregates collap
   const collapsed = [JSON.stringify(["local", "project", "api"]), JSON.stringify(["local", "project", "ops"])]
   const rows = conversationTree(sessions, {
     navigator: {directories},
-    limits: {}, collapsed, filtered: false, showRecent: true,
+    limits: {}, collapsed, filtered: false, showRecent: true, showYoluAssistant: true,
   })
   const dom = new JSDOM(renderToStaticMarkup(createElement(ConversationList, {sessions, rows, showDirectory: true, sidebarMode: "grouped"})))
   const doc = dom.window.document
+  const sections = [...doc.querySelectorAll(".session-browser-workspaces > *")].map(el =>
+    el.getAttribute("data-sidebar-section") ? `section:${el.getAttribute("data-sidebar-section")}` : `group:${el.getAttribute("data-collection")}`,
+  )
+  assert.deepEqual(sections, ["group:yolu-assistant", "section:projects", "group:project", "group:project", "group:project", "section:cloud", "group:cloud", "group:recent"])
+  assert.equal(doc.querySelector('[data-sidebar-section="cloud"]')?.textContent, uiText("云环境"))
+  assert.equal(doc.querySelector("details.session-collection-menu"), null)
   const appGroup = doc.querySelector('[data-collection="project"][aria-label="App"]')!
+  assert(appGroup.querySelector('.session-collection-actions > a.session-collection-details'))
+  assert(appGroup.querySelector('.session-collection-actions > button.session-collection-create[data-action="project-conversation-new"]'))
   assert.equal(appGroup.querySelector('[data-conversation-session="main-chat"] .session-browser-item-meta'), null)
   assert(appGroup.querySelector('[data-conversation-session="wt-chat"] .session-browser-item-branch'))
 
@@ -180,5 +191,25 @@ test("grouped list keeps main-branch project rows single-line, aggregates collap
   assert.equal(recentGroup.querySelector('[data-conversation-session="wt-chat"] .session-browser-item-meta'), null)
   assert(recentGroup.querySelector('[data-conversation-session="wt-chat"] .session-browser-item-badge-worktree'))
   assert(recentGroup.querySelector('[data-conversation-session="cloud-chat"] .session-browser-item-badge'))
+  dom.window.close()
+})
+
+test("patching conversation list preserves distinct section labels and open session item menus across refreshes", () => {
+  const dom = new JSDOM('<div id="list"></div>')
+  const list = dom.window.document.getElementById("list")!
+  const markup = (name: string) => `<div class="session-browser-groups"><div class="session-sidebar-section-label" data-sidebar-section="projects"><span>项目</span></div><section class="session-browser-group" data-conversation-group="project"><h3 class="session-workspace-heading"><button>Project</button><span class="session-collection-actions"><button class="session-collection-create" data-action="project-conversation-new">New conversation</button></span></h3><ul class="session-browser-items"><li><button data-conversation-session="one">${name}</button><details class="session-item-menu"><summary>More</summary><button>Archive</button></details></li></ul></section><div class="session-sidebar-section-label" data-sidebar-section="cloud"><span>云环境</span></div><section class="session-browser-group" data-conversation-group="codex-cloud"><h3 class="session-workspace-heading"><button>Codex Cloud</button></h3></section></div>`
+  patchConversationList(list, markup("Original title"))
+  const menu = list.querySelector<HTMLDetailsElement>("details.session-item-menu")!
+  const trigger = dom.window.document.createElement("span")
+  trigger.className = "ui-action-host"
+  menu.before(trigger)
+  menu.classList.add("ui-native-menu")
+  menu.open = true
+  patchConversationList(list, markup("Updated title"))
+  assert.equal(list.querySelector("details.session-item-menu"), menu)
+  assert.equal(menu.open, true)
+  assert.equal(menu.previousElementSibling, trigger)
+  assert.equal(list.querySelector("[data-conversation-session]")?.textContent, "Updated title")
+  assert.deepEqual([...list.querySelectorAll("[data-sidebar-section]")].map(node => node.getAttribute("data-sidebar-section")), ["projects", "cloud"])
   dom.window.close()
 })

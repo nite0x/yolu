@@ -16,6 +16,9 @@ export interface PaneContextHint {
   environment?: string
   projectId?: string
   cwd?: string
+  sessionId?: string
+  bindingId?: string
+  git?: boolean
   scope?: {
     kind: string
     id?: string
@@ -24,6 +27,9 @@ export interface PaneContextHint {
   }
 }
 
+/** Resource descriptors contain identity/restoration data, never feature runtime state.
+ * Add future content kinds (for example workflows) with a matching validated adapter.
+ */
 export type PaneContent =
   | {
       type: "empty"
@@ -32,6 +38,25 @@ export type PaneContent =
   | {
       type: "conversation"
       conversationId: string
+    }
+  | {
+      type: "project"
+      route: string
+      environment: string
+      title?: string
+    }
+  | {
+      type: "file"
+      environment: string
+      title?: string
+      cwd: string
+      path?: string
+      projectId?: string
+      sessionId?: string
+      bindingId?: string
+      line?: number
+      git?: boolean
+      mode?: "all" | "working" | "index"
     }
 
 export interface PaneNode {

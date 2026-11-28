@@ -141,3 +141,15 @@ test("grouped navigation optionally appends a collapsible recent section omitted
   const filtered = conversationTree(items, setup({showRecent: true, filtered: true}))
   assert.equal(filtered.some(row => row.group.collection === "recent"), false)
 })
+
+test("grouped navigation orders Yolu Assistant first, then projects, cloud environments, and recent", () => {
+  const items = [
+    session("cloud-1", undefined, {provider: "codex-cloud", cloud_environment: "apix", updated_at: 90}),
+    session("assistant-1", undefined, {yolu_assistant: true, updated_at: 80}),
+    session("app-1", "app", {updated_at: 70}),
+    session("free-1", undefined, {updated_at: 60}),
+  ]
+  const rows = conversationTree(items, setup({showYoluAssistant: true, showRecent: true}))
+  const collections = rows.filter(row => row.kind === "group").map(row => row.group.collection)
+  assert.deepEqual(collections, ["yolu-assistant", "project", "independent", "cloud", "recent"])
+})

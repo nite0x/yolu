@@ -38,6 +38,8 @@ export interface LayoutRootProps {
     context?: Extract<PaneNode["content"], { type: "empty" }>["context"],
   ) => void
   onPickConversation: (paneId: string, trigger?: HTMLButtonElement) => void
+  onPickResource?: (paneId: string, kind: "file" | "project", trigger?: HTMLButtonElement) => void
+  onSelectFile?: (paneId: string, path: string, mode: string) => void
   onOpenRecentConversation: (paneId: string, item: RecentConversationItem) => void
   onSplit: (paneId: string, placement: SplitPlacement) => void
   onToggleMaximize: (paneId: string) => void
@@ -225,6 +227,8 @@ export function LayoutRoot(props: LayoutRootProps) {
             renderPaneContent={props.renderPaneContent}
             onCreateConversation={props.onCreateConversation}
             onPickConversation={props.onPickConversation}
+            onPickResource={props.onPickResource}
+            onSelectFile={props.onSelectFile}
             onOpenRecentConversation={props.onOpenRecentConversation}
             onSplit={props.onSplit}
             onToggleMaximize={props.onToggleMaximize}
@@ -244,6 +248,8 @@ export function LayoutRoot(props: LayoutRootProps) {
             renderPaneContent={props.renderPaneContent}
             onCreateConversation={props.onCreateConversation}
             onPickConversation={props.onPickConversation}
+            onPickResource={props.onPickResource}
+            onSelectFile={props.onSelectFile}
             onOpenRecentConversation={props.onOpenRecentConversation}
             onSplit={props.onSplit}
             onToggleMaximize={props.onToggleMaximize}

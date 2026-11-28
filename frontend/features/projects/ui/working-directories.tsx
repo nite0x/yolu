@@ -131,11 +131,11 @@ export function WorkingDirectoryCard({project, tree, name, primary, tool, state,
           </div>
         </div>
         <div className="directory-actions">
-          <Action action="project-conversation-new" {...target} variant="ghost" size="icon-sm" className="directory-primary-action directory-icon-action" disabled={!usable || readOnly} title={uiText("为 {0} 新建对话", name)} aria-label={uiText("为 {0} 新建对话", name)}><Plus aria-hidden="true" /></Action>
           <Action action="changes-open" {...target} data-mode="all" data-detail-focus="files" variant="ghost" size="icon-sm" className="directory-icon-action" disabled={!usable} title={uiText("文件与改动")} aria-label={uiText("文件与改动")} aria-controls="projectFilesPane"><Files aria-hidden="true" /></Action>
           <details className="workspace-more directory-more" data-project-open>
             <summary title={uiText("{0} 更多操作", name)} aria-label={uiText("{0} 更多操作", name)}><MoreHorizontal aria-hidden="true" /></summary>
             <div className="workspace-more-menu">
+              <Action action="project-conversation-new" {...target} disabled={!usable || readOnly}><Plus aria-hidden="true" />{uiText("新建对话")}</Action>
               <Action action={tool === "terminal" ? "project-terminal" : `project-open-${tool}`} {...target} data-project-open-primary disabled={!usable} title={uiText("用 {0} 打开工作目录", projectOpenLabels[tool])} aria-label={uiText("用 {0} 打开工作目录", projectOpenLabels[tool])}>{tool === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}<span data-project-open-label>{uiText("{0} 打开", projectOpenLabels[tool])}</span></Action>
               {(["vscode", "idea", "terminal"] as const).filter(choice => choice !== tool).map(choice => <Action key={choice} action={choice === "terminal" ? "project-terminal" : `project-open-${choice}`} {...target} data-project-open-choice={choice} disabled={!usable}>{choice === "terminal" ? <Terminal aria-hidden="true" /> : <CodeXml aria-hidden="true" />}{projectOpenLabels[choice]}</Action>)}
               <Action action="project-open-folder" {...target} disabled={!usable}><FolderOpen aria-hidden="true" />{uiText("在文件管理器中打开")}</Action>

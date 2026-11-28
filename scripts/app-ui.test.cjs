@@ -2655,7 +2655,9 @@ test('grouped navigation expands by project name, saves display preferences and 
   assert.equal(reopened.$('#sessionBrowserList').hasAttribute('data-hide-project-counts'),false);
   assert.equal(reopened.$('[data-collection="recent"]'),null);
   const details = projectHeading().querySelector('[data-collection-href]');
-  assert(details.nextElementSibling.matches('[data-action="project-conversation-new"]'));
+  assert.equal(details.parentElement.querySelector('details.session-collection-menu'), null);
+  const directCreate = details.parentElement.querySelector('button.session-collection-create[data-action="project-conversation-new"]');
+  assert(directCreate);
   details.click(); await settle();
   const opened = () => host.messages.findLast(message=>message.type==='workhub:page-open').snapshot;
   assert.equal(opened().route,'/projects/app');
@@ -2698,14 +2700,18 @@ test('grouped navigation expands by project name, saves display preferences and 
   assert.equal(nav.$('[data-conversation-session="new-session"]'),null);
 });
 
-test('Cloud conversations appear above local projects and open in the shared reader', async t => {
+test('Cloud conversations appear in Cloud environments below projects and above recent', async t => {
   const host = pageHost(t), nav = await harness(t,false,{pageHost:host.window});
   nav.sessions.push({id:'cloud-task',provider:'codex-cloud',cloud_environment:'apix',name:'Cloud task',cwd:'/repo/app',updated_at:1});
   const post = data => nav.window.dispatchEvent(new nav.window.MessageEvent('message',{source:host.window,origin:'http://localhost:4317',data}));
   post({type:'workhub:page-navigation'});
   post({type:'workhub:page-restore',active:true,snapshot:{route:'/sessions',environment:'local',conversation:{scope:{kind:'all'},pane:'list'}}});
   await settle(); await settle();
-  const group = () => nav.$('#sessionBrowserList [data-conversation-group]');
+  const children = [...nav.document.querySelectorAll('#sessionBrowserList .session-browser-workspaces > *')].map(el =>
+    el.dataset.sidebarSection ? `section:${el.dataset.sidebarSection}` : `group:${el.dataset.collection}`);
+  assert.deepEqual(children, ['group:yolu-assistant','section:projects','group:project','section:cloud','group:cloud','group:recent']);
+  assert.equal(nav.$('[data-sidebar-section="cloud"]').textContent, '云环境');
+  const group = () => nav.$('#sessionBrowserList [data-conversation-group="codex-cloud"]');
   assert.equal(group().dataset.conversationGroup,'codex-cloud');
   assert.equal(group().querySelector('.session-workspace-name').textContent,'Codex Cloud');
   const row = '[data-conversation-session="cloud-task"]';

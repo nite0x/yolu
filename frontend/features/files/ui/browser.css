@@ -106,7 +106,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 12px 16px 14px;
+  padding: 0;
   overflow: hidden;
 }
 .changes-dialog > #changesCommitPlan {
@@ -119,16 +119,23 @@
   border-top: 1px solid var(--border);
   background: var(--background);
 }
-.changes-dialog .file-browser {
+.file-browser {
   flex: 1;
   min-height: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
 }
-.changes-dialog .file-browser > .dialog-description {
+.file-browser > .dialog-description {
+  flex: none;
   margin: 0;
+  padding: 8px 12px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   line-height: 1.5;
@@ -137,35 +144,32 @@
 
 .changes-controls {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
-  gap: 8px 12px;
+  gap: 2px 8px;
   align-items: center;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--muted);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
 }
-.changes-controls > label {
+.changes-control-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.changes-control-field > label {
   white-space: nowrap;
   flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--yolu-font-size-label);
   color: var(--muted-foreground);
 }
-.changes-controls > [data-slot="native-select-wrapper"] {
-  width: min(100%, 210px);
-  flex: 0 1 210px;
+.changes-control-field > [data-slot="native-select-wrapper"] {
+  width: auto;
+  min-width: 0;
 }
-.changes-controls > [data-slot="native-select-wrapper"] select {
-  height: 32px;
-  padding-top: 4px;
-  padding-bottom: 4px;
-  font-size: 12px;
-  background: var(--background);
-}
-.changes-controls > button[data-action="project-open-vscode"] {
-  margin-inline-start: auto;
-}
+.changes-control-field select { text-overflow: ellipsis; }
+.changes-control-actions { display: flex; gap: 2px; margin-inline-start: auto; }
 .changes-file-list {
   display: grid;
   gap: 2px;
@@ -179,10 +183,10 @@
 }
 .changes-text {
   margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px;
-  min-height: 200px;
+  border: 0;
+  border-radius: 0;
+  padding: 12px;
+  min-height: 0;
   overflow: auto;
   white-space: pre;
   font: 12px/1.7 var(--font-mono, monospace);
@@ -197,7 +201,7 @@
   font-family: var(--font-sans, sans-serif);
   font-size: 13px;
   white-space: normal;
-  background: var(--muted);
+  background: var(--background);
 }
 .browser-files {
   overflow: auto;
@@ -232,10 +236,10 @@
 }
 .browser-content .changes-text[role="status"] {
   padding: 24px;
-  background: var(--muted);
+  background: var(--background);
 }
 .changes-text:has(> diffs-container) { white-space: normal; }
-.changes-text diffs-container { display: block; --diffs-font-size: 12px; --diffs-line-height: 20px; }
+.changes-text diffs-container { display: block; --diffs-font-size: 12px; --diffs-line-height: 20px; --diffs-bg: var(--yolu-surface); }
 #changesError { margin: 0; color: var(--destructive); font-size: 12px; white-space: pre-wrap; }
 
 .file-split-layout {
@@ -243,7 +247,7 @@
   flex-direction: row;
   gap: 0;
   flex: 1;
-  min-height: 240px;
+  min-height: 0;
   min-width: 0;
 }
 .file-tree-pane {
@@ -251,8 +255,6 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
   padding: 6px;
   background: var(--background);
 }
@@ -261,7 +263,7 @@
   height: 100%;
   max-height: none;
   border: 0;
-  padding: 0 4px 0 0;
+  padding: 0;
   overflow: auto;
 }
 .file-split-layout > .browser-content {
@@ -276,6 +278,26 @@
   min-height: 0;
   max-height: none;
 }
+.file-browser .file-preview-path {
+  flex: none;
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  font: var(--yolu-font-size-label)/1.5 var(--font-mono, monospace);
+}
+.file-browser [role="alert"] { margin: 0; padding: 8px 12px; color: var(--destructive); font-size: var(--yolu-font-size-label); }
+.file-browser [role="status"]:not(.changes-text) { margin: 0; padding: 8px 12px; font-size: var(--yolu-font-size-label); }
+.file-split-layout > .reading-splitter { flex-basis: 1px; z-index: 1; }
+.file-split-layout > .reading-splitter::before { content: ""; position: absolute; inset: 0 -5px; }
+.file-split-layout > .reading-splitter::after { inset: 0; width: 1px; border-radius: 0; background: var(--border); }
+.file-split-layout > .reading-splitter:hover::after,
+.file-split-layout > .reading-splitter:focus-visible::after { background: var(--ring); }
+.file-split-layout > .reading-splitter[aria-orientation="horizontal"]::before { inset: -5px 0; }
+.file-split-layout > .reading-splitter[aria-orientation="horizontal"]::after { inset: 0; width: auto; height: 1px; }
 .file-split-layout[data-stacked="true"] { flex-direction: column; }
 .file-split-layout[data-stacked="true"] .file-tree-pane {
   flex-basis: clamp(90px, var(--file-tree-height, 170px), 46%);
@@ -319,6 +341,4 @@
   }
   .changes-dialog > .dialog-header,
   .changes-dialog > .dialog-footer { padding: 12px 14px; }
-  .changes-dialog > #changesBrowser { padding: 10px 14px 12px; }
-  .changes-controls > button[data-action="project-open-vscode"] { margin-inline-start: 0; }
 }

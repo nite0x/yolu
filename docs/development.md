@@ -118,7 +118,7 @@ The complete build checks `frontend/bundle-budgets.json` against that manifest.
 `npm run bundle:test` checks missing assets, invalid sizes and threshold failures.
 The critical sum covers workspace, conversation and host-layout scripts across
 their independent entry points, rather than claiming they all transfer on the
-first page. Adjust a budget deliberately with measured output and a reason.
+first page. Adjust a budget deliberately with measured output and a reason. Generic resource panes reuse the file browser in the host entry: the measured layout entry is about 452 kB raw / 144 kB gzip, and aggregate critical JavaScript is about 792 kB gzip. Its budgets are 470 kB / 150 kB and 800 kB respectively; syntax highlighting and diff rendering remain lazy.
 Mermaid keeps `/chat/mermaid.js` as its stable lazy entry and loads graph modules
 from `/chat/diagrams/` only when needed. Its entry size excludes those later
 requests. Browser regression tests render a graph under the real application CSP.

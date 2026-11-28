@@ -193,13 +193,10 @@ html[data-workspace-navigation] .sidebar .session-browser-list-tools {
   gap: 0; padding: 2px 4px 4px; border-bottom: 0;
   padding-inline-end: calc(4px + var(--navigator-content-inset));
 }
-html[data-workspace-navigation] .sidebar .session-sidebar-new-chat {
-  height: 30px;
-  border-radius: 7px; color: var(--yolu-foreground);
-  font-size: var(--yolu-font-size-compact); font-weight: 500;
+html[data-workspace-navigation] .sidebar #sessionBrowserScopeBar:not([data-search-open])::before {
+  content: attr(data-sidebar-label); flex: 1; min-width: 0;
+  font-size: var(--yolu-font-size-compact); color: var(--yolu-muted-ink);
 }
-html[data-workspace-navigation] .sidebar .session-sidebar-new-chat svg { width: 15px; height: 15px; color: var(--muted-foreground); flex: none; }
-html[data-workspace-navigation] .sidebar .session-sidebar-new-chat:hover { background: color-mix(in srgb, currentColor 7%, transparent); }
 html[data-workspace-navigation] .sidebar .session-search-toggle {
   flex: none; color: var(--muted-foreground);
 }

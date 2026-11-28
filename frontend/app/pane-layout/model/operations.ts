@@ -374,6 +374,10 @@ export function normalizeLayout(
             ? { type: "conversation", conversationId: node.content.conversationId }
             : { type: "empty" }
           break
+        case "file":
+        case "project":
+          content = {...node.content}
+          break
         case "empty":
           content = node.content.context
             ? { type: "empty", context: node.content.context }

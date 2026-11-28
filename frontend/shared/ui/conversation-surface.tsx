@@ -1,6 +1,6 @@
 import {uiText} from "../i18n"
 import {useEffect, useRef, useState, type ComponentProps, type ReactNode} from "react"
-import {ChevronDown, Columns2, ListTree, Maximize2, Minimize2, MoreHorizontal, Rows2, X} from "lucide-react"
+import {ChevronDown, Columns2, ListTree, Maximize2, Minimize2, X} from "lucide-react"
 
 export function ConversationKindSwitch({kind, id, uiID, terminalID, cloudID, cloudHidden}: {kind: "ui" | "terminal"; id?: string; uiID?: string; terminalID?: string; cloudID?: string; cloudHidden?: boolean}) {
   // biome-ignore lint/a11y/useSemanticElements: Mode actions navigate between conversation entry points; they are not form fields.
@@ -175,11 +175,12 @@ export function ConversationStatusBadge({children, ...props}: ComponentProps<"sp
 
 export function ConversationPaneButtons({
   split, canZoom, zoomed, canSplitRight = true, canSplitDown = true, canSplitLeft = true, canSplitUp = true, canClose = true,
-  showSplitControls = false, command, zoomID, closeID,
+  showSplitControls = false, command, zoomID, closeID, surface = "conversation",
 }: {
   split: boolean; canZoom: boolean; zoomed: boolean
   canSplitRight?: boolean; canSplitDown?: boolean; canSplitLeft?: boolean; canSplitUp?: boolean; canClose?: boolean
   showSplitControls?: boolean
+  surface?: "conversation" | "pane"
   command?: (command: string) => void; zoomID?: string; closeID?: string
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -200,6 +201,7 @@ export function ConversationPaneButtons({
         triggerRef.current?.focus({preventScroll: true})
         return
       }
+      if (event.key === "Tab") { triggerRef.current?.focus({preventScroll: true}); setMenuOpen(false); return }
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return
       const enabled = items()
       if (!enabled.length) return
@@ -222,30 +224,33 @@ export function ConversationPaneButtons({
     }
   }, [menuOpen])
 
-  const label = zoomed ? uiText("恢复分栏") : uiText("放大当前对话")
+  const label = zoomed ? uiText("恢复分栏") : uiText("放大当前面板")
+  const buttonClass = surface === "pane" ? "pane-layout-icon-button" : "conversation-icon-button"
+  const menuClass = surface === "pane" ? "pane-layout-menu" : "conversation-pane-menu"
   const run = (name: string) => {
     setMenuOpen(false)
+    if (menuOpen) triggerRef.current?.focus({preventScroll: true})
     command?.(name)
   }
   const hasAnySplitControl = showSplitControls || split
   return <>
-    <span className="conversation-pane-divider" aria-hidden="true" hidden={!hasAnySplitControl} />
-    {showSplitControls && <>
-      <ConversationIconButton className="conversation-icon-button conversation-pane-split-quick" data-pane-action="split-right" disabled={!canSplitRight} label={uiText("向右分屏")} onClick={() => run("split-right")}><Columns2 aria-hidden="true" /></ConversationIconButton>
-      <ConversationIconButton className="conversation-icon-button conversation-pane-split-quick-secondary" data-pane-action="split-down" disabled={!canSplitDown} label={uiText("向下分屏")} onClick={() => run("split-down")}><Rows2 aria-hidden="true" /></ConversationIconButton>
-      <div ref={menuRef} className="conversation-pane-menu-anchor">
-        <button ref={triggerRef} type="button" className="conversation-icon-button" data-pane-menu-trigger="" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={uiText("更多分屏操作")} title={uiText("更多分屏操作")} onClick={() => setMenuOpen(open => !open)}><MoreHorizontal aria-hidden="true" /></button>
-        {menuOpen && <div className="conversation-pane-menu" role="menu" aria-label={uiText("分屏操作")}>
-          <button type="button" role="menuitem" disabled={!canSplitRight} onClick={() => run("split-right")}>{uiText("向右分屏")}</button>
-          <button type="button" role="menuitem" disabled={!canSplitDown} onClick={() => run("split-down")}>{uiText("向下分屏")}</button>
-          <button type="button" role="menuitem" disabled={!canSplitLeft} onClick={() => run("split-left")}>{uiText("向左分屏")}</button>
-          <button type="button" role="menuitem" disabled={!canSplitUp} onClick={() => run("split-up")}>{uiText("向上分屏")}</button>
-          {split && canZoom && <button type="button" role="menuitem" onClick={() => run("zoom")}>{label}</button>}
-          {canClose && <button type="button" role="menuitem" onClick={() => run("close")}>{uiText("关闭面板")}</button>}
-        </div>}
-      </div>
-    </>}
-    <ConversationIconButton id={zoomID} hidden={!split || !canZoom} label={label} data-zoomed={zoomed} onClick={command ? () => run("zoom") : undefined}><Maximize2 className="conversation-zoom-in" aria-hidden="true" /><Minimize2 className="conversation-zoom-out" aria-hidden="true" /></ConversationIconButton>
-    <ConversationIconButton id={closeID} hidden={!split} label={uiText("关闭当前对话栏")} onClick={command ? () => run("close") : undefined}><X aria-hidden="true" /></ConversationIconButton>
+    {surface === "conversation" && <span className="conversation-pane-divider" aria-hidden="true" hidden={!hasAnySplitControl} />}
+    {showSplitControls && <div ref={menuRef} className={`${menuClass}-anchor pane-split-control`}>
+      <button type="button" className={`${buttonClass} pane-split-primary`} data-pane-action="split-right" disabled={!canSplitRight} aria-label={uiText("分栏")} title={uiText("向右分屏")} onClick={() => run("split-right")}><Columns2 aria-hidden="true" /></button>
+      <button ref={triggerRef} type="button" className={`${buttonClass} pane-split-directions`} data-pane-menu-trigger="" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={uiText("分栏方向")} title={uiText("分栏方向")} onClick={() => setMenuOpen(open => !open)} onKeyDown={event => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault()
+          setMenuOpen(true)
+        }
+      }}><ChevronDown aria-hidden="true" /></button>
+      {menuOpen && <div className={menuClass} role="menu" aria-label={uiText("分栏方向")}>
+        <button type="button" role="menuitem" disabled={!canSplitRight} onClick={() => run("split-right")}>{uiText("向右分屏")}</button>
+        <button type="button" role="menuitem" disabled={!canSplitDown} onClick={() => run("split-down")}>{uiText("向下分屏")}</button>
+        <button type="button" role="menuitem" disabled={!canSplitLeft} onClick={() => run("split-left")}>{uiText("向左分屏")}</button>
+        <button type="button" role="menuitem" disabled={!canSplitUp} onClick={() => run("split-up")}>{uiText("向上分屏")}</button>
+      </div>}
+    </div>}
+    <button type="button" className={buttonClass} id={zoomID} hidden={!split || !canZoom} title={label} aria-label={label} data-zoomed={zoomed} onClick={command ? () => run("zoom") : undefined}>{zoomed ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}</button>
+    <button type="button" className={buttonClass} id={closeID} hidden={!split && !showSplitControls || !canClose} title={uiText("关闭面板")} aria-label={uiText("关闭面板")} onClick={command ? () => run("close") : undefined}><X aria-hidden="true" /></button>
   </>
 }

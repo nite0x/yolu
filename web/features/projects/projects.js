@@ -191,6 +191,7 @@ function syncProjectFiles() {
     if (identity) window.WorkHubUI.mountFileBrowser(mount, {
       project:project.id, path:files.path, environment:activeEnvironment, request:api,
       idPrefix:'projectFiles', initialMode:files.mode,
+      onOpenInPane: window.parent !== window ? file => window.dispatchEvent(new CustomEvent('workhub:open-file-pane', {detail:{environment:activeEnvironment,file:{projectId:project.id,cwd:files.path,git:true,...file}}})) : undefined,
     });
   }
   const handle = $('#projectFilesResize');

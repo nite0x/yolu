@@ -37,9 +37,6 @@ func (a *Service) startACPSession(startup context.Context, provider, key, finger
 	if err := a.Execution.Store.ReserveCreation(ctx, key, fingerprint); err != nil {
 		return nil, 500, err
 	}
-	requestCtx, end := context.WithTimeout(ctx, 20*time.Second)
-	defer end()
-
 	params := map[string]any{
 		"cwd":        plan.Cwd,
 		"mcpServers": []any{},
@@ -55,10 +52,16 @@ func (a *Service) startACPSession(startup context.Context, provider, key, finger
 		}
 	}
 	var setup acp.SessionSetupResult
-	if err := c.Call(requestCtx, "session/new", params, &setup); err != nil || setup.SessionID == "" {
+	// Antigravity boots its backend and fetches cloud account/model information
+	// during session/new, not initialize. Use the bounded creation startup context
+	// so a cold boot is not killed by a shorter per-call timeout. The connection
+	// keeps its separate lifetime after startup transfers to the first turn.
+	if err := c.Call(startup, "session/new", params, &setup); err != nil || setup.SessionID == "" {
 		msg := model.ProviderName(provider) + " 创建结果未确认，请刷新对话列表检查后再操作"
 		if acp.IsAuthRequired(err) {
 			msg = acpLoginAdvice(provider)
+		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(startup.Err(), context.DeadlineExceeded) {
+			msg = model.ProviderName(provider) + " 创建会话超时，初始化未在启动时限内完成；创建结果未确认，请刷新对话列表检查后再操作"
 		} else if err != nil {
 			msg = model.ProviderName(provider) + " 创建对话失败：" + err.Error()
 		}

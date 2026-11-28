@@ -152,17 +152,7 @@ button.project-summary-stat[aria-pressed="true"] { background: var(--yolu-select
 .project-files-heading > button { flex: none; width: 28px; height: 28px; padding: 0; }
 .project-files-resize { flex-basis: 8px; }
 .project-files-resize::after { inset: 0 auto 0 3px; width: 1px; border-radius: 0; background: var(--yolu-border); }
-#projectFilesMount { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; padding: 12px; }
-#projectFilesMount .file-browser { display: flex; flex-direction: column; flex: 1; gap: 10px; min-width: 0; min-height: 0; }
-#projectFilesMount .dialog-description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; font: var(--yolu-font-size-label) var(--font-mono); color: var(--yolu-muted-ink); }
-#projectFilesMount .changes-controls { padding: 0; gap: 6px; border: 0; border-radius: 0; background: transparent; }
-#projectFilesMount .changes-controls > [data-slot="native-select-wrapper"] { flex: 1 1 150px; width: auto; }
-#projectFilesMount .changes-controls > button { height: 28px; padding-inline: 8px; font-size: var(--yolu-font-size-label); }
-#projectFilesMount .file-browser[data-mode="all"] label[for$="Layout"],
-#projectFilesMount .file-browser[data-mode="all"] [data-slot="native-select-wrapper"]:has(select[id$="Layout"]) { display: none; }
-#projectFilesMount .file-split-layout { min-height: 0; }
-#projectFilesMount .file-tree-pane, #projectFilesMount .changes-text { border-radius: 4px; }
-#projectFilesMount [role="alert"] { margin: 0; font-size: var(--yolu-font-size-label); color: var(--destructive); }
+#projectFilesMount { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .project-detail-workspace[data-files-expanded] > .project-detail-body { display: none; }
 .project-detail-workspace[data-files-expanded] > .project-files-pane { flex: 1; }
 .project-detail-content .working-directory-card[data-primary-directory] { box-shadow: none; }

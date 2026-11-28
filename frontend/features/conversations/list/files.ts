@@ -28,6 +28,13 @@ export function createConversationFiles(document: Document, request: BrowserRequ
   let readingRevision = 0
   let referenceVersion = 0
   let props: BrowserProps | undefined
+  const openInPane: NonNullable<BrowserProps["onOpenInPane"]> = file => {
+    if (!props) return
+    window.dispatchEvent(new window.CustomEvent("workhub:open-file-pane", {detail: {
+      environment: props.environment,
+      file: {cwd: props.path, projectId: props.project, sessionId: props.session, bindingId: props.binding, git: props.git, ...file},
+    }}))
+  }
   let bindings: DirectoryContext[] = []
   const layout = (before: boolean) => window.dispatchEvent(new window.CustomEvent("workhub:chat-layout", {detail: before ? {phase: "before"} : {visible: true}}))
 
@@ -174,7 +181,7 @@ export function createConversationFiles(document: Document, request: BrowserRequ
       identity = key
       current = context
       mountFileBrowser(mount)
-      props = context ? {...context, request, idPrefix: "conversationFiles", initialMode: "all"} : undefined
+      props = context ? {...context, request, idPrefix: "conversationFiles", initialMode: "all", onOpenInPane: ownerWindow.parent !== ownerWindow ? openInPane : undefined} : undefined
       if (wanted && current) open()
       sync()
     },

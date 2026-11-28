@@ -1,3 +1,5 @@
+@import "../../../shared/ui/pane-actions.css";
+
 .pane-layout-root {
   position: absolute;
   inset: 0;
@@ -329,25 +331,13 @@
   outline-offset: -2px;
 }
 
-@container (max-width: 440px) {
-  .pane-layout-split-quick-secondary {
-    display: none;
-  }
-}
-
-@container (max-width: 390px) {
-  .pane-layout-split-quick {
-    display: none;
-  }
-}
-
 .pane-layout-empty-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: center;
   padding: 20px 18px 28px;
 }
@@ -547,3 +537,31 @@
   font-weight: 600;
   box-shadow: var(--yolu-elevation-sm);
 }
+
+/* Resource headers share pane controls; project bodies remain retained iframes. */
+.pane-layout-resource {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--yolu-surface);
+  color: var(--yolu-foreground);
+}
+.pane-layout-resource[data-resource-type="project"] {
+  pointer-events: none;
+  background: transparent;
+}
+.pane-layout-resource > .pane-layout-header {
+  height: 44px;
+  pointer-events: auto;
+}
+.pane-layout-resource-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  user-select: text;
+}
+.pane-layout-resource-body > .file-browser { height: 100%; }

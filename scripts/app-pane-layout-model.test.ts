@@ -450,3 +450,25 @@ test("bindPaneContent and normalizeLayout handle empty/duplicate states cleanly"
   const crampedBounds = computeSplitRatioBounds(nested.root, "s-v", { width: 1200, height: 400 })
   assert.equal(crampedBounds.min, crampedBounds.max)
 })
+
+test("mixed resource panes preserve environment, directory, binding and file location across persistence", async () => {
+  const {resourceContent, resourceSnapshot, resourceIdentity} = await import("../frontend/app/pane-layout/model/content")
+  const {serializePaneLayout, deserializePaneLayout} = await import("../frontend/app/pane-layout/persistence/serializer")
+  const file = resourceContent({route: "/files", environment: "remote", title: "main.ts", file: {
+    cwd: "/workspace/secondary", projectId: "p2", sessionId: "c1", bindingId: "b2", path: "src/main.ts", line: 42, mode: "index", git: true,
+  }})!
+  const project = resourceContent({route: "/projects/p1/worktrees?path=%2Fworkspace%2Ffeature", environment: "local", title: "Project"})!
+  let layout = createInitialLayout({type: "conversation", conversationId: "c1"}, "chat")
+  layout = splitPane(layout, "chat", "right", {newPaneId: "file", splitId: "s1", content: file})
+  layout = splitPane(layout, "file", "down", {newPaneId: "project", splitId: "s2", content: project})
+  const restored = deserializePaneLayout(serializePaneLayout(layout))
+  assert.equal(restored.degraded, false)
+  const contents = listPanes(restored.layout.root).map(pane => pane.content)
+  assert.deepEqual(contents, JSON.parse(JSON.stringify([{type: "conversation", conversationId: "c1"}, file, project])))
+  assert.deepEqual(resourceSnapshot(contents[1])?.file, JSON.parse(JSON.stringify(resourceSnapshot(file)?.file)))
+  assert.notEqual(resourceIdentity(resourceSnapshot(file)!), resourceIdentity({...resourceSnapshot(file)!, environment: "local"}))
+  assert.notEqual(resourceIdentity(resourceSnapshot(file)!), resourceIdentity({...resourceSnapshot(file)!, file: {...resourceSnapshot(file)!.file!, bindingId: "other"}}))
+  assert.equal(resourceContent({route: "/files", file: {cwd: "/workspace"}}), null)
+  assert.equal(resourceContent({route: "/files", file: {cwd: "/workspace", projectId: "p1", line: -1}}), null)
+  assert.equal(resourceContent({route: "/settings"}), null)
+})

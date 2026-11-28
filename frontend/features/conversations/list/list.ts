@@ -127,7 +127,9 @@ export function patchConversationList(list: HTMLElement, markup: string) {
   const template = list.ownerDocument.createElement("template")
   template.innerHTML = markup
   const key = (node: HTMLElement) => {
+    if (node.dataset.sidebarSection) return `section:${node.dataset.sidebarSection}`
     if (node.matches(".session-browser-group")) return "group:" + (node.dataset.conversationGroup || node.getAttribute("aria-label"))
+    if (node.matches("details.session-item-menu")) return "item-menu"
     if (node.tagName === "LI") return "session:" + node.querySelector<HTMLElement>("[data-conversation-session]")?.dataset.conversationSession
     return node.dataset.listSpacer || node.className || node.tagName
   }
@@ -147,7 +149,7 @@ export function patchConversationList(list: HTMLElement, markup: string) {
         menu.open = (node as HTMLDetailsElement).open
       }
       if (node !== incoming && !node.isEqualNode(incoming)) {
-        if (node.matches(".session-browser-groups,.session-browser-group,.session-browser-items,li")) {
+        if (node.matches(".session-browser-groups,.session-browser-group,.session-browser-items,.session-workspace-heading,.session-collection-actions,li")) {
           node.className = incoming.className
           if (node.matches(".session-browser-group")) {
             const label = incoming.getAttribute("aria-label")

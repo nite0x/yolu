@@ -537,8 +537,10 @@ function syncConversationSearchBar(forceOpen) {
   const hasValue = !!input.value.trim();
   const open = !navMode || forceOpen === true || hasValue || (forceOpen !== false && document.activeElement === input);
   scopeBar.toggleAttribute('data-search-open', open);
+  scopeBar.dataset.sidebarLabel = uiText("对话");
   toggle.hidden = !navMode || open;
-  if (newChat) newChat.hidden = !navMode || open;
+  // Retain native action IDs while the shared header owns global creation.
+  if (newChat) newChat.hidden = true;
   toggle.setAttribute('aria-expanded', String(open));
 }
 function applyConversationProjectDisplay(saved = null, rerender = false) {
@@ -707,7 +709,7 @@ function showConversationSelection() {
   if (view.creating && !view.target || !view.creating && !session) {
     closeSessionHistory(false);
     $('#sessionBrowserEmpty').hidden = false;
-    $('#sessionBrowserEmpty').textContent = view.creating ? uiText("选择本次对话的工作目录。") : document.documentElement.hasAttribute('data-workspace-conversation') ? uiText("选择一个对话，或新建对话开始工作。") : view.loading ? uiText("正在读取对话…") : view.error ? uiText("暂时无法读取对话，请点击列表中的刷新重试。") : uiText("这里还没有对话，可以从列表上方新建。");
+    $('#sessionBrowserEmpty').textContent = view.creating ? uiText("选择本次对话的工作目录。") : document.documentElement.hasAttribute('data-workspace-conversation') ? uiText("选择一个对话，或新建对话开始工作。") : view.loading ? uiText("正在读取对话…") : view.error ? uiText("暂时无法读取对话，请点击列表中的刷新重试。") : uiText(window.WorkHubPage ? "这里还没有对话，可以从顶栏新建。" : "这里还没有对话，可以从列表上方新建。");
     if (!view.creating && !view.loading && view.error) $('#sessionBrowserEmpty').hidden = true;
     return;
   }

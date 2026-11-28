@@ -1,4 +1,5 @@
 {
+  "云环境": "Cloud environments",
   "云端环境": "Cloud environment",
   "{0}（工作区共享）": "{0} (workspace shared)",
   "无法读取云端环境": "Could not load cloud environments",
@@ -235,6 +236,7 @@
   "选择一个对话，或新建对话开始工作。": "Select a conversation or create one to start working.",
   "正在读取对话…": "Loading conversations…",
   "暂时无法读取对话，请点击列表中的刷新重试。": "Unable to load conversations. Refresh from the list to retry.",
+  "这里还没有对话，可以从顶栏新建。": "No conversations yet. Start one from the application header.",
   "这里还没有对话，可以从列表上方新建。": "No conversations yet. Create one using the action above the list.",
   "这个项目已不存在，请重新选择项目": "This project no longer exists. Select another project.",
   "切换当前栏，原对话及草稿保留，正在运行的对话会继续": "Switch the current pane while retaining the conversation and draft. Running work continues.",
@@ -785,6 +787,8 @@
   "打开终端 ↗": "Open terminal ↗",
   "Git 操作分类": "Git operation categories",
   "同步": "Sync",
+  "分栏": "Split pane",
+  "分栏方向": "Split direction",
   "分支": "Branches",
   "合并": "Merge",
   "获取与拉取": "Fetch and pull",
@@ -2121,5 +2125,10 @@
   "移到上方": "Move above",
   "移到下方": "Move below",
   "已达到最大分屏数量或空间不足": "Maximum panes reached or insufficient space",
-  "已达到最大分屏数量，请先关闭其他面板": "Maximum panes reached. Close another pane first."
+  "已达到最大分屏数量，请先关闭其他面板": "Maximum panes reached. Close another pane first.",
+  "放大当前面板": "Maximize current pane",
+  "打开内容": "Open content",
+  "开始对话，浏览文件，或查看项目详情。": "Start a conversation, browse files, or view project details.",
+  "在面板中打开": "Open in pane",
+  "搜索项目…": "Search projects…"
 }

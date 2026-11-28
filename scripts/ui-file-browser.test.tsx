@@ -313,3 +313,34 @@ test("file rendering follows saved light and dark appearance without replacing i
     window.close()
   }
 })
+
+test("pane file views report automatic diff selection and preserve their mode when restored", async () => {
+  const h = fixture()
+  const reports: [string, string][] = []
+  const request: BrowserRequest = (async (path: string) => {
+    const url = new URL(path, "http://localhost")
+    if (url.searchParams.has("file")) return {text: "selected diff", format: "text"}
+    return {...changedFiles, files: changedFiles.files.map((file) => ({...file, index: "M"}))}
+  }) as BrowserRequest
+  const props = {
+    project: "one",
+    path: "/repo",
+    environment: "remote",
+    request,
+    initialMode: "working",
+    onSelectFile: (path: string, mode: string) => reports.push([path, mode]),
+  }
+  try {
+    h.mount(props)
+    await until(() => reports.some(([path, mode]) => path === "one.ts" && mode === "working"))
+    h.window.document.querySelector('[data-change-file="two.ts"]').click()
+    await until(() => reports.at(-1)?.[0] === "two.ts")
+    h.mount()
+    h.mount({...props, initialMode: "index", reference: {path: "two.ts", mode: "index", version: 1}})
+    await until(() => reports.some(([path, mode]) => path === "two.ts" && mode === "index"))
+    assert.equal(h.window.document.querySelector("#changesMode").value, "index")
+    assert.deepEqual(h.errors, [])
+  } finally {
+    h.close()
+  }
+})

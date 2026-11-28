@@ -10,6 +10,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const sharedListWidth = window.WorkHubListWidth;
   const layoutEngine = window.WorkHubLayout.paneLayout;
   const constraints = layoutEngine.constraints;
+  const SIDEBAR_PARALLEL_LIMIT = 3;
   let navigation = null, compactNavigationOpen = false, conversationListWidth = 280;
   let conversationsVisible = false, conversationsPresented = false, appliedURL = location.href;
   const panePages = new Map(); // Map<paneId, HostPage>
@@ -90,10 +91,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const isConversationView = snapshot => isConversation(snapshot) || snapshot.route === '/sessions' && snapshot.conversation?.creating === true;
   const isTerminal = snapshot => snapshot.route === '/terminals';
   const listIdentity = snapshot => isTerminal(snapshot) && snapshot.terminal?.id ? JSON.stringify(['terminal', snapshot.environment, snapshot.terminal.id]) : snapshot.conversation?.selected;
-  const isPaneView = snapshot => isConversationView(snapshot) || isTerminal(snapshot);
+  const isResource = snapshot => !!layoutEngine.resourceContent(snapshot);
+  const isPaneView = snapshot => isConversationView(snapshot) || isTerminal(snapshot) || isResource(snapshot);
+  const contentForSnapshot = (snapshot, paneId) => layoutEngine.resourceContent(snapshot) || {type: 'conversation', conversationId: paneContentKey(snapshot, paneId)};
 
   // Local IDs remain plain strings; remote identities already include their environment.
   const identity = snapshot => {
+    if (isResource(snapshot)) return layoutEngine.resourceIdentity(snapshot);
     if (isTerminal(snapshot)) return snapshot.terminal?.id ? JSON.stringify(['terminal', snapshot.environment, snapshot.terminal.id]) : '';
     if (!isConversation(snapshot)) return '';
     let id = snapshot.conversation.selected;
@@ -108,11 +112,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 
   function normalize(value) {
     const snapshot = value && typeof value === 'object' ? value : {};
-    const route = typeof snapshot.route === 'string' && /^\/(projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|terminals|settings|issues)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/sessions';
+    const route = typeof snapshot.route === 'string' && /^\/(projects(?:\/[\w-]+(?:\/(?:git|worktrees))?)?|sessions|files|terminals|settings|issues)(?:\?[^#]*)?$/.test(snapshot.route) ? snapshot.route : '/sessions';
     return {...snapshot, route, environment:typeof snapshot.environment === 'string' ? snapshot.environment : 'local', title:typeof snapshot.title === 'string' ? snapshot.title.slice(0, 200) : uiText("对话"), kind:route.split('/')[1].split('?')[0]};
   }
   function send(page, type, detail = {}) {
-    if (page?.ready) protocol.postPageMessage(page.frame.contentWindow, location.origin, type, detail);
+    if (page?.ready && page.frame.contentWindow) protocol.postPageMessage(page.frame.contentWindow, location.origin, type, detail);
   }
 
   const sharedLayout = () => innerWidth > 760;
@@ -145,7 +149,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (pane.content.type === 'empty') return true;
       const mounted = panePages.get(pane.id);
       if (mounted) return isPaneView(mounted.snapshot);
-      return !pane.content.conversationId.startsWith('landing:');
+      return pane.content.type !== 'conversation' || !pane.content.conversationId.startsWith('landing:');
     });
   }
 
@@ -182,7 +186,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (node.type === 'split') {
         return {...node, children: [sanitizeNode(node.children[0]), sanitizeNode(node.children[1])]};
       }
-      if (node.content.type !== 'conversation') return node;
+      if (node.content.type !== 'conversation') {
+        const resource = panePages.get(node.id);
+        return resource && isResource(resource.snapshot) ? {...node, content: layoutEngine.resourceContent(resource.snapshot)} : node;
+      }
       const page = panePages.get(node.id);
       if (!page) {
         if (node.content.conversationId.startsWith('landing:')) return {...node, content: {type: 'empty'}};
@@ -238,17 +245,19 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
     const url = new URL(location.href), snapshot = page.snapshot;
     if (snapshot.environment === 'local') url.searchParams.delete('environment'); else url.searchParams.set('environment', snapshot.environment);
-    url.hash = conversationsVisible ? isConversation(snapshot) ? '/sessions?' + new URLSearchParams({session:snapshot.conversation.selected}) : '/sessions' : snapshot.route;
+    url.hash = snapshot.file ? '/files?' + new URLSearchParams(Object.entries(snapshot.file).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))
+      : conversationsVisible && isConversation(snapshot) ? '/sessions?' + new URLSearchParams({session:snapshot.conversation.selected})
+        : conversationsVisible && !isResource(snapshot) ? '/sessions' : snapshot.route;
     if (!restoringVisit) {
       const snapshotCopy = JSON.parse(JSON.stringify(snapshot));
       const key = visitKey(snapshot, page.id), previous = visits[visitIndex];
-      const resolving = previous?.snapshot.route === '/sessions' && !isPaneView(previous.snapshot) && snapshot.route === '/sessions' && previous.snapshot.environment === snapshot.environment;
+      const resolving = (previous?.initialLanding || previous?.snapshot.route === '/sessions' && !isPaneView(previous.snapshot)) && snapshot.route === '/sessions' && previous.snapshot.environment === snapshot.environment;
       const changed = previous?.key !== key && !resolving;
       if (changed) {
         visits.splice(visitIndex + 1);
         visitIndex = visits.length;
       }
-      visits[visitIndex] = {key, snapshot:snapshotCopy, pageID:page.id};
+      visits[visitIndex] = {key, snapshot:snapshotCopy, pageID:page.id, initialLanding:!!page.initialLanding};
       const state = {...history.state, yoluNavigation:{id:historyID, index:visitIndex}};
       history[changed && visitIndex > 0 ? 'pushState' : 'replaceState'](state, '', url);
     }
@@ -271,7 +280,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const page = currentPage();
     const navigator = navigation?.restored && navigation.frame.contentWindow.WorkHubPage;
     const controls = document.getElementById('workhubWindowControls');
-    const activeView = conversationsPresented ? 'sessions' : page?.snapshot.kind;
+    const activeView = conversationsPresented && !isResource(page?.snapshot || {}) ? 'sessions' : page?.snapshot.kind;
     const ready = conversationsPresented ? (!!navigation?.restored || !!page?.ready || layoutEngine.listPanes(store.getLayout().root).some(p => p.content.type === 'empty')) : !!page?.ready;
     if (controls) window.WorkHubLayout.renderChrome(controls, {
       ready,
@@ -292,7 +301,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       search: trigger => search.open(trigger),
       refresh: async () => {
         const targets = [navigation, page].filter(target => target?.ready && target.visible);
-        const results = await Promise.allSettled(targets.map(async target => target.frame.contentWindow.WorkHubPage?.refresh?.()));
+        const results = await Promise.allSettled(targets.map(async target => target.frame.contentWindow?.WorkHubPage?.refresh?.()));
         if (results.some(result => result.status === 'rejected' || result.value === 'failed')) return 'failed';
         const statuses = results.map(result => result.value);
         if (statuses.includes('pending')) return 'pending';
@@ -304,15 +313,57 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
 
   function inheritedContextFromPane(paneId) {
     const page = panePages.get(paneId);
-    if (!page) return undefined;
+    if (!page) return layoutEngine.findPane(store.getLayout().root, paneId)?.content.context;
     const snap = page.snapshot;
+    if (snap.file) return {environment: snap.environment, projectId: snap.file.projectId, cwd: snap.file.cwd, sessionId: snap.file.sessionId, bindingId: snap.file.bindingId, git: snap.file.git};
+    const projectId = snap.route.match(/^\/projects\/([\w-]+)/)?.[1];
+    if (projectId) {
+      const params = new URLSearchParams(snap.route.split('?')[1]);
+      return {environment: snap.environment, projectId, cwd: params.get('path') || params.get('directory') || undefined};
+    }
     const scope = pageScope(snap);
     return {
       environment: snap.environment || 'local',
-      projectId: snap.terminal?.projectID || (scope.kind === 'project' ? scope.id : undefined),
-      cwd: snap.terminal?.cwd || snap.conversation?.creationDirectory || snap.conversation?.directory || snap.conversation?.session?.cwd || undefined,
+      projectId: snap.terminal?.projectID || snap.conversation?.session?.primary_project_id || (scope.kind === 'project' ? scope.id : undefined),
+      sessionId: snap.conversation?.session?.id,
+      cwd: snap.terminal?.cwd || snap.conversation?.session?.cwd || snap.conversation?.creationDirectory || snap.conversation?.directory || undefined,
+      yoluAssistant: !!(snap.conversation?.creatingYoluAssistant || snap.conversation?.session?.yolu_assistant),
+      cloud: snap.conversation?.session?.provider === 'codex-cloud',
       scope,
     };
+  }
+
+  function creationDirectoryKey(environment, cwd) {
+    if (!cwd) return '';
+    try {
+      const pair = JSON.parse(cwd);
+      if (Array.isArray(pair) && pair.length === 2) return cwd;
+    } catch {}
+    let value = String(cwd).replace(/\\/g, '/');
+    if (value !== '/') value = value.replace(/\/+$/, '');
+    if (/^[a-z]:/i.test(value) || value.startsWith('//')) value = value.toLowerCase();
+    return environment === 'local' ? value : JSON.stringify([environment, value]);
+  }
+
+  function draftConversationSnapshot(context) {
+    const canInherit = !context?.yoluAssistant && !context?.cloud;
+    const hasProject = canInherit && !!context?.projectId;
+    const env = context?.environment || 'local';
+    const scope = hasProject ? {kind: 'project', id: context.projectId, environment: env} : {kind: 'all'};
+    const cwd = canInherit ? (context?.cwd || '') : '';
+    return normalize({
+      route: '/sessions',
+      environment: env,
+      title: uiText("新建对话"),
+      terminal: hasProject ? {projectID: context.projectId, ...(cwd ? {cwd} : {})} : undefined,
+      conversation: {
+        scope,
+        creationDirectory: cwd ? creationDirectoryKey(env, cwd) : '',
+        selected: null,
+        creating: true,
+        pane: 'detail',
+      },
+    });
   }
 
   function recentConversationsForEmptyPane() {
@@ -324,29 +375,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
 
   function createConversationInPane(paneId, context) {
-    const env = context?.environment || 'local';
-    const scope = context?.scope || (context?.projectId ? {kind: 'project', id: context.projectId, environment: env} : {kind: 'all'});
-    const draft = {
-      route: '/sessions',
-      environment: env,
-      title: uiText("新建对话"),
-      terminal: context?.projectId || context?.cwd ? {projectID: context.projectId, cwd: context.cwd} : undefined,
-      conversation: {
-        scope,
-        creationDirectory: context?.cwd || '',
-        selected: null,
-        creating: true,
-        pane: 'detail',
-      },
-    };
-    openConversation(preferredCreation(draft), 'current', paneId);
+    openPaneContent(preferredCreation(draftConversationSnapshot(context)), 'current', paneId);
   }
 
   function narrowPaneOptions() {
     const panes = layoutEngine.listPanes(store.getLayout().root);
     return panes.map((pane, index) => {
       if (pane.content.type === 'empty') {
-        return {paneId: pane.id, label: uiText("空白面板")};
+        return {paneId: pane.id, label: uiText("打开内容")};
       }
       const page = panePages.get(pane.id);
       if (!page) return {paneId: pane.id, label: uiText("对话")};
@@ -367,12 +403,13 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (active) {
         page.frame.style.left = `${(rect.x * 100).toFixed(4)}%`;
         page.frame.style.width = `${(rect.width * 100).toFixed(4)}%`;
+        const headerInset = layoutEngine.resourceContent(page.snapshot)?.type === 'project' ? 44 : 0;
         if (compactOffset) {
-          page.frame.style.top = '37px';
-          page.frame.style.height = 'calc(100% - 37px)';
+          page.frame.style.top = `${37 + headerInset}px`;
+          page.frame.style.height = `calc(100% - ${37 + headerInset}px)`;
         } else {
-          page.frame.style.top = `${(rect.y * 100).toFixed(4)}%`;
-          page.frame.style.height = `${(rect.height * 100).toFixed(4)}%`;
+          page.frame.style.top = headerInset ? `calc(${(rect.y * 100).toFixed(4)}% + ${headerInset}px)` : `${(rect.y * 100).toFixed(4)}%`;
+          page.frame.style.height = headerInset ? `calc(${(rect.height * 100).toFixed(4)}% - ${headerInset}px)` : `${(rect.height * 100).toFixed(4)}%`;
         }
       } else {
         page.frame.style.left = '';
@@ -389,15 +426,42 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   // stays effective and SplitContainer's resize effect never tears down mid-drag.
   const paneLayoutHandlers = {
     onCreateConversation: (paneId, context) => createConversationInPane(paneId, context),
+    onPickResource: (paneId, kind, trigger) => {
+      store.focus(paneId);
+      const context = inheritedContextFromPane(paneId);
+      if (kind === 'file' && context?.cwd && (context.projectId || context.sessionId)) {
+        openPaneContent({route: '/files', environment: context.environment || 'local', title: uiText("文件预览"),
+          file: {cwd: context.cwd, projectId: context.projectId, sessionId: context.sessionId, bindingId: context.bindingId, git: context.git}}, 'current', paneId);
+        return;
+      }
+      search.open(trigger, {
+        projectsOnly: true,
+        onSelect: target => {
+          if (!layoutEngine.findPane(store.getLayout().root, paneId)) return;
+          if (kind === 'project') openPaneContent(target, 'current', paneId);
+          else if (target.terminal?.cwd) openPaneContent({route: '/files', environment: target.environment, title: target.title,
+            file: {projectId: target.terminal.projectID, cwd: target.terminal.cwd, git: true}}, 'current', paneId);
+        },
+      });
+    },
+    onSelectFile: (paneId, path, mode) => {
+      const page = panePages.get(paneId);
+      if (!page?.snapshot.file || !['all', 'working', 'index'].includes(mode)) return;
+      if ((page.snapshot.file.path || '') === path && (page.snapshot.file.mode || 'all') === mode) return;
+      page.snapshot = {...page.snapshot, title: path.split(/[\\/]/).pop() || uiText("文件预览"), file: {...page.snapshot.file, path, line: undefined, mode}};
+      store.bindContent(paneId, layoutEngine.resourceContent(page.snapshot));
+      schedulePersist();
+      update();
+    },
     onPickConversation: (paneId, trigger) => {
       store.focus(paneId);
       search.open(trigger, {
         conversationsOnly: true,
-        onSelect: target => openConversation(target, 'current', paneId),
+        onSelect: target => openPaneContent(target, 'current', paneId),
       });
     },
     onOpenRecentConversation: (paneId, item) => {
-      openConversation({
+      openPaneContent({
         route: '/sessions',
         environment: item.environment || 'local',
         title: item.title,
@@ -534,11 +598,16 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (!allowed) return null;
     allowInitialAutoSelect = false;
     const context = inheritedContextFromPane(targetPaneId);
+    const draft = preferredCreation(draftConversationSnapshot(context));
+    const newPaneId = crypto.randomUUID();
     const createdId = store.split(targetPaneId, placement, {
-      content: {type: 'empty', ...(context ? {context} : {})},
+      newPaneId,
+      content: contentForSnapshot(draft, newPaneId),
     });
     if (!createdId) return null;
-    search.preload?.();
+    const page = createPage(draft, createdId);
+    panePages.set(createdId, page);
+    store.setMaximized(null);
     schedulePersist();
     update();
     return createdId;
@@ -615,21 +684,35 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     }
   }
 
+  function hydrateEmptyPanes(markInitialLanding = false) {
+    if (!conversationsVisible) return;
+    for (const pane of layoutEngine.listPanes(store.getLayout().root)) {
+      if (pane.content.type !== 'empty' || panePages.has(pane.id)) continue;
+      const draft = draftConversationSnapshot(pane.content.context);
+      const page = createPage(draft, pane.id);
+      if (markInitialLanding) page.initialLanding = true;
+      panePages.set(pane.id, page);
+      store.bindContent(pane.id, contentForSnapshot(draft, pane.id));
+    }
+  }
+
   function ensurePagesForVisiblePanes(view, shared) {
     if (!conversationsVisible) return;
     for (const pane of view.visiblePanes) {
       if (pane.content.type === 'empty') continue;
       let page = panePages.get(pane.id);
       if (!page) {
-        page = createPage(snapshotForConversationId(pane.content.conversationId), pane.id);
+        page = createPage(layoutEngine.resourceSnapshot(pane.content) || snapshotForConversationId(pane.content.conversationId), pane.id);
         panePages.set(pane.id, page);
       }
-      if (shared && !navigation.restored && !workspace.mounted && !isPaneView(page.snapshot)) continue;
+      if (page.snapshot.file) continue;
+      if (shared && !navigation.restored && !workspace.mounted && (page.initialLanding || !isPaneView(page.snapshot))) continue;
       mountPage(page);
     }
   }
 
   function renderLayout(includeChrome = true) {
+    hydrateEmptyPanes(allowInitialAutoSelect);
     const view = currentView();
     const split = view.isSplit;
     const shared = sharedLayout();
@@ -681,7 +764,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     for (const [paneId, page] of panePages) {
       const active = conversationsPresented && view.paneRects.has(paneId);
       const caps = layoutEngine.getPaneCapabilities(layout, interaction, paneId, viewport, constraints);
-      send(page, 'workhub:page-pane', {split, shared: true});
+      send(page, 'workhub:page-pane', {split, shared: !isResource(page.snapshot)});
       if (page.visible !== active) {
         page.visible = active;
         send(page, 'workhub:page-active', {active});
@@ -697,7 +780,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         canSplitDown: caps.canSplitDown,
         canSplitLeft: caps.canSplitLeft,
         canSplitUp: caps.canSplitUp,
-        canClose: caps.canClose,
+        canClose: caps.canClose && (split || !page.snapshot.conversation?.creating),
       });
     }
 
@@ -713,19 +796,19 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const hasAnyRealPane = view.allPanes.some(pane => {
       if (pane.content.type === 'conversation' && !pane.content.conversationId.startsWith('landing:')) return true;
       const p = panePages.get(pane.id);
-      return p ? isPaneView(p.snapshot) : false;
+      return pane.content.type === 'file' || pane.content.type === 'project' || (p ? isPaneView(p.snapshot) : false);
     });
-    const full = view.allPanes.length >= constraints.maxPanes;
+    const full = view.allPanes.length >= SIDEBAR_PARALLEL_LIMIT;
     const canSplit = canSplitActive();
 
-    send(navigation, 'workhub:navigation-route', {route: conversationsVisible ? '/sessions' : workspace.snapshot.route});
+    send(navigation, 'workhub:navigation-route', {route: conversationsVisible ? focusedPage?.snapshot.route || '/sessions' : workspace.snapshot.route});
     send(navigation, 'workhub:conversation-group', {
       targetTitle: focusedPage?.snapshot.title,
       target: conversationsVisible ? focusedPage?.snapshot : undefined,
       sessions: allOpenSessions,
       selected,
       createdConversation,
-      autoSelect: allowInitialAutoSelect && conversationsVisible && !hasAnyRealPane && !view.isSplit,
+      autoSelect: false,
       full,
       listWidth: renderedConversationListWidth(),
       split,
@@ -763,7 +846,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     frame.id = 'page-' + id;
     frame.title = snapshot.title;
     frame.hidden = true;
-    return {id, snapshot, frame, ready: false, mounted: false, restored: false, visible: false};
+    return {id, snapshot, frame, ready: !!snapshot.file, mounted: false, restored: !!snapshot.file, visible: false};
   }
 
   function mountPage(page, container = pages) {
@@ -773,7 +856,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const url = new URL('/', location.href);
     url.searchParams.set('app-page', id);
     if (id === 'shared-navigation') url.searchParams.set('app-navigation', '1');
-    else if (id !== 'workspace') url.searchParams.set('app-conversation', '1');
+    else if (id !== 'workspace' && !isResource(snapshot)) url.searchParams.set('app-conversation', '1');
     if (snapshot.environment !== 'local') url.searchParams.set('environment', snapshot.environment);
     if (isTerminal(snapshot)) url.searchParams.set('app-terminal', '1');
     if (layoutEngine.countPanes(store.getLayout().root) > 1 && panePages.get(id) === page) url.searchParams.set('app-pane', '1');
@@ -845,6 +928,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   }
 
   function canClose(page) {
+    if (page.snapshot.file) return true;
     try { return !page.ready || page.frame.contentWindow.WorkHubPage.canClose(); } catch { return false; }
   }
   function dispose(page) {
@@ -892,8 +976,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       ? {...message.snapshot, route: '/sessions', title: uiText("新建对话"), conversation: {scope: pageScope(message.snapshot), selected: null, creating: true, pane: 'detail'}}
       : message.snapshot;
     const target = message.create ? preferredCreation(snapshot) : snapshot;
-    if (target.route !== '/sessions' && !isTerminal(target)) openPage(target);
-    else if (isPaneView(target)) openConversation(target, message.placement, pageID);
+    if (isConversationView(target) || isTerminal(target) || target.file || isResource(target) && message.placement) openPaneContent(target, message.placement, pageID);
     else openPage(target);
   }
 
@@ -932,17 +1015,19 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   function openPage(snapshot) {
     const clean = normalize(snapshot);
     compactNavigationOpen = false;
-    if (clean.route === '/sessions' || isTerminal(clean)) {
+    if (clean.route === '/sessions' || isTerminal(clean) || clean.file) {
       conversationsVisible = true;
       if (isPaneView(clean)) {
-        openConversation(clean, 'current');
+        openPaneContent(clean, 'current');
         return;
       }
       const panes = layoutEngine.listPanes(store.getLayout().root);
-      if (panes.length === 1 && panes[0].content.type === 'empty' && !panePages.size && allowInitialAutoSelect) {
-        const page = createPage(clean, panes[0].id);
+      if (panes.length === 1 && panes[0].content.type === 'empty' && !panePages.size) {
+        const draft = draftConversationSnapshot({environment: clean.environment});
+        const page = createPage(draft, panes[0].id);
+        if (allowInitialAutoSelect) page.initialLanding = true;
         panePages.set(panes[0].id, page);
-        store.bindContent(panes[0].id, {type: 'conversation', conversationId: `landing:${panes[0].id}`});
+        store.bindContent(panes[0].id, contentForSnapshot(draft, panes[0].id));
       }
       if (clean.conversation?.scope && navigation) {
         navigation.snapshot = {...clean, route: '/sessions', conversation: {...clean.conversation, pane: 'list'}};
@@ -968,7 +1053,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     return found?.id || null;
   }
 
-  function openConversation(snapshot, placement = 'current', targetPaneId = activePaneId()) {
+  function openPaneContent(snapshot, placement = 'current', targetPaneId = activePaneId()) {
     const clean = normalize(snapshot);
     if (!isPaneView(clean)) { openPage(clean); return; }
     allowInitialAutoSelect = false;
@@ -978,6 +1063,11 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     const key = identity(clean);
     const existingPaneId = findExistingPaneForIdentity(key);
     if (existingPaneId) {
+      const existing = panePages.get(existingPaneId);
+      if (clean.file && existing) {
+        existing.snapshot = clean;
+        store.bindContent(existingPaneId, contentForSnapshot(clean, existingPaneId));
+      }
       store.setMaximized(null);
       store.focus(existingPaneId);
       schedulePersist();
@@ -994,10 +1084,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       const splitDirection = caps.canSplitRight ? 'right' : caps.canSplitDown ? 'down' : null;
       if (!splitDirection) return;
       const newPaneId = crypto.randomUUID();
-      const contentId = paneContentKey(clean, newPaneId);
       const createdId = store.split(basePaneId, splitDirection, {
         newPaneId,
-        content: {type: 'conversation', conversationId: contentId},
+        content: contentForSnapshot(clean, newPaneId),
       });
       if (!createdId) return;
       const page = createPage(clean, createdId);
@@ -1012,9 +1101,9 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (old) {
       if (!canClose(old)) return;
       disposeAlternate(old);
-      const contentId = paneContentKey(clean, basePaneId);
-      store.bindContent(basePaneId, {type: 'conversation', conversationId: contentId});
-      if (isTerminal(old.snapshot) || isTerminal(clean)) {
+      delete old.initialLanding;
+      store.bindContent(basePaneId, contentForSnapshot(clean, basePaneId));
+      if (isTerminal(old.snapshot) || isTerminal(clean) || isResource(old.snapshot) || isResource(clean)) {
         const page = createPage(clean, basePaneId);
         panePages.set(basePaneId, page);
         dispose(old);
@@ -1024,8 +1113,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         send(old, 'workhub:page-restore', {snapshot: clean, active: true});
       }
     } else {
-      const contentId = paneContentKey(clean, basePaneId);
-      store.bindContent(basePaneId, {type: 'conversation', conversationId: contentId});
+      store.bindContent(basePaneId, contentForSnapshot(clean, basePaneId));
       const page = createPage(clean, basePaneId);
       panePages.set(basePaneId, page);
     }
@@ -1058,10 +1146,16 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         const hasRealPane = [...panePages.values()].some(p => isPaneView(p.snapshot)) ||
           layoutEngine.listPanes(store.getLayout().root).some(p => p.content.type === 'conversation' && !p.content.conversationId.startsWith('landing:'));
         if (message.initial && (!allowInitialAutoSelect || !conversationsVisible || hasRealPane)) return;
-        openConversation(message.snapshot);
+        openPaneContent(message.snapshot);
       } else if (message.type === 'workhub:conversation-add') {
-        openConversation(message.snapshot, 'split');
+        const existing = findExistingPaneForIdentity(identity(normalize(message.snapshot)));
+        if (!existing && layoutEngine.countPanes(store.getLayout().root) >= SIDEBAR_PARALLEL_LIMIT) return;
+        openPaneContent(message.snapshot, 'split');
       } else if (message.type === 'workhub:page-open') {
+        if (message.placement === 'split') {
+          const existing = findExistingPaneForIdentity(identity(normalize(message.snapshot)));
+          if (!existing && layoutEngine.countPanes(store.getLayout().root) >= SIDEBAR_PARALLEL_LIMIT) return;
+        }
         dispatchOpen(message);
       }
       return;
@@ -1075,7 +1169,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     if (message.type === 'workhub:page-ready') {
       page.ready = true;
       page.frame.contentDocument?.addEventListener('keydown', workspaceKeydown);
-      send(page, 'workhub:page-pane', {split: page !== workspace && currentView().isSplit, shared: page !== workspace});
+      send(page, 'workhub:page-pane', {split: page !== workspace && currentView().isSplit, shared: page !== workspace && !isResource(page.snapshot)});
       send(page, 'workhub:page-restore', {snapshot: page.snapshot, active: !!page.visible});
       renderLayout();
     } else if (message.type === 'workhub:page-restored') {
@@ -1084,7 +1178,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
     } else if (message.type === 'workhub:page-state') {
       const clean = normalize(message.snapshot);
       if (page === workspace && conversationsVisible && clean.route === '/sessions') return;
-      if (page !== workspace && clean.route !== '/sessions' && !isTerminal(clean)) {
+      if (page !== workspace && clean.route !== '/sessions' && (!isPaneView(clean) || isResource(clean) && !isResource(page.snapshot))) {
         const original = page.snapshot;
         openPage(clean);
         send(page, 'workhub:page-restore', {snapshot: original, active: false});
@@ -1103,9 +1197,8 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
       if (displayed && page !== workspace && isPaneView(clean) && layoutEngine.findPane(store.getLayout().root, page.id)) {
         const prevKey = identity(prevSnap);
         const nextKey = identity(clean);
-        const nextContentId = paneContentKey(clean, page.id);
-        store.bindContent(page.id, {type: 'conversation', conversationId: nextContentId});
-        if (nextKey !== prevKey || clean.title !== prevSnap.title || clean.environment !== prevSnap.environment) {
+        store.bindContent(page.id, contentForSnapshot(clean, page.id));
+        if (nextKey !== prevKey || clean.title !== prevSnap.title || clean.environment !== prevSnap.environment || clean.route !== prevSnap.route) {
           schedulePersist();
         }
       }
@@ -1182,7 +1275,7 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
         store.focus(retained.id);
         update();
       } else if (!retainedMatches) {
-        dispatchOpen({snapshot: visit.snapshot});
+        dispatchOpen({snapshot: visit.snapshot, placement: visit.pageID !== 'workspace' && isResource(visit.snapshot) ? 'current' : undefined});
       }
       restoringVisit = false;
       const active = conversationsVisible ? panePages.get(activePaneId()) : workspace;
@@ -1209,6 +1302,14 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   function locationSnapshot() {
     const [route, query] = location.hash.slice(1).split('?');
     const environment = new URLSearchParams(location.search).get('environment') || 'local';
+    if (route === '/files') {
+      const params = new URLSearchParams(query);
+      const file = Object.fromEntries([...params].filter(([key]) => ['cwd', 'path', 'projectId', 'sessionId', 'bindingId', 'mode'].includes(key)));
+      if (params.has('line')) file.line = Number(params.get('line'));
+      if (params.has('git')) file.git = params.get('git') === 'true';
+      const snapshot = {route: '/files', environment, title: file.path?.split(/[\\/]/).pop() || uiText("文件预览"), file};
+      return isResource(snapshot) ? snapshot : {route: '/sessions', environment};
+    }
     const session = route === '/sessions' && new URLSearchParams(query).get('session');
     if (session) return {route, environment, conversation: {scope: {kind: 'all'}, selected: session, pane: 'detail'}};
     return {route: location.hash.slice(1) || '/sessions', environment};
@@ -1217,5 +1318,10 @@ var uiText = (message, ...values) => globalThis.YoluI18n ? globalThis.YoluI18n.t
   const initial = normalize(locationSnapshot());
   const workspace = createPage(initial, 'workspace');
   sharedListWidth?.subscribe(paintConversationListWidth);
-  openPage(initial);
+  const restoredActive = layoutEngine.findPane(store.getLayout().root, activePaneId());
+  const restoredSnapshot = restoredActive && layoutEngine.resourceSnapshot(restoredActive.content);
+  if (initialRestored.restored && restoredSnapshot && identity(initial) === identity(restoredSnapshot)) {
+    conversationsVisible = true;
+    update();
+  } else openPage(initial);
 })();

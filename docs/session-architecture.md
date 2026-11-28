@@ -27,6 +27,8 @@ The recorded branch supports drift checks. The API obtains current branch, chang
 
 Creation validates the directory, registered-project membership and model selection, then saves a durable request receipt. Identical retries can reuse the resulting session. A different payload requires a new request identifier. A persisted uncertain result must be inspected before starting another creation. Ordinary turns reserve a local receipt immediately before sending the prompt. A retry after restart checks that receipt before connecting to a provider.
 
+ACP session creation uses the existing 90-second startup budget, including the protocol handshake. Antigravity can initialize its backend, authenticate and fetch cloud model information during `session/new`, after the handshake has already succeeded. Do not impose a shorter per-call deadline on that mutation. Shutdown still cancels startup; a timeout retains the uncertain receipt and must not trigger an automatic second creation.
+
 Control locks serialize operations on one session or creation identity. Branch
 switch and worktree removal take the cleanup gate while revalidating occupancy,
 bindings and reviewed paths. Worktree creation holds the repository lock and a

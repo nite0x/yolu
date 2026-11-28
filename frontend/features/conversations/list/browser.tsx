@@ -52,7 +52,7 @@ export function SessionBrowser() {
         <span id="sessionProjectOrderStatus" className="sr-only" role="status" />
         <p id="sessionBrowserContext" className="sr-only" />
         <ListSearch variant="plain" id="sessionBrowserScopeBar" input="sessionBrowserSearch" label={uiText("搜索对话、项目或分支")} placeholder={uiText("搜索对话…")} clear={{ id:"sessionSearchClear", "data-conversation-action":"clear-search" }} leading={
-          <Button type="button" variant="ghost" size="sm" id="sessionSidebarNewChat" className="session-sidebar-new-chat flex-1 min-w-0 justify-start gap-1.5 px-1.5" data-conversation-action="new" data-conversation-standalone="true" title={uiText("新建对话")} hidden>
+          <Button type="button" variant="ghost" size="sm" id="sessionSidebarNewChat" className="session-sidebar-new-chat" data-conversation-action="new" data-conversation-standalone="true" title={uiText("新建对话")} hidden>
             <SquarePen aria-hidden="true" /><span>{uiText("新建对话")}</span>
           </Button>
         } filter={<>
@@ -122,7 +122,7 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
     {loading ? <RotateCw className="session-list-loading" aria-hidden="true" /> : error ? <CircleAlert aria-hidden="true" /> : filtered ? <Search aria-hidden="true" /> : <MessageSquare aria-hidden="true" />}
     <strong>{loading ? uiText("正在读取对话…") : error ? uiText("暂时无法读取对话") : filtered ? uiText("没有匹配的对话") : uiText("还没有对话")}</strong>
     <p>{loading ? uiText("正在同步各执行环境的记录") : error ? uiText("检查执行环境连接后重试。") : filtered ? uiText("试试其他关键词，或清除筛选条件。") : canCreate ? uiText("新建对话，从当前工作现场开始。") : uiText("当前范围暂无对话，可切换范围查看。")}</p>
-    {!loading && (error || filtered || canCreate) && <Button type="button" variant="outline" size="sm" data-conversation-action={error ? "refresh" : filtered ? "reset-list" : "new"}>{error ? uiText("重新加载") : filtered ? uiText("清除搜索与筛选") : uiText("新建对话")}</Button>}
+    {!loading && (error || filtered || canCreate && !sidebarMode) && <Button type="button" variant="outline" size="sm" data-conversation-action={error ? "refresh" : filtered ? "reset-list" : "new"}>{error ? uiText("重新加载") : filtered ? uiText("清除搜索与筛选") : uiText("新建对话")}</Button>}
   </div>
   const today = new Date(now)
   today.setHours(0, 0, 0, 0)
@@ -221,7 +221,10 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
     }
     const sectionList = [...sections.values()]
     const firstProjectIndex = sidebarMode === "grouped"
-      ? sectionList.findIndex(({group}) => group.collection === "project" || group.collection === "independent")
+      ? sectionList.findIndex(({group, rows}) => (group.collection === "project" || group.collection === "independent") && rows.some(row => row.kind === "group"))
+      : -1
+    const firstCloudIndex = sidebarMode === "grouped"
+      ? sectionList.findIndex(({group, rows}) => group.collection === "cloud" && rows.some(row => row.kind === "group"))
       : -1
     return <div className="session-browser-groups session-browser-workspaces">{sectionList.map(({group, rows}, sectionIndex) => {
       const environmentName = sidebarMode && group.environment === "local" ? undefined : group.environmentName
@@ -298,6 +301,12 @@ export function ConversationList({ sessions, rows, selected, search = "", showDi
       if (sectionIndex === firstProjectIndex) {
         return <Fragment key={group.key}>
           <div className="session-sidebar-section-label" data-sidebar-section="projects" aria-hidden="true"><span>{uiText("项目")}</span></div>
+          {sectionElement}
+        </Fragment>
+      }
+      if (sectionIndex === firstCloudIndex) {
+        return <Fragment key={group.key}>
+          <div className="session-sidebar-section-label" data-sidebar-section="cloud" aria-hidden="true"><span>{uiText("云环境")}</span></div>
           {sectionElement}
         </Fragment>
       }
