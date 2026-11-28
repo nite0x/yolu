@@ -22,8 +22,12 @@ export interface PersistedPaneLayoutRecord {
 export const DEFAULT_LAYOUT_CONTEXT = "default"
 const STORAGE_KEY_PREFIX = "workhub:pane-layout:v1:"
 
+function normalizeLayoutContext(context: string): string {
+  return context.trim() || DEFAULT_LAYOUT_CONTEXT
+}
+
 export function layoutStorageKey(context: string = DEFAULT_LAYOUT_CONTEXT): string {
-  return `${STORAGE_KEY_PREFIX}${context || DEFAULT_LAYOUT_CONTEXT}`
+  return `${STORAGE_KEY_PREFIX}${normalizeLayoutContext(context)}`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -74,7 +78,7 @@ export function serializePaneLayout(
   const normalized = normalizeLayout(layout)
   const record: PersistedPaneLayoutRecord = {
     version: PANE_LAYOUT_VERSION,
-    context: context || DEFAULT_LAYOUT_CONTEXT,
+    context: normalizeLayoutContext(context),
     ...(typeof updatedAt === "number" && Number.isFinite(updatedAt) ? { updatedAt } : {}),
     layout: normalized,
     ...(conversations ? { conversations: sanitizeConversationsMeta(normalized, conversations) } : {}),
@@ -135,9 +139,7 @@ export function deserializePaneLayout(
 
   if (
     typeof parsed.context === "string" &&
-    parsed.context &&
-    expectedContext &&
-    parsed.context !== expectedContext
+    normalizeLayoutContext(parsed.context) !== normalizeLayoutContext(expectedContext)
   ) {
     return {
       layout: createInitialLayout(),
@@ -216,7 +218,7 @@ export interface PaneLayoutPersistence {
 export function createPaneLayoutPersistence(
   options: PaneLayoutPersistenceOptions = {},
 ): PaneLayoutPersistence {
-  const context = options.context ?? DEFAULT_LAYOUT_CONTEXT
+  const context = normalizeLayoutContext(options.context ?? DEFAULT_LAYOUT_CONTEXT)
   const debounceMs = options.debounceMs ?? 250
   const now = options.now ?? (() => Date.now())
   const key = layoutStorageKey(context)
@@ -245,6 +247,8 @@ export function createPaneLayoutPersistence(
     null
   let lastLocalSignature = ""
   let lastRemoteSignature = ""
+  let lastRemoteTimestamp = 0
+  let latestRemoteTimestamp = 0
   let lastTimestamp = 0
   let writeChain = Promise.resolve()
 
@@ -261,10 +265,12 @@ export function createPaneLayoutPersistence(
   ) {
     const signature = serializePaneLayout(layout, context, conversations)
     const needsLocal = signature !== lastLocalSignature
-    const needsRemote = !!options.saveRemote && signature !== lastRemoteSignature
+    const needsRemote = !!options.saveRemote &&
+      (signature !== lastRemoteSignature || latestRemoteTimestamp > lastRemoteTimestamp)
     if (!needsLocal && !needsRemote) return
 
-    const serialized = serializePaneLayout(layout, context, conversations, nextTimestamp())
+    const timestamp = nextTimestamp()
+    const serialized = serializePaneLayout(layout, context, conversations, timestamp)
     if (needsLocal) {
       lastLocalSignature = signature
       writeLocal(key, serialized)
@@ -272,21 +278,28 @@ export function createPaneLayoutPersistence(
     if (needsRemote && options.saveRemote) {
       const parsed = JSON.parse(serialized) as PersistedPaneLayoutRecord
       const saveFn = options.saveRemote
+      latestRemoteTimestamp = timestamp
+      const acknowledge = () => {
+        // An older request can complete after the synchronous keepalive save.
+        if (timestamp <= lastRemoteTimestamp) return
+        lastRemoteTimestamp = timestamp
+        lastRemoteSignature = signature
+      }
       if (keepalive) {
         // Dispatch synchronously on unload/pagehide so keepalive requests start immediately.
         void saveFn(context, parsed, { keepalive: true }).then(
-          () => {
-            lastRemoteSignature = signature
-          },
+          acknowledge,
           () => {
             /* Keep lastRemoteSignature unset so a future save retries. */
           },
         )
       } else {
         writeChain = writeChain.then(async () => {
+          // Keepalive has already dispatched a newer snapshot; do not send queued old ones.
+          if (timestamp < latestRemoteTimestamp) return
           try {
             await saveFn(context, parsed, { keepalive: false })
-            lastRemoteSignature = signature
+            acknowledge()
           } catch {
             /* Local cache retains layout; next change will retry backend persistence. */
           }
@@ -327,6 +340,8 @@ export function createPaneLayoutPersistence(
         lastLocalSignature = signature
         if (chosen.source === "bootstrap") {
           lastRemoteSignature = signature
+          lastRemoteTimestamp = chosen.parsed.updatedAt
+          latestRemoteTimestamp = lastRemoteTimestamp
         }
         if (chosen.parsed.migrated) {
           writeLocal(

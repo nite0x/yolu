@@ -65,7 +65,7 @@ export function setupWorkspacePanels() {
       container.dataset.reactPanels = narrowLayout(width) ? "narrow" : "wide"
       const observer = new ResizeObserver(() => {
         const entry = roots.get(container), next = Math.round(container.getBoundingClientRect().width)
-        if (!entry || next === entry.width || !next) return
+        if (disposed || !entry || next === entry.width || !next) return
         const mode = narrowLayout(next) ? "narrow" : "wide"
         const switching = container.dataset.reactPanels !== mode
         const focused = switching && container.contains(document.activeElement) ? document.activeElement as HTMLElement : null
@@ -84,5 +84,17 @@ export function setupWorkspacePanels() {
   const changes = new MutationObserver(() => { if (!queued && !disposed) { queued = true; queueMicrotask(scan) } })
   changes.observe(document.body, { childList: true, subtree: true })
   scan()
-  window.addEventListener("pagehide", () => { disposed = true; changes.disconnect(); for (const entry of roots.values()) { entry.observer.disconnect(); entry.root.unmount() } roots.clear() }, { once: true })
+  window.addEventListener("pagehide", () => {
+    disposed = true
+    changes.disconnect()
+    for (const [container, entry] of roots) {
+      entry.observer.disconnect()
+      entry.root.unmount()
+      // Later pagehide handlers still save drafts and list reading position.
+      // Return the controller-owned nodes after removing the React sizing shell.
+      container.replaceChildren(entry.pair.list, entry.pair.legacy, entry.pair.detail)
+      delete container.dataset.reactPanels
+    }
+    roots.clear()
+  }, { once: true })
 }
